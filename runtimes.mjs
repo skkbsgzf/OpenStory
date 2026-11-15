@@ -51,7 +51,9 @@ export function normalizeRuntimeKit(raw, { source, dir } = {}) {
   const name = text(raw.name).trim()
   if (!name) return bad('RUNTIME_KIT_NAME', '缺 name')
   const kind = text(raw.kind).trim()
-  if (kind !== 'sidecar' && kind !== 'endpoint') return bad('RUNTIME_KIT_KIND', 'kind 只许 sidecar/endpoint')
+  if (!['sidecar', 'endpoint', 'cli', 'dsh'].includes(kind)) return bad('RUNTIME_KIT_KIND', 'kind 只许 sidecar/endpoint/cli/dsh')
+  const category = text(raw.category).trim() || (kind === 'cli' ? 'cli' : 'native')
+  if (category !== 'native' && category !== 'cli' && category !== 'dsh') return bad('RUNTIME_KIT_CATEGORY', 'category 只许 native/cli/dsh')
   const chatPath = raw.chatPath ? text(raw.chatPath).trim() : DEFAULT_CHAT_PATH
   if (!validChatPath(chatPath)) return bad('RUNTIME_KIT_CHAT_PATH', 'chatPath 必须是站内绝对路径（无查询串/逃逸）')
   const healthPath = raw.healthPath ? text(raw.healthPath).trim() : DEFAULT_HEALTH_PATH
@@ -67,7 +69,8 @@ export function normalizeRuntimeKit(raw, { source, dir } = {}) {
     chatPath,
     healthPath,
     model: text(raw.model).trim(),
-    apiKey: text(raw.apiKey).trim()
+    apiKey: text(raw.apiKey).trim(),
+    category
   }
   if (kind === 'sidecar') {
     const command = raw.command && typeof raw.command === 'object' ? raw.command : null
@@ -80,11 +83,32 @@ export function normalizeRuntimeKit(raw, { source, dir } = {}) {
     }
     kit.command = { cmd, args, cwd: command?.cwd ? resolve(join(text(dir), text(command.cwd))) : text(dir) }
     kit.port = port
-  } else {
+  } else if (kind === 'endpoint') {
     let url
     try { url = new URL(text(raw.url).trim()) } catch { return bad('RUNTIME_KIT_URL', 'endpoint 缺合法 url') }
     if (url.protocol !== 'http:' && url.protocol !== 'https:') return bad('RUNTIME_KIT_URL', 'endpoint url 只支持 http/https')
     kit.url = url.origin
+  } else if (kind === 'dsh') {
+    // DSH 原生：端点由探测/配置给（manifest.url 可选）；probe 走 dsh-bridge 的探测
+    if (raw.url) {
+      try {
+        const u = new URL(text(raw.url).trim())
+        if (u.protocol === 'http:' || u.protocol === 'https:') kit.url = u.origin
+      } catch { /* 坏 url 忽略——探测兜底 */ }
+    }
+  } else {
+    // kind:cli——一次性子进程嫁接：probe 必填（安装探测），cliArgs 模板里 {prompt} 占位
+    const probe = raw.probe && typeof raw.probe === 'object' ? raw.probe : null
+    const probeCmd = text(probe?.cmd).trim()
+    if (!probeCmd) return bad('RUNTIME_KIT_PROBE', 'cli kit 必须声明 probe.cmd')
+    // 允许 PATH 名或绝对路径（本机 manifest 可信；是否真能执行由 probe 实测）
+    kit.probe = { cmd: probeCmd, args: Array.isArray(probe.args) ? probe.args.map((arg) => text(arg)) : [] }
+    kit.cliArgs = Array.isArray(raw.cliArgs) ? raw.cliArgs.map((arg) => text(arg)) : ['-p', '{prompt}']
+    const timeoutMs = Number(raw.timeoutMs)
+    kit.timeoutMs = Number.isFinite(timeoutMs) && timeoutMs >= 1000 && timeoutMs <= 900000 ? timeoutMs : 120000
+  }
+  if (kind !== 'cli' && raw.probe && typeof raw.probe === 'object' && text(raw.probe.cmd).trim()) {
+    kit.probe = { cmd: text(raw.probe.cmd).trim(), args: Array.isArray(raw.probe.args) ? raw.probe.args.map((arg) => text(arg)) : [] }
   }
   if (raw.sha256 !== undefined && !/^[0-9a-f]{64}$/iu.test(text(raw.sha256))) return bad('RUNTIME_KIT_SHA', 'sha256 要是 64 位十六进制')
   if (raw.sha256) kit.sha256 = text(raw.sha256).toLowerCase()
@@ -220,4 +244,55 @@ export async function ensureSidecar(kit, { env = process.env } = {}) {
 export function sidecarRunning(kitId) {
   const entry = sidecars.get(kitId)
   return Boolean(entry?.alive)
+}
+
+/* ---------- 安装探测（OS-18：货架状态标） ---------- */
+
+const PROBE_TTL_MS = 60_000
+const probeCache = new Map()
+
+/**
+ * 可执行探测：`probe.cmd probe.args` 跑起来、看退出码与首行版本。结果缓存 60s。
+ * 返回 {installed, version?, message?}。探测失败不抛——货架如实标 missing。
+ */
+export async function probeRuntimeKit(kit, { force = false } = {}) {
+  if (!kit?.probe?.cmd) return { installed: null, message: '未声明 probe' }
+  const cacheKey = `${kit.id}:${kit.probe.cmd}`
+  const cached = probeCache.get(cacheKey)
+  if (!force && cached && Date.now() - cached.at < PROBE_TTL_MS) return cached.result
+  const result = await new Promise((resolvePromise) => {
+    let child
+    const timer = setTimeout(() => {
+      try { child?.kill() } catch { /* 已经死了 */ }
+      resolvePromise({ installed: false, message: '探测超时（5s）' })
+    }, 5000)
+    try {
+      child = spawn(kit.probe.cmd, kit.probe.args, { shell: false, stdio: ['ignore', 'pipe', 'pipe'] })
+    } catch (error) {
+      clearTimeout(timer)
+      resolvePromise({ installed: false, message: `探测失败：${String(error?.message || error)}` })
+      return
+    }
+    let out = ''
+    child.stdout?.on('data', (chunk) => { out += chunk })
+    child.stderr?.on('data', (chunk) => { out += chunk })
+    child.on('error', (error) => {
+      clearTimeout(timer)
+      resolvePromise({ installed: false, message: `不可执行：${String(error?.message || error)}` })
+    })
+    child.on('exit', (code) => {
+      clearTimeout(timer)
+      const firstLine = out.split('\n').map((line) => line.trim()).filter(Boolean)[0] || ''
+      resolvePromise(code === 0
+        ? { installed: true, version: firstLine.slice(0, 80) }
+        : { installed: false, message: `退出码 ${code}${firstLine ? `：${firstLine.slice(0, 80)}` : ''}` })
+    })
+  })
+  probeCache.set(cacheKey, { at: Date.now(), result })
+  return result
+}
+
+/** 测试钩子：清探测缓存。 */
+export function resetProbeCache() {
+  probeCache.clear()
 }
