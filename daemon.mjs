@@ -72,9 +72,12 @@ import {
   defaultUserRuntimesDir,
   ensureSidecar,
   loadRuntimeKits,
+  probeRuntimeKit,
   sidecarRunning,
   stopAllSidecars
 } from './runtimes.mjs'
+import { runCliChat } from './cli-bridge.mjs'
+import { detectDsh, resolveDshChat } from './dsh-bridge.mjs'
 import {
   builtinSuitesDir,
   defaultSuiteStatePath,
@@ -1040,23 +1043,46 @@ async function handleAgentConfigGet(res, context) {
 async function handleAgentRuntimesGet(res, context) {
   const { config } = await loadAgentConfig(context.agentConfigPath)
   const { kits } = loadRuntimeKits(context.runtimesDirs)
-  const runtimes = [
-    {
-      id: '',
-      name: 'Pi 兜底（内置）',
-      kind: 'pi',
-      source: '内置',
-      status: text(config.endpoint).trim() ? 'ready' : 'unconfigured',
-      description: '直连 OpenAI 兼容端点（下方字段）；没装任何 kit 时的原生兜底'
-    },
-    ...kits.map((kit) => ({
+  // OS-18：货架三组（native＝Pi/DSH/套件侧车；cli＝CLI 嫁接），CLI 与 DSH 带实测状态
+  const enriched = []
+  for (const kit of kits) {
+    let probeResult = null
+    if (kit.probe) {
+      if (kit.kind === 'dsh') {
+        const dsh = await detectDsh({ env: context.env })
+        probeResult = dsh.running
+          ? { installed: true, version: `chat 端点就绪（${dsh.source}）` }
+          : { installed: false, message: dsh.message }
+      } else {
+        probeResult = await probeRuntimeKit(kit)
+      }
+    }
+    enriched.push({
       id: kit.id,
       name: kit.name,
       kind: kit.kind,
+      category: kit.category ?? 'native',
       source: kit.source,
-      status: kit.kind === 'sidecar' ? (sidecarRunning(kit.id) ? 'running' : 'idle') : 'ready',
-      description: kit.description
-    }))
+      status: kit.kind === 'sidecar'
+        ? (sidecarRunning(kit.id) ? 'running' : 'idle')
+        : probeResult
+          ? (probeResult.installed ? 'ready' : 'missing')
+          : 'ready',
+      description: kit.description,
+      ...(probeResult ? { probe: probeResult } : {})
+    })
+  }
+  const runtimes = [
+    {
+      id: '',
+      name: 'Pi（默认兜底）',
+      kind: 'pi',
+      category: 'native',
+      source: '内置',
+      status: text(config.endpoint).trim() ? 'ready' : 'unconfigured',
+      description: '直连 OpenAI 兼容端点（下方字段）；没装任何 kit 时的原生兜底，也是默认运行时'
+    },
+    ...enriched
   ]
   const userDir = Array.isArray(context.runtimesDirs) && context.runtimesDirs[1] ? context.runtimesDirs[1] : ''
   return sendJson(res, 200, { ok: true, active: text(config.runtime).trim(), runtimes, ...(userDir ? { userDir } : {}) })
@@ -1121,6 +1147,19 @@ async function resolveChatUpstream(config, context) {
   if (kit.kind === 'endpoint') {
     return { ok: true, url: `${kit.url}${kit.chatPath}`, headers, model: kit.model, runtimeName: kit.name }
   }
+  if (kit.kind === 'cli') {
+    // CLI 嫁接：不走 HTTP——上游是一次性子进程（handleAgentChat 里 execute）
+    const probed = await probeRuntimeKit(kit)
+    if (probed.installed !== true) {
+      return fallbackToPi(config, `CLI 不可用：${kit.name}（${probed.message ?? '未安装'}）`)
+    }
+    return { ok: true, execute: 'cli', kit, model: kit.model, runtimeName: kit.name }
+  }
+  if (kit.kind === 'dsh') {
+    const chat = await resolveDshChat(kit, { env: context.env })
+    if (!chat.ok) return fallbackToPi(config, `DSH 不可用：${chat.message}`)
+    return { ok: true, url: chat.url, headers, model: kit.model, runtimeName: kit.name }
+  }
   const up = await ensureSidecar(kit, { env: context.env })
   if (!up.ok) return fallbackToPi(config, `运行时 ${kit.name} 起不来（${up.message}）`)
   return { ok: true, url: `http://127.0.0.1:${up.port}${kit.chatPath}`, headers, model: kit.model, runtimeName: kit.name }
@@ -1137,7 +1176,7 @@ async function handleAgentChat(req, res, request, context, root, libraries) {
   if (!upstream.ok) {
     return sendError(res, upstream.code ?? API_ERROR_CODES.AGENT_UPSTREAM_ERROR, upstream.message)
   }
-  const targetUrl = new URL(upstream.url)
+  const targetUrl = upstream.url ? new URL(upstream.url) : null
 
   // 会话：sessionId 缺省＝新建（标题取首句）；给了就必须真存在。
   const sessionsDir = context.agentSessionsDir
@@ -1169,6 +1208,29 @@ async function handleAgentChat(req, res, request, context, root, libraries) {
       controller.abort()
     }
   })
+
+  if (upstream.execute === 'cli') {
+    // CLI 嫁接：一次性子进程 → 整段一片 SSE（daemon 自有帧协议不变）
+    res.writeHead(200, {
+      'content-type': 'text/event-stream; charset=utf-8',
+      'cache-control': 'no-cache, no-transform',
+      connection: 'keep-alive',
+      'x-accel-buffering': 'no'
+    })
+    sseFrame(res, { type: 'start', sessionId, runtime: upstream.runtimeName })
+    if (upstream.notice) sseFrame(res, { type: 'notice', text: upstream.notice })
+    const cli = await runCliChat(upstream.kit, upstreamMessages)
+    if (cli.ok) {
+      sseFrame(res, { type: 'delta', text: cli.text })
+      await appendSession(sessionsDir, root, sessionId, [{
+        t: 'msg', id: newMessageId(), role: 'assistant', content: cli.text, at: new Date().toISOString()
+      }])
+      sseFrame(res, { type: 'done', sessionId, chars: cli.text.length })
+    } else {
+      sseFrame(res, { type: 'error', error: { code: API_ERROR_CODES.AGENT_UPSTREAM_ERROR, message: cli.message } })
+    }
+    return res.end()
+  }
 
   let upstreamRes
   try {

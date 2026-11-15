@@ -1,0 +1,11 @@
+{
+  "schemaVersion": "openstory-runtime-kit@1",
+  "id": "cli-codebuddy",
+  "name": "CodeBuddy CLI",
+  "kind": "cli",
+  "category": "cli",
+  "description": "把 CodeBuddy CLI 当一次性模型用（嫁接：每次对话跑一次子进程）。装没装由 probe 探测。",
+  "probe": { "cmd": "codebuddy", "args": ["--version"] },
+  "cliArgs": ["-p", "{prompt}", "--output-format", "text"],
+  "timeoutMs": 180000
+}
