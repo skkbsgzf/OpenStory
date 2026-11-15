@@ -1,0 +1,1505 @@
+#!/usr/bin/env node
+/**
+ * OpenStory daemon（OS-1/4）——轻 Node HTTP 服务，OpenStory 工作台的唯一磁盘层。
+ *
+ * 四件事：
+ *   1) 静态托管 `openstory/public/`（index.html ＋ app.js）；
+ *   2) 文件绑定 API（库 / 条目 / 正文 / wiki），读走 S1 `factFileStore`，写走 S2 `writeFactFile`
+ *      （经 store 的 save/wikiDerive 转调，本文件不重写任何写协议）；
+ *   3) Agent 通道（OS-4）：会话 JSONL（`agentStore.mjs`）＋ OpenAI 兼容上游流式转发；
+ *      端点/模型/key 只存 daemon 本机配置（%LOCALAPPDATA%/PinaxNext/openstory/agent-config.json），
+ *      任何响应不回显完整 key；待确认卡采纳走正文快照闸（创建→采纳窗口）＋与手工保存同一条原子写。
+ *   4) daemon 不做工具循环：模型读不到库文件，除非作者粘贴（v1 边界，诚实标注）。
+ *
+ * 三条硬边界：
+ *   · 只绑 127.0.0.1（不监外网，对齐 OpenDesign sidecar）；不做 HTTPS/隧道/多用户。
+ *   · `root` 必须命中库清单（`%LOCALAPPDATA%/PinaxNext/next-preferences.json` 的 recentProjects）
+ *     或启动时显式 `--root=` 授权；文件路径 resolve 后必须落在 root 内（照 S2 的路径逃逸拒收写法）。
+ *   · 正文写入不做 revision 闸（v1 边界）：OpenStory 与 Electron 同时写同一库时，只有写前
+ *     `.history/<file>.bak-<时间戳>` 这层粗保护。真正的冲突保护归后续写协议接入。
+ *
+ * 启动：`node openstory/daemon.mjs [--port=8807] [--root=<库路径>]`
+ */
+import { randomUUID } from 'node:crypto'
+import { createReadStream, existsSync, readFileSync, realpathSync, statSync } from 'node:fs'
+import { copyFile, mkdir, readdir, readFile, rename, writeFile } from 'node:fs/promises'
+import { createServer } from 'node:http'
+import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path'
+import { fileURLToPath, pathToFileURL } from 'node:url'
+import {
+  API_ERROR_CODES,
+  endpointFor,
+  errorEnvelope,
+  isPlainObject,
+  normalizeLibraries,
+  validateRequest,
+  validateResponse
+} from './contracts.mjs'
+import {
+  appendSession,
+  buildUpstreamMessages,
+  configPublic,
+  createSession,
+  createSseDeltaParser,
+  defaultAgentConfigPath,
+  defaultSessionsDir,
+  deleteSession,
+  fileSnapshot,
+  listSessions,
+  loadAgentConfig,
+  newCardId,
+  newMessageId,
+  readSession,
+  renameSession,
+  saveAgentConfig,
+  snapshotsMatch,
+  updateCard
+} from './agentStore.mjs'
+import {
+  builtinStylesDir,
+  defaultUserStylesDir,
+  loadStylePacks
+} from './stylePacks.mjs'
+import { isHexColor, wikiHtmlDocument } from './wikiHtml.mjs'
+import {
+  createChapter,
+  deleteChapter,
+  listChapters,
+  renameChapter
+} from './chapters.mjs'
+import {
+  builtinRuntimesDir,
+  defaultUserRuntimesDir,
+  ensureSidecar,
+  loadRuntimeKits,
+  sidecarRunning,
+  stopAllSidecars
+} from './runtimes.mjs'
+import {
+  builtinSuitesDir,
+  defaultSuiteStatePath,
+  defaultUserSuitesDir,
+  getSuiteStateData,
+  listSuitesPublic,
+  loadSuites,
+  saveSuiteSettings,
+  saveSuiteStateData,
+  setSuiteEnabled,
+  suiteValue
+} from './suites.mjs'
+import {
+  createLibrary,
+  diagnoseLibrary,
+  importLibrary,
+  scanLibrary,
+  setPrimaryCarrier
+} from './libraryManage.mjs'
+import { createFactFileStore } from './core/pinax/next/kernel/factFileStore.mjs'
+
+const HERE = dirname(fileURLToPath(import.meta.url))
+export const DEFAULT_PORT = 8807
+export const DEFAULT_PUBLIC_DIR = join(HERE, 'public')
+const MAX_JSON_BODY = 16 * 1024 * 1024
+const MAX_STATIC_BYTES = 8 * 1024 * 1024
+const METADATA_DIR = '.pinax'
+
+const MIME = Object.freeze({
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.mjs': 'text/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.webp': 'image/webp',
+  '.ico': 'image/x-icon',
+  '.txt': 'text/plain; charset=utf-8',
+  '.woff2': 'font/woff2'
+})
+
+const STATUS_BY_CODE = Object.freeze({
+  NO_LIBRARY: 403,
+  PATH_ESCAPE: 403,
+  NOT_FOUND: 404,
+  INVALID_ENTRY: 400,
+  REVISION_MISMATCH: 409,
+  WRITE_PROTOCOL_OPERATION_ID_REQUIRED: 400,
+  WRITE_PROTOCOL_VALIDATION_FAILED: 422,
+  WRITE_PROTOCOL_INVALID_INPUT: 400,
+  WRITE_PROTOCOL_NOT_FOUND: 404,
+  WRITE_PROTOCOL_IO_FAILED: 500,
+  AGENT_NOT_CONFIGURED: 400,
+  AGENT_UPSTREAM_ERROR: 502
+})
+
+function text(value) {
+  return String(value ?? '')
+}
+
+/* ---------- 库清单与 root 白名单 ---------- */
+
+/** 与 Electron 库管理器同一份数据：%LOCALAPPDATA%/PinaxNext/next-preferences.json。 */
+export function defaultPreferencesPath(env = process.env) {
+  const base = text(env.LOCALAPPDATA || env.APPDATA).trim()
+  return base ? join(base, 'PinaxNext', 'next-preferences.json') : ''
+}
+
+/**
+ * 读库清单。坏档/缺档不拦启动：按空清单回，并记一条 warning 让工作台摆空态。
+ * `recentProjects` 真实形状只保底 path/name/at；kind/count 缺了补默认值。
+ */
+export function loadLibraries({ preferencesPath, env = process.env } = {}) {
+  const target = text(preferencesPath || env.PINAX_OS_PREFERENCES || defaultPreferencesPath(env)).trim()
+  const warnings = []
+  if (!target) {
+    return {
+      libraries: [],
+      warnings: [{ code: 'PREFERENCES_PATH_UNKNOWN', message: '找不到 LOCALAPPDATA，无法定位 next-preferences.json' }],
+      preferencesPath: ''
+    }
+  }
+  let raw
+  try {
+    raw = readFileSync(target, 'utf-8')
+  } catch (error) {
+    warnings.push({
+      code: error?.code === 'ENOENT' ? 'PREFERENCES_MISSING' : 'PREFERENCES_UNREADABLE',
+      path: target,
+      message: error?.code === 'ENOENT'
+        ? '库清单文件还不存在：先在 Pinax 里打开一个库'
+        : `库清单文件读不了：${text(error?.message || error)}`
+    })
+    return { libraries: [], warnings, preferencesPath: target }
+  }
+  let document
+  try {
+    document = JSON.parse(raw)
+  } catch (error) {
+    warnings.push({ code: 'PREFERENCES_CORRUPT', path: target, message: `库清单不是有效 JSON：${text(error?.message || error)}` })
+    return { libraries: [], warnings, preferencesPath: target }
+  }
+  if (!isPlainObject(document) || !Array.isArray(document.recentProjects)) {
+    warnings.push({ code: 'PREFERENCES_SHAPE', path: target, message: '库清单缺少 recentProjects 数组' })
+    return { libraries: [], warnings, preferencesPath: target }
+  }
+  const normalized = normalizeLibraries(document.recentProjects)
+  return {
+    libraries: normalized.libraries,
+    warnings: [...warnings, ...normalized.warnings],
+    preferencesPath: target
+  }
+}
+
+function canonicalRoot(value) {
+  const raw = text(value).trim()
+  if (!raw) return ''
+  const absolute = resolve(raw)
+  // Windows 会把 8.3 短名与长名当成同一目录：先 realpath 归一再比，避免
+  // `ADMINI~1` 与 `Administrator` 明明同一个库却互相不认。路径不存在时回落 resolve。
+  try {
+    return realpathSync.native(absolute)
+  } catch {
+    return absolute
+  }
+}
+
+function rootKey(value) {
+  const canonical = canonicalRoot(value)
+  if (!canonical) return ''
+  return process.platform === 'win32' ? canonical.toLowerCase() : canonical
+}
+
+/**
+ * root 白名单＝库清单 ＋ 启动时 `--root=` 的显式授权。
+ * 显式 CLI 授权与库登记等价：作者指定了哪个库，daemon 才敢碰哪个库。
+ */
+export function createRootAllowlist(libraries = [], extraRoots = []) {
+  const byKey = new Map()
+  for (const library of libraries) {
+    const root = canonicalRoot(library?.path)
+    if (root) byKey.set(rootKey(root), root)
+  }
+  for (const extra of extraRoots) {
+    const root = canonicalRoot(extra)
+    if (root) byKey.set(rootKey(root), root)
+  }
+  const resolveRoot = (value) => {
+    const key = rootKey(value)
+    return key ? (byKey.get(key) ?? null) : null
+  }
+  return {
+    roots: [...byKey.values()],
+    resolve: resolveRoot,
+    isAllowed(value) {
+      return Boolean(resolveRoot(value))
+    }
+  }
+}
+
+/* ---------- 路径安全 ---------- */
+
+function pathFail(message, path) {
+  return { ok: false, code: API_ERROR_CODES.PATH_ESCAPE, message, details: path ? { path } : undefined }
+}
+
+/**
+ * 相对路径 → 绝对路径，并保证落在 root 内。照 S2 `validateRelativePath` 的口径：
+ * 不得绝对、不得含 `.`/`..`/空段、不得碰 `.pinax/`（元数据只归 Electron 内核写）。
+ * 额外用 path.relative 复核一次，防止符号链接/大小写以外的拼接意外。
+ */
+export function resolveInsideRoot(root, relativePath, { allowMetadata = false } = {}) {
+  const base = canonicalRoot(root)
+  if (!base) {
+    return { ok: false, code: API_ERROR_CODES.NO_LIBRARY, message: '文件路径需要一个项目根（root）' }
+  }
+  const raw = text(relativePath).trim()
+  if (!raw || raw.includes('\0')) return pathFail('路径必须是非空字符串', raw)
+  const normalized = raw.replaceAll('\\', '/').replace(/^\.\//u, '')
+  const segments = normalized.split('/')
+  if (normalized.startsWith('/') || /^[a-zA-Z]:\//u.test(normalized)
+    || segments.some((part) => !part || part === '.' || part === '..')) {
+    return pathFail(`路径不合法或越出库根：${raw}`, normalized)
+  }
+  if (!allowMetadata && segments.some((part) => part.toLowerCase() === METADATA_DIR)) {
+    return pathFail(`${METADATA_DIR}/ 只归 Pinax 内核写，OpenStory 不碰`, normalized)
+  }
+  const target = resolve(base, normalized)
+  const rel = relative(base, target)
+  if (!rel || rel === '..' || rel.startsWith(`..${sep}`) || isAbsolute(rel)) {
+    return pathFail(`路径解析后落在库根之外：${raw}`, normalized)
+  }
+  return { ok: true, path: target, relative: normalized }
+}
+
+/** 写前备份路径：同目录 `.history/<file>.bak-<时间戳>`（不覆盖旧备份）。 */
+export function historyBackupPath(root, file, now = new Date()) {
+  const resolved = resolveInsideRoot(root, file)
+  if (!resolved.ok) return resolved
+  const stamp = now.toISOString().replace(/[:.]/gu, '-')
+  return {
+    ok: true,
+    path: join(dirname(resolved.path), '.history', `${basename(resolved.path)}.bak-${stamp}`),
+    relative: `${dirname(resolved.relative)}/.history/${basename(resolved.relative)}.bak-${stamp}`.replace(/^\.\//u, '')
+  }
+}
+
+/* ---------- 写协议错误码透传 ---------- */
+
+/**
+ * S2 的失败码 → OpenStory 契约码。writeFail 会把内核码表里的码解析成 `PINAX_*`，
+ * 这里剥前缀后按语义归并；未识别的写失败统一 WRITE_PROTOCOL_IO_FAILED（不假装成功）。
+ */
+export function mapWriteErrorCode(code) {
+  const upper = text(code).trim().replace(/^PINAX_/u, '').toUpperCase()
+  if (upper.includes('OPERATION_ID_REQUIRED')) return API_ERROR_CODES.WRITE_PROTOCOL_OPERATION_ID_REQUIRED
+  if (upper.includes('VALIDATION_FAILED')) return API_ERROR_CODES.WRITE_PROTOCOL_VALIDATION_FAILED
+  if (upper.includes('REVISION_MISMATCH')) return API_ERROR_CODES.REVISION_MISMATCH
+  if (upper.includes('NOT_FOUND')) return API_ERROR_CODES.WRITE_PROTOCOL_NOT_FOUND
+  if (upper.includes('INVALID_INPUT')) return API_ERROR_CODES.WRITE_PROTOCOL_INVALID_INPUT
+  if (upper.includes('INVALID_ENTRY')) return API_ERROR_CODES.WRITE_PROTOCOL_VALIDATION_FAILED
+  return API_ERROR_CODES.WRITE_PROTOCOL_IO_FAILED
+}
+
+function mapReadErrorCode(code) {
+  const upper = text(code).trim().replace(/^PINAX_/u, '').toUpperCase()
+  if (upper.includes('NOT_FOUND')) return API_ERROR_CODES.NOT_FOUND
+  return API_ERROR_CODES.INVALID_ENTRY
+}
+
+/* ---------- HTTP 工具 ---------- */
+
+function statusFor(code) {
+  return STATUS_BY_CODE[code] ?? 500
+}
+
+function sendJson(res, status, payload) {
+  const body = JSON.stringify(payload)
+  res.writeHead(status, {
+    'content-type': 'application/json; charset=utf-8',
+    'content-length': Buffer.byteLength(body),
+    'cache-control': 'no-store'
+  })
+  res.end(body)
+}
+
+function sendError(res, code, message, details) {
+  sendJson(res, statusFor(code), errorEnvelope(code, message, details))
+}
+
+function readBody(req, limit = MAX_JSON_BODY) {
+  return new Promise((resolvePromise, rejectPromise) => {
+    let size = 0
+    const chunks = []
+    req.on('data', (chunk) => {
+      size += chunk.length
+      if (size > limit) {
+        const error = new Error('请求体超过上限')
+        error.code = 'BODY_TOO_LARGE'
+        rejectPromise(error)
+        req.destroy()
+        return
+      }
+      chunks.push(chunk)
+    })
+    req.on('end', () => resolvePromise(Buffer.concat(chunks).toString('utf8')))
+    req.on('error', rejectPromise)
+  })
+}
+
+async function readJson(req) {
+  const raw = await readBody(req)
+  if (!raw.trim()) return {}
+  try {
+    return JSON.parse(raw)
+  } catch (error) {
+    const failure = new Error(`请求体不是有效 JSON：${text(error?.message || error)}`)
+    failure.code = 'INVALID_JSON'
+    throw failure
+  }
+}
+
+async function serveStatic(req, res, url, publicDir) {
+  let pathname
+  try {
+    pathname = decodeURIComponent(url.pathname)
+  } catch {
+    return sendError(res, API_ERROR_CODES.INVALID_ENTRY, '静态路径编码不合法')
+  }
+  if (pathname === '/' || pathname === '') pathname = '/index.html'
+  const resolved = resolveInsideRoot(publicDir, pathname.replace(/^\/+/u, ''), { allowMetadata: true })
+  if (!resolved.ok) {
+    return sendError(res, API_ERROR_CODES.PATH_ESCAPE, '静态文件路径越界')
+  }
+  let stats
+  try {
+    stats = statSync(resolved.path)
+  } catch {
+    return sendError(res, API_ERROR_CODES.NOT_FOUND, `静态文件不存在：${pathname}`)
+  }
+  if (stats.isDirectory()) {
+    return serveStatic(req, res, { pathname: `${pathname.replace(/\/+$/u, '')}/index.html` }, publicDir)
+  }
+  if (stats.size > MAX_STATIC_BYTES) {
+    return sendError(res, API_ERROR_CODES.INVALID_ENTRY, '静态文件过大')
+  }
+  res.writeHead(200, {
+    'content-type': MIME[extname(resolved.path).toLowerCase()] ?? 'application/octet-stream',
+    'content-length': stats.size,
+    'cache-control': 'no-cache'
+  })
+  createReadStream(resolved.path).pipe(res)
+}
+
+/* ---------- 业务处理 ---------- */
+
+function mergeLibraryRoots(libraries, extraRoots) {
+  const list = [...libraries]
+  const seen = new Set(libraries.map((library) => rootKey(library.path)))
+  for (const extra of extraRoots) {
+    const root = canonicalRoot(extra)
+    if (!root) continue
+    const key = rootKey(root)
+    if (seen.has(key)) continue
+    seen.add(key)
+    // --root 显式授权的库不在 recentProjects 里时也上屏，作者才能点得到。
+    list.push({ path: root, name: basename(root) || root, kind: '未分类', count: 0, at: '' })
+  }
+  return list
+}
+
+function authorizeRoot(allowlist, requested) {
+  const root = allowlist.resolve(requested)
+  if (!root) {
+    return {
+      ok: false,
+      code: API_ERROR_CODES.NO_LIBRARY,
+      message: `root 不在库清单里：${text(requested)}`,
+      details: { root: text(requested) }
+    }
+  }
+  return { ok: true, root }
+}
+
+/**
+ * 正文原子写（tmp＋rename）＋写前 .history 备份。`PUT /api/chapter`（手工保存）与
+ * 待确认卡采纳共用同一条实现，保证两条路的落盘行为完全一致。
+ */
+async function writeChapterWithBackup(root, file, newText) {
+  const resolved = resolveInsideRoot(root, file)
+  if (!resolved.ok) return { ok: false, code: resolved.code, message: resolved.message, details: resolved.details }
+  try {
+    await mkdir(dirname(resolved.path), { recursive: true })
+    let backupRelative = null
+    if (existsSync(resolved.path)) {
+      // v1 粗保护：写前把原内容复制到同目录 .history/。OpenStory 与 Electron 同时写同一库时，
+      // 这里不拦冲突（不做跨进程 revision 闸），只保证「上一版还能捞回来」。
+      // 待确认卡另有快照闸（卡创建→采纳窗口），见 agentStore.fileSnapshot/snapshotsMatch。
+      const backup = historyBackupPath(root, file)
+      if (!backup.ok) return { ok: false, code: backup.code, message: backup.message, details: backup.details }
+      await mkdir(dirname(backup.path), { recursive: true })
+      await copyFile(resolved.path, backup.path)
+      backupRelative = backup.relative
+    }
+    const tmp = `${resolved.path}.tmp-${randomUUID()}`
+    await writeFile(tmp, newText, 'utf-8')
+    await rename(tmp, resolved.path)
+    return { ok: true, chars: newText.length, savedAt: new Date().toISOString(), ...(backupRelative ? { backup: backupRelative } : {}) }
+  } catch (error) {
+    return { ok: false, code: API_ERROR_CODES.WRITE_PROTOCOL_IO_FAILED, message: `正文写入失败：${text(error?.message || error)}`, details: { file } }
+  }
+}
+
+/* ---------- 产物盘点（OS-11：全库只读，按顶层目录分组）---------- */
+
+const ARTIFACT_LIMIT = 1000
+
+/**
+ * 全库盘点（OS-12 升级）：顶层目录分组（组内递归文本文件）＋版本与历史——
+ * .history/ 里的 bak/deleted 档按原文件归组（file/name/original/kind/size/mtime）。
+ * .pinax 与隐藏目录照旧绝不进清单。
+ */
+export async function listArtifacts(root) {
+  const base = canonicalRoot(root)
+  if (!base) return { ok: false, code: API_ERROR_CODES.NO_LIBRARY, message: '盘点需要一个项目根（root）' }
+  const groups = new Map()
+  let bytes = 0
+  let count = 0
+  let histories = 0
+  const groupOf = (topDir) => {
+    if (!groups.has(topDir)) groups.set(topDir, { files: [], history: [] })
+    return groups.get(topDir)
+  }
+  /** .history 档 → 版本记录：name 形如 <原文件名>.bak-<ts> / .deleted-<ts>。 */
+  const collectHistory = async (historyDir, topDir, parentRel) => {
+    let entries
+    try {
+      entries = await readdir(historyDir, { withFileTypes: true })
+    } catch { /* 读不了就跳过这组历史 */ return }
+    for (const entry of entries) {
+      if (!entry.isFile() || count + histories >= ARTIFACT_LIMIT) continue
+      const kind = entry.name.includes('.deleted-') ? 'deleted' : entry.name.includes('.bak-') ? 'bak' : null
+      if (!kind) continue
+      const originalName = entry.name.split('.bak-')[0].split('.deleted-')[0]
+      const childAbs = join(historyDir, entry.name)
+      let stats
+      try {
+        stats = statSync(childAbs)
+      } catch { continue }
+      const file = relative(base, childAbs).split(sep).join('/')
+      const original = parentRel ? `${parentRel}/${originalName}` : originalName
+      groupOf(topDir).history.push({ file, name: entry.name, original, originalName, kind, size: stats.size, mtime: stats.mtime.toISOString() })
+      histories += 1
+    }
+  }
+  const walk = async (current, depth) => {
+    if (depth > FILE_LIST_DEPTH || count >= ARTIFACT_LIMIT) return
+    let entries
+    try {
+      entries = await readdir(current, { withFileTypes: true })
+    } catch (error) {
+      if (error?.code === 'ENOENT') return
+      throw error
+    }
+    const relDir = relative(base, current).split(sep).join('/')
+    const topDir = relDir === '.' ? '' : relDir.split('/')[0]
+    const parentRel = relDir === '.' ? '' : relDir
+    for (const entry of entries) {
+      if (count >= ARTIFACT_LIMIT) return
+      if (entry.name === METADATA_DIR || entry.name.startsWith('.')) {
+        if (entry.name === '.history' && entry.isDirectory()) {
+          await collectHistory(join(current, entry.name), topDir, parentRel)
+        }
+        continue
+      }
+      const childAbs = join(current, entry.name)
+      if (entry.isDirectory()) {
+        await walk(childAbs, depth + 1)
+        continue
+      }
+      if (!entry.isFile() || !FILE_TEXT_EXT.test(entry.name)) continue
+      let stats
+      try {
+        stats = statSync(childAbs)
+      } catch { /* 竞态跳过 */ continue }
+      const file = relative(base, childAbs).split(sep).join('/')
+      groupOf(topDir).files.push({ file, name: entry.name, size: stats.size, mtime: stats.mtime.toISOString() })
+      count += 1
+      bytes += stats.size
+    }
+  }
+  try {
+    await walk(base, 0)
+  } catch (error) {
+    return { ok: false, code: API_ERROR_CODES.WRITE_PROTOCOL_IO_FAILED, message: `盘点失败：${text(error?.message || error)}` }
+  }
+  const groupList = [...groups.entries()]
+    .map(([dir, group]) => ({
+      dir,
+      files: group.files.sort((left, right) => left.file.localeCompare(right.file, 'zh-Hans-CN')),
+      ...(group.history.length ? { history: group.history.sort((left, right) => right.mtime.localeCompare(left.mtime)) } : {})
+    }))
+    .sort((left, right) => left.dir.localeCompare(right.dir, 'zh-Hans-CN'))
+  return { ok: true, groups: groupList, totals: { files: count, bytes, histories } }
+}
+
+/* ---------- 目录清单（OS-8：业务页的「列」拼图；读/写文件本体仍走 chapter 通道）---------- */
+
+const FILE_DIR_NAME = /^[\p{Script=Han}A-Za-z0-9][\p{Script=Han}A-Za-z0-9._ -]{0,30}$/u
+const FILE_TEXT_EXT = /\.(?:md|txt|markdown|json)$/iu
+const FILE_LIST_LIMIT = 500
+const FILE_LIST_DEPTH = 3
+
+function fileEntry(root, absPath, stats) {
+  const file = relative(root, absPath).split(sep).join('/')
+  return { file, name: basename(absPath), size: stats.size, mtime: stats.mtime.toISOString() }
+}
+
+/**
+ * 列库内文本文件。dir 缺省＝顶层扫描（dirs＋files）；dir＝单段目录名，递归深度≤3。
+ * 跳过 `.` 开头/`.pinax`/`.history`；只收 md/txt/markdown/json；≤500 个。
+ * 目录不存在＝空清单＋warning（空目录是合法形态，不报错）。
+ */
+export async function listLibraryFiles(root, dir = '') {
+  const base = canonicalRoot(root)
+  if (!base) return { ok: false, code: API_ERROR_CODES.NO_LIBRARY, message: '列文件需要一个项目根（root）' }
+  const rawDir = text(dir).trim()
+  const warnings = []
+  if (!rawDir) {
+    let topLevel
+    try {
+      topLevel = await readdir(base, { withFileTypes: true })
+    } catch (error) {
+      if (error?.code === 'ENOENT') return { ok: true, dirs: [], files: [], warnings: [{ code: 'DIR_MISSING', message: `库根还不存在：${base}` }] }
+      return { ok: false, code: API_ERROR_CODES.WRITE_PROTOCOL_IO_FAILED, message: `顶层扫描失败：${text(error?.message || error)}` }
+    }
+    const dirs = []
+    const files = []
+    for (const entry of topLevel) {
+      if (entry.name.startsWith('.') || entry.name === METADATA_DIR) continue
+      if (entry.isDirectory()) dirs.push(entry.name)
+      else if (entry.isFile() && FILE_TEXT_EXT.test(entry.name)) {
+        try {
+          files.push(fileEntry(base, join(base, entry.name), statSync(join(base, entry.name))))
+        } catch { /* 竞态消失的文件跳过 */ }
+      }
+    }
+    return { ok: true, dirs: dirs.sort((left, right) => left.localeCompare(right, 'zh-Hans-CN')), files }
+  }
+  if (rawDir.includes('/') || rawDir.includes('\\') || rawDir === '.' || rawDir === '..' || rawDir === METADATA_DIR || !FILE_DIR_NAME.test(rawDir)) {
+    return pathFail(`目录名必须是单段合法目录名：${rawDir}`, rawDir)
+  }
+  const dirAbs = join(base, rawDir)
+  const rel = relative(base, dirAbs)
+  if (!rel || rel === '..' || rel.startsWith(`..${sep}`) || isAbsolute(rel)) {
+    return pathFail(`目录解析后落在库根之外：${rawDir}`, rawDir)
+  }
+  const files = []
+  const walk = async (current, depth) => {
+    if (files.length >= FILE_LIST_LIMIT || depth > FILE_LIST_DEPTH) return
+    let entries
+    try {
+      entries = await readdir(current, { withFileTypes: true })
+    } catch (error) {
+      if (error?.code === 'ENOENT') {
+        if (current === dirAbs) warnings.push({ code: 'DIR_MISSING', message: `目录还不存在（保存新文件会自动建出）：${rawDir}` })
+        return
+      }
+      throw error
+    }
+    for (const entry of entries) {
+      if (files.length >= FILE_LIST_LIMIT) return
+      if (entry.name.startsWith('.') || entry.name === METADATA_DIR || entry.name === '.history') continue
+      const childAbs = join(current, entry.name)
+      if (entry.isDirectory()) {
+        await walk(childAbs, depth + 1)
+      } else if (entry.isFile() && FILE_TEXT_EXT.test(entry.name)) {
+        try {
+          files.push(fileEntry(base, childAbs, statSync(childAbs)))
+        } catch { /* 竞态跳过 */ }
+      }
+    }
+  }
+  try {
+    await walk(dirAbs, 0)
+  } catch (error) {
+    return { ok: false, code: API_ERROR_CODES.WRITE_PROTOCOL_IO_FAILED, message: `目录扫描失败：${text(error?.message || error)}` }
+  }
+  files.sort((left, right) => left.file.localeCompare(right.file, 'zh-Hans-CN'))
+  return { ok: true, files, ...(warnings.length ? { warnings } : {}) }
+}
+
+async function handleApi(req, res, url, context) {
+  const endpointId = endpointFor(req.method, url.pathname)
+  if (!endpointId) {
+    return sendError(res, API_ERROR_CODES.NOT_FOUND, `没有这个端点：${req.method} ${url.pathname}`)
+  }
+
+  const loaded = loadLibraries({ preferencesPath: context.preferencesPath, env: context.env })
+  const allowlist = createRootAllowlist(loaded.libraries, context.extraRoots)
+
+  if (endpointId === 'libraries') {
+    const libraries = mergeLibraryRoots(loaded.libraries, context.extraRoots)
+    const defaultRecord = context.defaultRoot
+      ? libraries.find((library) => rootKey(library.path) === rootKey(context.defaultRoot))
+      : null
+    const payload = {
+      ok: true,
+      libraries,
+      warnings: loaded.warnings,
+      preferencesPath: loaded.preferencesPath,
+      ...(context.defaultRoot ? { defaultRoot: defaultRecord?.path ?? context.defaultRoot } : {})
+    }
+    const checked = validateResponse('libraries', payload)
+    if (!checked.ok) return sendError(res, API_ERROR_CODES.INVALID_ENTRY, '库清单响应形状不符合契约', { errors: checked.errors })
+    return sendJson(res, 200, payload)
+  }
+
+  let input
+  if (ENDPOINT_HAS_QUERY.has(endpointId)) {
+    input = Object.fromEntries(url.searchParams.entries())
+  } else {
+    try {
+      input = await readJson(req)
+    } catch (error) {
+      return sendError(res, API_ERROR_CODES.INVALID_ENTRY, text(error?.message || error))
+    }
+  }
+
+  const checked = validateRequest(endpointId, input)
+  if (!checked.ok) {
+    return sendError(res, API_ERROR_CODES.INVALID_ENTRY, '请求参数不符合契约', { errors: checked.errors })
+  }
+  const request = checked.value
+
+  // Agent 配置与风格包清单不碰库文件，不做 root 校验。
+  if (endpointId === 'agentConfigGet') return handleAgentConfigGet(res, context)
+  if (endpointId === 'agentConfigPut') return handleAgentConfigPut(res, request, context)
+  if (endpointId === 'agentRuntimesGet') return handleAgentRuntimesGet(res, context)
+  if (endpointId === 'agentRuntimePut') return handleAgentRuntimePut(res, request, context)
+  if (endpointId === 'suitesGet') {
+    const listed = await listSuitesPublic(context.suitesDirs, context.suiteStatePath)
+    const suitesUserDir = Array.isArray(context.suitesDirs) && context.suitesDirs[1] ? context.suitesDirs[1] : ''
+    return sendJson(res, 200, { ok: true, suites: listed.suites, ...(suitesUserDir ? { userDir: suitesUserDir } : {}), ...(listed.warnings?.length ? { warnings: listed.warnings } : {}) })
+  }
+  if (endpointId === 'suiteSettingsPut') {
+    const saved = await saveSuiteSettings(context.suitesDirs, context.suiteStatePath, request.id, request.values)
+    if (!saved.ok) return sendError(res, saved.code ?? API_ERROR_CODES.INVALID_ENTRY, saved.message)
+    return sendJson(res, 200, { ok: true, values: saved.values })
+  }
+  if (endpointId === 'suiteStatePut') {
+    const set = await setSuiteEnabled(context.suitesDirs, context.suiteStatePath, request.id, request.enabled)
+    if (!set.ok) return sendError(res, set.code ?? API_ERROR_CODES.INVALID_ENTRY, set.message)
+    return sendJson(res, 200, { ok: true, enabled: set.enabled })
+  }
+  if (endpointId === 'suiteStateDataGet') {
+    const loaded = await getSuiteStateData(context.suitesDirs, context.suiteStatePath, request.id)
+    if (!loaded.ok) return sendError(res, loaded.code ?? API_ERROR_CODES.INVALID_ENTRY, loaded.message)
+    return sendJson(res, 200, { ok: true, id: loaded.id, values: loaded.values })
+  }
+  if (endpointId === 'suiteStateDataPut') {
+    const saved = await saveSuiteStateData(context.suitesDirs, context.suiteStatePath, request.id, request.values)
+    if (!saved.ok) return sendError(res, saved.code ?? API_ERROR_CODES.INVALID_ENTRY, saved.message)
+    return sendJson(res, 200, { ok: true, values: saved.values })
+  }
+  if (endpointId === 'stylesGet') {
+    const packs = await loadStylePacks(context.stylesDirs)
+    return sendJson(res, 200, { ok: true, styles: packs.styles, warnings: packs.warnings })
+  }
+
+  if (endpointId === 'libraryDiagnose') {
+    const authorized = authorizeRoot(allowlist, request.root)
+    if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
+    const diagnosed = await diagnoseLibrary(authorized.root)
+    if (!diagnosed.ok) return sendError(res, diagnosed.code ?? API_ERROR_CODES.INVALID_ENTRY, diagnosed.message)
+    return sendJson(res, 200, { ok: true, shape: diagnosed.shape, verdict: diagnosed.verdict })
+  }
+
+  if (endpointId === 'filesGet') {
+    const authorized = authorizeRoot(allowlist, request.root)
+    if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
+    const listed = await listLibraryFiles(authorized.root, request.dir)
+    if (!listed.ok) return sendError(res, listed.code ?? API_ERROR_CODES.INVALID_ENTRY, listed.message, listed.details)
+    const payload = { ok: true, files: listed.files, ...(listed.dirs ? { dirs: listed.dirs } : {}), ...(listed.warnings?.length ? { warnings: listed.warnings } : {}) }
+    return sendJson(res, 200, payload)
+  }
+
+  if (endpointId === 'chaptersGet') {
+    const authorized = authorizeRoot(allowlist, request.root)
+    if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
+    const listed = await listChapters(authorized.root, request.dir)
+    if (!listed.ok) return sendError(res, listed.code ?? API_ERROR_CODES.INVALID_ENTRY, listed.message, listed.details)
+    return sendJson(res, 200, { ok: true, chapters: listed.chapters, ...(listed.warnings?.length ? { warnings: listed.warnings } : {}) })
+  }
+
+  if (endpointId === 'artifactsGet') {
+    const authorized = authorizeRoot(allowlist, request.root)
+    if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
+    const inventory = await listArtifacts(authorized.root)
+    if (!inventory.ok) return sendError(res, inventory.code ?? API_ERROR_CODES.INVALID_ENTRY, inventory.message)
+    return sendJson(res, 200, { ok: true, groups: inventory.groups, totals: inventory.totals })
+  }
+
+  if (endpointId === 'chaptersCreate') {
+    const authorized = authorizeRoot(allowlist, request.root)
+    if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
+    // title 缺省＝用写作套件的「新建章节默认标题」（套件停用＝无默认，createChapter 自行拒绝）
+    const defaultTitle = text(request.title).trim()
+      || text(await suiteValue(context.suitesDirs, context.suiteStatePath, 'writing', 'newChapterTitle', ''))
+    const created = await createChapter(authorized.root, request.dir, defaultTitle)
+    if (!created.ok) return sendError(res, created.code ?? API_ERROR_CODES.INVALID_ENTRY, created.message, created.details)
+    return sendJson(res, 200, { ok: true, chapter: created.chapter })
+  }
+
+  if (endpointId === 'chaptersRename') {
+    const authorized = authorizeRoot(allowlist, request.root)
+    if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
+    const renamed = await renameChapter(authorized.root, request.file, request.title)
+    if (!renamed.ok) return sendError(res, renamed.code ?? API_ERROR_CODES.INVALID_ENTRY, renamed.message, renamed.details)
+    return sendJson(res, 200, { ok: true, chapter: renamed.chapter, ...(renamed.previousFile ? { previousFile: renamed.previousFile } : {}) })
+  }
+
+  if (endpointId === 'chapterDelete') {
+    const authorized = authorizeRoot(allowlist, request.root)
+    if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
+    const deleted = await deleteChapter(authorized.root, request.file)
+    if (!deleted.ok) return sendError(res, deleted.code ?? API_ERROR_CODES.INVALID_ENTRY, deleted.message, deleted.details)
+    return sendJson(res, 200, { ok: true, backup: deleted.backup })
+  }
+
+  if (endpointId === 'libraryCreate') {
+    const created = await createLibrary({ ...request, preferencesPath: loaded.preferencesPath })
+    if (!created.ok) {
+      return sendError(res, created.code ?? API_ERROR_CODES.INVALID_ENTRY, created.message, created.details)
+    }
+    return sendJson(res, 200, created)
+  }
+
+  if (endpointId === 'libraryScan') {
+    const authorized = authorizeRoot(allowlist, request.root)
+    if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
+    const scanned = await scanLibrary({ root: authorized.root, sourcePath: request.sourcePath })
+    if (!scanned.ok) return sendError(res, scanned.code ?? API_ERROR_CODES.INVALID_ENTRY, scanned.message, scanned.details)
+    return sendJson(res, 200, { ok: true, plan: scanned.plan })
+  }
+
+  if (endpointId === 'libraryImport') {
+    const authorized = authorizeRoot(allowlist, request.root)
+    if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
+    const imported = await importLibrary({ root: authorized.root, sourcePath: request.sourcePath })
+    if (!imported.ok) return sendError(res, imported.code ?? API_ERROR_CODES.INVALID_ENTRY, imported.message, imported.details)
+    return sendJson(res, 200, { ok: true, report: imported.report })
+  }
+
+  if (endpointId === 'libraryPrimary') {
+    const authorized = authorizeRoot(allowlist, request.root)
+    if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
+    const set = await setPrimaryCarrier({ root: authorized.root, primaryCarrier: request.primaryCarrier, expectedRevision: request.expectedRevision })
+    if (!set.ok) return sendError(res, set.code ?? API_ERROR_CODES.INVALID_ENTRY, set.message, set.details)
+    return sendJson(res, 200, { ok: true, document: set.document, ...(set.enabled ? { enabled: set.enabled } : {}) })
+  }
+
+  if (endpointId === 'agentChat') {
+    const authorized = authorizeRoot(allowlist, request.root)
+    if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
+    return handleAgentChat(req, res, request, context, authorized.root, loaded.libraries)
+  }
+
+  const authorized = authorizeRoot(allowlist, request.root)
+  if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
+  const root = authorized.root
+  const store = createFactFileStore({ root })
+
+  if (endpointId === 'entries') {
+    const result = store.list({
+      layer: request.layer,
+      offset: request.offset,
+      limit: request.limit
+    })
+    if (!result.ok) {
+      return sendError(res, mapReadErrorCode(result.error?.code), text(result.error?.message || '条目清单读取失败'), result.error?.details)
+    }
+    return sendJson(res, 200, {
+      ok: true,
+      entries: result.entries,
+      total: result.total,
+      warnings: [...loaded.warnings, ...(result.warnings ?? [])]
+    })
+  }
+
+  if (endpointId === 'entry') {
+    const result = store.get({ id: request.id })
+    if (!result.ok) {
+      return sendError(res, mapReadErrorCode(result.error?.code), text(result.error?.message || '条目读取失败'), result.error?.details)
+    }
+    return sendJson(res, 200, { ok: true, entry: result.entry, revision: result.revision })
+  }
+
+  if (endpointId === 'chapterGet') {
+    const resolved = resolveInsideRoot(root, request.file)
+    if (!resolved.ok) return sendError(res, resolved.code, resolved.message, resolved.details)
+    let body
+    try {
+      const stats = statSync(resolved.path)
+      if (!stats.isFile()) return sendError(res, API_ERROR_CODES.NOT_FOUND, '正文路径不是文件', { file: request.file })
+      body = await readFile(resolved.path, 'utf-8')
+    } catch (error) {
+      if (error?.code === 'ENOENT') return sendError(res, API_ERROR_CODES.NOT_FOUND, `正文文件不存在：${request.file}`, { file: request.file })
+      return sendError(res, API_ERROR_CODES.NOT_FOUND, `正文读取失败：${text(error?.message || error)}`, { file: request.file })
+    }
+    return sendJson(res, 200, { ok: true, name: basename(resolved.path), text: body, chars: body.length })
+  }
+
+  if (endpointId === 'chapterPut') {
+    const written = await writeChapterWithBackup(root, request.file, request.text)
+    if (!written.ok) return sendError(res, written.code, written.message, written.details)
+    return sendJson(res, 200, {
+      ok: true,
+      chars: written.chars,
+      savedAt: written.savedAt,
+      ...(written.backup ? { backup: written.backup } : {})
+    })
+  }
+
+  if (endpointId === 'agentSessions') {
+    const sessions = await listSessions(context.agentSessionsDir, root)
+    return sendJson(res, 200, { ok: true, sessions })
+  }
+
+  if (endpointId === 'agentSessionCreate') {
+    const session = await createSession(context.agentSessionsDir, root, request.title)
+    return sendJson(res, 200, { ok: true, session })
+  }
+
+  if (endpointId === 'agentSessionGet') {
+    const loaded = await readSession(context.agentSessionsDir, root, request.id)
+    if (!loaded) return sendError(res, API_ERROR_CODES.NOT_FOUND, `会话不存在：${request.id}`)
+    return sendJson(res, 200, { ok: true, session: loaded.session, items: loaded.items })
+  }
+
+  if (endpointId === 'agentSessionRename') {
+    const session = await renameSession(context.agentSessionsDir, root, request.id, request.title)
+    if (!session) return sendError(res, API_ERROR_CODES.NOT_FOUND, `会话不存在：${request.id}`)
+    return sendJson(res, 200, { ok: true, session })
+  }
+
+  if (endpointId === 'agentSessionDelete') {
+    const removed = await deleteSession(context.agentSessionsDir, root, request.id)
+    if (!removed) return sendError(res, API_ERROR_CODES.NOT_FOUND, `会话不存在：${request.id}`)
+    return sendJson(res, 200, { ok: true })
+  }
+
+  if (endpointId === 'agentCardCreate') {
+    return handleAgentCardCreate(res, request, context, root)
+  }
+
+  if (endpointId === 'agentCardAdopt') {
+    return handleAgentCardAdopt(res, request, context, root)
+  }
+
+  if (endpointId === 'agentCardReject') {
+    return handleAgentCardReject(res, request, context, root)
+  }
+
+  if (endpointId === 'wiki') {
+    const result = store.wikiGet({ bookId: request.bookId })
+    if (!result.ok) {
+      return sendError(res, mapReadErrorCode(result.error?.code), text(result.error?.message || 'wiki 读取失败'), result.error?.details)
+    }
+    return sendJson(res, 200, { ok: true, wiki: result.wiki, derivedFrom: result.derivedFrom })
+  }
+
+  if (endpointId === 'wikiHtmlGet') {
+    const result = store.wikiGet({ bookId: request.bookId })
+    if (!result.ok) {
+      return sendError(res, mapReadErrorCode(result.error?.code), text(result.error?.message || 'wiki 读取失败'), result.error?.details)
+    }
+    for (const key of ['accent', 'bg', 'ink']) {
+      if (isMissingColor(request[key])) {
+        return sendError(res, API_ERROR_CODES.INVALID_ENTRY, `${key} 只收 #rgb/#rrggbb 十六进制色`, { [key]: request[key] })
+      }
+    }
+    const html = wikiHtmlDocument(result.wiki, { accent: request.accent, bg: request.bg, ink: request.ink })
+    res.writeHead(200, {
+      'content-type': 'text/html; charset=utf-8',
+      'cache-control': 'no-store',
+      'x-content-type-options': 'nosniff',
+      'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'"
+    })
+    return res.end(html)
+  }
+
+  if (endpointId === 'wikiDerive') {
+    const result = await store.wikiDerive({ bookId: request.bookId, operationId: request.operationId })
+    if (!result.ok) {
+      const code = mapWriteErrorCode(result.error?.code)
+      return sendError(res, code, text(result.error?.message || 'wiki 派生失败'), result.error?.details)
+    }
+    return sendJson(res, 200, {
+      ok: true,
+      wiki: result.wiki,
+      derivedFrom: result.derivedFrom,
+      revision: result.revision,
+      duplicate: result.duplicate === true
+    })
+  }
+
+  return sendError(res, API_ERROR_CODES.NOT_FOUND, `端点未实现：${endpointId}`)
+}
+
+const ENDPOINT_HAS_QUERY = new Set(['entries', 'entry', 'chapterGet', 'wiki', 'agentSessions', 'agentSessionGet', 'agentSessionDelete', 'wikiHtmlGet', 'libraryDiagnose', 'filesGet', 'chaptersGet', 'chapterDelete', 'artifactsGet', 'suiteStateDataGet'])
+
+/** 套件资产 MIME（page 模式自带页同源装载）。 */
+const SUITE_ASSET_MIME = Object.freeze({
+  '.html': 'text/html; charset=utf-8',
+  '.htm': 'text/html; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.mjs': 'text/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+  '.woff2': 'font/woff2'
+})
+const SUITE_ASSET_MAX = 2 * 1024 * 1024
+
+/** 套件资产路径解析（纯函数，供单测直打逃逸闸）：合法＝{ok, abs}，否则 {ok:false, code, message}。 */
+export function resolveSuiteAssetPath(suiteDir, relPath) {
+  const raw = text(relPath).replaceAll('\\', '/')
+  const segments = raw.split('/')
+  if (!raw || segments.some((part) => !part || part === '.' || part === '..' || part.startsWith('.'))) {
+    return { ok: false, code: API_ERROR_CODES.PATH_ESCAPE, message: `套件资产路径不合法：${raw}` }
+  }
+  const target = join(resolve(text(suiteDir)), ...segments)
+  const rel = relative(resolve(text(suiteDir)), target)
+  if (!rel || rel === '..' || rel.startsWith(`..${sep}`) || isAbsolute(rel)) {
+    return { ok: false, code: API_ERROR_CODES.PATH_ESCAPE, message: `套件资产越出套件目录：${raw}` }
+  }
+  return { ok: true, abs: target }
+}
+
+/** 套件资产（page 模式自带设置页同源装载）：GET /suite-assets/<id>/<相对路径>，只读＋路径安全化。 */
+async function serveSuiteAsset(req, res, suitesDirs, id, relPath) {
+  if (req.method !== 'GET' && req.method !== 'HEAD') {
+    return sendError(res, API_ERROR_CODES.NOT_FOUND, `套件资产只支持 GET：${req.method}`)
+  }
+  const { suites } = loadSuites(suitesDirs)
+  const suite = suites.find((item) => item.id === id)
+  if (!suite) return sendError(res, API_ERROR_CODES.NOT_FOUND, `货架上没有这个套件：${id}`)
+  const resolved = resolveSuiteAssetPath(suite.dir, relPath)
+  if (!resolved.ok) return sendError(res, resolved.code, resolved.message)
+  let stats
+  try {
+    stats = statSync(resolved.abs)
+  } catch {
+    return sendError(res, API_ERROR_CODES.NOT_FOUND, `套件资产不存在：${relPath}`)
+  }
+  if (!stats.isFile() || stats.size > SUITE_ASSET_MAX) {
+    return sendError(res, API_ERROR_CODES.INVALID_ENTRY, `套件资产不是文件或超过 2MB：${relPath}`)
+  }
+  res.writeHead(200, {
+    'content-type': SUITE_ASSET_MIME[extname(resolved.abs).toLowerCase()] ?? 'application/octet-stream',
+    'content-length': stats.size,
+    'cache-control': 'no-store',
+    'x-content-type-options': 'nosniff'
+  })
+  createReadStream(resolved.abs).pipe(res)
+}
+
+/** wiki HTML 色参：没给＝空（渲染器用默认）；给了就必须是 #rgb/#rrggbb。 */
+function isMissingColor(value) {
+  const raw = text(value).trim()
+  return raw !== '' && !isHexColor(raw)
+}
+
+/* ---------- Agent 通道（OS-4/9：会话 JSONL＋运行时 kit 货架，Pi 兜底）---------- */
+
+function systemPromptFor(root, libraries) {
+  const key = rootKey(root)
+  const record = (Array.isArray(libraries) ? libraries : []).find((library) => rootKey(library.path) === key)
+  const name = record?.name || basename(root) || '未命名库'
+  return [
+    `你是 OpenStory 工作台的写作助手，正在协助作者创作《${name}》（本机磁盘上的一个 Pinax 库）。`,
+    '- 用中文回复。',
+    '- 作者可以把你的回复转成「待确认卡」并采纳写进正文文件：给出正文片段时，请给完整、可直接粘贴的文本，不要只给修改说明。',
+    '- v1 你读不到库里的文件；作者会把需要的上下文粘贴给你，不要假装读过文件。'
+  ].join('\n')
+}
+
+function sseFrame(res, payload) {
+  res.write(`data: ${JSON.stringify(payload)}\n\n`)
+}
+
+async function handleAgentConfigGet(res, context) {
+  const { config } = await loadAgentConfig(context.agentConfigPath)
+  return sendJson(res, 200, configPublic(config, context.agentConfigPath))
+}
+
+/** 运行时货架：Pi 兜底（内置伪条目）＋各 kit（内置/本机）。userDir 供设置页展示。 */
+async function handleAgentRuntimesGet(res, context) {
+  const { config } = await loadAgentConfig(context.agentConfigPath)
+  const { kits } = loadRuntimeKits(context.runtimesDirs)
+  const runtimes = [
+    {
+      id: '',
+      name: 'Pi 兜底（内置）',
+      kind: 'pi',
+      source: '内置',
+      status: text(config.endpoint).trim() ? 'ready' : 'unconfigured',
+      description: '直连 OpenAI 兼容端点（下方字段）；没装任何 kit 时的原生兜底'
+    },
+    ...kits.map((kit) => ({
+      id: kit.id,
+      name: kit.name,
+      kind: kit.kind,
+      source: kit.source,
+      status: kit.kind === 'sidecar' ? (sidecarRunning(kit.id) ? 'running' : 'idle') : 'ready',
+      description: kit.description
+    }))
+  ]
+  const userDir = Array.isArray(context.runtimesDirs) && context.runtimesDirs[1] ? context.runtimesDirs[1] : ''
+  return sendJson(res, 200, { ok: true, active: text(config.runtime).trim(), runtimes, ...(userDir ? { userDir } : {}) })
+}
+
+async function handleAgentRuntimePut(res, request, context) {
+  const id = text(request.id).trim()
+  if (id) {
+    const { kits } = loadRuntimeKits(context.runtimesDirs)
+    if (!kits.some((kit) => kit.id === id)) {
+      return sendError(res, API_ERROR_CODES.INVALID_ENTRY, `货架上没有这个运行时套件：${id}`)
+    }
+  }
+  const config = await saveAgentConfig(context.agentConfigPath, { runtime: id })
+  return sendJson(res, 200, { ok: true, active: text(config.runtime).trim() })
+}
+
+async function handleAgentConfigPut(res, request, context) {
+  const config = await saveAgentConfig(context.agentConfigPath, request)
+  return sendJson(res, 200, configPublic(config, context.agentConfigPath))
+}
+
+/**
+ * 上游解析（OS-9）：活动 kit 优先（sidecar 拉起/endpoint 直连），不可达且 Pi 有配置＝兜底＋notice；
+ * 无 kit 或选了 Pi＝走 daemon 本机端点配置。凭据只在本机，不回显。
+ */
+function piUpstream(config) {
+  const endpoint = text(config.endpoint).trim()
+  if (!endpoint) {
+    return { ok: false, code: API_ERROR_CODES.AGENT_NOT_CONFIGURED, message: '还没配置模型端点：点 Agent 列右上角的齿轮，填 OpenAI 兼容端点，或选一个运行时套件' }
+  }
+  try {
+    const url = new URL(endpoint)
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+      return { ok: false, code: API_ERROR_CODES.INVALID_ENTRY, message: '模型端点只支持 http/https' }
+    }
+  } catch {
+    return { ok: false, code: API_ERROR_CODES.INVALID_ENTRY, message: `配置的模型端点不是有效 URL：${endpoint}` }
+  }
+  return {
+    ok: true,
+    url: endpoint,
+    headers: config.apiKey ? { authorization: `Bearer ${config.apiKey}` } : {},
+    model: text(config.model).trim(),
+    runtimeName: 'Pi 兜底'
+  }
+}
+
+function fallbackToPi(config, reason) {
+  const pi = piUpstream(config)
+  if (pi.ok) return { ...pi, notice: `${reason}——本次用 Pi 兜底` }
+  return { ok: false, code: API_ERROR_CODES.AGENT_UPSTREAM_ERROR, message: `${reason}，且 Pi 兜底也没有可用端点（${pi.message}）` }
+}
+
+async function resolveChatUpstream(config, context) {
+  const activeKitId = text(config.runtime).trim()
+  if (!activeKitId) return piUpstream(config)
+  const { kits } = loadRuntimeKits(context.runtimesDirs)
+  const kit = kits.find((item) => item.id === activeKitId)
+  if (!kit) return fallbackToPi(config, `运行时套件 ${activeKitId} 不在货架上了`)
+  const headers = kit.apiKey ? { authorization: `Bearer ${kit.apiKey}` } : {}
+  if (kit.kind === 'endpoint') {
+    return { ok: true, url: `${kit.url}${kit.chatPath}`, headers, model: kit.model, runtimeName: kit.name }
+  }
+  const up = await ensureSidecar(kit, { env: context.env })
+  if (!up.ok) return fallbackToPi(config, `运行时 ${kit.name} 起不来（${up.message}）`)
+  return { ok: true, url: `http://127.0.0.1:${up.port}${kit.chatPath}`, headers, model: kit.model, runtimeName: kit.name }
+}
+
+/**
+ * Agent 对话（OS-4/9）：会话 JSONL ＋ 活动运行时（kit 优先，Pi 兜底）流式转发。
+ * 帧协议（daemon 自有）：notice? → start（回填 sessionId）→ delta* → done；出错发 error 帧。
+ * 凭据只来自本机配置/kit manifest，不回显、不进日志；上游失败如实报，不伪造回答。
+ */
+async function handleAgentChat(req, res, request, context, root, libraries) {
+  const { config } = await loadAgentConfig(context.agentConfigPath)
+  const upstream = await resolveChatUpstream(config, context)
+  if (!upstream.ok) {
+    return sendError(res, upstream.code ?? API_ERROR_CODES.AGENT_UPSTREAM_ERROR, upstream.message)
+  }
+  const targetUrl = new URL(upstream.url)
+
+  // 会话：sessionId 缺省＝新建（标题取首句）；给了就必须真存在。
+  const sessionsDir = context.agentSessionsDir
+  let loaded = request.sessionId ? await readSession(sessionsDir, root, request.sessionId) : null
+  if (request.sessionId && !loaded) {
+    return sendError(res, API_ERROR_CODES.NOT_FOUND, `会话不存在：${request.sessionId}`)
+  }
+  if (!loaded) {
+    const title = text(request.content).replace(/\s+/gu, ' ').trim().slice(0, 24) || '新会话'
+    const created = await createSession(sessionsDir, root, title)
+    loaded = { session: created, items: [] }
+  }
+  const sessionId = loaded.session.id
+  await appendSession(sessionsDir, root, sessionId, [{
+    t: 'msg', id: newMessageId(), role: 'user', content: request.content, at: new Date().toISOString()
+  }])
+  const history = await readSession(sessionsDir, root, sessionId)
+  const upstreamMessages = buildUpstreamMessages(systemPromptFor(root, libraries), history.items)
+  const model = text(request.model || upstream.model).trim()
+
+  const headers = { 'content-type': 'application/json', accept: 'text/event-stream', ...upstream.headers }
+
+  const controller = new AbortController()
+  let clientGone = false
+  // res 'close'＝连接提前断开（工作台点了停止/关页）；正常结束后 res 的 close 不触发 abort。
+  res.on('close', () => {
+    if (!res.writableEnded) {
+      clientGone = true
+      controller.abort()
+    }
+  })
+
+  let upstreamRes
+  try {
+    upstreamRes = await fetch(targetUrl, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ ...(model ? { model } : {}), messages: upstreamMessages, stream: true }),
+      signal: controller.signal
+    })
+  } catch (error) {
+    if (clientGone) return
+    return sendError(res, API_ERROR_CODES.AGENT_UPSTREAM_ERROR, `模型端点连不上：${text(error?.message || error)}`)
+  }
+
+  if (!upstreamRes.ok) {
+    if (clientGone) return
+    const detail = text(await upstreamRes.text().catch(() => '')).slice(0, 500)
+    return sendError(res, API_ERROR_CODES.AGENT_UPSTREAM_ERROR, `模型端点返回 ${upstreamRes.status}`, { status: upstreamRes.status, detail })
+  }
+
+  res.writeHead(200, {
+    'content-type': 'text/event-stream; charset=utf-8',
+    'cache-control': 'no-cache, no-transform',
+    connection: 'keep-alive',
+    'x-accel-buffering': 'no'
+  })
+  sseFrame(res, { type: 'start', sessionId, runtime: upstream.runtimeName })
+  if (upstream.notice) sseFrame(res, { type: 'notice', text: upstream.notice })
+
+  const decoder = new TextDecoder()
+  let full = ''
+  const parser = createSseDeltaParser((piece) => {
+    full += piece
+    if (!res.writableEnded) sseFrame(res, { type: 'delta', text: piece })
+  })
+
+  let upstreamError = ''
+  try {
+    if (upstreamRes.body) {
+      for await (const chunk of upstreamRes.body) {
+        parser.feed(decoder.decode(chunk, { stream: true }))
+      }
+      parser.feed(decoder.decode())
+    }
+    parser.end()
+  } catch (error) {
+    if (!clientGone && !controller.signal.aborted) {
+      upstreamError = text(error?.message || error)
+      sseFrame(res, { type: 'error', error: { code: API_ERROR_CODES.AGENT_UPSTREAM_ERROR, message: upstreamError } })
+    }
+  }
+
+  // 落档：完整回答、或被停止/中断的部分回答，partial 如实标；空回答不落（错误帧已如实报）。
+  if (full.trim()) {
+    const partial = controller.signal.aborted || Boolean(upstreamError)
+    await appendSession(sessionsDir, root, sessionId, [{
+      t: 'msg', id: newMessageId(), role: 'assistant', content: full,
+      at: new Date().toISOString(), ...(partial ? { partial: true } : {})
+    }])
+  }
+  if (!clientGone && !res.writableEnded) {
+    sseFrame(res, { type: 'done', sessionId, chars: full.length })
+  }
+  res.end()
+}
+
+/** 待确认卡：创建即取目标正文快照——「卡创建→采纳」窗口的修订闸从这里起算。 */
+async function handleAgentCardCreate(res, request, context, root) {
+  const loaded = await readSession(context.agentSessionsDir, root, request.sessionId)
+  if (!loaded) return sendError(res, API_ERROR_CODES.NOT_FOUND, `会话不存在：${request.sessionId}`)
+  const resolved = resolveInsideRoot(root, request.file)
+  if (!resolved.ok) return sendError(res, resolved.code, resolved.message, resolved.details)
+  let snapshot
+  try {
+    snapshot = fileSnapshot(resolved.path)
+  } catch (error) {
+    return sendError(res, API_ERROR_CODES.WRITE_PROTOCOL_IO_FAILED, `目标文件快照失败：${text(error?.message || error)}`, { file: request.file })
+  }
+  const note = text(request.note).trim()
+  const card = {
+    t: 'card',
+    id: newCardId(),
+    state: 'open',
+    file: resolved.relative,
+    text: request.text,
+    ...(note ? { note } : {}),
+    chars: request.text.length,
+    snapshot,
+    createdAt: new Date().toISOString()
+  }
+  await appendSession(context.agentSessionsDir, root, request.sessionId, [card])
+  return sendJson(res, 200, {
+    ok: true,
+    card: {
+      kind: 'card',
+      id: card.id,
+      state: card.state,
+      file: card.file,
+      text: card.text,
+      ...(card.note ? { note: card.note } : {}),
+      chars: card.chars,
+      snapshot: card.snapshot,
+      createdAt: card.createdAt
+    }
+  })
+}
+
+async function findOpenCard(context, root, sessionId, cardId) {
+  const loaded = await readSession(context.agentSessionsDir, root, sessionId)
+  if (!loaded) return { error: { code: API_ERROR_CODES.NOT_FOUND, message: `会话不存在：${sessionId}` } }
+  const card = loaded.items.find((item) => item.kind === 'card' && item.id === cardId)
+  if (!card) return { error: { code: API_ERROR_CODES.NOT_FOUND, message: `待确认卡不存在：${cardId}` } }
+  if (card.state !== 'open') {
+    return { error: { code: API_ERROR_CODES.INVALID_ENTRY, message: `这张卡已处理过（${card.state === 'adopted' ? '已采纳' : '已拒绝'}），不能再改` } }
+  }
+  return { card }
+}
+
+async function handleAgentCardAdopt(res, request, context, root) {
+  const found = await findOpenCard(context, root, request.sessionId, request.id)
+  if (found.error) return sendError(res, found.error.code, found.error.message)
+  const card = found.card
+  const resolved = resolveInsideRoot(root, card.file)
+  if (!resolved.ok) return sendError(res, resolved.code, resolved.message, resolved.details)
+  let current
+  try {
+    current = fileSnapshot(resolved.path)
+  } catch (error) {
+    return sendError(res, API_ERROR_CODES.WRITE_PROTOCOL_IO_FAILED, `正文快照失败：${text(error?.message || error)}`, { file: card.file })
+  }
+  if (!snapshotsMatch(current, card.snapshot)) {
+    return sendError(res, API_ERROR_CODES.REVISION_MISMATCH,
+      `正文在卡片创建后被改过（创建时 ${card.snapshot.exists ? `${card.snapshot.chars} 字` : '不存在'}，现在 ${current.exists ? `${current.chars} 字` : '不存在'}），拒绝覆盖。请重新创建待确认卡。`,
+      { file: card.file, expected: card.snapshot, actual: current })
+  }
+  const written = await writeChapterWithBackup(root, card.file, card.text)
+  if (!written.ok) return sendError(res, written.code, written.message, written.details)
+  const updated = await updateCard(context.agentSessionsDir, root, request.sessionId, request.id, {
+    state: 'adopted',
+    resolvedAt: new Date().toISOString(),
+    ...(written.backup ? { backup: written.backup } : {})
+  })
+  return sendJson(res, 200, {
+    ok: true,
+    card: updated,
+    chars: written.chars,
+    savedAt: written.savedAt,
+    ...(written.backup ? { backup: written.backup } : {})
+  })
+}
+
+async function handleAgentCardReject(res, request, context, root) {
+  const found = await findOpenCard(context, root, request.sessionId, request.id)
+  if (found.error) return sendError(res, found.error.code, found.error.message)
+  const updated = await updateCard(context.agentSessionsDir, root, request.sessionId, request.id, {
+    state: 'rejected',
+    resolvedAt: new Date().toISOString()
+  })
+  return sendJson(res, 200, { ok: true, card: updated })
+}
+
+/* ---------- 服务器 ---------- */
+
+export function createOpenStoryHandler({
+  publicDir = DEFAULT_PUBLIC_DIR,
+  preferencesPath,
+  extraRoots = [],
+  defaultRoot = '',
+  agentConfigPath = null,
+  agentSessionsDir = null,
+  stylesDirs = null,
+  runtimesDirs = null,
+  suitesDirs = null,
+  suiteStatePath = null,
+  env = process.env
+} = {}) {
+  // 默认路径在体内解析（不能用参数默认值——那里的 env 还是调用方进程的，注入覆盖会失效）。
+  const resolvedConfigPath = agentConfigPath ?? defaultAgentConfigPath(env)
+  const resolvedSessionsDir = agentSessionsDir ?? defaultSessionsDir(env)
+  const resolvedStylesDirs = stylesDirs ?? [builtinStylesDir(), defaultUserStylesDir(env)]
+  const resolvedRuntimesDirs = runtimesDirs ?? [builtinRuntimesDir(), defaultUserRuntimesDir(env)]
+  const resolvedSuitesDirs = suitesDirs ?? [builtinSuitesDir(), defaultUserSuitesDir(env)]
+  const resolvedSuiteStatePath = suiteStatePath ?? defaultSuiteStatePath(env)
+  return async function handler(req, res) {
+    const url = new URL(req.url || '/', 'http://127.0.0.1')
+    try {
+      if (url.pathname.startsWith('/suite-assets/')) {
+        const rest = url.pathname.slice('/suite-assets/'.length)
+        const slash = rest.indexOf('/')
+        const suiteId = slash > 0 ? rest.slice(0, slash) : ''
+        const relPath = slash > 0 ? rest.slice(slash + 1) : ''
+        if (!suiteId || !relPath) {
+          return sendError(res, API_ERROR_CODES.NOT_FOUND, '套件资产路径形如 /suite-assets/<id>/<文件>')
+        }
+        return await serveSuiteAsset(req, res, resolvedSuitesDirs, decodeURIComponent(suiteId), decodeURIComponent(relPath))
+      }
+      if (url.pathname === '/api' || url.pathname.startsWith('/api/')) {
+        return await handleApi(req, res, url, { preferencesPath, extraRoots, defaultRoot, agentConfigPath: resolvedConfigPath, agentSessionsDir: resolvedSessionsDir, stylesDirs: resolvedStylesDirs, runtimesDirs: resolvedRuntimesDirs, suitesDirs: resolvedSuitesDirs, suiteStatePath: resolvedSuiteStatePath, env })
+      }
+      if (req.method !== 'GET' && req.method !== 'HEAD') {
+        return sendError(res, API_ERROR_CODES.NOT_FOUND, `静态托管只支持 GET/HEAD：${req.method}`)
+      }
+      return await serveStatic(req, res, url, publicDir)
+    } catch (error) {
+      if (res.headersSent) {
+        res.end()
+        return
+      }
+      return sendError(res, API_ERROR_CODES.WRITE_PROTOCOL_IO_FAILED, `daemon 内部错误：${text(error?.message || error)}`)
+    }
+  }
+}
+
+export function startDaemon({
+  port = DEFAULT_PORT,
+  host = '127.0.0.1',
+  root = '',
+  publicDir = DEFAULT_PUBLIC_DIR,
+  preferencesPath,
+  extraRoots = [],
+  agentConfigPath = null,
+  agentSessionsDir = null,
+  stylesDirs = null,
+  runtimesDirs = null,
+  suitesDirs = null,
+  suiteStatePath = null,
+  env = process.env,
+  logger = console
+} = {}) {
+  // 硬约束：只绑回环地址。传其他 host 也不接受，避免误开外网。
+  const bindHost = host === '127.0.0.1' || host === 'localhost' ? '127.0.0.1' : '127.0.0.1'
+  const authorizedExtras = [...extraRoots, ...(root ? [root] : [])]
+  const handler = createOpenStoryHandler({
+    publicDir,
+    preferencesPath,
+    extraRoots: authorizedExtras,
+    defaultRoot: root ? canonicalRoot(root) : '',
+    agentConfigPath,
+    agentSessionsDir,
+    stylesDirs,
+    runtimesDirs,
+    suitesDirs,
+    suiteStatePath,
+    env
+  })
+  const server = createServer((req, res) => {
+    handler(req, res)
+  })
+  return new Promise((resolvePromise, rejectPromise) => {
+    server.once('error', rejectPromise)
+    server.listen(port, bindHost, () => {
+      const actualPort = server.address().port
+      if (logger?.log) {
+        logger.log(`OpenStory daemon → http://127.0.0.1:${actualPort}`)
+        if (root) logger.log(`直接进入库：${resolve(root)}`)
+      }
+      resolvePromise({
+        server,
+        port: actualPort,
+        host: bindHost,
+        close: () => new Promise((done) => {
+          stopAllSidecars()
+          server.close(() => done())
+        })
+      })
+    })
+  })
+}
+
+/* ---------- CLI ---------- */
+
+export function parseArgs(argv = []) {
+  const options = { port: DEFAULT_PORT, root: '', preferencesPath: '', help: false }
+  const args = [...argv]
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index]
+    if (arg === '--help' || arg === '-h') {
+      options.help = true
+      continue
+    }
+    if (arg.startsWith('--port=')) {
+      options.port = Number(arg.slice('--port='.length))
+      continue
+    }
+    if (arg === '--port') {
+      options.port = Number(args[index + 1])
+      index += 1
+      continue
+    }
+    if (arg.startsWith('--root=')) {
+      options.root = arg.slice('--root='.length)
+      continue
+    }
+    if (arg === '--root') {
+      options.root = args[index + 1] ?? ''
+      index += 1
+      continue
+    }
+    if (arg.startsWith('--preferences=')) {
+      options.preferencesPath = arg.slice('--preferences='.length)
+      continue
+    }
+  }
+  if (!Number.isInteger(options.port) || options.port < 0 || options.port > 65535) {
+    options.port = DEFAULT_PORT
+  }
+  return options
+}
+
+const isMain = process.argv[1]
+  ? pathToFileURL(resolve(process.argv[1])).href === import.meta.url
+  : false
+
+if (isMain) {
+  const options = parseArgs(process.argv.slice(2))
+  if (options.help) {
+    console.log('用法：node openstory/daemon.mjs [--port=8807] [--root=<库路径>] [--preferences=<next-preferences.json>]')
+    process.exit(0)
+  }
+  startDaemon({
+    port: options.port,
+    root: options.root,
+    preferencesPath: options.preferencesPath || undefined
+  }).then((daemon) => {
+    const shutdown = () => {
+      daemon.close().finally(() => process.exit(0))
+    }
+    process.on('SIGINT', shutdown)
+    process.on('SIGTERM', shutdown)
+  }).catch((error) => {
+    console.error(`OpenStory daemon 启动失败：${text(error?.message || error)}`)
+    process.exit(1)
+  })
+}

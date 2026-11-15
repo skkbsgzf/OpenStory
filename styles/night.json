@@ -1,0 +1,32 @@
+{
+  "id": "night",
+  "name": "暗夜 · 工作灯",
+  "description": "深底工作灯，夜写不刺眼，版心放宽",
+  "tokens": {
+    "--bg": "#17181c",
+    "--soft": "#1e2025",
+    "--warm": "#20232a",
+    "--ink": "#e8e6e1",
+    "--ink-2": "#c9c6bf",
+    "--muted": "#9a968e",
+    "--meta": "#6f6b64",
+    "--line": "#2c2e35",
+    "--hair": "#23252b",
+    "--accent": "#ff6b88",
+    "--accent-hover": "#ff8ba3",
+    "--accent-active": "#ff385c",
+    "--accent-soft": "#2c1a20",
+    "--ok": "#6cc57a",
+    "--danger": "#e07856",
+    "--radius": "10px",
+    "--radius-md": "14px",
+    "--radius-lg": "20px",
+    "--pill": "999px",
+    "--shadow": "0 10px 34px rgba(0,0,0,.45)",
+    "--sans": "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', 'PingFang SC', sans-serif",
+    "--serif": "'Noto Serif SC', 'Songti SC', Georgia, serif",
+    "--mono": "'SF Mono', 'Cascadia Code', Consolas, monospace",
+    "--content-max": "1240px",
+    "--content-px": "44px"
+  }
+}

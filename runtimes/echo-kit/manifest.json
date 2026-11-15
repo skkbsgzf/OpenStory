@@ -1,0 +1,11 @@
+{
+  "schemaVersion": "openstory-runtime-kit@1",
+  "id": "echo-kit",
+  "name": "回声参考套件",
+  "kind": "sidecar",
+  "description": "零依赖参考实现：OpenAI 兼容 SSE 回声——kit 作者照这个骨架写 DSH/CLI 桥",
+  "command": { "cmd": "node", "args": ["server.mjs"], "cwd": "." },
+  "chatPath": "/v1/chat/completions",
+  "healthPath": "/healthz",
+  "port": "allocate"
+}

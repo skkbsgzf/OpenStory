@@ -1,0 +1,12 @@
+{
+  "schemaVersion": "openstory-suite@1",
+  "id": "screenwriting",
+  "name": "编剧套件",
+  "version": "0.1.0",
+  "vendor": "Pinax 官方",
+  "description": "剧本创作的业务套件：场景标题格式等默认规则（规则接线随编剧业务页上线，当前为占位声明）。",
+  "domains": ["编剧"],
+  "settings": [
+    { "key": "sceneTitleFormat", "label": "场景标题格式", "type": "string", "default": "第{no}场 {title}" }
+  ]
+}
