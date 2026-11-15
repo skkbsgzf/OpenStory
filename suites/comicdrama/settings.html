@@ -1,0 +1,71 @@
+<!doctype html>
+<!-- 漫剧套件·自带设置页（openstory-suite@2 page 模式样例）——
+     同源装载：配置经 GET/PUT /api/suite/state-data 存取，宿主只存不校验形状。 -->
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>漫剧套件 · 设置</title>
+<style>
+  body { margin: 0; padding: 18px 20px; font: 14px/1.7 -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', 'PingFang SC', sans-serif; color: #222; background: transparent; }
+  h3 { margin: 0 0 12px; font-size: 14px; }
+  .field { margin-bottom: 12px; }
+  label { display: block; font-size: 12px; color: #6f6a63; margin-bottom: 4px; }
+  select, input { border: 1px solid #e0dcd6; border-radius: 6px; padding: 6px 8px; font: inherit; background: #fff; min-width: 200px; }
+  .row { display: flex; gap: 10px; align-items: center; margin-top: 14px; }
+  button { border: 0; border-radius: 999px; padding: 7px 16px; background: #ff385c; color: #fff; font: inherit; cursor: pointer; }
+  .ok { color: #008a05; font-size: 12px; }
+  .err { color: #c13515; font-size: 12px; }
+</style>
+</head>
+<body>
+<h3>漫剧套件 · 设置（自带页）</h3>
+<div class="field">
+  <label>分镜默认画幅</label>
+  <select id="boardRatio">
+    <option value="16:9">16:9（横幅）</option>
+    <option value="4:3">4:3（传统）</option>
+    <option value="2.35:1">2.35:1（宽银幕）</option>
+  </select>
+</div>
+<div class="field">
+  <label>网格密度（每行格数）</label>
+  <input id="gridColumns" type="number" min="1" max="8" value="3">
+</div>
+<div class="row">
+  <button id="save">保存</button>
+  <span id="msg"></span>
+</div>
+<script>
+  const ID = 'comicdrama'
+  async function load() {
+    try {
+      const payload = await fetch(`/api/suite/state-data?id=${ID}`).then((r) => r.json())
+      const values = payload.values ?? {}
+      if (values.boardRatio) document.getElementById('boardRatio').value = values.boardRatio
+      if (values.gridColumns !== undefined) document.getElementById('gridColumns').value = values.gridColumns
+    } catch (error) {
+      document.getElementById('msg').textContent = `读不到配置：${error.message}`
+      document.getElementById('msg').className = 'err'
+    }
+  }
+  async function save() {
+    const values = {
+      boardRatio: document.getElementById('boardRatio').value,
+      gridColumns: Number(document.getElementById('gridColumns').value) || 3
+    }
+    try {
+      await fetch(`/api/suite/state-data?id=${ID}`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ values }) })
+      const msg = document.getElementById('msg')
+      msg.textContent = '已保存（本机）'
+      msg.className = 'ok'
+    } catch (error) {
+      const msg = document.getElementById('msg')
+      msg.textContent = `保存失败：${error.message}`
+      msg.className = 'err'
+    }
+  }
+  document.getElementById('save').addEventListener('click', save)
+  load()
+</script>
+</body>
+</html>

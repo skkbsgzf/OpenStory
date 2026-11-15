@@ -1,0 +1,32 @@
+{
+  "id": "coral",
+  "name": "珊瑚 · Airbnb 系",
+  "description": "白底墨字，单点珊瑚红",
+  "tokens": {
+    "--bg": "#ffffff",
+    "--soft": "#faf9f7",
+    "--warm": "#fff6ef",
+    "--ink": "#222222",
+    "--ink-2": "#3d3a36",
+    "--muted": "#6f6a63",
+    "--meta": "#a39d94",
+    "--line": "#e7e3dd",
+    "--hair": "#f0ede8",
+    "--accent": "#ff385c",
+    "--accent-hover": "#e31c5f",
+    "--accent-active": "#e00b41",
+    "--accent-soft": "#fff1f3",
+    "--ok": "#008a05",
+    "--danger": "#c13515",
+    "--radius": "10px",
+    "--radius-md": "14px",
+    "--radius-lg": "20px",
+    "--pill": "999px",
+    "--shadow": "0 8px 30px rgba(34,34,34,.08)",
+    "--sans": "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', 'PingFang SC', sans-serif",
+    "--serif": "'Noto Serif SC', 'Songti SC', Georgia, serif",
+    "--mono": "'SF Mono', 'Cascadia Code', Consolas, monospace",
+    "--content-max": "1180px",
+    "--content-px": "40px"
+  }
+}

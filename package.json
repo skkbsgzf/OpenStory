@@ -1,0 +1,11 @@
+{
+  "name": "openstory",
+  "version": "0.1.0",
+  "description": "跑在浏览器/DSH 里的小说工作台——OpenDesign 形态的小说版（底座插件体系以 pinax-core 为原型）",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "node daemon.mjs",
+    "test": "node --test \"test/*.test.mjs\""
+  }
+}

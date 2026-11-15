@@ -1,0 +1,13 @@
+{
+  "schemaVersion": "openstory-suite@1",
+  "id": "writing",
+  "name": "写作套件",
+  "version": "0.1.0",
+  "vendor": "Pinax 官方",
+  "description": "小说写作的业务套件：章节默认规则与推演分支的默认配置（已接线）。",
+  "domains": ["写作"],
+  "settings": [
+    { "key": "newChapterTitle", "label": "新建章节默认标题", "type": "string", "default": "未命名章" },
+    { "key": "deduceBranches", "label": "推演默认分支数", "type": "number", "default": 2 }
+  ]
+}
