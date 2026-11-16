@@ -56,7 +56,7 @@ const state = {
   repair: null,
   libDirs: [],
   dirWork: {},
-  write: { chapters: [], listLoading: false },
+  write: { chapters: [], listLoading: false, mode: 'read', docPrefs: null },
   deduce: { premise: '', variables: '', question: '', sessionId: '', streaming: false, reply: '', controller: null, error: '' },
   artifacts: { root: '', groups: [], totals: null, loading: false, error: '', previewFile: '', previewText: '', previewLoading: false },
   settings: { userDir: '', section: 'runtime', suiteId: '' },
@@ -81,6 +81,15 @@ const state = {
 }
 
 const viewEl = document.getElementById('view')
+
+// OS-21：md 渲染器（ESM，按需载入；零依赖自研）
+let mdModule = null
+async function loadMd() {
+  if (!mdModule) mdModule = await import('./md.mjs')
+  return mdModule
+}
+let mdReady = false
+loadMd().then(() => { mdReady = true; if (state.view === 'write') render() }).catch(() => {})
 
 const LAYER_LABELS = {
   plot: '剧情',
@@ -395,6 +404,50 @@ function unitLabel(unit) { return unit === 'episodes' ? '集' : unit === 'minute
 function divideLabel(divideBy) { return divideBy === 'chapter' ? '章' : divideBy === 'episode' ? '集' : divideBy === 'scene' ? '场' : '段' }
 function deliverableLabel(deliverable) { return deliverable === 'novel' ? '小说' : deliverable === 'script' ? '剧本' : deliverable === 'comic' ? '漫画' : '游戏' }
 
+
+/* ---------- 写作偏好（OS-21：字号/行高/段距/缩进/自动隔行 → CSS 变量）---------- */
+const DOC_PREF_DEFAULTS = { fontSize: 17, lineHeight: 1.9, paraGap: 1, indent: 2, autoGap: true }
+
+function loadDocPrefs() {
+  if (state.write.docPrefs) return state.write.docPrefs
+  let saved = {}
+  try { saved = JSON.parse(localStorage.getItem('openstory-doc-prefs') || '{}') } catch { saved = {} }
+  state.write.docPrefs = { ...DOC_PREF_DEFAULTS, ...saved }
+  return state.write.docPrefs
+}
+
+function applyDocPrefs() {
+  const prefs = loadDocPrefs()
+  const root = document.documentElement
+  root.style.setProperty('--doc-font-size', `${prefs.fontSize}px`)
+  root.style.setProperty('--doc-line-height', String(prefs.lineHeight))
+  root.style.setProperty('--doc-para-gap', `${prefs.paraGap}em`)
+  root.style.setProperty('--doc-indent', `${prefs.indent}em`)
+  root.dataset.docAutoGap = prefs.autoGap ? 'on' : 'off'
+}
+
+function setDocPref(key, value) {
+  const prefs = loadDocPrefs()
+  prefs[key] = value
+  try { localStorage.setItem('openstory-doc-prefs', JSON.stringify(prefs)) } catch { /* 隐私模式 */ }
+  applyDocPrefs()
+}
+
+/** 阅读态渲染（md → HTML，段落带 data-para 供点入即改）。 */
+function renderDocBody(text, { dropLeadingH1 = false } = {}) {
+  if (!mdReady || !mdModule) return `<div class="prose"><p>${esc(text)}</p></div>`
+  let body = text
+  if (dropLeadingH1) {
+    // 大标题已在文档头显示——正文里首个 H1 丢掉，避免「第001章 / 第一章」两行叠着
+    body = String(text || '').replace(/^\s*#\s+[^\n]*\n?/u, '')
+  }
+  const html = mdModule.renderMarkdown(body)
+  // 给每个顶层块编号（点入即改映射用）
+  let index = 0
+  const numbered = html.replace(/<(p|h[1-6]|ul|ol|blockquote|pre|hr)/gu, (match, tag) => `<${tag} data-para="${index++}"`)
+  return `<div class="doc-paper prose" id="doc-reader">${numbered}</div>`
+}
+
 function formatBytes(size) {
   const value = Number(size) || 0
   return value >= 1024 ? `${(value / 1024).toFixed(1)} KB` : `${value} B`
@@ -412,6 +465,48 @@ async function loadWriteChapters({ force = false } = {}) {
     state.error = `${error?.code ? `${error.code} · ` : ''}${text(error?.message || error)}`
   }
   state.write.listLoading = false
+}
+
+
+/* ---------- 沉浸式编辑交互（OS-21）---------- */
+
+/** 阅读 → 编辑：按被点中的段落序号换算出源码偏移并聚焦。 */
+function enterDocEdit(paraIndex = -1) {
+  if (!state.chapterLoaded) return
+  state.write.mode = 'edit'
+  render()
+  const editor = document.getElementById('chapter-editor')
+  if (!editor) return
+  let offset = 0
+  if (paraIndex >= 0 && mdModule) {
+    const offsets = mdModule.paragraphOffsets(state.chapterText)
+    offset = offsets[Math.min(paraIndex, offsets.length - 1)] ?? 0
+  }
+  editor.focus()
+  try { editor.setSelectionRange(offset, offset) } catch { /* 忽略 */ }
+  const lineHeight = parseFloat(getComputedStyle(editor).lineHeight) || 24
+  const before = editor.value.slice(0, offset).split(String.fromCharCode(10)).length
+  editor.scrollTop = Math.max(0, (before - 3) * lineHeight)
+}
+
+function leaveDocEdit() {
+  state.write.mode = 'read'
+  render()
+}
+
+function toggleDocMode() {
+  if (state.write.mode === 'edit') leaveDocEdit()
+  else enterDocEdit(-1)
+}
+
+/** 版本历史：跳到产物中心并预选该文件的历史（产物中心已有 bak/deleted 归一与恢复）。 */
+async function openChapterHistory() {
+  await openArtifacts({ force: true })
+  const inventory = state.artifacts
+  const base = state.chapterFile.split('/').pop()
+  const hit = inventory.groups.flatMap((group) => group.history ?? []).find((item) => item.originalName === base)
+  if (hit) previewArtifact(hit.file)
+  else render()
 }
 
 async function createChapterFlow() {
@@ -501,25 +596,52 @@ function writeHtml() {
   const next = idx >= 0 && idx < state.write.chapters.length - 1 ? state.write.chapters[idx + 1] : null
   const saved = state.savedAt ? `<span class="saved-chip">已保存 · ${esc(formatAt(state.savedAt))}</span>` : ''
   const note = state.chapterNote ? `<span class="count">${esc(state.chapterNote)}</span>` : ''
+  applyDocPrefs()
+  const isEdit = state.write.mode === 'edit'
   const editor = state.chapterLoaded
-    ? `<textarea class="editor" id="chapter-editor" spellcheck="false" placeholder="正文内容…">${esc(state.chapterText)}</textarea>`
+    ? (isEdit
+        ? `<textarea class="doc-paper doc-editor" id="chapter-editor" spellcheck="false" placeholder="正文内容…">${esc(state.chapterText)}</textarea>`
+        : `<div class="doc-paper" id="doc-click-layer" title="点任意段落开始编辑">${mdReady ? renderDocBody(state.chapterText, { dropLeadingH1: true }) : '<div class="loading">渲染器载入中…</div>'}</div>`)
     : `<div class="empty-state">
         <h2>选一章开始</h2>
         <p>左侧点章节载入；或输入标题新建一章（自动编号）。章节就是 <span class="hint">正文/NNN-标题.md</span> 文件，Pinax 里同样可见。</p>
       </div>`
 
-  return `<div class="doc-head">
-      <div class="kick">${esc(state.current.name)} / 正文</div>
-      <h1>${esc(currentChapter?.title || state.chapterFile?.split('/').pop() || '正文')}</h1>
-      <div class="doc-meta">
-        <span class="b">正文</span>
+  const chapterNo = currentChapter?.no
+  // 标题去重：md 里首个 H1 就是章名（如「第一章」），有它就不再拿文件名当大标题
+  const mdHeading = (() => {
+    const match = String(state.chapterText || '').match(/^\s*#\s+(.+)$/mu)
+    return match ? match[1].trim() : ''
+  })()
+  const docTitle = mdHeading || currentChapter?.title || state.chapterFile?.split('/').pop() || '正文'
+  return `<div class="doc-head doc-head-immersive">
+      <div class="docline">
+        <span class="kick">${esc(state.current.name)}</span>
+        <span class="docline-sep">·</span>
+        <span class="chap-no">${chapterNo !== undefined && chapterNo !== null ? `第 ${chapterNo} 章` : '未编号'}</span>
+        <span class="docline-sep">·</span>
         <span id="chapter-chars">${state.chapterText.length} 字</span>
-        ${saved}
-        ${note}
+        <span class="docline-sep">·</span>
+        <span class="count">${state.chapterMetaAt ? `改于 ${esc(formatAt(state.chapterMetaAt))}` : ''}</span>
+        <span class="sp"></span>
+        ${state.chapterFile ? `<button class="doc-link" data-action="chapter-history">版本历史 →</button>` : ''}
+        <button class="doc-link" data-action="toggle-doc-mode">${state.write.mode === 'edit' ? '阅读' : '编辑'}</button>
+      </div>
+      <h1 class="doc-title">${esc(docTitle)}</h1>
+      <div class="doc-actions">
+        <button class="doc-link" data-action="chapter-nav" data-file="${esc(prev?.file ?? '')}"${prev ? '' : ' disabled'}>← 上一章</button>
+        <button class="doc-link" data-action="chapter-nav" data-file="${esc(next?.file ?? '')}"${next ? '' : ' disabled'}>下一章 →</button>
+        <span class="sp"></span>
+        <button class="doc-link" data-action="chapter-rename"${state.chapterFile ? '' : ' disabled'}>重命名</button>
+        <button class="doc-link" data-action="chapter-delete"${state.chapterFile ? '' : ' disabled'}>删除</button>
+        ${state.write.mode === 'edit' ? `<button class="btn-primary doc-save" data-action="save-chapter"${state.chapterLoaded ? '' : ' disabled'}>保存</button>` : ''}
+      </div>
+      <div class="doc-mini-meta">
+        ${saved}${note}
       </div>
     </div>
     ${errorHtml()}
-    <div class="chapter-grid">
+    <div class="chapter-grid doc-workspace">
       <aside class="chapter-list">
         <div class="chapter-new">
           <input id="chapter-new-title" placeholder="新章标题…" value="">
@@ -528,14 +650,6 @@ function writeHtml() {
         <div class="chapter-rows">${rows || '<div class="count" style="padding:8px">还没有章节——右上输入标题新建第一章。</div>'}</div>
       </aside>
       <div class="chapter-editor-col">
-        <div class="toolbar">
-          <button class="btn-ghost" data-action="chapter-nav" data-file="${esc(prev?.file ?? '')}"${prev ? '' : ' disabled'}>← 上一章</button>
-          <button class="btn-ghost" data-action="chapter-nav" data-file="${esc(next?.file ?? '')}"${next ? '' : ' disabled'}>下一章 →</button>
-          <span class="sp"></span>
-          <button class="btn-ghost" data-action="chapter-rename"${state.chapterFile ? '' : ' disabled'}>重命名</button>
-          <button class="btn-ghost" data-action="chapter-delete"${state.chapterFile ? '' : ' disabled'}>删除</button>
-          <button class="btn-primary" data-action="save-chapter"${state.chapterLoaded ? '' : ' disabled'}>保存</button>
-        </div>
         ${editor}
       </div>
     </div>`
@@ -960,6 +1074,7 @@ const SETTINGS_SECTIONS = Object.freeze([
   { id: 'runtime', label: 'Agent 运行时', hint: 'Agent 运行时、kit 货架' },
   { id: 'suites', label: '套件（插件）', hint: '业务套件：版本/归属/启停/独立设置' },
   { id: 'appearance', label: '外观', hint: '风格包、版面观感' },
+  { id: 'writing', label: '外观·写作', hint: '正文字号/行高/段距/缩进' },
   { id: 'data', label: '数据与目录', hint: '库清单、配置与货架路径' },
   { id: 'about', label: '关于', hint: '这台工作台是什么' }
 ])
@@ -1027,6 +1142,27 @@ function settingsAppearanceSectionHtml() {
   </div>`
 }
 
+
+/** 外观·写作（OS-21）：正文字号/行高/段距/首行缩进/自动隔行——改完立刻投影到 CSS 变量。 */
+function settingsWritingSectionHtml() {
+  const prefs = loadDocPrefs()
+  const slider = (key, label, min, max, step, unit) => `
+    <div class="field"><label>${esc(label)}<span class="count"> ${prefs[key]}${unit}</span></label>
+      <input type="range" data-docpref="${key}" min="${min}" max="${max}" step="${step}" value="${prefs[key]}">
+    </div>`
+  return `<div class="step">
+    <h3>正文排版</h3>
+    ${slider('fontSize', '字号', 14, 24, 1, 'px')}
+    ${slider('lineHeight', '行高', 1.4, 2.6, 0.05, '')}
+    ${slider('paraGap', '段距', 0, 2.5, 0.1, 'em')}
+    ${slider('indent', '首行缩进', 0, 3, 0.5, 'em')}
+    <div class="field"><label>自动隔行（段落间空一行）</label>
+      <button class="btn-ghost" data-action="docpref-toggle-gap">${prefs.autoGap ? '已开启（点按关闭）' : '已关闭（点按开启）'}</button>
+    </div>
+    <p class="sub">所有偏好只存本机（localStorage），改完立刻作用到正文工作台；阅读态与编辑态共用同一组排版。</p>
+  </div>`
+}
+
 function settingsDataSectionHtml() {
   const paths = [
     { label: '库清单', path: state.preferencesPath || '%LOCALAPPDATA%\\PinaxNext\\next-preferences.json' },
@@ -1060,6 +1196,7 @@ function settingsHtml() {
     suites: suitesSectionHtml,
     suite: () => suiteDetailHtml(state.settings.suiteId),
     appearance: settingsAppearanceSectionHtml,
+    writing: settingsWritingSectionHtml,
     data: settingsDataSectionHtml,
     about: settingsAboutSectionHtml
   }
@@ -2438,6 +2575,9 @@ async function loadChapter(file) {
     const payload = await api(`/api/chapter?${new URLSearchParams({ root: state.current.path, file: target }).toString()}`)
     state.chapterText = text(payload.text)
     state.chapterLoaded = true
+    const meta = state.write.chapters.find((chapter) => chapter.file === target)
+    state.chapterMetaAt = meta?.mtime || ''
+    state.write.mode = 'read'
   } catch (error) {
     if (error.code === 'NOT_FOUND') {
       state.chapterText = ''
@@ -2586,6 +2726,11 @@ document.addEventListener('click', (event) => {
     return
   }
 
+  const paraEl = event.target.closest('[data-para]')
+  if (paraEl && state.view === 'write' && state.write.mode === 'read') {
+    enterDocEdit(Number(paraEl.dataset.para))
+    return
+  }
   if (target.dataset.settingsSection) {
     state.settings.section = target.dataset.settingsSection
     render()
@@ -2748,6 +2893,13 @@ document.addEventListener('click', (event) => {
     renameChapterFlow()
   } else if (action === 'chapter-delete') {
     deleteChapterFlow()
+  } else if (action === 'docpref-toggle-gap') {
+    setDocPref('autoGap', !loadDocPrefs().autoGap)
+    render()
+  } else if (action === 'toggle-doc-mode') {
+    toggleDocMode()
+  } else if (action === 'chapter-history') {
+    openChapterHistory()
   } else if (action === 'chapter-nav') {
     if (target.dataset.file) loadChapter(target.dataset.file)
   } else if (action === 'artifact-preview') {
@@ -2795,6 +2947,13 @@ document.addEventListener('change', (event) => {
 
 document.addEventListener('input', (event) => {
   const target = event.target
+  if (target.dataset?.docpref) {
+    const key = target.dataset.docpref
+    setDocPref(key, Number(target.value))
+    const label = target.closest('.field')?.querySelector('.count')
+    if (label) label.textContent = ` ${target.value}${key === 'fontSize' ? 'px' : key === 'paraGap' || key === 'indent' ? 'em' : ''}`
+    return
+  }
   if (target.id === 'dir-editor' && state.view?.startsWith('dir:')) {
     const work = dirWork(state.view.slice(4))
     work.text = target.value
@@ -2853,7 +3012,10 @@ document.addEventListener('keydown', (event) => {
     sendAgentMessage()
     return
   }
-  if (event.key === 'Escape') closeModal()
+  if (event.key === 'Escape') {
+    if (state.view === 'write' && state.write.mode === 'edit') { leaveDocEdit(); return }
+    closeModal()
+  }
 })
 
 // 会话双击重命名

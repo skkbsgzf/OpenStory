@@ -332,6 +332,41 @@ input, textarea, select { font: inherit; color: inherit; }
 .suite-frame { width: 100%; height: 480px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--bg); }
 .cap-chips .pill { margin-right: 4px; }
 
+/* ── 沉浸式文档纸面（OS-21）────────────────────────────── */
+:root {
+  --doc-font-size: 17px; --doc-line-height: 1.9; --doc-para-gap: 1em; --doc-indent: 2em;
+  --doc-max: 720px;
+}
+.doc-head-immersive { max-width: var(--doc-max); margin: 0 auto 8px; }
+.doc-head-immersive .docline { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--meta); margin-bottom: 10px; flex-wrap: wrap; }
+.doc-head-immersive .docline .sp { flex: 1; }
+.doc-head-immersive .chap-no { color: var(--accent); font-weight: 600; }
+.doc-head-immersive .docline-sep { color: var(--line); }
+.doc-head-immersive .doc-title { font-family: var(--serif); font-size: 26px; font-weight: 700; margin: 0 0 6px; }
+.doc-head-immersive .doc-actions { display: flex; align-items: center; gap: 8px; margin: 4px 0 8px; flex-wrap: wrap; }
+.doc-head-immersive .doc-actions .sp { flex: 1; }
+.doc-head-immersive .doc-actions .doc-save { padding: 4px 16px; font-size: 12px; }
+.doc-head-immersive .doc-link[disabled] { opacity: .4; cursor: default; }
+.doc-head-immersive .doc-mini-meta { display: flex; gap: 10px; font-size: 12px; color: var(--muted); min-height: 16px; }
+.doc-link { font-size: 12px; color: var(--muted); padding: 2px 8px; border: 1px solid var(--line); border-radius: var(--pill); }
+.doc-link:hover { color: var(--ink); border-color: var(--ink); }
+.doc-paper { max-width: var(--doc-max); margin: 0 auto; font-family: var(--serif); font-size: var(--doc-font-size); line-height: var(--doc-line-height); color: var(--ink-2); }
+.doc-paper p { margin: 0 0 var(--doc-para-gap); text-indent: var(--doc-indent); }
+.doc-paper h1, .doc-paper h2, .doc-paper h3, .doc-paper h4 { font-family: var(--serif); text-indent: 0; }
+.doc-paper blockquote { margin: 0 0 var(--doc-para-gap); padding-left: 14px; border-left: 2px solid var(--line); color: var(--muted); }
+.doc-paper ul, .doc-paper ol { margin: 0 0 var(--doc-para-gap); padding-left: 1.6em; }
+.doc-paper code { font-family: var(--mono); font-size: .9em; background: var(--soft); padding: 1px 5px; border-radius: 4px; text-indent: 0; }
+.doc-paper pre { background: var(--soft); border: 1px solid var(--hair); border-radius: var(--radius); padding: 12px 14px; overflow-x: auto; }
+.doc-paper pre code { background: none; padding: 0; }
+.doc-paper hr { border: 0; border-top: 1px solid var(--hair); margin: 24px 0; }
+.doc-paper a { color: var(--accent); }
+.doc-paper [data-para] { cursor: text; border-radius: 4px; }
+.doc-paper [data-para]:hover { background: var(--soft); }
+html[data-doc-auto-gap="off"] .doc-paper p { margin-bottom: 0; }
+.doc-editor { width: 100%; min-height: calc(100vh - 260px); border: 0; outline: none; background: transparent; resize: none; padding: 0; font-family: var(--serif); font-size: var(--doc-font-size); line-height: var(--doc-line-height); color: var(--ink-2); }
+.doc-editor:focus { outline: none; }
+.doc-workspace .chapter-editor-col .toolbar { max-width: var(--doc-max); margin: 0 auto 10px; }
+
 /* ── 运行时货架分组（OS-18）─────────────────────────────── */
 .runtime-group { margin-bottom: 14px; }
 .runtime-group-head { font-size: 12px; color: var(--meta); font-weight: 600; margin: 0 0 8px; letter-spacing: .04em; }
