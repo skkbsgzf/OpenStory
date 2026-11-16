@@ -56,7 +56,7 @@ const state = {
   repair: null,
   libDirs: [],
   dirWork: {},
-  write: { chapters: [], listLoading: false, mode: 'read', docPrefs: null },
+  write: { chapters: [], listLoading: false, mode: 'read', docPrefs: null, drawerOpen: false },
   deduce: { premise: '', variables: '', question: '', sessionId: '', streaming: false, reply: '', controller: null, error: '' },
   artifacts: { root: '', groups: [], totals: null, loading: false, error: '', previewFile: '', previewText: '', previewLoading: false },
   settings: { userDir: '', section: 'runtime', suiteId: '' },
@@ -718,6 +718,7 @@ function writeHtml() {
         <span class="count">${state.chapterMetaAt ? `改于 ${esc(formatAt(state.chapterMetaAt))}` : ''}</span>
         <span class="sp"></span>
         <span class="doc-autosave" id="doc-autosave"></span>
+        <button class="doc-drawer-btn" data-action="toggle-chapter-drawer" title="章节列表（悬浮）">⌸</button>
         <button class="doc-icon" data-action="doc-panel-settings" title="本章显示设置">⚙</button>
         <button class="doc-icon" data-action="doc-more" title="更多（版本历史 / 重命名 / 删除）">⋯</button>
       </div>
@@ -732,7 +733,7 @@ function writeHtml() {
     </div>
     ${errorHtml()}
     <div class="chapter-grid doc-workspace">
-      <aside class="chapter-list">
+      <aside class="chapter-list${state.write.drawerOpen ? ' open' : ''}">
         <div class="chapter-new">
           <input id="chapter-new-title" placeholder="新章标题…" value="">
           <button class="btn-ghost" data-action="chapter-create" title="自动编号新建">＋</button>
@@ -2829,6 +2830,11 @@ document.addEventListener('click', (event) => {
 
   if (target.dataset.chapterFile) {
     loadChapter(target.dataset.chapterFile)
+    if (state.write.drawerOpen) {
+      state.write.drawerOpen = false
+      document.querySelector('.chapter-list')?.classList.remove('open')
+      document.querySelector('[data-action="toggle-chapter-drawer"]')?.classList.remove('on')
+    }
     return
   }
   if (target.dataset.runtimeId !== undefined) {
@@ -2981,6 +2987,11 @@ document.addEventListener('click', (event) => {
   } else if (action === 'docpref-toggle-gap') {
     setDocPref('autoGap', !loadDocPrefs().autoGap)
     render()
+  } else if (action === 'toggle-chapter-drawer') {
+    state.write.drawerOpen = !state.write.drawerOpen
+    const list = document.querySelector('.chapter-list')
+    if (list) list.classList.toggle('open', state.write.drawerOpen)
+    target.classList.toggle('on', state.write.drawerOpen)
   } else if (action === 'doc-panel-settings') {
     openDocPanelSettings()
   } else if (action === 'doc-more') {
