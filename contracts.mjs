@@ -357,6 +357,30 @@ export const ENDPOINTS = Object.freeze({
     response: { ok: 'true', groups: 'array', totals: 'object' },
     errors: ['NO_LIBRARY', 'PATH_ESCAPE', 'INVALID_ENTRY']
   },
+  genresGet: {
+    method: 'GET',
+    path: '/api/genres',
+    // 体裁货架（openstory-genre@1）：六类内置（前三类 tier=primary），本机 genres/ 可覆盖或新增形制。
+    request: { query: {} },
+    response: { ok: 'true', genres: 'array', warnings: 'array?' },
+    errors: []
+  },
+  briefGet: {
+    method: 'GET',
+    path: '/api/brief',
+    // 项目简报（openstory-brief@1）：<库根>/.openstory/brief.json。未声明＝brief:null（不报错）。
+    request: { query: { root: 'string' } },
+    response: { ok: 'true', brief: 'object?', genre: 'object?', path: 'string' },
+    errors: ['NO_LIBRARY', 'INVALID_ENTRY']
+  },
+  briefPut: {
+    method: 'PUT',
+    path: '/api/brief',
+    // 声明项目体裁与篇幅（一等约束）：体裁必须进货架；篇幅明显越界或分章缺每章目标＝400。
+    request: { body: { root: 'string', genre: 'string', deliverables: 'array?', length: 'object?' } },
+    response: { ok: 'true', brief: 'object', genre: 'object?', path: 'string' },
+    errors: ['NO_LIBRARY', 'INVALID_ENTRY', 'WRITE_PROTOCOL_IO_FAILED']
+  },
   suitesGet: {
     method: 'GET',
     path: '/api/suites',

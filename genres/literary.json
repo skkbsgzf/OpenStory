@@ -1,0 +1,21 @@
+{
+  "schemaVersion": "openstory-genre@1",
+  "id": "literary",
+  "name": "文学文艺",
+  "tier": "extended",
+  "summary": "允许慢、允许暧昧：语言密度优先，不强行钩子。",
+  "deliverables": ["novel"],
+  "requiredCarriers": ["pinax.carrier.novel"],
+  "optionalCarriers": ["pinax.carrier.notes"],
+  "excludedPages": ["wiki"],
+  "length": { "unit": "chars", "total": { "min": 20000, "target": 80000, "max": 300000 }, "perUnit": { "min": 2000, "target": 4000, "max": 8000 }, "divideBy": "chapter" },
+  "structure": { "numbering": "NNN-标题", "chapterHook": false },
+  "agentPolicy": {
+    "pacing": "允许慢节奏与留白；以语言质感与意象推进，不以情节密度取胜。",
+    "openHook": "不强制钩子；但开篇必须有可感的氛围或细节，不空转。",
+    "reviewFocus": ["语言密度与质感", "意象是否服务主题", "人物内心层次"],
+    "forbidden": ["强行章末钩", "标签化人物", "网络小说爽点套路"]
+  },
+  "knowledgePacks": [],
+  "compatStyles": ["*"]
+}

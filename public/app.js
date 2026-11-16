@@ -48,7 +48,10 @@ const state = {
   skin: '',
   wikiMode: 'html',
   libFlow: null,
-  create: { parent: '', name: '', primary: 'pinax.carrier.novel', running: false, result: null, error: '' },
+  create: { parent: '', name: '', primary: 'pinax.carrier.novel', genre: '', length: null, deliverables: [], running: false, result: null, error: '' },
+  genres: [],
+  brief: null,
+  briefGenre: null,
   impo: { root: '', source: '', plan: null, report: null, running: false, error: '' },
   repair: null,
   libDirs: [],
@@ -387,6 +390,10 @@ function needLibraryHtml() {
     <button class="btn-ghost" data-go="libraries">去库管理</button>
   </div>`
 }
+
+function unitLabel(unit) { return unit === 'episodes' ? '集' : unit === 'minutes' ? '分钟' : '字' }
+function divideLabel(divideBy) { return divideBy === 'chapter' ? '章' : divideBy === 'episode' ? '集' : divideBy === 'scene' ? '场' : '段' }
+function deliverableLabel(deliverable) { return deliverable === 'novel' ? '小说' : deliverable === 'script' ? '剧本' : deliverable === 'comic' ? '漫画' : '游戏' }
 
 function formatBytes(size) {
   const value = Number(size) || 0
@@ -1569,12 +1576,23 @@ function joinDir(parent, name) {
   return `${base}${isWindows ? '\\' : '/'}${text(name).trim()}`
 }
 
-function flowCreate() {
+async function flowCreate() {
   state.create.result = null
   state.create.error = ''
   state.view = 'lib-create'
   render()
+  await loadGenres()
+  render()
   document.getElementById('create-parent')?.focus()
+}
+
+async function loadGenres() {
+  try {
+    const payload = await api('/api/genres')
+    state.genres = Array.isArray(payload.genres) ? payload.genres : []
+  } catch {
+    state.genres = []
+  }
 }
 
 function flowImport(prefill = {}) {
@@ -1599,10 +1617,32 @@ function createHtml() {
     ...PRIMARY_CHOICES.map((choice) => `<button class="big-opt${create.primary === choice.id ? ' on' : ''}" data-create-primary="${esc(choice.id)}"><b>${esc(choice.title)}</b><span>${esc(choice.detail)}</span></button>`),
     '<button class="big-opt' + (create.primary === '' ? ' on' : '') + '" data-create-primary=""><b>先建空壳</b><span>只落 .pinax/ 与元数据，主模块以后再选（OpenStory 里可以修）。</span></button>'
   ].join('')
+  const genres = state.genres || []
+  const selectedGenre = genres.find((item) => item.id === create.genre) ?? null
+  const genreCards = genres.length
+    ? genres.map((genre) => `<button class="big-opt${create.genre === genre.id ? ' on' : ''}" data-create-genre="${esc(genre.id)}">
+        <b>${esc(genre.name)}${genre.tier === 'primary' ? '<span class="src">主打</span>' : ''}</b>
+        <span>${esc(genre.summary || '')}</span>
+        <span class="count">交付物：${genre.deliverables.map(deliverableLabel).join('／')} · 篇幅单位：${unitLabel(genre.length.unit)}${genre.length.divideBy !== 'none' ? ` · 分${divideLabel(genre.length.divideBy)}` : ' · 不分章'}</span>
+      </button>`).join('')
+    : '<span class="count">体裁货架读不到——库会建成未声明体裁的空壳，可在库里补声明。</span>'
+  const lengthInput = create.length ?? (selectedGenre?.length?.total?.target ?? '')
+  const perUnitInput = selectedGenre?.length?.perUnit?.target ?? ''
+  const genreDetail = selectedGenre
+    ? `<div class="row" style="margin-top:12px;align-items:flex-end">
+        <div class="field"><label>总篇幅目标（${unitLabel(selectedGenre.length.unit)}）</label>
+          <input id="create-length" type="number" min="1" value="${esc(lengthInput)}"></div>
+        ${selectedGenre.length.divideBy !== 'none' ? `<div class="field"><label>每${divideLabel(selectedGenre.length.divideBy)}约（${unitLabel(selectedGenre.length.unit)}）</label>
+          <input id="create-per-unit" type="number" min="1" value="${esc(perUnitInput)}"></div>` : ''}
+        <span class="count">体裁建议区间：${selectedGenre.length.total ? `${selectedGenre.length.total.min}–${selectedGenre.length.total.max}` : '不限'}${selectedGenre.length.divideBy !== 'none' ? ` · 分${divideLabel(selectedGenre.length.divideBy)}` : ''}</span>
+      </div>`
+    : ''
   const result = create.result
     ? `<div class="step">
         <h3><span class="no">✓</span>库已建成</h3>
         <p class="sub">${esc(create.result.document?.name ?? '')} · ${esc(create.result.root)}</p>
+        ${create.result.briefWritten ? '<p class="sub">✓ 作品简报已写入（体裁/篇幅已锁定，页签与 Agent 策略按它生效）</p>' : ''}
+        ${create.result.briefError ? `<p class="sub" style="color:var(--danger)">${esc(create.result.briefError)}</p>` : ''}
         <p class="sub">${create.result.needsPrimary ? '这是个空壳库：还没选主模块。可以在库里点「诊断」修，或现在去导入稿件。' : `骨架与 .pinax/project.json 已按「${esc(create.result.document?.kind ?? '')}」落盘，并已登记进库清单（Pinax 里也能看到）。`}</p>
         <div class="repair-actions">
           <button class="btn-primary" data-action="create-open" data-root="${esc(create.result.root)}">打开这个库</button>
@@ -1633,6 +1673,12 @@ function createHtml() {
       <h3><span class="no">2</span>主模块（决定骨架形态）</h3>
       <div class="big-opts">${primaryCards}</div>
       <p class="sub">其余载体（世界书/漫画/…）的主模块在 Pinax 里选。</p>
+    </div>
+    <div class="step">
+      <h3><span class="no">3</span>作品简报（体裁＝一等约束）</h3>
+      <p class="sub">体裁决定要哪些模块、写多长、Agent 用什么策略——建库后写进 <span class="hint">.openstory/brief.json</span>。</p>
+      <div class="big-opts">${genreCards}</div>
+      ${genreDetail}
     </div>
     ${flowError(create.error)}
     <div class="row" style="display:flex;gap:10px;align-items:center">
@@ -1779,6 +1825,30 @@ async function submitCreate() {
     })
     create.result = payload
     await refreshLibraries()
+    // OS-19：体裁声明＝一等约束——建库后立刻写项目简报（失败如实报，不假装成功）
+    if (create.genre) {
+      const lengthInput = document.getElementById('create-length')?.value
+      const perUnitInput = document.getElementById('create-per-unit')?.value
+      const selectedGenre = (state.genres || []).find((item) => item.id === create.genre)
+      try {
+        await api('/api/brief', {
+          method: 'PUT',
+          body: JSON.stringify({
+            root: payload.root,
+            genre: create.genre,
+            ...(selectedGenre ? { deliverables: selectedGenre.deliverables } : {}),
+            length: {
+              ...(lengthInput ? { total: Number(lengthInput) } : {}),
+              ...(perUnitInput ? { perUnit: Number(perUnitInput) } : {}),
+              ...(selectedGenre ? { divideBy: selectedGenre.length.divideBy } : {})
+            }
+          })
+        })
+        create.result.briefWritten = true
+      } catch (error) {
+        create.result.briefError = `体裁已选但简报写入失败：${text(error?.message || error)}（可在库里重新声明）`
+      }
+    }
   } catch (error) {
     create.error = `${error?.code ? `${error.code} · ` : ''}${text(error?.message || error)}`
   }
@@ -1868,6 +1938,7 @@ const DIR_LABELS = {
 }
 const DIR_ORDER = ['正文', '世界书', '大纲', '构思', '资料', '约束', '剧本', '人物', '场景', '素材', '漫画', '视频', '体验', '联机', '日志', '文档']
 const READONLY_DIRS = new Set(['日志'])
+const PAGE_TO_DIR_LOCAL = Object.freeze({ write: '正文', entries: '世界书', worldbook: '世界书', outline: '大纲', notes: '构思', material: '资料', dossier: '资料', script: '剧本', comic: '漫画', wiki: 'Wiki' })
 
 function renderTabs() {
   const tabsEl = document.getElementById('tabs')
@@ -1876,14 +1947,18 @@ function renderTabs() {
   if (state.current) {
     // OS-12：页签首格固定＝产物中心（产出物＋多版本＋历史）；「库」上移顶栏。
     defs.push({ view: 'artifacts', label: '产物', ic: '产' })
-    defs.push({ view: 'write', label: '正文', ic: '章' })
-    defs.push({ view: 'entries', label: '世界书', ic: '条' })
-    const extra = state.libDirs
-      .filter((dir) => dir !== '正文' && dir !== '世界书' && DIR_LABELS[dir])
+    // OS-19：正文/世界书也走 libDirs 判断——体裁声明后（如短故事）就不出世界书页签
+    const libDirs = state.libDirs
+    const hasDir = (name) => libDirs.includes(name)
+    const excluded = new Set((state.briefGenre?.excludedPages ?? []).map((page) => PAGE_TO_DIR_LOCAL[page] ?? page))
+    if (!state.brief || hasDir('正文')) defs.push({ view: 'write', label: '正文', ic: '章' })
+    if (!state.brief || hasDir('世界书')) defs.push({ view: 'entries', label: '世界书', ic: '条' })
+    const extra = libDirs
+      .filter((dir) => dir !== '正文' && dir !== '世界书' && DIR_LABELS[dir] && !excluded.has(dir))
       .sort((left, right) => DIR_ORDER.indexOf(left) - DIR_ORDER.indexOf(right))
       .map((dir) => ({ view: `dir:${dir}`, label: DIR_LABELS[dir], ic: DIR_LABELS[dir][0], readonly: READONLY_DIRS.has(dir) }))
     defs.push(...extra)
-    defs.push({ view: 'wiki', label: 'Wiki', ic: 'W' })
+    if (!excluded.has('Wiki')) defs.push({ view: 'wiki', label: 'Wiki', ic: 'W' })
     defs.push({ view: 'deduce', label: '推演', ic: '推' })
   } else {
     // 无库时页签留空——库管理走顶栏切换器，设置走顶栏设置钮。
@@ -2216,6 +2291,20 @@ async function openLibrary(path) {
       api(`/api/chapters?root=${encodeURIComponent(path)}&dir=${encodeURIComponent('正文')}`).catch(() => null)
     ])
     state.libDirs = Array.isArray(topPayload.dirs) ? topPayload.dirs : []
+    // OS-19：体裁声明后按 excludedPages 裁剪页签（未声明＝不裁剪，保持 OS-8 行为）
+    try {
+      const briefPayload = await api(`/api/brief?root=${encodeURIComponent(path)}`)
+      state.brief = briefPayload.brief ?? null
+      state.briefGenre = briefPayload.genre ?? null
+      if (state.brief && state.briefGenre) {
+        // 页签名 → 目录名（worldbook→世界书 等）
+        const excluded = new Set((state.briefGenre.excludedPages ?? []).map((page) => PAGE_TO_DIR_LOCAL[page] ?? page))
+        state.libDirs = state.libDirs.filter((dir) => !excluded.has(dir))
+      }
+    } catch {
+      state.brief = null
+      state.briefGenre = null
+    }
     if (chapterList?.ok && Array.isArray(chapterList.files) && chapterList.files.length) {
       state.chapterFiles = chapterList.files.map((item) => item.file)
     }
@@ -2465,8 +2554,15 @@ function go(view) {
 }
 
 document.addEventListener('click', (event) => {
-  const target = event.target.closest('[data-view], [data-go], [data-action], [data-skin], [data-lib-path], [data-entry-id], [data-layer], [data-kind], [data-load-more], [data-session-id], [data-session-del], [data-wiki-mode], [data-create-primary], [data-runtime-id], [data-chapter-file], [data-settings-section]')
+  const target = event.target.closest('[data-view], [data-go], [data-action], [data-skin], [data-lib-path], [data-entry-id], [data-layer], [data-kind], [data-load-more], [data-session-id], [data-session-del], [data-wiki-mode], [data-create-primary], [data-create-genre], [data-runtime-id], [data-chapter-file], [data-settings-section]')
   if (!target) return
+
+  if (target.dataset.createGenre !== undefined) {
+    state.create.genre = target.dataset.createGenre
+    state.create.length = null
+    render()
+    return
+  }
 
   if (target.dataset.settingsSection) {
     state.settings.section = target.dataset.settingsSection
