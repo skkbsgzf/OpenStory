@@ -118,7 +118,9 @@ import {
 import { createFactFileStore } from './core/pinax/next/kernel/factFileStore.mjs'
 import { deducePresent, deduceSettle } from './deduceEngine.mjs'
 import { factHealth } from './factGuard.mjs'
+import { enrichBook, enrichGraph } from './enrichEngine.mjs'
 
+const enrichJobs = new Map()
 const HERE = dirname(fileURLToPath(import.meta.url))
 export const DEFAULT_PORT = 8807
 export const DEFAULT_PUBLIC_DIR = join(HERE, 'public')
@@ -915,6 +917,13 @@ async function handleApi(req, res, url, context) {
     return handleAgentChat(req, res, request, context, authorized.root, loaded.libraries)
   }
 
+  // enrichStatus 在兜底 root 闸之前接走：job 即身份（内存 Map），契约只声明 NOT_FOUND，不校验 root。
+  if (endpointId === 'enrichStatus') {
+    const job = enrichJobs.get(text(request.jobId))
+    if (!job) return sendError(res, API_ERROR_CODES.NOT_FOUND, `job 不存在：${request.jobId}`)
+    return sendJson(res, 200, { ok: true, jobId: job.jobId, state: job.state, progress: job.progress, summary: job.summary, error: job.error })
+  }
+
   const authorized = authorizeRoot(allowlist, request.root)
   if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
   const root = authorized.root
@@ -973,6 +982,75 @@ async function handleApi(req, res, url, context) {
       ...(written.backup ? { backup: written.backup } : {}),
       ...(health ? { factStale: health.stale, factEntries: health.entries } : {})
     })
+  }
+
+  // FACT-FIRST 供给端（叙事架构 v2 第一期）：语义增补异步 job ＋ 因果图读取。
+  if (endpointId === 'enrichRun') {
+    const authorized = authorizeRoot(allowlist, request.root)
+    if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
+    const bookId = text(request.bookId).trim()
+    if (!bookId) return sendError(res, API_ERROR_CODES.INVALID_ENTRY, 'bookId 必填')
+    const { config } = await loadAgentConfig(context.agentConfigPath)
+    const upstream = await resolveChatUpstream(config, context)
+    if (!upstream.ok) return sendError(res, API_ERROR_CODES.AGENT_UPSTREAM_ERROR, upstream.message)
+    if (upstream.execute) {
+      // cli/dsh 型上游是一次性子进程/stdio 会话，没有可编程的 completion 入口——
+      // enrich 每窗都要结构化 JSON 回包，硬套会全军覆没。如实报错让作者换 endpoint 型运行时。
+      return sendError(res, API_ERROR_CODES.AGENT_UPSTREAM_ERROR, `enrich 需要 endpoint 型运行时（OpenAI 兼容 chat）；当前 ${upstream.runtimeName} 是 ${upstream.execute} 型，不支持`)
+    }
+    // llmPort：把 runtime kit 的 chat 端点包成引擎要的形状（prompt → text）。单次调用 180s 上限。
+    const llmPort = async ({ prompt, maxTokens = 2000 }) => {
+      const response = await fetch(upstream.url, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', ...upstream.headers },
+        body: JSON.stringify({ model: upstream.model, messages: [{ role: 'user', content: prompt }], max_tokens: maxTokens, temperature: 0.4, stream: false }),
+        signal: AbortSignal.timeout(180_000)
+      })
+      if (!response.ok) throw new Error(`LLM HTTP ${response.status}`)
+      const data = await response.json()
+      return { text: data.choices?.[0]?.message?.content ?? '' }
+    }
+    const jobId = `enrich-${bookId}-${Date.now().toString(36)}`
+    // 事实条目与书元数据：factFileStore 取 entries（与 /api/entries 同源），book 从拆解文件读
+    const store = createFactFileStore({ root: authorized.root })
+    const listed = await store.list({})
+    if (!listed.ok || !listed.entries.length) {
+      return sendError(res, API_ERROR_CODES.INVALID_ENTRY, '事实链为空——先跑抽取（pinax_extract_*）再 enrich')
+    }
+    let book = { id: bookId, title: bookId }
+    try {
+      const dataset = JSON.parse(readFileSync(join(authorized.root, '拆解', `${bookId}.json`), 'utf8'))
+      if (dataset.book) book = dataset.book
+    } catch { /* 元数据缺失就用 bookId 兜底 */ }
+    const job = { jobId, bookId, root: authorized.root, state: 'running', progress: [], summary: null, error: null, startedAt: new Date().toISOString() }
+    enrichJobs.set(jobId, job)
+    // 异步跑：HTTP 立即回 jobId；进度走 enrichStatus 轮询（6 窗逐窗更新）。
+    enrichBook({
+      root: authorized.root,
+      bookId,
+      entries: listed.entries,
+      book,
+      llmPort,
+      onProgress: (note) => job.progress.push(note),
+    }).then((result) => {
+      job.state = result.ok ? 'done' : 'failed'
+      job.summary = result.summary ?? null
+      job.error = result.ok ? null : (result.failures?.map((f) => `${f.stage}:${f.reason}`).join('；') || 'failed')
+    }).catch((error) => {
+      job.state = 'failed'
+      job.error = text(error?.message ?? error)
+    })
+    return sendJson(res, 200, { ok: true, jobId })
+  }
+
+  if (endpointId === 'enrichGraph') {
+    const authorized = authorizeRoot(allowlist, request.root)
+    if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
+    const bookId = text(request.bookId).trim()
+    if (!bookId) return sendError(res, API_ERROR_CODES.INVALID_ENTRY, 'bookId 必填')
+    const result = await enrichGraph({ root: authorized.root, bookId })
+    if (!result.ok) return sendError(res, result.code ?? API_ERROR_CODES.INVALID_ENTRY, result.message)
+    return sendJson(res, 200, { ok: true, ...result })
   }
 
   if (endpointId === 'agentSessions') {
@@ -1061,7 +1139,7 @@ async function handleApi(req, res, url, context) {
   return sendError(res, API_ERROR_CODES.NOT_FOUND, `端点未实现：${endpointId}`)
 }
 
-const ENDPOINT_HAS_QUERY = new Set(['entries', 'entry', 'chapterGet', 'wiki', 'agentSessions', 'agentSessionGet', 'agentSessionDelete', 'wikiHtmlGet', 'libraryDiagnose', 'filesGet', 'chaptersGet', 'chapterDelete', 'artifactsGet', 'suiteStateDataGet', 'briefGet', 'skillsGet', 'skillGet'])
+const ENDPOINT_HAS_QUERY = new Set(['entries', 'entry', 'chapterGet', 'wiki', 'agentSessions', 'agentSessionGet', 'agentSessionDelete', 'wikiHtmlGet', 'libraryDiagnose', 'filesGet', 'chaptersGet', 'chapterDelete', 'artifactsGet', 'suiteStateDataGet', 'briefGet', 'skillsGet', 'skillGet', 'enrichStatus', 'enrichGraph'])
 
 /** 套件资产 MIME（page 模式自带页同源装载）。 */
 const SUITE_ASSET_MIME = Object.freeze({

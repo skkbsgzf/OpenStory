@@ -13,7 +13,7 @@
 import { existsSync, readdirSync, statSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { createFactFileStore, readFactWiki } from './core/pinax/next/kernel/factFileStore.mjs'
+import { createFactFileStore, readFactWiki, FACT_DIR_NAME } from './core/pinax/next/kernel/factFileStore.mjs'
 
 /** 一次读取的结果来源标记——调用方据此决定要不要提示作者「正在用降级数据」。 */
 export const CONTEXT_SOURCE = Object.freeze({
@@ -93,7 +93,7 @@ export async function factHealth(root) {
         return mtime > newest ? mtime : newest
       } catch { return newest }
     }, 0)
-    for (const candidate of ['.pinax/extractions', '.pinax/deduce']) {
+    for (const candidate of [FACT_DIR_NAME, '.pinax/extractions', '.pinax/deduce']) {
       const dir = join(root, candidate)
       if (!existsSync(dir)) continue
       const newestFact = readdirSync(dir).reduce((newest, name) => {
