@@ -139,7 +139,8 @@ function createWeKnoraClient(config, fetchImpl) {
   if (!baseUrl) {
     return createKbClient({ backend: 'none' })
   }
-  const headers = { accept: 'application/json', ...(apiKey ? { authorization: `Bearer ${apiKey}` } : {}) }
+  // WeKnora 的 API key 走 X-API-Key 头（Bearer 是 JWT 会话的用法，二者不通）
+  const headers = { accept: 'application/json', ...(apiKey ? { 'x-api-key': apiKey } : {}) }
 
   async function request(path, init = {}) {
     let response
