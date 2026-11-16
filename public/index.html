@@ -188,6 +188,17 @@ input, textarea, select { font: inherit; color: inherit; }
 .lib-wrap { max-width: var(--content-max, 1180px); margin: 0 auto; padding: 34px var(--content-px, 40px); }
 .lib-wrap h1 { font-size: 28px; font-weight: 800; margin: 0 0 6px; }
 .lib-wrap .sub { color: var(--muted); margin: 0 0 24px; }
+/* 页面级头（OS-32）：标题＋右上角「!」说明＋关闭 */
+.page-head { display: flex; align-items: center; gap: 8px; margin-bottom: 18px; }
+.page-head h1 { margin: 0; }
+.page-head .sp { flex: 1; }
+.help-btn { width: 24px; height: 24px; border-radius: 50%; border: 1px solid var(--line); color: var(--muted); font-size: 13px; font-weight: 700; display: grid; place-items: center; line-height: 1; }
+.help-btn:hover { border-color: var(--ink); color: var(--ink); }
+.help-btn.on { background: var(--ink); border-color: var(--ink); color: var(--bg); }
+.page-close { font-size: 18px; line-height: 1; }
+.help-bubble { border: 1px solid var(--line); border-left: 2px solid var(--accent); border-radius: var(--radius); background: var(--soft); padding: 12px 14px; margin: 0 0 18px; font-size: 13px; line-height: 1.85; color: var(--ink-2); }
+.tab-x { display: inline-grid; place-items: center; width: 15px; height: 15px; margin-left: 2px; border-radius: 50%; color: var(--meta); font-size: 13px; line-height: 1; }
+.tab-x:hover { background: var(--line); color: var(--ink); }
 .filter { display: flex; gap: 18px; border-bottom: 1px solid var(--hair); margin: 18px 0 6px; flex-wrap: wrap; }
 .filter .f { padding: 10px 2px; color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -1px; }
 .filter .f.on { color: var(--ink); border-bottom-color: var(--ink); font-weight: 600; }
@@ -274,6 +285,8 @@ input, textarea, select { font: inherit; color: inherit; }
 .big-opt b { font-size: 15px; }
 .big-opt b .src { font-size: 10px; color: var(--meta); border: 1px solid var(--line); border-radius: var(--pill); padding: 0 6px; margin-left: 6px; vertical-align: 1px; font-weight: 400; }
 .big-opt span { font-size: 12px; color: var(--muted); line-height: 1.6; }
+/* 一行摘要（OS-32）：插件自带的长描述截断，全文走 title 悬停 */
+.one-line { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .thread-notice { font-size: 11px; color: var(--meta); padding: 2px 4px; }
 .plan-group { border-top: 1px dashed var(--hair); padding: 10px 0 2px; }
 .plan-group h4 { margin: 0 0 6px; font-size: 13px; }

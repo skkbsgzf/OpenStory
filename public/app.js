@@ -62,7 +62,7 @@ const state = {
   deduce: { premise: '', variables: '', question: '', sessionId: '', streaming: false, reply: '', controller: null, error: '',
     mode: 'engine', engine: { busy: false, data: null, pov: '', seed: '', error: '', hint: '' } },
   artifacts: { root: '', groups: [], totals: null, loading: false, error: '', previewFile: '', previewText: '', previewLoading: false },
-  settings: { userDir: '', section: 'plugins', suiteId: '' },
+  settings: { userDir: '', section: 'plugins', suiteId: '', open: false, prevView: '', helpOpen: false },
   suites: [],
   agent: {
     configured: false,
@@ -1611,26 +1611,27 @@ function closeModal() {
   document.getElementById('modal').innerHTML = ''
 }
 
-/* ---------- 设置页（OS-14：左导航分节制——运行时/外观/数据/关于）---------- */
+/* ---------- 设置页签（OS-32：组件页面，可关闭；说明文字收进右上角「!」）---------- */
 
-function openSettingsModal() {
-  go('settings')
-}
-
-/* ---------- 设置页（OS-14：左导航分节制——功能规则会持续变多，架子先立好）---------- */
-
-/**
- * 应用级设置分节（OS-28 认知：应用只管插件的插拔、发现与导入）。
- * 业务面板自己的偏好（正文排版等）归各面板的 ⚙，不在这里。
- */
 const SETTINGS_SECTIONS = Object.freeze([
-  { id: 'plugins', label: '插件', hint: '套件与 Agent 运行时的启停/设置' },
-  { id: 'discover', label: '发现与导入', hint: '货架路径、本机安装、库导入' },
+  { id: 'plugins', label: '插件', hint: '套件与 Agent 运行时' },
+  { id: 'discover', label: '发现与导入', hint: '货架路径与导入稿件' },
   { id: 'data', label: '数据与目录', hint: '库清单与配置位置' },
   { id: 'about', label: '关于', hint: '这台工作台是什么' }
 ])
 
-// 运行时状态标（OS-18：货架三组＋实测状态）
+/**
+ * 每个分节的一段自然语言说明——只说「这对你意味着什么」，不写实现细节。
+ * 平时收起，点右上角「!」才展开（作者口径：呈现要干净，说明要对人话）。
+ */
+const SETTINGS_HELP = Object.freeze({
+  plugins: '插件分成两类：一类给写作能力（比如写作套件、编剧套件），一类给 Agent 一条能对话的模型通道。它们都可以随时启用或停用，停用只是让效果回到默认，你设过的值不会丢。点「设置 →」进各自的设置页。',
+  discover: '插件不用安装：往本机的这几个文件夹里丢一个目录或一个 JSON 文件，刷新就出现在列表里。同名时你本机放的那份优先，内置的退到后面。文件坏掉只会跳过它，不会影响别的。',
+  data: '你的稿子始终是磁盘上的文件夹，这个工作台不另建数据库，删掉这个软件稿子也还在。下面是各项配置存在哪儿——都只在这台机器上。',
+  about: 'OpenStory 是给写小说用的工作台。它和 Pinax 桌面版看的是同一批库文件：两个入口，一份稿子，改哪边都算数。所有数据、密钥、会话都只留在本机，不上传也不联网同步。',
+  suiteSettings: '这里的每一项都是这个套件自己的规则。停用它，规则会退回程序内置的默认值，但你现在填的内容会保留下来，重新启用就回到你设的样子。'
+})
+
 const RUNTIME_STATUS_LABEL = {
   ready: '就绪', idle: '待拉起', running: '运行中', unconfigured: '未配置', missing: '不可用'
 }
@@ -1641,10 +1642,11 @@ function runtimeCard(runtime) {
   const probe = runtime.probe ?? null
   const probeNote = probe?.version ? ` · ${esc(probe.version)}` : probe?.message ? ` · ${esc(probe.message)}` : ''
   const canFix = runtime.status === 'missing' && runtime.kind === 'dsh'
-  return `<div class="big-opt${on ? ' on' : ''}${runtime.status === 'missing' ? ' is-missing' : ''}" data-runtime-id="${esc(runtime.id)}">
+  const desc = text(runtime.description).trim()
+  return `<div class="big-opt${on ? ' on' : ''}${runtime.status === 'missing' ? ' is-missing' : ''}" data-runtime-id="${esc(runtime.id)}" title="${esc(desc)}">
     <b>${esc(runtime.name)}<span class="src">${esc(runtime.source)}</span><span class="rt-status ${esc(runtime.status || '')}">${esc(status)}</span></b>
-    <span>${esc(runtime.description || '')}${probeNote}</span>
-    ${canFix ? `<div class="rt-fix" data-action="runtime-setup" data-id="${esc(runtime.id)}">修复（自动装 profile 与 runtime 组件）</div>` : ''}
+    <span class="one-line">${esc(desc)}${probeNote}</span>
+    ${canFix ? `<div class="rt-fix" data-action="runtime-setup" data-id="${esc(runtime.id)}">修复</div>` : ''}
   </div>`
 }
 
@@ -1659,23 +1661,21 @@ function settingsRuntimeSectionHtml() {
     if (items.length === 0) return ''
     return `<div class="runtime-group"><div class="runtime-group-head">${esc(group.label)}</div><div class="big-opts">${items.map(runtimeCard).join('')}</div></div>`
   }).join('')
-  const kitActive = Boolean(agent.runtime)
   return `<div class="step">
-    <h3>Agent 运行时（kit 优先，Pi 兜底）</h3>
+    <h3>Agent 运行时</h3>
     <div class="big-opts">${runtimeCards}</div>
-    <div class="field" style="margin-top:14px"><label>Pi 兜底端点${kitActive ? '（当前用套件，可留空）' : ''}</label>
+    <div class="field" style="margin-top:14px"><label>Pi 兜底端点</label>
       <input id="cfg-endpoint" placeholder="https://api.deepseek.com/v1/chat/completions" value="${esc(agent.endpoint)}">
     </div>
     <div class="field"><label>模型</label>
       <input id="cfg-model" placeholder="deepseek-chat" value="${esc(agent.model)}">
     </div>
-    <div class="field"><label>API Key${agent.apiKeyMasked ? `（已设置 ${esc(agent.apiKeyMasked)}，留空＝保留）` : ''}</label>
+    <div class="field"><label>API Key${agent.apiKeyMasked ? `（已设置 ${esc(agent.apiKeyMasked)}）` : ''}</label>
       <input id="cfg-key" type="password" placeholder="${agent.apiKeyMasked ? '留空保留原 key' : 'sk-…'}">
     </div>
     <div class="err" id="settings-err"></div>
     <div class="row" style="display:flex;gap:10px;align-items:center;margin-top:8px">
-      <button class="btn-primary" data-action="agent-config-save">保存 Pi 配置</button>
-      <span class="count">key 只存本机配置文件，界面永远只显示尾号</span>
+      <button class="btn-primary" data-action="agent-config-save">保存</button>
     </div>
   </div>`
 }
@@ -1687,9 +1687,8 @@ function settingsAppearanceSectionHtml() {
       <span>${esc(pack.description || '')}</span>
     </button>`).join('')
   return `<div class="step">
-    <h3>风格包（整窗换肤）</h3>
+    <h3>风格包</h3>
     <div class="big-opts">${styleCards || '<span class="count">风格包清单读不到，先用内置珊瑚兜底。</span>'}</div>
-    <p class="sub">本机风格目录丢 JSON 即上新：<span class="hint">%LOCALAPPDATA%\\PinaxNext\\openstory\\styles\\</span>（左下角色板是同一份数据的快捷入口）。</p>
   </div>`
 }
 
@@ -1699,7 +1698,6 @@ function settingsWritingSectionHtml() {
   return `<div class="step">
     <h3>正文排版</h3>
     ${docPrefSlidersHtml()}
-    <p class="sub">所有偏好只存本机（localStorage），改完立刻作用到正文工作台；阅读态与编辑态共用同一组排版。正文页的「⋯」里也有同一组。</p>
   </div>`
 }
 
@@ -1709,9 +1707,7 @@ function settingsWritingSectionHtml() {
  * 每个插件的设置都归它自己的设置页（点进去），不在应用设置里摊开。
  */
 function settingsPluginsSectionHtml() {
-  return suitesSectionHtml() +
-    '<div class="step" style="margin-top:14px"><h3>Agent 运行时</h3><p class="sub">模型对话走哪条通道：Pi 直连 / DSH 原生 / CLI 服务（嫁接）。每个运行时的配置归它自己的设置页。</p></div>' +
-    settingsRuntimeSectionHtml()
+  return suitesSectionHtml() + settingsRuntimeSectionHtml()
 }
 
 /**
@@ -1720,26 +1716,25 @@ function settingsPluginsSectionHtml() {
  */
 function settingsDiscoverSectionHtml() {
   const shelves = [
-    { label: "业务套件", dir: "%LOCALAPPDATA%\\PinaxNext\\openstory\\suites", spec: "openstory-suite@2 · PROTOCOL.md", what: "一个目录＋manifest.json（声明能力：设置页用宿主表单还是自带页）" },
-    { label: "Agent 运行时", dir: "%LOCALAPPDATA%\\PinaxNext\\openstory\\runtimes", spec: "openstory-runtime-kit@1 · runtimes/README.md", what: "一个目录＋manifest.json（sidecar / endpoint / cli / dsh 四种 kind）" },
-    { label: "风格包", dir: "%LOCALAPPDATA%\\PinaxNext\\openstory\\styles", spec: "tokens JSON", what: "一个 JSON 文件（--bg/--accent… 令牌，可带栅格密度）" }
+    { label: '业务套件', dir: '%LOCALAPPDATA%\\PinaxNext\\openstory\\suites' },
+    { label: 'Agent 运行时', dir: '%LOCALAPPDATA%\\PinaxNext\\openstory\\runtimes' },
+    { label: '风格包', dir: '%LOCALAPPDATA%\\PinaxNext\\openstory\\styles' }
   ]
-  const rows = shelves.map((shelf) => '<div class="discover-row"><div><b>' + esc(shelf.label) + '</b><span class="pill">' + esc(shelf.spec) + '</span><div class="count">' + esc(shelf.what) + '</div></div><div class="hint">' + esc(shelf.dir) + "</div></div>").join("")
-  return '<div class="step"><h3>插件货架（丢目录/文件即上新）</h3>' + rows +
-    '<p class="sub">同名 id 时本机覆盖内置；坏档跳过并给 warning，不会拖垮货架。</p></div>' +
-    '<div class="step"><h3>库与稿件导入</h3><p class="sub">库＝磁盘上的文件夹（.pinax 兼容）。新建库/导入稿件在顶栏「库」切换器面板里；导入会把源目录按类别（正文/剧本/大纲/世界书/资料…）识别并复制进库，源目录只读。</p>' +
-    '<div class="row" style="display:flex;gap:10px"><button class="btn-ghost" data-action="flow-create">＋新建库</button><button class="btn-ghost" data-action="flow-import">导入稿件</button></div></div>'
+  const rows = shelves.map((shelf) => `<div class="discover-row"><div><b>${esc(shelf.label)}</b></div><div class="hint">${esc(shelf.dir)}</div></div>`).join('')
+  return `<div class="step"><h3>插件货架</h3>${rows}</div>
+    <div class="step"><h3>库与稿件</h3>
+    <div class="row" style="display:flex;gap:10px"><button class="btn-ghost" data-action="flow-create">＋新建库</button><button class="btn-ghost" data-action="flow-import">导入稿件</button></div></div>`
 }
 
 function settingsDataSectionHtml() {
   const paths = [
     { label: '库清单', path: state.preferencesPath || '%LOCALAPPDATA%\\PinaxNext\\next-preferences.json' },
     { label: 'Agent 配置', path: agent.configPath || '%LOCALAPPDATA%\\PinaxNext\\openstory\\agent-config.json' },
-    { label: '运行时套件货架（本机）', path: state.settings.userDir || '%LOCALAPPDATA%\\PinaxNext\\openstory\\runtimes' },
-    { label: '风格包货架（本机）', path: '%LOCALAPPDATA%\\PinaxNext\\openstory\\styles' }
+    { label: '运行时套件货架', path: state.settings.userDir || '%LOCALAPPDATA%\\PinaxNext\\openstory\\runtimes' },
+    { label: '风格包货架', path: '%LOCALAPPDATA%\\PinaxNext\\openstory\\styles' }
   ]
   return `<div class="step">
-    <h3>本机路径（全部只落这台机器）</h3>
+    <h3>本机路径</h3>
     ${paths.map((item) => `<div class="kv-line"><span class="k">${esc(item.label)}</span><span class="v">${esc(item.path)}</span></div>`).join('')}
     ${warningsHtml(state.warnings)}
   </div>`
@@ -1747,14 +1742,9 @@ function settingsDataSectionHtml() {
 
 function settingsAboutSectionHtml() {
   return `<div class="step">
-    <h3>这台工作台是什么</h3>
-    <p class="sub" style="line-height:2">
-      OpenStory＝跑在浏览器 / DSH 里的小说工作台（OpenDesign 形态的小说版）。<br>
-      · 数据真源在磁盘：库＝一个文件夹（.pinax 兼容形态），OpenStory 不自建数据库；<br>
-      · 与 Pinax（Electron 壳）共用同一份文件资产与库清单——两个壳，一份稿子；<br>
-      · daemon 只监听 127.0.0.1，配置与凭据只存本机，不上网不同步；<br>
-      · Agent 运行时可插拔（套件货架），Pi 兜底；风格包即插件式外观。
-    </p>
+    <h3>OpenStory</h3>
+    <div class="kv-line"><span class="k">版本</span><span class="v">0.1.0</span></div>
+    <div class="kv-line"><span class="k">与 Pinax 的关系</span><span class="v">同一批库文件，两个入口</span></div>
   </div>`
 }
 
@@ -1771,7 +1761,7 @@ function settingsHtml() {
     about: settingsAboutSectionHtml
   }
   const sectionId = sectionRenderers[state.settings.section] ? state.settings.section : 'plugins'
-  // 套件独立设置页 / 运行时节在导航上高亮「插件」
+  // 套件独立设置页在导航上高亮「插件」
   const navOn = sectionId === 'suite' || sectionId === 'suiteSettings' ? 'plugins' : sectionId
   const sectionHtml = (sectionRenderers[sectionId] ?? settingsPluginsSectionHtml)()
   const nav = SETTINGS_SECTIONS.map((section) => `
@@ -1779,9 +1769,16 @@ function settingsHtml() {
       <b>${esc(section.label)}</b>
       <span>${esc(section.hint)}</span>
     </button>`).join('')
+  const help = SETTINGS_HELP[sectionId] || SETTINGS_HELP.plugins
+  const helpOpen = state.settings.helpOpen === true
   return `<div class="lib-wrap">
-    <h1>设置</h1>
-    <p class="sub">应用级设置只管插件的插拔、发现与导入。业务面板自己的偏好（如正文排版、分析）在各自的 ⚙ 里，不在这里。</p>
+    <div class="page-head">
+      <h1>设置</h1>
+      <span class="sp"></span>
+      <button class="help-btn${helpOpen ? ' on' : ''}" data-action="settings-help-toggle" title="这些设置是干什么的" aria-expanded="${helpOpen}">!</button>
+      <button class="icon-btn page-close" data-action="settings-close" title="关闭设置">×</button>
+    </div>
+    ${helpOpen ? `<div class="help-bubble">${esc(help)}</div>` : ''}
     ${errorHtml()}
     <div class="settings-layout">
       <nav class="settings-nav">${nav}</nav>
@@ -1852,13 +1849,14 @@ function suitesSectionHtml() {
   const enabledCount = state.suites.filter((suite) => suite.enabled !== false).length
   const rows = state.suites.map((suite) => {
     const on = suite.enabled !== false
-    return `<div class="suite-manage-row${on ? '' : ' off'}">
+    const desc = text(suite.description).trim()
+    return `<div class="suite-manage-row${on ? '' : ' off'}" title="${esc(desc)}">
       <div class="sm-main">
-        <button class="sm-name" data-action="suite-open" data-id="${esc(suite.id)}" title="进独立设置页">${esc(suite.name)}</button>
+        <button class="sm-name" data-action="suite-open" data-id="${esc(suite.id)}" title="进这个套件的设置页">${esc(suite.name)}</button>
         <span class="pill">v${esc(suite.version)}</span>
         <span class="pill">${esc(suite.vendor)}</span>
-        ${suite.domains?.length ? `<span class="count">域：${esc(suite.domains.join('／'))}</span>` : ''}
-        <div class="count">${esc(suite.description || '')}</div>
+        ${suite.domains?.length ? `<span class="count">${esc(suite.domains.join('／'))}</span>` : ''}
+        <div class="count one-line">${esc(desc)}</div>
       </div>
       <div class="sm-ops">
         <button class="btn-ghost" data-action="suite-open" data-id="${esc(suite.id)}">设置 →</button>
@@ -1869,10 +1867,8 @@ function suitesSectionHtml() {
     </div>`
   }).join('')
   return `<div class="step">
-    <h3>业务套件（不常驻）<span class="cnt">启用 ${enabledCount} · 停用 ${state.suites.length - enabledCount}</span></h3>
-    <p class="sub">开关管「激活/不激活」：停用＝这套件的规则退回内置默认（值保留）；「设置 →」进它的独立设置页。与 Agent 运行时（上一节）分工：运行时管模型通道，套件管业务规则。</p>
+    <h3>业务套件<span class="cnt">启用 ${enabledCount} · 停用 ${state.suites.length - enabledCount}</span></h3>
     <div class="suite-manage">${rows || '<div class="count" style="padding:10px">货架为空——把套件目录丢进本机 suites 目录即上新。</div>'}</div>
-    <p class="sub">本机套件目录：<span class="hint">${esc(state.settings.suitesUserDir || '%LOCALAPPDATA%\\PinaxNext\\openstory\\suites')}</span></p>
   </div>`
 }
 
@@ -1903,39 +1899,27 @@ function suiteDetailHtml(id) {
   state.settings.draftValues = { ...suite.values }
   const caps = suite.capabilities ?? { settings: { mode: 'none' }, pages: [], services: [] }
   const mode = caps.settings?.mode ?? 'none'
-  const domains = suite.domains?.length ? esc(suite.domains.join('／')) : '—'
-  const capChips = [
-    mode === 'page' ? '设置：自带页' : mode === 'schema' ? '设置：宿主表单' : '设置：未声明',
-    caps.pages?.length ? `业务页：登记 ${caps.pages.length} 个（装载随宿主上线）` : '',
-    caps.services?.length ? `服务：登记 ${caps.services.length} 个` : ''
-  ].filter(Boolean).map((chip) => `<span class="pill">${esc(chip)}</span>`).join('')
   const head = `<div class="suite-head">
       <span class="suite-name">${esc(suite.name)}</span>
       <span class="pill">v${esc(suite.version)}</span>
       <span class="pill">${esc(suite.vendor)}</span>
-      <span class="pill">${esc(suite.source)}</span>
       <span class="state-chip ${suite.enabled ? 'ok' : 'dead'}">${suite.enabled ? '启用中' : '已停用'}</span>
-    </div>
-    <p class="sub">${esc(suite.description || '')}${suite.domains?.length ? ` · 域：${domains}` : ''}</p>
-    <p class="sub cap-chips">${capChips}</p>`
+    </div>`
+  const paused = suite.enabled ? '' : '<div class="warn-box"><b>已停用</b>——这套件的规则当前走内置默认；下面的值保留，启用即恢复。</div>'
   let body = ''
   if (mode === 'page') {
-    body = `
-      ${suite.enabled ? '' : '<div class="warn-box"><b>已停用</b>——这套件的规则当前退回内置默认；下面的值保留，启用即恢复。</div>'}
-      <p class="sub">自带设置页（同源装载；配置由套件页经 state-data 通道自管，宿主只存不校验形状）：</p>
-      <iframe class="suite-frame" src="/suite-assets/${esc(suite.id)}/${esc(caps.settings.entry)}" title="${esc(suite.name)} 设置"></iframe>`
+    body = `${paused}<iframe class="suite-frame" src="/suite-assets/${esc(suite.id)}/${esc(caps.settings.entry)}" title="${esc(suite.name)} 设置"></iframe>`
   } else if (mode === 'schema') {
     const schema = suite.settingsSchema ?? []
     body = `
-      ${suite.enabled ? '' : '<div class="warn-box"><b>已停用</b>——这套件的规则当前退回内置默认；下面的值保留，启用即恢复。</div>'}
+      ${paused}
       ${schema.length ? schema.map(settingFieldHtml).join('') : '<p class="sub">这套件没有声明设置项。</p>'}
       <div class="err" id="suite-err"></div>
       <div class="row" style="display:flex;gap:10px;align-items:center;margin-top:10px">
-        <button class="btn-primary" data-action="suite-settings-save" data-id="${esc(suite.id)}">保存设置</button>
-        <span class="count">按套件声明的规则校验后落本机</span>
+        <button class="btn-primary" data-action="suite-settings-save" data-id="${esc(suite.id)}">保存</button>
       </div>`
   } else {
-    body = '<p class="sub">这套件没有声明设置能力。</p>'
+    body = '<p class="sub">这套件没有设置项。</p>'
   }
   return `<div class="step">
     ${head}
@@ -2689,10 +2673,10 @@ function renderTabs() {
     defs.push(...extra)
     if (!excluded.has('Wiki')) defs.push({ view: 'wiki', label: 'Wiki', ic: 'W' })
     defs.push({ view: 'deduce', label: '推演', ic: '推' })
-  } else {
-    // 无库时页签留空——库管理走顶栏切换器，设置走顶栏设置钮。
   }
-  tabsEl.innerHTML = defs.map((def) => `<button class="tab${state.view === def.view ? ' on' : ''}" data-view="${esc(def.view)}"><span class="ic">${esc(def.ic)}</span>${esc(def.label)}${def.readonly ? '<span class="pill">只读</span>' : ''}</button>`).join('')
+  // 设置是一个可关闭的页签（OS-32）：跟正文/产物同级，打开才出现，× 关掉回到原页
+  if (state.settings.open) defs.push({ view: 'settings', label: '设置', ic: '设', closable: true })
+  tabsEl.innerHTML = defs.map((def) => `<button class="tab${state.view === def.view ? ' on' : ''}" data-view="${esc(def.view)}"><span class="ic">${esc(def.ic)}</span>${esc(def.label)}${def.readonly ? '<span class="pill">只读</span>' : ''}${def.closable ? '<span class="tab-x" data-action="settings-close" title="关闭设置">×</span>' : ''}</button>`).join('')
 }
 
 /* ---------- 顶栏库切换器（OS-12）---------- */
@@ -3387,6 +3371,28 @@ async function deriveWiki() {
 
 /* ---------- 交互 ---------- */
 
+/**
+ * 设置页签（OS-32）：设置与正文/产物同级，是一个能打开的窗口——不是常驻页。
+ * 打开时记住来处，关掉就回那里（作者口径：这是组件页面，必须能关）。
+ */
+function openSettingsTab() {
+  if (!state.settings.open) {
+    state.settings.open = true
+    state.settings.prevView = state.view && state.view !== 'settings' ? state.view : (state.current ? 'write' : 'libraries')
+  }
+  state.settings.helpOpen = false
+  go('settings')
+}
+
+function closeSettingsTab() {
+  state.settings.open = false
+  state.settings.helpOpen = false
+  const back = state.settings.prevView || (state.current ? 'write' : 'libraries')
+  state.settings.prevView = ''
+  state.view = back === 'settings' ? (state.current ? 'write' : 'libraries') : back
+  render()
+}
+
 function go(view) {
   state.error = ''
   if (view.startsWith('dir:')) {
@@ -3400,6 +3406,8 @@ function go(view) {
     render()
     return
   }
+  // 点页签进设置就算「打开」；切到别的页签不关闭它（真页签常驻，直到点 ×）
+  if (view === 'settings') state.settings.open = true
   state.view = view
   if (view === 'entries') state.entry = null
   render()
@@ -3447,6 +3455,7 @@ document.addEventListener('click', (event) => {
 
   if (target.dataset.settingsSection) {
     state.settings.section = target.dataset.settingsSection
+    state.settings.helpOpen = false
     render()
     return
   }
@@ -3497,7 +3506,9 @@ document.addEventListener('click', (event) => {
     return
   }
   if (target.dataset.go) {
-    go(target.dataset.go)
+    // 顶栏设置钮＝打开一个可关闭的设置页签（OS-32），不是换页
+    if (target.dataset.go === 'settings') openSettingsTab()
+    else go(target.dataset.go)
     return
   }
   if (target.dataset.kind !== undefined) {
@@ -3523,7 +3534,13 @@ document.addEventListener('click', (event) => {
     return
   }
   const action = target.dataset.action
-  if (action === 'toggle-palette') {
+  if (action === 'settings-close') {
+    event.stopPropagation() // 点 × 不该先触发页签切换
+    closeSettingsTab()
+  } else if (action === 'settings-help-toggle') {
+    state.settings.helpOpen = !state.settings.helpOpen
+    render()
+  } else if (action === 'toggle-palette') {
     document.getElementById('palette').classList.toggle('open')
   } else if (action === 'back-entries') {
     state.entry = null
