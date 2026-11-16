@@ -1,0 +1,21 @@
+{
+  "schemaVersion": "openstory-genre@1",
+  "id": "short-drama",
+  "name": "短剧漫剧",
+  "tier": "primary",
+  "summary": "按集推进：单集单冲突单反转，可拍性（画面）优先于文字美感。",
+  "deliverables": ["script", "comic"],
+  "requiredCarriers": ["pinax.carrier.script", "pinax.carrier.outline"],
+  "optionalCarriers": ["pinax.carrier.worldbook", "pinax.carrier.material"],
+  "excludedPages": ["wiki"],
+  "length": { "unit": "episodes", "total": { "min": 20, "target": 60, "max": 120 }, "perUnit": { "min": 1500, "target": 2000, "max": 3000 }, "divideBy": "episode" },
+  "structure": { "numbering": "E-NNN", "chapterHook": true },
+  "agentPolicy": {
+    "pacing": "每集一个冲突、一个反转、一个钩子；前 3 秒进戏。",
+    "openHook": "每集开场直接进冲突现场，不交代前情。",
+    "reviewFocus": ["单集是否只有一个核心冲突", "画面是否可拍", "集末钩是否成立"],
+    "forbidden": ["文学化长段描写", "多线并行叙事", "旁白交代剧情"]
+  },
+  "knowledgePacks": ["trope/short-drama-payoff"],
+  "compatStyles": ["*"]
+}

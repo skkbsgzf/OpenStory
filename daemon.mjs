@@ -76,6 +76,15 @@ import {
   sidecarRunning,
   stopAllSidecars
 } from './runtimes.mjs'
+import {
+  allowedDirs,
+  briefPromptSection,
+  builtinGenresDir,
+  defaultUserGenresDir,
+  loadGenres,
+  readBrief,
+  writeBrief
+} from './genres.mjs'
 import { runCliChat } from './cli-bridge.mjs'
 import { detectDsh, detectDshAny, resolveDshChat, resolveDshRun } from './dsh-bridge.mjs'
 import { runDshStdio } from './dsh-cli.mjs'
@@ -682,6 +691,29 @@ async function handleApi(req, res, url, context) {
   if (endpointId === 'agentConfigPut') return handleAgentConfigPut(res, request, context)
   if (endpointId === 'agentRuntimesGet') return handleAgentRuntimesGet(res, context)
   if (endpointId === 'agentRuntimePut') return handleAgentRuntimePut(res, request, context)
+  if (endpointId === 'genresGet') {
+    const loaded = loadGenres(context.genresDirs)
+    return sendJson(res, 200, { ok: true, genres: loaded.genres, warnings: loaded.warnings })
+  }
+
+  if (endpointId === 'briefGet') {
+    const authorized = authorizeRoot(allowlist, request.root)
+    if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
+    const loaded = await readBrief(authorized.root, context.genresDirs)
+    if (!loaded.ok) return sendError(res, loaded.code ?? API_ERROR_CODES.INVALID_ENTRY, loaded.message)
+    const genre = loaded.brief ? loadGenres(context.genresDirs).genres.find((item) => item.id === loaded.brief.genre) ?? null : null
+    return sendJson(res, 200, { ok: true, brief: loaded.brief ?? null, genre: genre ?? null, path: loaded.path })
+  }
+
+  if (endpointId === 'briefPut') {
+    const authorized = authorizeRoot(allowlist, request.root)
+    if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
+    const written = await writeBrief(authorized.root, context.genresDirs, request)
+    if (!written.ok) return sendError(res, written.code ?? API_ERROR_CODES.INVALID_ENTRY, written.message)
+    const genre = loadGenres(context.genresDirs).genres.find((item) => item.id === written.brief.genre) ?? null
+    return sendJson(res, 200, { ok: true, brief: written.brief, genre, path: written.path })
+  }
+
   if (endpointId === 'suitesGet') {
     const listed = await listSuitesPublic(context.suitesDirs, context.suiteStatePath)
     const suitesUserDir = Array.isArray(context.suitesDirs) && context.suitesDirs[1] ? context.suitesDirs[1] : ''
@@ -952,7 +984,7 @@ async function handleApi(req, res, url, context) {
   return sendError(res, API_ERROR_CODES.NOT_FOUND, `端点未实现：${endpointId}`)
 }
 
-const ENDPOINT_HAS_QUERY = new Set(['entries', 'entry', 'chapterGet', 'wiki', 'agentSessions', 'agentSessionGet', 'agentSessionDelete', 'wikiHtmlGet', 'libraryDiagnose', 'filesGet', 'chaptersGet', 'chapterDelete', 'artifactsGet', 'suiteStateDataGet'])
+const ENDPOINT_HAS_QUERY = new Set(['entries', 'entry', 'chapterGet', 'wiki', 'agentSessions', 'agentSessionGet', 'agentSessionDelete', 'wikiHtmlGet', 'libraryDiagnose', 'filesGet', 'chaptersGet', 'chapterDelete', 'artifactsGet', 'suiteStateDataGet', 'briefGet'])
 
 /** 套件资产 MIME（page 模式自带页同源装载）。 */
 const SUITE_ASSET_MIME = Object.freeze({
@@ -1037,16 +1069,27 @@ function composeDshPrompt(items, { maxMessages = 24, maxChars = 48000 } = {}) {
   return lines.join('\n\n')
 }
 
-function systemPromptFor(root, libraries) {
+async function systemPromptFor(root, libraries, genresDirs) {
   const key = rootKey(root)
   const record = (Array.isArray(libraries) ? libraries : []).find((library) => rootKey(library.path) === key)
   const name = record?.name || basename(root) || '未命名库'
-  return [
+  const lines = [
     `你是 OpenStory 工作台的写作助手，正在协助作者创作《${name}》（本机磁盘上的一个 Pinax 库）。`,
     '- 用中文回复。',
     '- 作者可以把你的回复转成「待确认卡」并采纳写进正文文件：给出正文片段时，请给完整、可直接粘贴的文本，不要只给修改说明。',
     '- v1 你读不到库里的文件；作者会把需要的上下文粘贴给你，不要假装读过文件。'
-  ].join('\n')
+  ]
+  // OS-19：项目简报（体裁/篇幅/分章）是一等约束——注入体裁策略段
+  try {
+    const loaded = await readBrief(root, genresDirs)
+    if (loaded.ok && loaded.brief) {
+      const { genres } = loadGenres(genresDirs)
+      const genre = genres.find((item) => item.id === loaded.brief.genre) ?? null
+      const section = briefPromptSection(loaded.brief, genre)
+      if (section) lines.push('', section)
+    }
+  } catch { /* 简报读不到不影响对话 */ }
+  return lines.join('\n')
 }
 
 function sseFrame(res, payload) {
@@ -1217,7 +1260,7 @@ async function handleAgentChat(req, res, request, context, root, libraries) {
     t: 'msg', id: newMessageId(), role: 'user', content: request.content, at: new Date().toISOString()
   }])
   const history = await readSession(sessionsDir, root, sessionId)
-  const upstreamMessages = buildUpstreamMessages(systemPromptFor(root, libraries), history.items)
+  const upstreamMessages = buildUpstreamMessages(await systemPromptFor(root, libraries, context.genresDirs), history.items)
   const model = text(request.model || upstream.model).trim()
 
   const headers = { 'content-type': 'application/json', accept: 'text/event-stream', ...upstream.headers }
@@ -1458,6 +1501,7 @@ export function createOpenStoryHandler({
   runtimesDirs = null,
   suitesDirs = null,
   suiteStatePath = null,
+  genresDirs = null,
   env = process.env
 } = {}) {
   // 默认路径在体内解析（不能用参数默认值——那里的 env 还是调用方进程的，注入覆盖会失效）。
@@ -1467,6 +1511,7 @@ export function createOpenStoryHandler({
   const resolvedRuntimesDirs = runtimesDirs ?? [builtinRuntimesDir(), defaultUserRuntimesDir(env)]
   const resolvedSuitesDirs = suitesDirs ?? [builtinSuitesDir(), defaultUserSuitesDir(env)]
   const resolvedSuiteStatePath = suiteStatePath ?? defaultSuiteStatePath(env)
+  const resolvedGenresDirs = genresDirs ?? [builtinGenresDir(), defaultUserGenresDir(env)]
   return async function handler(req, res) {
     const url = new URL(req.url || '/', 'http://127.0.0.1')
     try {
@@ -1481,7 +1526,7 @@ export function createOpenStoryHandler({
         return await serveSuiteAsset(req, res, resolvedSuitesDirs, decodeURIComponent(suiteId), decodeURIComponent(relPath))
       }
       if (url.pathname === '/api' || url.pathname.startsWith('/api/')) {
-        return await handleApi(req, res, url, { preferencesPath, extraRoots, defaultRoot, agentConfigPath: resolvedConfigPath, agentSessionsDir: resolvedSessionsDir, stylesDirs: resolvedStylesDirs, runtimesDirs: resolvedRuntimesDirs, suitesDirs: resolvedSuitesDirs, suiteStatePath: resolvedSuiteStatePath, env })
+        return await handleApi(req, res, url, { preferencesPath, extraRoots, defaultRoot, agentConfigPath: resolvedConfigPath, agentSessionsDir: resolvedSessionsDir, stylesDirs: resolvedStylesDirs, runtimesDirs: resolvedRuntimesDirs, suitesDirs: resolvedSuitesDirs, suiteStatePath: resolvedSuiteStatePath, genresDirs: resolvedGenresDirs, env })
       }
       if (req.method !== 'GET' && req.method !== 'HEAD') {
         return sendError(res, API_ERROR_CODES.NOT_FOUND, `静态托管只支持 GET/HEAD：${req.method}`)
@@ -1510,6 +1555,7 @@ export function startDaemon({
   runtimesDirs = null,
   suitesDirs = null,
   suiteStatePath = null,
+  genresDirs = null,
   env = process.env,
   logger = console
 } = {}) {
@@ -1527,6 +1573,7 @@ export function startDaemon({
     runtimesDirs,
     suitesDirs,
     suiteStatePath,
+    genresDirs,
     env
   })
   const server = createServer((req, res) => {

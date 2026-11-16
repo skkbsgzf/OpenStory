@@ -1,0 +1,21 @@
+{
+  "schemaVersion": "openstory-genre@1",
+  "id": "short-story",
+  "name": "短故事",
+  "tier": "primary",
+  "summary": "单篇讲完一件事：一段式张力，开头三句定生死，不铺世界观。",
+  "deliverables": ["novel"],
+  "requiredCarriers": ["pinax.carrier.novel"],
+  "optionalCarriers": ["pinax.carrier.notes"],
+  "excludedPages": ["worldbook", "wiki", "大纲"],
+  "length": { "unit": "chars", "total": { "min": 3000, "target": 8000, "max": 20000 }, "perUnit": null, "divideBy": "none" },
+  "structure": { "numbering": null, "chapterHook": false },
+  "agentPolicy": {
+    "pacing": "一段式张力曲线：开头三句定生死，中段单冲突递进，结尾回扣开头。",
+    "openHook": "前 200 字必须出冲突或异常，不铺世界观、不写背景介绍。",
+    "reviewFocus": ["开头是否抓人", "是否存在无效铺垫", "结尾是否回扣"],
+    "forbidden": ["世界观说明书式开篇", "章末总结升华", "多线并进"]
+  },
+  "knowledgePacks": [],
+  "compatStyles": ["*"]
+}

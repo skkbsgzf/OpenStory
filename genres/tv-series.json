@@ -1,0 +1,21 @@
+{
+  "schemaVersion": "openstory-genre@1",
+  "id": "tv-series",
+  "name": "电视剧",
+  "tier": "extended",
+  "summary": "按集推进，A/B 线并行，人物弧跨集；集末钩。",
+  "deliverables": ["script"],
+  "requiredCarriers": ["pinax.carrier.script", "pinax.carrier.outline", "pinax.carrier.worldbook"],
+  "optionalCarriers": ["pinax.carrier.dossier"],
+  "excludedPages": ["wiki"],
+  "length": { "unit": "episodes", "total": { "min": 12, "target": 36, "max": 80 }, "perUnit": { "min": 8000, "target": 12000, "max": 16000 }, "divideBy": "episode" },
+  "structure": { "numbering": "E-NNN", "chapterHook": true },
+  "agentPolicy": {
+    "pacing": "A/B 线并行：主线推进＋一条副线交织；每集末留钩。",
+    "openHook": "每集开场承接上集钩子，或直接进入新冲突。",
+    "reviewFocus": ["A/B 线是否交织", "集末钩是否成立", "人物弧跨集是否连贯"],
+    "forbidden": ["单集无事发生", "副线突兀", "人物行为无动机"]
+  },
+  "knowledgePacks": ["plot/save-the-cat"],
+  "compatStyles": ["*"]
+}
