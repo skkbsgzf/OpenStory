@@ -1,0 +1,129 @@
+{
+  "generatedAt": "2026-11-16T18:03:13.578Z",
+  "kbwpr": 1,
+  "passes": 6,
+  "total": 6,
+  "target": 0.8333333333333334,
+  "dF": 0.27,
+  "dS": 0.28,
+  "dFTarget": 0.25,
+  "verdict": "PASS",
+  "results": [
+    {
+      "id": "T1",
+      "pack": "style-wangbuliao-baiyue",
+      "baseline": {
+        "F": 0.667,
+        "S": 0.5,
+        "chars": 2507
+      },
+      "enhanced": {
+        "F": 0.833,
+        "S": 1,
+        "chars": 3741,
+        "leaks": 0
+      },
+      "pass": true,
+      "guardPass": true,
+      "diagnosis": [
+        "F✗ 对话占比 22–38%（实测 20.7）"
+      ]
+    },
+    {
+      "id": "T2",
+      "pack": "style-moshi-danmu",
+      "baseline": {
+        "F": 1,
+        "S": 0.33299999999999996,
+        "chars": 2611
+      },
+      "enhanced": {
+        "F": 0.667,
+        "S": 1,
+        "chars": 2673,
+        "leaks": 0
+      },
+      "pass": true,
+      "guardPass": true,
+      "diagnosis": [
+        "F✗ 感叹号 ≥3.5/千字（实测 0.4）"
+      ]
+    },
+    {
+      "id": "T3",
+      "pack": "style-nianshang-yinshi",
+      "baseline": {
+        "F": 0.4,
+        "S": 0.5,
+        "chars": 3267
+      },
+      "enhanced": {
+        "F": 1,
+        "S": 1,
+        "chars": 4081,
+        "leaks": 1
+      },
+      "pass": true,
+      "guardPass": true,
+      "diagnosis": []
+    },
+    {
+      "id": "T4",
+      "pack": "style-rejinzhi",
+      "baseline": {
+        "F": 0.6,
+        "S": 0.5,
+        "chars": 2962
+      },
+      "enhanced": {
+        "F": 1,
+        "S": 0.5,
+        "chars": 3243,
+        "leaks": 0
+      },
+      "pass": true,
+      "guardPass": true,
+      "diagnosis": [
+        "S✗ 文言腔词 ≥2 种"
+      ]
+    },
+    {
+      "id": "T5",
+      "pack": "style-shangan-guanchang",
+      "baseline": {
+        "F": 0.2,
+        "S": 1,
+        "chars": 2095
+      },
+      "enhanced": {
+        "F": 1,
+        "S": 1,
+        "chars": 3015,
+        "leaks": 0
+      },
+      "pass": true,
+      "guardPass": true,
+      "diagnosis": []
+    },
+    {
+      "id": "T6",
+      "pack": "style-da-qin-yaoren",
+      "baseline": {
+        "F": 0.667,
+        "S": 1,
+        "chars": 2942
+      },
+      "enhanced": {
+        "F": 0.667,
+        "S": 1,
+        "chars": 3191,
+        "leaks": 0
+      },
+      "pass": true,
+      "guardPass": true,
+      "diagnosis": [
+        "F✗ 感叹号 1.5–7/千字（实测 0.9）"
+      ]
+    }
+  ]
+}
