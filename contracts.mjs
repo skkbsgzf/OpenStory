@@ -78,7 +78,8 @@ export const ENDPOINTS = Object.freeze({
     method: 'PUT',
     path: '/api/chapter',
     request: { body: { root: 'string', file: 'string', text: 'string' } },
-    response: { ok: 'true', chars: 'integer', savedAt: 'string', backup: 'string?' },
+    // FACT-FIRST：写入后如实回报事实链健康度（stale=正文比事实链新），UI 据此提示重跑。
+    response: { ok: 'true', chars: 'integer', savedAt: 'string', backup: 'string?', factStale: 'boolean?', factEntries: 'integer?' },
     errors: ['NO_LIBRARY', 'PATH_ESCAPE', 'INVALID_ENTRY', 'NOT_FOUND', 'WRITE_PROTOCOL_IO_FAILED']
   },
   wiki: {
@@ -357,6 +358,23 @@ export const ENDPOINTS = Object.freeze({
     response: { ok: 'true', groups: 'array', totals: 'object' },
     errors: ['NO_LIBRARY', 'PATH_ESCAPE', 'INVALID_ENTRY']
   },
+  skillsGet: {
+    method: 'GET',
+    path: '/api/skills',
+    // 技能货架（openstory-skill@1）：craft 技法／review 审阅／transform 改写提案／extract 抽取。
+    // genre 可选：按体裁兼容过滤。
+    request: { query: { genre: 'string?' } },
+    response: { ok: 'true', skills: 'array', warnings: 'array' },
+    errors: []
+  },
+  skillGet: {
+    method: 'GET',
+    path: '/api/skill',
+    // 单个技能全文（含正文，供装配/执行时取用）。
+    request: { query: { name: 'string' } },
+    response: { ok: 'true', skill: 'object' },
+    errors: ['NOT_FOUND']
+  },
   genresGet: {
     method: 'GET',
     path: '/api/genres',
@@ -430,6 +448,32 @@ export const ENDPOINTS = Object.freeze({
     request: { body: { root: 'string', bookId: 'string?', candidateId: 'string?', action: 'string?', note: 'string?' } },
     response: { ok: 'true', action: 'string', round: 'integer' },
     errors: ['NO_LIBRARY', 'INVALID_ENTRY', 'NOT_FOUND']
+  },
+  enrichRun: {
+    method: 'POST',
+    path: '/api/enrich/run',
+    // 语义增补（FACT-FIRST 供给端）：六槽位＋因果图＋需求层级＋台账，全量重算并写旁挂 wiki。
+    // 长任务（12–35 次模型调用，2–6 分钟）：立即返回 jobId，进度查 enrichStatus。
+    // llm 走活动 runtime kit（endpoint 型）；cli/dsh 型上游不支持，如实报错。
+    request: { body: { root: 'string', bookId: 'string' } },
+    response: { ok: 'true', jobId: 'string' },
+    errors: ['NO_LIBRARY', 'INVALID_ENTRY', 'LLM_UPSTREAM_UNSUPPORTED', 'ENRICH_FAILED']
+  },
+  enrichStatus: {
+    method: 'GET',
+    path: '/api/enrich/status',
+    // enrich 异步 job 的进度（stage 逐窗更新）。
+    request: { query: { jobId: 'string' } },
+    response: { ok: 'true', jobId: 'string', state: 'string', progress: 'array', summary: 'object?', error: 'string?' },
+    errors: ['NOT_FOUND']
+  },
+  enrichGraph: {
+    method: 'GET',
+    path: '/api/enrich/graph',
+    // 因果图＋指标＋需求层级（FACT-FIRST 派生层读取，同步、零模型）。
+    request: { query: { root: 'string', bookId: 'string' } },
+    response: { ok: 'true', bookId: 'string', causalGraph: 'object?', metrics: 'object?', needs: 'array', slots: 'object?', ledger: 'object?', failures: 'array' },
+    errors: ['NO_LIBRARY', 'NOT_FOUND', 'ENRICH_GRAPH_FAILED']
   },
   agentRuntimeSetup: {
     method: 'POST',
