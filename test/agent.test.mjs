@@ -397,6 +397,53 @@ test('daemon 端到端：没配置＝AGENT_NOT_CONFIGURED；配置后对话流�
   }
 })
 
+test('daemon 端到端：ephemeral 一次性调用不建会话、不落档（润笔不留痕）', async () => {
+  const fixture = await makeFixture()
+  const upstream = await startFakeUpstream()
+  const daemon = await startDaemon({
+    port: 0,
+    preferencesPath: fixture.preferencesPath,
+    agentConfigPath: fixture.configPath,
+    agentSessionsDir: fixture.sessionsDir,
+    logger: { log() {} }
+  })
+  const origin = `http://127.0.0.1:${daemon.port}`
+  try {
+    await fetch(`${origin}/api/agent/config`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ endpoint: upstream.url, model: '夹具模型', apiKey: 'sk-x' })
+    })
+
+    // ① ephemeral：正常出流，但会话清单里不新增
+    const before = await (await fetch(`${origin}/api/agent/sessions?root=${encodeURIComponent(fixture.root)}`)).json()
+    const resp = await fetch(`${origin}/api/agent/chat`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ root: fixture.root, content: '【润笔请求】改这一段', ephemeral: true })
+    })
+    assert.equal(resp.status, 200)
+    const { frames } = await readChatStream(resp)
+    assert.equal(frames.find((f) => f.type === 'done') !== undefined, true, '仍要正常回 done')
+    const after = await (await fetch(`${origin}/api/agent/sessions?root=${encodeURIComponent(fixture.root)}`)).json()
+    assert.equal(after.sessions.length, before.sessions.length, 'ephemeral 不该新增会话')
+
+    // ② 同一夹具下正常对话仍要建会话（别把 ephemeral 误伤到正常路径）
+    const normal = await fetch(`${origin}/api/agent/chat`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ root: fixture.root, content: '正常提问' })
+    })
+    await readChatStream(normal)
+    const after2 = await (await fetch(`${origin}/api/agent/sessions?root=${encodeURIComponent(fixture.root)}`)).json()
+    assert.equal(after2.sessions.length, before.sessions.length + 1, '正常对话要落一个会话')
+  } finally {
+    await daemon.close()
+    await new Promise((resolvePromise) => upstream.server.close(resolvePromise))
+    await rm(fixture.base, { recursive: true, force: true })
+  }
+})
+
 test('daemon 端到端：待确认卡——采纳写正文＋备份；改文件后拒绝；重采拒绝；路径逃逸拒收', async () => {
   const fixture = await makeFixture()
   const upstream = await startFakeUpstream()

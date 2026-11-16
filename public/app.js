@@ -918,20 +918,37 @@ function discussSelection() {
   input?.focus()
 }
 
-/** 一次性 Agent 调用（润笔用：不落会话，不进会话列表）。 */
+/**
+ * 一次性 Agent 调用（润笔/单段分析这类工具动作）：ephemeral＝不建会话、不落档。
+ * 并发闸：左侧对话正在流式时不允许再开一个——DSH 是「一 run 一进程」，
+ * 同时开两个会各起一个 dsh 子进程，既慢又容易互相拖死。
+ */
+let oneShotBusy = false
 async function runAgentOnce(prompt) {
   if (!state.current) throw new Error('没有选中的库')
+  if (oneShotBusy || agent.streaming) {
+    throw new Error('Agent 正在跑（左侧对话或上一步工具动作还没结束），等它出结果再来——DSH 一次只能跑一个进程。')
+  }
+  oneShotBusy = true
   const controller = new AbortController()
+  // 前端也设一道超时（DSH 侧 180s）：避免弹层永远转不停
+  const timeoutId = setTimeout(() => controller.abort(), 180000)
   let collected = ''
   let failure = null
-  await streamChat({
-    content: prompt,
-    sessionId: undefined,
-    controller,
-    onStart: () => {},
-    onDelta: (piece) => { collected += piece },
-    onError: (error) => { failure = error }
-  })
+  try {
+    await streamChat({
+      content: prompt,
+      sessionId: undefined,
+      controller,
+      ephemeral: true,
+      onStart: () => {},
+      onDelta: (piece) => { collected += piece },
+      onError: (error) => { failure = error }
+    })
+  } finally {
+    clearTimeout(timeoutId)
+    oneShotBusy = false
+  }
   if (failure) throw Object.assign(new Error(failure.message || 'Agent 调用失败'), { code: failure.code })
   const text = collected.trim()
   if (!text) throw new Error('Agent 没有返回内容')
@@ -1887,7 +1904,7 @@ function handleChatFrame(frame, handlers = {}) {
  * 走 daemon Agent 通道的一条流式对话（左列对话与推演页共用）。
  * controller 由调用方持有（停止按钮 abort 它）；帧回调按调用方各自的状态落地。
  */
-async function streamChat({ content, sessionId, controller, onStart, onDelta, onNotice, onError }) {
+async function streamChat({ content, sessionId, controller, ephemeral, onStart, onDelta, onNotice, onError }) {
   try {
     const response = await fetch('/api/agent/chat', {
       method: 'POST',
@@ -1896,6 +1913,7 @@ async function streamChat({ content, sessionId, controller, onStart, onDelta, on
       body: JSON.stringify({
         root: state.current.path,
         ...(sessionId ? { sessionId } : {}),
+        ...(ephemeral ? { ephemeral: true } : {}),
         content
       })
     })
@@ -1927,6 +1945,12 @@ async function streamChat({ content, sessionId, controller, onStart, onDelta, on
 
 async function sendAgentMessage() {
   if (!state.current || agent.streaming) return
+  if (oneShotBusy) {
+    // 润笔这类一次性动作在跑：DSH 一 run 一进程，别挤
+    agent.lastError = 'Agent 正在跑上一步（润笔/分析），等它出结果再发。'
+    renderAgent()
+    return
+  }
   if (!agent.configured) {
     openSettingsModal('先配好模型端点再开始对话。')
     return
