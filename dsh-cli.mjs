@@ -13,17 +13,47 @@
  * 会话续接靠 Harness 自己的会话存储（resume_session_id）。
  * 取消＝kill 子进程（进程即 run）；超时同理。
  */
+import fs from 'node:fs'
+import path from 'node:path'
 import { spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 
 
-/** Windows：.cmd/.bat 不能直接 spawn（shell:false）——用 cmd /c 包一层；其余原样。 */
-export function spawnCommand(cmd, args, options = {}) {
+
+/** 在 PATH 上解析可执行：Windows 优先 .cmd/.exe/.bat 变体。返回实际路径或空串。 */
+export function resolveOnPath(cmd, env = process.env) {
   const raw = String(cmd ?? '')
-  if (process.platform === 'win32' && /.(?:cmd|bat)$/iu.test(raw)) {
-    return spawn('cmd', ['/c', raw, ...args], options)
+  if (!raw) return ''
+  if (path.isAbsolute(raw) || raw.includes('/') || raw.includes('\\')) {
+    return fs.existsSync(raw) ? raw : ''
   }
-  return spawn(raw, args, options)
+  const exts = process.platform === 'win32'
+    ? (path.extname(raw) ? [''] : ['.cmd', '.exe', '.bat', ''])
+    : ['']
+  for (const dir of String(env.PATH || env.Path || '').split(path.delimiter)) {
+    if (!dir.trim()) continue
+    for (const ext of exts) {
+      const candidate = path.join(dir, raw + ext)
+      try {
+        if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) return candidate
+      } catch { /* 无权限等跳过 */ }
+    }
+  }
+  return ''
+}
+
+/**
+ * Windows 友好的 spawn：.cmd/.bat 需经 cmd /c（shell:false 时 Node 不解析 shim）。
+ * 传裸名（如 'dsh'）时先在 PATH 上解析成实际文件，再决定是否需要 cmd /c。
+ */
+export function spawnCommand(cmd, args, options = {}) {
+  const env = options.env ?? process.env
+  const resolved = resolveOnPath(cmd, env)
+  const target = resolved || String(cmd ?? '')
+  if (process.platform === 'win32' && /\.(?:cmd|bat)$/iu.test(target)) {
+    return spawn('cmd', ['/c', target, ...args], options)
+  }
+  return spawn(target, args, options)
 }
 
 function text(value) {
