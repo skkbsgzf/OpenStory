@@ -201,7 +201,23 @@ input, textarea, select { font: inherit; color: inherit; }
 .tab-x { display: inline-grid; place-items: center; width: 15px; height: 15px; margin-left: 2px; border-radius: 50%; color: var(--meta); font-size: 13px; line-height: 1; opacity: 0; transition: opacity .12s ease; }
 .tabs .tab:hover .tab-x, .tabs .tab.on .tab-x { opacity: 1; }
 .tab-x:hover { background: var(--soft); color: var(--danger); }
-/* 页签增删（OS-36）：末尾「＋」与勾选面板 */
+/* 段操作（OS-37）：左键选中整段 / 右键出浮窗 */
+.doc-block.para-on { background: var(--accent-soft); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 30%, transparent); border-radius: 4px; }
+.para-menu { position: fixed; z-index: 130; display: none; flex-direction: column; min-width: 148px; padding: 5px; background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius-md); box-shadow: var(--shadow); }
+.para-menu.on { display: flex; }
+.para-menu button { text-align: left; padding: 7px 12px; border-radius: var(--radius); font-size: 12px; color: var(--ink-2); }
+.para-menu button:hover { background: var(--accent-soft); color: var(--accent); }
+/* 单段分析结果浮窗 */
+.para-result { position: fixed; right: 18px; bottom: 18px; z-index: 110; width: 340px; max-height: 62vh; overflow-y: auto; display: none; flex-direction: column; background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius-md); box-shadow: var(--shadow); }
+.para-result.on { display: flex; }
+.pr-head { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-bottom: 1px solid var(--hair); position: sticky; top: 0; background: var(--bg); }
+.pr-head b { font-size: 13px; }
+.pr-head .sp { flex: 1; }
+.pr-x { color: var(--meta); font-size: 15px; line-height: 1; padding: 0 2px; }
+.pr-x:hover { color: var(--danger); }
+.pr-body { padding: 10px 12px 14px; display: flex; flex-direction: column; gap: 12px; }
+.pr-sec h5 { margin: 0 0 6px; font-size: 12px; color: var(--muted); font-weight: 600; display: flex; align-items: center; gap: 6px; }
+.pr-body .spark { height: 38px; }
 .tabs .tab { flex: 0 0 auto; }
 .tabs .tab-add { color: var(--meta); font-size: 15px; padding: 8px 12px; flex: 0 0 auto; }
 .tabs .tab-add:hover { color: var(--ink); }
@@ -664,6 +680,9 @@ html[data-doc-auto-gap="off"] .doc-block { margin-bottom: 0; }
 <div class="overlay" id="overlay">
   <div class="modal" id="modal"></div>
 </div>
+
+<!-- 单段分析结果（OS-37：右键一段 → 分析这一段） -->
+<aside class="para-result" id="para-result"></aside>
 
 <script src="./app.js" defer></script>
 </body>
