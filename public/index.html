@@ -134,6 +134,12 @@ input, textarea, select { font: inherit; color: inherit; }
 .modal .field .hint { font-size: 11px; color: var(--meta); overflow-wrap: anywhere; }
 .modal .ops { display: flex; gap: 10px; justify-content: flex-end; margin-top: 6px; }
 .modal .err { color: var(--danger); font-size: 12px; margin: 4px 0 8px; }
+/* 「本章」面板（OS-30）：章操作一行＋显示偏好分节 */
+.modal .chapter-ops { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 4px; }
+.modal .modal-sec { border-top: 1px solid var(--hair); margin-top: 14px; padding-top: 14px; }
+.modal .modal-sec h4 { margin: 0 0 6px; font-size: 13px; }
+.modal .modal-sec .sub { margin: 0 0 12px; }
+.modal .field input[type="range"] { border: 0; padding: 0; accent-color: var(--accent); background: none; }
 
 /* 中栏 */
 .center { flex: 1; display: flex; flex-direction: column; min-width: 0; }

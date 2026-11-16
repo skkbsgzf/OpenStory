@@ -580,39 +580,44 @@ async function commitDocBlock(blockEl) {
   }
 }
 
-/** 本章显示设置（面板自管，不进应用设置）——右上 ⚙ 弹层。 */
-function openDocPanelSettings() {
+/** 排版滑块组（正文工作台面板与设置·正文排版共用同一份控件与偏好）。 */
+function docPrefSlidersHtml() {
   const prefs = loadDocPrefs()
   const slider = (key, label, min, max, step, unit) => `
     <div class="field"><label>${esc(label)}<span class="count" id="dp-${key}"> ${prefs[key]}${unit}</span></label>
       <input type="range" data-docpref="${key}" min="${min}" max="${max}" step="${step}" value="${prefs[key]}">
     </div>`
-  openModal(`
-    <h3>本章显示</h3>
-    <p class="sub">只影响正文阅读与编辑的观感，存本机。应用级设置（插件/运行时/导入）在右上角「设置」。</p>
-    ${slider('fontSize', '字号', 14, 24, 1, 'px')}
-    ${slider('lineHeight', '行高', 1.4, 2.6, 0.05, '')}
-    ${slider('paraGap', '段距', 0, 2.5, 0.1, 'em')}
-    ${slider('indent', '首行缩进', 0, 3, 0.5, 'em')}
-    <div class="field"><label>自动隔行</label>
+  return [
+    slider('fontSize', '字号', 14, 24, 1, 'px'),
+    slider('lineHeight', '行高', 1.4, 2.6, 0.05, ''),
+    slider('paraGap', '段距', 0, 2.5, 0.1, 'em'),
+    slider('indent', '首行缩进', 0, 3, 0.5, 'em'),
+    `<div class="field"><label>自动隔行（段落间空一行）</label>
       <button class="btn-ghost" data-action="docpref-toggle-gap">${prefs.autoGap ? '已开启（点按关闭）' : '已关闭（点按开启）'}</button>
-    </div>
-    <div class="ops"><button class="btn-ghost" data-action="modal-close">关闭</button></div>
-  `)
+    </div>`
+  ].join('')
 }
 
-/** 本章更多（版本历史/重命名/删除）——⚙ 之外的唯一入口，收在一个⋯里。 */
+/**
+ * 「本章」面板（OS-30）：显示偏好与章操作合成一个入口（正文头只留一个 ⋯）。
+ * 面板自管，不进应用设置；显示偏好存本机。
+ */
 function openDocMore() {
   const hasFile = Boolean(state.chapterFile)
   openModal(`
     <h3>本章</h3>
-    <p class="sub">${esc(state.chapterFile || '未选章节')}</p>
-    <div class="ops" style="flex-direction:column;align-items:stretch;gap:8px">
+    <p class="sub">${hasFile ? esc(state.chapterFile) : '未选章节——左侧点一章，或输入标题新建。'}</p>
+    <div class="chapter-ops">
       <button class="btn-ghost" data-action="chapter-history"${hasFile ? '' : ' disabled'}>版本历史</button>
       <button class="btn-ghost" data-action="chapter-rename"${hasFile ? '' : ' disabled'}>重命名</button>
       <button class="btn-ghost" data-action="chapter-delete"${hasFile ? '' : ' disabled'}>删除（进 .history）</button>
-      <button class="btn-ghost" data-action="modal-close">关闭</button>
     </div>
+    <div class="modal-sec">
+      <h4>显示</h4>
+      <p class="sub">只影响正文阅读与编辑的观感，存本机。</p>
+      ${docPrefSlidersHtml()}
+    </div>
+    <div class="ops"><button class="btn-ghost" data-action="modal-close">关闭</button></div>
   `)
 }
 
@@ -1083,8 +1088,7 @@ function writeHtml() {
         <span class="doc-autosave" id="doc-autosave"></span>
         <button class="doc-drawer-btn" data-action="toggle-chapter-drawer" title="章节列表（悬浮）">⌸</button>
         <button class="doc-drawer-btn" data-action="analyze-toggle" title="分析本章">◔</button>
-        <button class="doc-icon" data-action="doc-panel-settings" title="本章显示设置">⚙</button>
-        <button class="doc-icon" data-action="doc-more" title="更多（版本历史 / 重命名 / 删除）">⋯</button>
+        <button class="doc-icon" data-action="doc-more" title="本章（版本历史 / 重命名 / 删除 / 显示设置）">⋯</button>
       </div>
       <h1 class="doc-title">${esc(docTitle)}</h1>
       <div class="doc-actions">
@@ -1622,21 +1626,10 @@ function settingsAppearanceSectionHtml() {
 
 /** 外观·写作（OS-21）：正文字号/行高/段距/首行缩进/自动隔行——改完立刻投影到 CSS 变量。 */
 function settingsWritingSectionHtml() {
-  const prefs = loadDocPrefs()
-  const slider = (key, label, min, max, step, unit) => `
-    <div class="field"><label>${esc(label)}<span class="count"> ${prefs[key]}${unit}</span></label>
-      <input type="range" data-docpref="${key}" min="${min}" max="${max}" step="${step}" value="${prefs[key]}">
-    </div>`
   return `<div class="step">
     <h3>正文排版</h3>
-    ${slider('fontSize', '字号', 14, 24, 1, 'px')}
-    ${slider('lineHeight', '行高', 1.4, 2.6, 0.05, '')}
-    ${slider('paraGap', '段距', 0, 2.5, 0.1, 'em')}
-    ${slider('indent', '首行缩进', 0, 3, 0.5, 'em')}
-    <div class="field"><label>自动隔行（段落间空一行）</label>
-      <button class="btn-ghost" data-action="docpref-toggle-gap">${prefs.autoGap ? '已开启（点按关闭）' : '已关闭（点按开启）'}</button>
-    </div>
-    <p class="sub">所有偏好只存本机（localStorage），改完立刻作用到正文工作台；阅读态与编辑态共用同一组排版。</p>
+    ${docPrefSlidersHtml()}
+    <p class="sub">所有偏好只存本机（localStorage），改完立刻作用到正文工作台；阅读态与编辑态共用同一组排版。正文页的「⋯」里也有同一组。</p>
   </div>`
 }
 
@@ -3558,12 +3551,16 @@ document.addEventListener('click', (event) => {
   } else if (action === 'chapter-create') {
     createChapterFlow()
   } else if (action === 'chapter-rename') {
+    closeModal()
     renameChapterFlow()
   } else if (action === 'chapter-delete') {
+    closeModal()
     deleteChapterFlow()
   } else if (action === 'docpref-toggle-gap') {
-    setDocPref('autoGap', !loadDocPrefs().autoGap)
-    render()
+    const next = !loadDocPrefs().autoGap
+    setDocPref('autoGap', next)
+    // 就地改文案：面板不重绘也能保持在打开状态
+    target.textContent = next ? '已开启（点按关闭）' : '已关闭（点按开启）'
   } else if (action === 'toggle-chapter-drawer') {
     state.write.drawerOpen = !state.write.drawerOpen
     const list = document.querySelector('.chapter-list')
@@ -3593,11 +3590,10 @@ document.addEventListener('click', (event) => {
     gotoParagraph(target.dataset.paragraph)
   } else if (action === 'analyze-fix') {
     fixIssueWithAgent(target.dataset.issueId)
-  } else if (action === 'doc-panel-settings') {
-    openDocPanelSettings()
   } else if (action === 'doc-more') {
     openDocMore()
   } else if (action === 'chapter-history') {
+    closeModal() // 版本历史会跳到产物中心，面板得先收
     openChapterHistory()
   } else if (action === 'chapter-nav') {
     if (target.dataset.file) loadChapter(target.dataset.file)
