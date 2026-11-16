@@ -24,6 +24,13 @@
 
 ## OS-29 追加（推演引擎）
 
-（18 文件）逐字 vendor 自同一提交 70a4f44：
-推演链 （turn/candidates/settle/opening/sessionState）＋ 
-＋ （aliases/stableId/vocabulary/validity/pediaSchema）。同步方式：改上游 → 重跑 。
+`core/pinax/next/fact/**`（18 文件）逐字 vendor 自同一提交 70a4f44：
+
+| 本仓 | 上游 |
+|---|---|
+| `core/pinax/next/fact/usecases/deduce/**` | 推演链：turn / candidates / settle / opening / sessionState |
+| `core/pinax/next/fact/usecases/factPack.js` | 事实包投影（局面卡与候选的数据源） |
+| `core/pinax/next/fact/domain/**` | aliases / stableId / vocabulary / validity / pediaSchema |
+
+同步方式：改上游 → 重跑 `scripts/vendor-deduce.mjs`（递归闭包，零外部依赖）。
+daemon 侧封装在 `deduceEngine.mjs`（引擎确定性：同种子＋同事实包＝同一拍）。
