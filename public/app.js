@@ -57,6 +57,7 @@ const state = {
   libDirs: [],
   dirWork: {},
   write: { chapters: [], listLoading: false, mode: 'read', docPrefs: null, drawerOpen: false },
+  sel: { text: '', blockIndex: -1, rect: null, busy: false, preview: null },
   deduce: { premise: '', variables: '', question: '', sessionId: '', streaming: false, reply: '', controller: null, error: '' },
   artifacts: { root: '', groups: [], totals: null, loading: false, error: '', previewFile: '', previewText: '', previewLoading: false },
   settings: { userDir: '', section: 'runtime', suiteId: '' },
@@ -605,6 +606,200 @@ function openDocMore() {
   `)
 }
 
+
+/* ---------- 选区动作（OS-24）：框选 → 润笔 / 与 Agent 讨论 ---------- */
+
+const selBar = { el: null }
+
+function ensureSelBar() {
+  if (selBar.el) return selBar.el
+  const bar = document.createElement('div')
+  bar.className = 'sel-bar'
+  bar.dataset.selbar = '1'
+  bar.innerHTML = '<button data-action="sel-polish">润笔</button><button data-action="sel-discuss">与 Agent 讨论</button>'
+  document.body.appendChild(bar)
+  selBar.el = bar
+  return bar
+}
+
+function hideSelBar() {
+  if (selBar.el) selBar.el.classList.remove('on')
+  state.sel.rect = null
+}
+
+/** 读当前选区；必须落在某个 .doc-block 内才算数。 */
+function readDocSelection() {
+  const selection = window.getSelection?.()
+  if (!selection || selection.isCollapsed || selection.rangeCount === 0) return null
+  const text = String(selection).trim()
+  if (!text) return null
+  const range = selection.getRangeAt(0)
+  // startContainer 可能是元素本身（如整块选中），也可能是文本节点
+  const startEl = range.startContainer?.nodeType === 3
+    ? range.startContainer.parentElement
+    : range.startContainer
+  const blockEl = startEl?.closest?.('.doc-block')
+  if (!blockEl || !blockEl.isConnected) return null
+  return { text, blockEl, rect: range.getBoundingClientRect() }
+}
+
+function showSelBar(picked) {
+  const bar = ensureSelBar()
+  bar.classList.add('on')
+  const rect = picked.rect
+  const top = Math.max(8, rect.top - 46)
+  const left = Math.min(Math.max(8, rect.left + rect.width / 2 - 90), window.innerWidth - 200)
+  bar.style.top = `${top}px`
+  bar.style.left = `${left}px`
+  state.sel.text = picked.text
+  state.sel.blockIndex = Number(picked.blockEl.dataset.block)
+  state.sel.rect = { top: rect.top, left: rect.left, width: rect.width, height: rect.height }
+}
+
+/** 选区上下文：所在块的整段＋前后各一块（给 Agent 足够语境又不淹）。 */
+function selectionContext() {
+  const blocks = state.write.chapters.length ? mdModule.splitBlocks(state.chapterText) : []
+  const raw = blocks.map((block) => block.text)
+  const index = state.sel.blockIndex
+  const near = [raw[index - 1], raw[index], raw[index + 1]].filter((line) => typeof line === 'string' && line.trim())
+  return near.join('\n\n')
+}
+
+/* ---------- 润笔：选区＋上下文 → Agent → 预览卡 ---------- */
+
+async function polishSelection() {
+  if (state.sel.busy) return
+  if (!agent.configured) {
+    rememberAgentError('润笔要先配好模型端点（右上角设置 → Agent 运行时）')
+    renderAgent()
+    hideSelBar()
+    return
+  }
+  if (!state.current) return
+  state.sel.busy = true
+  hideSelBar()
+  openModal(`
+    <h3>润笔</h3>
+    <p class="sub">选中 ${state.sel.text.length} 字，连上下文一起交给 Agent 改写。</p>
+    <div class="field"><label>改写要求（可选）</label>
+      <input id="polish-hint" placeholder="例如：更冷峻、去掉形容词、加一句心理描写">
+    </div>
+    <div class="err" id="polish-err"></div>
+    <div class="ops">
+      <button class="btn-ghost" data-action="modal-close">取消</button>
+      <button class="btn-primary" data-action="sel-polish-run">开始润笔</button>
+    </div>
+  `)
+}
+
+async function runPolish() {
+  const hint = document.getElementById('polish-hint')?.value?.trim() || ''
+  const errEl = document.getElementById('polish-err')
+  const context = selectionContext()
+  const prompt = [
+    '【润笔请求】',
+    `要改的这段（只改这段，不要扩写整章）：
+${state.sel.text}`,
+    `所在段落上下文：
+${context}`,
+    hint ? `作者要求：${hint}` : '',
+    '请只输出改写后的这一段正文，不要解释、不要加引号、不要小标题。'
+  ].filter(Boolean).join('\n\n')
+  if (errEl) errEl.textContent = '润笔中…'
+  try {
+    const result = await runAgentOnce(prompt)
+    state.sel.preview = { text: result, original: state.sel.text }
+    state.sel.busy = false
+    openPolishPreview()
+  } catch (error) {
+    state.sel.busy = false
+    if (errEl) errEl.textContent = `${error?.code ? `${error.code} · ` : ''}${text(error?.message || error)}`
+  }
+}
+
+function openPolishPreview() {
+  const preview = state.sel.preview
+  const diffHint = preview.text === preview.original ? '（与原文一致）' : ''
+  openModal(`
+    <h3>润笔结果${diffHint}</h3>
+    <div class="field"><label>改写后</label>
+      <textarea id="polish-result" style="min-height:180px">${esc(preview.text)}</textarea>
+    </div>
+    <div class="field"><label>原文（对照）</label>
+      <div class="sub" style="max-height:120px;overflow:auto">${esc(preview.original)}</div>
+    </div>
+    <div class="ops">
+      <button class="btn-ghost" data-action="modal-close">丢弃</button>
+      <button class="btn-primary" data-action="sel-polish-apply">替换原文</button>
+    </div>
+  `)
+}
+
+/** 用润笔结果替换选区所在的块（按块偏移回写，自动保存）。 */
+async function applyPolish() {
+  const value = document.getElementById('polish-result')?.value ?? ''
+  if (!state.current || !state.chapterFile || !value.trim()) return
+  const blocks = mdModule.splitBlocks(state.chapterText)
+  const block = blocks[state.sel.blockIndex]
+  if (!block) {
+    closeModal()
+    return
+  }
+  const text = state.chapterText.slice(0, block.start) + value.trim() + state.chapterText.slice(block.end)
+  closeModal()
+  state.chapterText = text
+  try {
+    await api('/api/chapter', {
+      method: 'PUT',
+      body: JSON.stringify({ root: state.current.path, file: state.chapterFile, text })
+    })
+    state.savedAt = new Date().toISOString()
+    state.sel.preview = null
+    setAutosaveChip('已替换 · 已保存')
+    render()
+  } catch (error) {
+    state.error = `${error?.code ? `${error.code} · ` : ''}${text(error?.message || error)}`
+    render()
+  }
+}
+
+/* ---------- 与 Agent 讨论：选中段落作上下文，进左列会话 ---------- */
+
+function discussSelection() {
+  if (!state.current) return
+  const context = selectionContext()
+  state.agent.pendingContext = {
+    quote: state.sel.text,
+    context,
+    label: `${state.sel.text.slice(0, 18)}${state.sel.text.length > 18 ? '…' : ''}（${state.sel.text.length} 字）`
+  }
+  hideSelBar()
+  window.getSelection?.()?.removeAllRanges?.()
+  renderAgent()
+  const input = document.getElementById('agent-input')
+  input?.focus()
+}
+
+/** 一次性 Agent 调用（润笔用：不落会话，不进会话列表）。 */
+async function runAgentOnce(prompt) {
+  if (!state.current) throw new Error('没有选中的库')
+  const controller = new AbortController()
+  let collected = ''
+  let failure = null
+  await streamChat({
+    content: prompt,
+    sessionId: undefined,
+    controller,
+    onStart: () => {},
+    onDelta: (piece) => { collected += piece },
+    onError: (error) => { failure = error }
+  })
+  if (failure) throw Object.assign(new Error(failure.message || 'Agent 调用失败'), { code: failure.code })
+  const text = collected.trim()
+  if (!text) throw new Error('Agent 没有返回内容')
+  return text
+}
+
 async function createChapterFlow() {
   const input = document.getElementById('chapter-new-title')
   await loadSuites() // 写作套件的默认标题要新鲜
@@ -1029,7 +1224,20 @@ function renderThread() {
   if (follow) thread.scrollTop = thread.scrollHeight
 }
 
+function renderContextChip() {
+  const host = document.getElementById('agent-context')
+  if (!host) return
+  const ctx = state.agent.pendingContext
+  if (!ctx) { host.innerHTML = ''; return }
+  host.innerHTML = `<div class="ctx-chip">
+    <span class="ctx-label">上下文</span>
+    <span class="ctx-text" title="${esc(ctx.context)}">${esc(ctx.label)}</span>
+    <button class="ctx-x" data-action="clear-agent-context" title="移除上下文">×</button>
+  </div>`
+}
+
 function renderAgent() {
+  renderContextChip()
   const strip = document.getElementById('agent-sessions')
   if (strip) strip.innerHTML = sessionsHtml()
   renderThread()
@@ -1105,12 +1313,18 @@ async function sendAgentMessage() {
     return
   }
   const input = document.getElementById('agent-input')
-  const content = text(input?.value).trim()
+  const typed = text(input?.value).trim()
+  // OS-24：若有选中段落上下文，拼进消息（并在气泡里保留引用）
+  const ctx = agent.pendingContext
+  const content = ctx
+    ? `【选中段落】\n${ctx.quote}\n\n【所在段落上下文】\n${ctx.context}${typed ? `\n\n【我的问题】\n${typed}` : ''}`
+    : typed
   if (!content) return
   if (input) input.value = ''
   agent.lastError = null
   agent.cardError = null
-  agent.items.push({ kind: 'msg', id: 'local-user', role: 'user', content, at: '' })
+  agent.items.push({ kind: 'msg', id: 'local-user', role: 'user', content: typed ? content : `【选中段落】${ctx.quote}`, at: '' })
+  agent.pendingContext = null
   agent.items.push({ kind: 'msg', id: 'streaming', role: 'assistant', content: '', at: '' })
   agent.streaming = true
   const controller = new AbortController()
@@ -2992,6 +3206,17 @@ document.addEventListener('click', (event) => {
     const list = document.querySelector('.chapter-list')
     if (list) list.classList.toggle('open', state.write.drawerOpen)
     target.classList.toggle('on', state.write.drawerOpen)
+  } else if (action === 'sel-polish') {
+    polishSelection()
+  } else if (action === 'sel-polish-run') {
+    runPolish()
+  } else if (action === 'sel-polish-apply') {
+    applyPolish()
+  } else if (action === 'sel-discuss') {
+    discussSelection()
+  } else if (action === 'clear-agent-context') {
+    state.agent.pendingContext = null
+    renderAgent()
   } else if (action === 'doc-panel-settings') {
     openDocPanelSettings()
   } else if (action === 'doc-more') {
@@ -3131,8 +3356,28 @@ document.addEventListener('focusout', (event) => {
   if (blockEl && state.view === 'write') commitDocBlock(blockEl)
 })
 
+// 文档内框选 → 上方浮窗（润笔 / 与 Agent 讨论）
+// 注意：不要监听 scroll 收浮窗——contenteditable 聚焦会触发滚动，会把刚弹出的浮窗立刻收掉。
+let selBarTimer = null
+document.addEventListener('selectionchange', () => {
+  if (state.view !== 'write') return
+  const picked = readDocSelection()
+  if (picked) {
+    // 拖选过程中选区在变，等 120ms 稳定后再弹，避免抖动
+    clearTimeout(selBarTimer)
+    selBarTimer = setTimeout(() => {
+      const again = readDocSelection()
+      if (again) showSelBar(again)
+    }, 120)
+    return
+  }
+  clearTimeout(selBarTimer)
+  if (!state.sel.busy) hideSelBar()
+})
+
 document.addEventListener('mousedown', (event) => {
   if (event.target.id === 'overlay') closeModal()
+  if (!event.target.closest?.('[data-selbar]') && !event.target.closest?.('.doc-block')) hideSelBar()
   const switcher = document.getElementById('lib-switch')
   const panel = document.getElementById('lib-switch-panel')
   if (panel?.classList.contains('open') && switcher && !switcher.contains(event.target)) {
