@@ -718,9 +718,21 @@ async function polishSelection() {
   `)
 }
 
+/** 网络层错误翻译成人话（Failed to fetch 这类对作者毫无信息量）。 */
+function humanizeAgentError(error) {
+  const raw = text(error?.message || error)
+  if (error?.code) return `${error.code} · ${raw}`
+  if (/failed to fetch|networkerror|load failed/iu.test(raw)) {
+    return '连不上本地服务：可能正文服务已退出，或这次请求等待太久被浏览器断开。刷新页面后重试；反复出现说明 daemon 掉了。'
+  }
+  if (/aborted|abort/iu.test(raw)) return '已取消。'
+  return raw || '未知错误'
+}
+
 async function runPolish() {
   const hint = document.getElementById('polish-hint')?.value?.trim() || ''
   const errEl = document.getElementById('polish-err')
+  const runBtn = document.querySelector('[data-action="sel-polish-run"]')
   const context = selectionContext()
   const prompt = [
     '【润笔请求】',
@@ -731,7 +743,16 @@ ${context}`,
     hint ? `作者要求：${hint}` : '',
     '请只输出改写后的这一段正文，不要解释、不要加引号、不要小标题。'
   ].filter(Boolean).join('\n\n')
-  if (errEl) errEl.textContent = '润笔中…'
+  // 进度反馈：DSH 一 run 一进程，首次要 5~40 秒，不给计时作者会以为死了
+  state.sel.busy = true
+  if (runBtn) { runBtn.disabled = true; runBtn.textContent = '润笔中…' }
+  const startedAt = Date.now()
+  const tick = setInterval(() => {
+    if (!errEl) return
+    const sec = Math.round((Date.now() - startedAt) / 1000)
+    errEl.textContent = `润笔中…（${sec}s）——模型在跑，别关窗口`
+  }, 1000)
+  if (errEl) errEl.textContent = '润笔中…（0s）——模型在跑，别关窗口'
   try {
     const result = await runAgentOnce(prompt)
     state.sel.preview = { text: result, original: state.sel.text }
@@ -739,7 +760,10 @@ ${context}`,
     openPolishPreview()
   } catch (error) {
     state.sel.busy = false
-    if (errEl) errEl.textContent = `${error?.code ? `${error.code} · ` : ''}${text(error?.message || error)}`
+    if (errEl) errEl.textContent = humanizeAgentError(error)
+  } finally {
+    clearInterval(tick)
+    if (runBtn) { runBtn.disabled = false; runBtn.textContent = '开始润笔' }
   }
 }
 
@@ -1538,7 +1562,7 @@ async function renameSession(id, currentTitle) {
 }
 
 function rememberAgentError(error) {
-  agent.lastError = `${error?.code ? `${error.code} · ` : ''}${text(error?.message || error)}`
+  agent.lastError = humanizeAgentError(error)
 }
 
 /**
@@ -1604,9 +1628,13 @@ function msgHtml(item, index) {
   if (item.role === 'user') return `<div class="bub user">${esc(item.content)}</div>`
   const streamingThis = agent.streaming && index === agent.items.length - 1
   const cursor = streamingThis ? '<span class="cursor"></span>' : ''
+  // 等首字时给计时（DSH 一 run 一进程，5~40 秒很常见）
+  const waiting = streamingThis && !item.content && item.waiting
+    ? `<span class="waiting">模型正在跑… ${item.waiting}s（DSH 首次要拉子进程，通常几秒到半分钟）</span>`
+    : ''
   const partial = item.partial ? '<span class="partial-tag">已停止——这段是不完整回答，以服务器落档为准</span>' : ''
-  const foot = streamingThis ? '' : `<div class="bub-foot"><button class="mini" data-action="card-from" data-msg-index="${index}">转为待确认卡</button></div>`
-  return `<div class="bub assistant">${esc(item.content)}${cursor}${partial}${foot}</div>`
+  const foot = streamingThis || !item.content ? '' : `<div class="bub-foot"><button class="mini" data-action="card-from" data-msg-index="${index}">转为待确认卡</button></div>`
+  return `<div class="bub assistant">${waiting}${esc(item.content)}${cursor}${partial}${foot}</div>`
 }
 
 function cardHtml(item) {
@@ -1762,24 +1790,38 @@ async function sendAgentMessage() {
   const controller = new AbortController()
   agent.controller = controller
   renderAgent()
-  await streamChat({
-    content,
-    sessionId: agent.sessionId || undefined,
-    controller,
-    onStart: (sessionId) => { agent.sessionId = sessionId },
-    onDelta: (piece) => {
-      const last = agent.items[agent.items.length - 1]
-      if (last?.kind === 'msg' && last.role === 'assistant') {
-        last.content += piece
-        renderThread()
-      }
-    },
-    onNotice: (noticeText) => {
-      agent.notices.push(noticeText)
+  // 等待计时（DSH 一 run 一进程，首字要好几秒）：气泡里显示耗时，避免作者以为卡死
+  const startedAt = Date.now()
+  const waitingTimer = setInterval(() => {
+    const last = agent.items[agent.items.length - 1]
+    if (last?.kind === 'msg' && last.role === 'assistant' && !last.content) {
+      last.waiting = Math.round((Date.now() - startedAt) / 1000)
       renderThread()
-    },
-    onError: (error) => rememberAgentError(error)
-  })
+    }
+  }, 1000)
+  try {
+    await streamChat({
+      content,
+      sessionId: agent.sessionId || undefined,
+      controller,
+      onStart: (sessionId) => { agent.sessionId = sessionId },
+      onDelta: (piece) => {
+        const last = agent.items[agent.items.length - 1]
+        if (last?.kind === 'msg' && last.role === 'assistant') {
+          last.content += piece
+          last.waiting = 0
+          renderThread()
+        }
+      },
+      onNotice: (noticeText) => {
+        agent.notices.push(noticeText)
+        renderThread()
+      },
+      onError: (error) => rememberAgentError(error)
+    })
+  } finally {
+    clearInterval(waitingTimer)
+  }
   agent.streaming = false
   agent.controller = null
   await loadSessions()
@@ -3151,6 +3193,36 @@ async function startDeduce() {
   render()
 }
 
+/** 本库拆解里的角色名（推演 POV 自动补全用；读不到就返回空，不影响手动输入）。 */
+function characterNames() {
+  try {
+    const list = state.entries
+    if (!Array.isArray(list) || !list.length) return []
+    return [...new Set(list
+      .filter((entry) => entry.layer === 'character' && entry.name)
+      .map((entry) => String(entry.name).trim())
+      .filter(Boolean))].slice(0, 40)
+  } catch { return [] }
+}
+
+/** 进推演页时补一次拆解条目（只为 POV 候选；失败静默，不拦推演）。 */
+let deduceEntriesTried = false
+async function ensureEntriesForDeduce() {
+  if (deduceEntriesTried || !state.current) return
+  deduceEntriesTried = true
+  if (state.entries.length) return
+  try {
+    const query = new URLSearchParams({ root: state.current.path, offset: '0', limit: '500' })
+    const payload = await api(`/api/entries?${query.toString()}`)
+    const incoming = Array.isArray(payload.entries) ? payload.entries : []
+    if (incoming.length) {
+      state.entries = incoming
+      state.total = Number(payload.total) || incoming.length
+      if (state.view === 'deduce') render()
+    }
+  } catch { /* 没拆解条目＝推演本来就开不了局，这里只是补 POV 候选 */ }
+}
+
 function deduceHtml() {
   const deduce = state.deduce
   if (!state.current) return needLibraryHtml()
@@ -3177,7 +3249,8 @@ function deduceEngineHtml() {
   const engine = state.deduce.engine
   const data = engine.data
   const controls = `<div class="toolbar">
-      <input class="file-input" id="deduce-pov" placeholder="POV 角色（可选，如 林砚）" value="${esc(engine.pov)}">
+      <input class="file-input" id="deduce-pov" list="deduce-pov-list" placeholder="POV 角色（可选）" value="${esc(engine.pov)}">
+      <datalist id="deduce-pov-list">${characterNames().map((name) => `<option value="${esc(name)}"></option>`).join('')}</datalist>
       <input class="file-input" id="deduce-seed" placeholder="种子（留空＝随机，可复现）" value="${esc(engine.seed)}">
       <button class="btn-primary" data-action="deduce-engine-present"${engine.busy ? ' disabled' : ''}>${engine.busy ? '推演中…' : data ? '再推一拍' : '开始推演'}</button>
       ${data ? '<button class="btn-ghost" data-action="deduce-engine-reset">重新开局</button>' : ''}
@@ -3308,6 +3381,7 @@ async function openLibrary(path) {
   state.entryWarnings = []
   state.entry = null
   state.entryRevision = null
+  deduceEntriesTried = false // 换库了：POV 候选要重新拉
   state.books = []
   state.bookId = ''
   state.wiki = null
@@ -3604,6 +3678,10 @@ function go(view) {
     Promise.all([loadAgentRuntimes(), loadStyles(), loadSuites()])
       .then(() => { if (state.view === 'settings') render() })
       .catch(() => render())
+    return
+  }
+  if (view === 'deduce') {
+    ensureEntriesForDeduce() // POV 候选：有拆解就补上角色名
     return
   }
   if (view === 'artifacts') {
