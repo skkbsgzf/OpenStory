@@ -4,7 +4,7 @@
   "name": "DSH 原生",
   "kind": "dsh",
   "category": "dsh",
-  "description": "直连 DSH Desktop 的 OpenAI 兼容桥（DSH_CHAT_ENDPOINT 或 studio-plugin-state 里的 studioUrl/daemonUrl；不可达如实报）。",
+  "description": "直连本地 DeepSeek Harness：本机装了 dsh CLI 就走 od 同款 stdio 协议（一 run 一进程）；否则退回 DSH_CHAT_ENDPOINT/studio-plugin-state 的 OpenAI 兼容桥；都没有如实报。",
   "chatPath": "/v1/chat/completions",
   "probe": { "cmd": "node", "args": ["-e", "process.exit(0)"] }
 }
