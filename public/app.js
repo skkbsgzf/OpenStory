@@ -57,7 +57,7 @@ const state = {
   libDirs: [],
   dirWork: {},
   write: { chapters: [], listLoading: false, mode: 'read', docPrefs: null, drawerOpen: false },
-  sel: { text: '', blockIndex: -1, rect: null, busy: false, preview: null },
+  sel: { text: '', blockIndex: -1, rect: null, busy: false, preview: null, para: -1 },
   analyze: { open: false, result: null, busy: false, dismissed: {}, activePara: -1, expandOthers: false },
   deduce: { premise: '', variables: '', question: '', sessionId: '', streaming: false, reply: '', controller: null, error: '',
     mode: 'engine', engine: { busy: false, data: null, pov: '', seed: '', error: '', hint: '' } },
@@ -700,6 +700,75 @@ function readDocSelection() {
   return { text, blockEl, rect: range.getBoundingClientRect() }
 }
 
+/**
+ * 整段选中（OS-37）：左键点一行段落＝选中这一段。
+ * contenteditable 里光标是给写作用的；「选中一段」是另一种意图（接下来要润笔/问 Agent/分析），
+ * 所以这里走 DOM 的 Range 把整段选起来——和鼠标拖选是同一个结果，后面所有动作都复用它。
+ */
+function selectWholeBlock(blockEl) {
+  if (!blockEl) return null
+  const range = document.createRange()
+  range.selectNodeContents(blockEl)
+  const selection = window.getSelection()
+  if (!selection) return null
+  selection.removeAllRanges()
+  selection.addRange(range)
+  const rect = range.getBoundingClientRect()
+  const index = Number(blockEl.dataset.block)
+  state.sel.text = (blockEl.textContent || '').trim()
+  state.sel.blockIndex = index
+  state.sel.para = index
+  state.sel.rect = { top: rect.top, left: rect.left, width: rect.width, height: rect.height }
+  // 视觉上标出「这一段被选中」
+  document.querySelectorAll('.doc-block.para-on').forEach((el) => el.classList.remove('para-on'))
+  blockEl.classList.add('para-on')
+  return { range, rect, index }
+}
+
+/** 清掉整段选中态。 */
+function clearParaSelection() {
+  document.querySelectorAll('.doc-block.para-on').forEach((el) => el.classList.remove('para-on'))
+  state.sel.para = -1
+}
+
+/**
+ * 段落操作浮窗（OS-37 核心）。
+ * 作者口径：右键一段≈把这段框选出来，然后给三个动作——润笔 / 添加到 Agent / 分析这一段。
+ */
+const paraMenu = { el: null }
+
+function ensureParaMenu() {
+  if (paraMenu.el) return paraMenu.el
+  const menu = document.createElement('div')
+  menu.className = 'para-menu'
+  menu.dataset.paramenu = '1'
+  menu.innerHTML = [
+    '<button data-action="para-polish">润笔</button>',
+    '<button data-action="para-to-agent">添加到 Agent</button>',
+    '<button data-action="para-analyze">分析这一段</button>'
+  ].join('')
+  document.body.appendChild(menu)
+  paraMenu.el = menu
+  return menu
+}
+
+function showParaMenu(blockEl, x, y) {
+  const picked = selectWholeBlock(blockEl)
+  if (!picked) return
+  const menu = ensureParaMenu()
+  menu.classList.add('on')
+  // 贴右键位置，越界就翻到里侧
+  const rect = menu.getBoundingClientRect()
+  const left = Math.min(Math.max(8, x), window.innerWidth - rect.width - 8)
+  const top = Math.min(Math.max(8, y), window.innerHeight - rect.height - 8)
+  menu.style.left = `${left}px`
+  menu.style.top = `${top}px`
+}
+
+function hideParaMenu() {
+  if (paraMenu.el) paraMenu.el.classList.remove('on')
+}
+
 function showSelBar(picked) {
   const bar = ensureSelBar()
   bar.classList.add('on')
@@ -891,9 +960,80 @@ async function runAnalysis() {
   paintDocAnnotations()
 }
 
+/**
+ * 单段分析（OS-37）：把全章分析引擎收窄到一段。
+ * 作者口径：全章分析是全局功能，右键一段也该能只针对这一段落做分析。
+ * 复用同一个 analyzeChapter（它本来就接受任意段落数组），把结果落进独立的面板，
+ * 不覆盖右栏的全章分析结果。
+ */
+async function analyzeParagraph(index) {
+  const n = Number(index)
+  const blocks = renderedBlocks()
+  const block = blocks[n]
+  if (!block) return
+  await loadAnalysis()
+  state.sel.paraResult = { para: n, text: block.text, loading: true, result: null, error: '' }
+  hideParaMenu()
+  state.sel.para = n
+  renderParaResult()
+  try {
+    const one = [block.text]
+    const result = analysisModule.analyzeChapter(block.text, { paragraphs: one })
+    state.sel.paraResult = { para: n, text: block.text, loading: false, result, error: '' }
+  } catch (error) {
+    state.sel.paraResult = { para: n, text: block.text, loading: false, result: null, error: humanizeAgentError(error) }
+  }
+  renderParaResult()
+}
+
+/** 单段分析结果面板（浮窗，可关）。 */
+function renderParaResult() {
+  const data = state.sel.paraResult
+  const host = document.getElementById('para-result')
+  if (!host) return
+  if (!data) { host.classList.remove('on'); host.innerHTML = ''; return }
+  host.classList.add('on')
+  if (data.loading) {
+    host.innerHTML = '<div class="pr-head"><b>分析这一段</b><span class="sp"></span><button class="pr-x" data-action="para-result-close">×</button></div><div class="pr-body"><div class="loading">正在分析…</div></div>'
+    return
+  }
+  if (data.error) {
+    host.innerHTML = `<div class="pr-head"><b>分析这一段</b><span class="sp"></span><button class="pr-x" data-action="para-result-close">×</button></div><div class="pr-body"><div class="error-box">${esc(data.error)}</div></div>`
+    return
+  }
+  const r = data.result
+  if (!r) { host.innerHTML = ''; host.classList.remove('on'); return }
+  const stats = r.stats
+  const aiClass = r.aiSmell.score >= 50 ? 'bad' : r.aiSmell.score >= 25 ? 'mid' : 'good'
+  // 单段的问题清单（引擎按段跑，issues 自然只属于这一段）
+  const issueRows = r.issues.map((issue) =>
+    `<div class="issue-card sev-${esc(issue.severity)}">
+      <div class="ic-head"><span class="ic-tag">${esc(issue.label)}</span></div>
+      <div class="ic-detail">${esc(issue.detail)}</div>
+    </div>`).join('')
+  host.innerHTML = `<div class="pr-head">
+      <b>分析这一段</b><span class="count">第 ${data.para + 1} 段 · ${stats.chars} 字</span>
+      <span class="sp"></span><button class="pr-x" data-action="para-result-close" title="关闭">×</button>
+    </div>
+    <div class="pr-body">
+      <div class="analyze-kpis">
+        <span><b>${stats.avgSentenceLen}</b> 字/句</span>
+        <span><b>${stats.dialogueRatio}%</b> 对白</span>
+        <span><b>${stats.sentences}</b> 句</span>
+        <span>AI 味 <b class="ai-score ${aiClass}">${r.aiSmell.score}</b></span>
+      </div>
+      ${r.rhythm?.length > 1 ? `<div class="pr-sec"><h5>句子长度</h5>${sparkline(r.rhythm.map((x) => x.chars), { color: 'var(--ok)' })}</div>` : ''}
+      ${r.aiSmell.factors.length ? `<div class="pr-sec"><h5>AI 味构成</h5>${r.aiSmell.factors.map(barRow).join('')}</div>` : ''}
+      <div class="pr-sec"><h5>这一段的问题 <span class="count">${r.issues.length}</span></h5>
+        ${issueRows || '<p class="sub">这一段没有明显问题。</p>'}</div>
+      <div class="ops">
+        <button class="btn-ghost" data-action="para-analyze" data-block-index="${data.para}">重新分析</button>
+      </div>
+    </div>`
+}
+
 /** 分析用的段落（与渲染块一致；去掉大标题）。 */
-function analysisParagraphs() {
-  if (!mdReady || !mdModule) return []
+function analysisParagraphs() {  if (!mdReady || !mdModule) return []
   return mdModule.splitBlocks(state.chapterText)
     .filter((block) => !/^\s*#\s+/u.test(block.text))
     .map((block) => block.text)
@@ -3954,7 +4094,19 @@ document.addEventListener('click', (event) => {
     return
   }
   const action = target.dataset.action
-  if (action === 'settings-close') {
+  if (action === 'para-polish') {
+    hideParaMenu()
+    polishSelection()
+  } else if (action === 'para-to-agent') {
+    hideParaMenu()
+    discussSelection()
+  } else if (action === 'para-analyze') {
+    hideParaMenu()
+    analyzeParagraph(target.dataset.blockIndex !== undefined ? target.dataset.blockIndex : state.sel.para)
+  } else if (action === 'para-result-close') {
+    state.sel.paraResult = null
+    renderParaResult()
+  } else if (action === 'settings-close') {
     event.stopPropagation() // 点 × 不该先触发页签切换
     closeSettingsTab()
   } else if (action === 'tab-hide') {
@@ -4268,14 +4420,17 @@ document.addEventListener('focusout', (event) => {
   if (blockEl && state.view === 'write') commitDocBlock(blockEl)
 })
 
-// 文档内框选 → 上方浮窗（润笔 / 与 Agent 讨论）
+// 文档内拖选文字 → 上方浮窗（润笔 / 与 Agent 讨论）
+// OS-37：右键整段已是主入口；这里只服务「拖选了半句话」的场景，且落在有真实拖选时才弹。
 // 注意：不要监听 scroll 收浮窗——contenteditable 聚焦会触发滚动，会把刚弹出的浮窗立刻收掉。
 let selBarTimer = null
 document.addEventListener('selectionchange', () => {
   if (state.view !== 'write') return
   const picked = readDocSelection()
   if (picked) {
-    // 拖选过程中选区在变，等 120ms 稳定后再弹，避免抖动
+    // 整段被 Range 全选（右键走的路径）时不再弹横条——那是段操作，不是文字级操作
+    const wholeBlock = picked.text.length === (picked.blockEl.textContent || '').trim().length
+    if (wholeBlock) { hideSelBar(); return }
     clearTimeout(selBarTimer)
     selBarTimer = setTimeout(() => {
       const again = readDocSelection()
@@ -4290,6 +4445,7 @@ document.addEventListener('selectionchange', () => {
 document.addEventListener('mousedown', (event) => {
   if (event.target.id === 'overlay') closeModal()
   if (!event.target.closest?.('[data-selbar]') && !event.target.closest?.('.doc-block')) hideSelBar()
+  if (!event.target.closest?.('[data-paramenu]')) hideParaMenu()
   const switcher = document.getElementById('lib-switch')
   const panel = document.getElementById('lib-switch-panel')
   if (panel?.classList.contains('open') && switcher && !switcher.contains(event.target)) {
@@ -4299,6 +4455,36 @@ document.addEventListener('mousedown', (event) => {
   if (document.getElementById('agent-sess-panel')?.classList.contains('open') && sessDd && !sessDd.contains(event.target)) {
     closeAgentSessions()
   }
+})
+
+/* ---------- 段操作（OS-37）：左键选中整段 / 右键出浮窗 ---------- */
+
+// 右键一段 ＝ 把这一段「框选」出来，并给出三个动作（润笔 / 添加到 Agent / 分析这一段）
+document.addEventListener('contextmenu', (event) => {
+  if (state.view !== 'write') return
+  const blockEl = event.target?.closest?.('.doc-block')
+  if (!blockEl) return
+  event.preventDefault() // 不要系统右键菜单
+  hideSelBar()
+  showParaMenu(blockEl, event.clientX, event.clientY)
+})
+
+// 左键点一行：把这一段标成「选中」（视觉高亮），但不动光标——contenteditable 里还要正常打字
+document.addEventListener('click', (event) => {
+  if (state.view !== 'write') return
+  if (event.button !== 0) return
+  if (event.target.closest?.('.doc-gutter, [data-paramenu], .para-result, .sel-bar')) return
+  const blockEl = event.target?.closest?.('.doc-block')
+  if (!blockEl) return
+  const selection = window.getSelection?.()
+  if (selection && !selection.isCollapsed) return // 用户在拖选，别抢
+  // 标出选中态：记下这一段作为「当前段」，右键/动作都拿它
+  const index = Number(blockEl.dataset.block)
+  state.sel.para = index
+  state.sel.blockIndex = index
+  state.sel.text = (blockEl.textContent || '').trim()
+  document.querySelectorAll('.doc-block.para-on').forEach((el) => el.classList.remove('para-on'))
+  blockEl.classList.add('para-on')
 })
 
 /* ---------- 风格包（OS-5：目录加载，真皮在 daemon 侧 styles/ 目录）---------- */
