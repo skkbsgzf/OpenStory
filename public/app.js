@@ -433,19 +433,19 @@ function setDocPref(key, value) {
   applyDocPrefs()
 }
 
-/** 阅读态渲染（md → HTML，段落带 data-para 供点入即改）。 */
-function renderDocBody(text, { dropLeadingH1 = false } = {}) {
-  if (!mdReady || !mdModule) return `<div class="prose"><p>${esc(text)}</p></div>`
-  let body = text
-  if (dropLeadingH1) {
-    // 大标题已在文档头显示——正文里首个 H1 丢掉，避免「第001章 / 第一章」两行叠着
-    body = String(text || '').replace(/^\s*#\s+[^\n]*\n?/u, '')
-  }
-  const html = mdModule.renderMarkdown(body)
-  // 给每个顶层块编号（点入即改映射用）
-  let index = 0
-  const numbered = html.replace(/<(p|h[1-6]|ul|ol|blockquote|pre|hr)/gu, (match, tag) => `<${tag} data-para="${index++}"`)
-  return `<div class="doc-paper prose" id="doc-reader">${numbered}</div>`
+/**
+ * 逐块渲染（OS-22 认知修正：默认就能实时编辑，不做阅读/编辑切换）。
+ * 每个块输出一个 contenteditable 段落组件——点进去直接改，失焦即按块偏移写回源码并自动保存。
+ * 大标题（md 首个 H1）已在文档头显示，正文里跳过。
+ */
+function renderDocBody(text) {
+  if (!mdReady || !mdModule) return `<div class="doc-paper prose"><p>${esc(text)}</p></div>`
+  const blocks = mdModule.splitBlocks(text).filter((block) => !/^\s*#\s+/u.test(block.text))
+  const parts = blocks.map((block, index) => {
+    const html = mdModule.renderMarkdown(block.text)
+    return `<div class="doc-block" contenteditable="true" spellcheck="false" data-block="${index}" data-start="${block.start}" data-end="${block.end}" data-raw="${esc(block.text)}">${html}</div>`
+  })
+  return `<div class="doc-paper prose" id="doc-reader">${parts.join('')}</div>`
 }
 
 function formatBytes(size) {
@@ -453,11 +453,18 @@ function formatBytes(size) {
   return value >= 1024 ? `${(value / 1024).toFixed(1)} KB` : `${value} B`
 }
 
+/**
+ * 拉章节清单。OS-22：不整页重绘——只重画左侧章节列表（实时编辑时纸面 DOM 不能被换掉）。
+ * 首次进页面（列表为空）才走整页 render 摆 loading。
+ */
 async function loadWriteChapters({ force = false } = {}) {
   if (!state.current) return
   if (state.write.chapters.length && !force) return
-  state.write.listLoading = true
-  render()
+  const firstLoad = state.write.chapters.length === 0
+  if (firstLoad) {
+    state.write.listLoading = true
+    render()
+  }
   try {
     const payload = await api(`/api/chapters?root=${encodeURIComponent(state.current.path)}&dir=${encodeURIComponent('正文')}`)
     state.write.chapters = Array.isArray(payload.chapters) ? payload.chapters : []
@@ -465,39 +472,26 @@ async function loadWriteChapters({ force = false } = {}) {
     state.error = `${error?.code ? `${error.code} · ` : ''}${text(error?.message || error)}`
   }
   state.write.listLoading = false
+  refreshChapterRows()
+}
+
+/** 只重画左侧章节行（不动纸面/光标）。 */
+function refreshChapterRows() {
+  if (state.view !== 'write') return
+  const host = document.querySelector('.chapter-rows')
+  if (!host) return
+  const rows = state.write.chapters.map((chapter) => `
+    <button class="ch-row${chapter.file === state.chapterFile ? ' on' : ''}" data-chapter-file="${esc(chapter.file)}" title="${esc(chapter.file)}">
+      <span class="no">${chapter.no !== null ? String(chapter.no).padStart(2, '0') : '—'}</span>
+      <span class="tt">${esc(chapter.title)}</span>
+      <span class="sz">${formatBytes(chapter.chars)}</span>
+    </button>`).join('')
+  host.innerHTML = rows || '<div class="count" style="padding:8px">还没有章节——右上输入标题新建第一章。</div>'
 }
 
 
 /* ---------- 沉浸式编辑交互（OS-21）---------- */
 
-/** 阅读 → 编辑：按被点中的段落序号换算出源码偏移并聚焦。 */
-function enterDocEdit(paraIndex = -1) {
-  if (!state.chapterLoaded) return
-  state.write.mode = 'edit'
-  render()
-  const editor = document.getElementById('chapter-editor')
-  if (!editor) return
-  let offset = 0
-  if (paraIndex >= 0 && mdModule) {
-    const offsets = mdModule.paragraphOffsets(state.chapterText)
-    offset = offsets[Math.min(paraIndex, offsets.length - 1)] ?? 0
-  }
-  editor.focus()
-  try { editor.setSelectionRange(offset, offset) } catch { /* 忽略 */ }
-  const lineHeight = parseFloat(getComputedStyle(editor).lineHeight) || 24
-  const before = editor.value.slice(0, offset).split(String.fromCharCode(10)).length
-  editor.scrollTop = Math.max(0, (before - 3) * lineHeight)
-}
-
-function leaveDocEdit() {
-  state.write.mode = 'read'
-  render()
-}
-
-function toggleDocMode() {
-  if (state.write.mode === 'edit') leaveDocEdit()
-  else enterDocEdit(-1)
-}
 
 /** 版本历史：跳到产物中心并预选该文件的历史（产物中心已有 bak/deleted 归一与恢复）。 */
 async function openChapterHistory() {
@@ -507,6 +501,108 @@ async function openChapterHistory() {
   const hit = inventory.groups.flatMap((group) => group.history ?? []).find((item) => item.originalName === base)
   if (hit) previewArtifact(hit.file)
   else render()
+}
+
+
+/* ---------- 实时逐块编辑（OS-22）：blur 即回写源码并自动保存 ---------- */
+
+let docSaveTimer = null
+
+function setAutosaveChip(text) {
+  const chip = document.getElementById('doc-autosave')
+  if (chip) chip.textContent = text
+}
+
+/** 块内 HTML → 该块的 Markdown 源码（最小可逆：p→段落、br→换行、strong/em/code 回标记）。 */
+function blockHtmlToMd(blockEl) {
+  const html = blockEl.innerHTML
+  const withInline = html
+    .replace(/<strong[^>]*>([\s\S]*?)<\/strong>/giu, '**$1**')
+    .replace(/<em[^>]*>([\s\S]*?)<\/em>/giu, '*$1*')
+    .replace(/<code[^>]*>([\s\S]*?)<\/code>/giu, '`$1`')
+    .replace(/<a[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/giu, '[$2]($1)')
+  const lines = withInline
+    .replace(/<br\s*\/?>/giu, '\n')
+    .split(/<\/p>\s*<p[^>]*>|<p[^>]*>|<\/p>/giu)
+    .join('\n')
+  const text = lines
+    .replace(/<[^>]+>/gu, '')
+    .replace(/&nbsp;/gu, ' ')
+    .replace(/&lt;/gu, '<')
+    .replace(/&gt;/gu, '>')
+    .replace(/&quot;/gu, '"')
+    .replace(/&#39;/gu, "'")
+    .replace(/&amp;/gu, '&')
+  return text.split('\n').map((line) => line.trimEnd()).join('\n').trim()
+}
+
+/** 一个块改完：按 start/end 替换源码中那一段，然后自动保存。 */
+async function commitDocBlock(blockEl) {
+  if (!state.current || !state.chapterFile) return
+  const start = Number(blockEl.dataset.start)
+  const end = Number(blockEl.dataset.end)
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return
+  const nextBlock = blockHtmlToMd(blockEl)
+  const currentRaw = blockEl.dataset.raw ?? ''
+  if (nextBlock === currentRaw) return
+  const text = state.chapterText.slice(0, start) + nextBlock + state.chapterText.slice(end)
+  state.chapterText = text
+  blockEl.dataset.raw = nextBlock
+  setAutosaveChip('保存中…')
+  try {
+    const payload = await api('/api/chapter', {
+      method: 'PUT',
+      body: JSON.stringify({ root: state.current.path, file: state.chapterFile, text })
+    })
+    state.savedAt = payload.savedAt
+    state.chapterNote = ''
+    setAutosaveChip('已保存 · 刚刚')
+    const chars = document.getElementById('chapter-chars')
+    if (chars) chars.textContent = `${text.length} 字`
+    // 字数变了同步左侧列表（不阻塞）
+    clearTimeout(docSaveTimer)
+    docSaveTimer = setTimeout(() => { loadWriteChapters({ force: true }) }, 1500)
+  } catch (error) {
+    setAutosaveChip('保存失败')
+    state.error = `${error?.code ? `${error.code} · ` : ''}${text(error?.message || error)}`
+    render()
+  }
+}
+
+/** 本章显示设置（面板自管，不进应用设置）——右上 ⚙ 弹层。 */
+function openDocPanelSettings() {
+  const prefs = loadDocPrefs()
+  const slider = (key, label, min, max, step, unit) => `
+    <div class="field"><label>${esc(label)}<span class="count" id="dp-${key}"> ${prefs[key]}${unit}</span></label>
+      <input type="range" data-docpref="${key}" min="${min}" max="${max}" step="${step}" value="${prefs[key]}">
+    </div>`
+  openModal(`
+    <h3>本章显示</h3>
+    <p class="sub">只影响正文阅读与编辑的观感，存本机。应用级设置（插件/运行时/导入）在右上角「设置」。</p>
+    ${slider('fontSize', '字号', 14, 24, 1, 'px')}
+    ${slider('lineHeight', '行高', 1.4, 2.6, 0.05, '')}
+    ${slider('paraGap', '段距', 0, 2.5, 0.1, 'em')}
+    ${slider('indent', '首行缩进', 0, 3, 0.5, 'em')}
+    <div class="field"><label>自动隔行</label>
+      <button class="btn-ghost" data-action="docpref-toggle-gap">${prefs.autoGap ? '已开启（点按关闭）' : '已关闭（点按开启）'}</button>
+    </div>
+    <div class="ops"><button class="btn-ghost" data-action="modal-close">关闭</button></div>
+  `)
+}
+
+/** 本章更多（版本历史/重命名/删除）——⚙ 之外的唯一入口，收在一个⋯里。 */
+function openDocMore() {
+  const hasFile = Boolean(state.chapterFile)
+  openModal(`
+    <h3>本章</h3>
+    <p class="sub">${esc(state.chapterFile || '未选章节')}</p>
+    <div class="ops" style="flex-direction:column;align-items:stretch;gap:8px">
+      <button class="btn-ghost" data-action="chapter-history"${hasFile ? '' : ' disabled'}>版本历史</button>
+      <button class="btn-ghost" data-action="chapter-rename"${hasFile ? '' : ' disabled'}>重命名</button>
+      <button class="btn-ghost" data-action="chapter-delete"${hasFile ? '' : ' disabled'}>删除（进 .history）</button>
+      <button class="btn-ghost" data-action="modal-close">关闭</button>
+    </div>
+  `)
 }
 
 async function createChapterFlow() {
@@ -597,11 +693,8 @@ function writeHtml() {
   const saved = state.savedAt ? `<span class="saved-chip">已保存 · ${esc(formatAt(state.savedAt))}</span>` : ''
   const note = state.chapterNote ? `<span class="count">${esc(state.chapterNote)}</span>` : ''
   applyDocPrefs()
-  const isEdit = state.write.mode === 'edit'
   const editor = state.chapterLoaded
-    ? (isEdit
-        ? `<textarea class="doc-paper doc-editor" id="chapter-editor" spellcheck="false" placeholder="正文内容…">${esc(state.chapterText)}</textarea>`
-        : `<div class="doc-paper" id="doc-click-layer" title="点任意段落开始编辑">${mdReady ? renderDocBody(state.chapterText, { dropLeadingH1: true }) : '<div class="loading">渲染器载入中…</div>'}</div>`)
+    ? (mdReady ? renderDocBody(state.chapterText) : '<div class="loading">渲染器载入中…</div>')
     : `<div class="empty-state">
         <h2>选一章开始</h2>
         <p>左侧点章节载入；或输入标题新建一章（自动编号）。章节就是 <span class="hint">正文/NNN-标题.md</span> 文件，Pinax 里同样可见。</p>
@@ -624,17 +717,14 @@ function writeHtml() {
         <span class="docline-sep">·</span>
         <span class="count">${state.chapterMetaAt ? `改于 ${esc(formatAt(state.chapterMetaAt))}` : ''}</span>
         <span class="sp"></span>
-        ${state.chapterFile ? `<button class="doc-link" data-action="chapter-history">版本历史 →</button>` : ''}
-        <button class="doc-link" data-action="toggle-doc-mode">${state.write.mode === 'edit' ? '阅读' : '编辑'}</button>
+        <span class="doc-autosave" id="doc-autosave"></span>
+        <button class="doc-icon" data-action="doc-panel-settings" title="本章显示设置">⚙</button>
+        <button class="doc-icon" data-action="doc-more" title="更多（版本历史 / 重命名 / 删除）">⋯</button>
       </div>
       <h1 class="doc-title">${esc(docTitle)}</h1>
       <div class="doc-actions">
-        <button class="doc-link" data-action="chapter-nav" data-file="${esc(prev?.file ?? '')}"${prev ? '' : ' disabled'}>← 上一章</button>
-        <button class="doc-link" data-action="chapter-nav" data-file="${esc(next?.file ?? '')}"${next ? '' : ' disabled'}>下一章 →</button>
-        <span class="sp"></span>
-        <button class="doc-link" data-action="chapter-rename"${state.chapterFile ? '' : ' disabled'}>重命名</button>
-        <button class="doc-link" data-action="chapter-delete"${state.chapterFile ? '' : ' disabled'}>删除</button>
-        ${state.write.mode === 'edit' ? `<button class="btn-primary doc-save" data-action="save-chapter"${state.chapterLoaded ? '' : ' disabled'}>保存</button>` : ''}
+        <button class="doc-link" data-action="chapter-nav" data-file="${esc(prev?.file ?? '')}"${prev ? '' : ' disabled'} title="上一章">←</button>
+        <button class="doc-link" data-action="chapter-nav" data-file="${esc(next?.file ?? '')}"${next ? '' : ' disabled'} title="下一章">→</button>
       </div>
       <div class="doc-mini-meta">
         ${saved}${note}
@@ -2726,11 +2816,6 @@ document.addEventListener('click', (event) => {
     return
   }
 
-  const paraEl = event.target.closest('[data-para]')
-  if (paraEl && state.view === 'write' && state.write.mode === 'read') {
-    enterDocEdit(Number(paraEl.dataset.para))
-    return
-  }
   if (target.dataset.settingsSection) {
     state.settings.section = target.dataset.settingsSection
     render()
@@ -2896,8 +2981,10 @@ document.addEventListener('click', (event) => {
   } else if (action === 'docpref-toggle-gap') {
     setDocPref('autoGap', !loadDocPrefs().autoGap)
     render()
-  } else if (action === 'toggle-doc-mode') {
-    toggleDocMode()
+  } else if (action === 'doc-panel-settings') {
+    openDocPanelSettings()
+  } else if (action === 'doc-more') {
+    openDocMore()
   } else if (action === 'chapter-history') {
     openChapterHistory()
   } else if (action === 'chapter-nav') {
@@ -3027,6 +3114,12 @@ document.addEventListener('dblclick', (event) => {
 })
 
 // 点弹层遮罩空白处＝关闭；点切换器之外＝收起库下拉
+// 逐块实时编辑：失焦即写回并自动保存（不需要「编辑/保存」按钮）
+document.addEventListener('focusout', (event) => {
+  const blockEl = event.target?.closest?.('.doc-block[data-block]')
+  if (blockEl && state.view === 'write') commitDocBlock(blockEl)
+})
+
 document.addEventListener('mousedown', (event) => {
   if (event.target.id === 'overlay') closeModal()
   const switcher = document.getElementById('lib-switch')

@@ -185,3 +185,37 @@ export function paragraphOffsets(source) {
   if (cursor > blockStart) offsets.push(blockStart)
   return offsets
 }
+
+/**
+ * 按空行切块（OS-22）：块＝渲染后的一个「文档组件」，也是实时编辑的最小单位。
+ * 返回 [{start, end, text}]——start/end 是源码字符偏移，改一个块只替换这一段。
+ */
+export function splitBlocks(source) {
+  const raw = String(source ?? '').replace(/\r\n?/gu, '\n')
+  const blocks = []
+  let offset = 0
+  let current = null
+  let buffer = []
+  let inFence = false
+  const flush = () => {
+    if (current && buffer.length) {
+      blocks.push({ start: current.start, end: current.end, text: buffer.join('\n') })
+    }
+    current = null
+    buffer = []
+  }
+  for (const line of raw.split('\n')) {
+    if (/^\s*```/u.test(line)) inFence = !inFence
+    const blank = !inFence && !line.trim()
+    if (blank) {
+      flush()
+    } else {
+      if (!current) current = { start: offset, end: offset }
+      current.end = offset + line.length
+      buffer.push(line)
+    }
+    offset += line.length + 1
+  }
+  flush()
+  return blocks
+}
