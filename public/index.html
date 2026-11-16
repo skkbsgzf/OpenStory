@@ -419,6 +419,19 @@ html[data-doc-auto-gap="off"] .doc-block { margin-bottom: 0; }
 .sm-toggle.on .lab { color: var(--ok); }
 .sm-toggle:hover { border-color: var(--ink); }
 
+/* ── 选区浮窗＋Agent 上下文条（OS-24）────────────── */
+.sel-bar { position: fixed; z-index: 120; display: none; gap: 4px; padding: 4px; background: var(--bg); border: 1px solid var(--line); border-radius: var(--pill); box-shadow: var(--shadow); }
+.sel-bar.on { display: flex; }
+.sel-bar button { border-radius: var(--pill); padding: 5px 14px; font-size: 12px; color: var(--ink-2); }
+.sel-bar button:hover { background: var(--accent-soft); color: var(--accent); }
+.agent-context:empty { display: none; }
+.agent-context { padding: 0 14px 6px; }
+.ctx-chip { display: flex; align-items: center; gap: 8px; border: 1px dashed var(--accent); border-radius: var(--radius); padding: 6px 10px; font-size: 11px; background: var(--accent-soft); }
+.ctx-chip .ctx-label { color: var(--accent); font-weight: 600; flex: 0 0 auto; }
+.ctx-chip .ctx-text { color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+.ctx-chip .ctx-x { color: var(--meta); font-size: 14px; line-height: 1; }
+.ctx-chip .ctx-x:hover { color: var(--danger); }
+
 /* ── 色板（左下角浮层）──────────────────────────────────── */
 .palette-fab { position: fixed; left: 14px; bottom: 118px; width: 38px; height: 38px; border-radius: 50%; background: conic-gradient(from 210deg, #ff385c, #7a5c2e, #2c2e35, #ff385c); border: 2px solid var(--bg); box-shadow: var(--shadow); z-index: 60; }
 .palette { position: fixed; left: 14px; bottom: 164px; width: 260px; background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius-md); box-shadow: var(--shadow); padding: 12px; z-index: 60; display: none; }
@@ -464,6 +477,7 @@ html[data-doc-auto-gap="off"] .doc-block { margin-bottom: 0; }
           回答可以转成「待确认卡」，采纳后才真正写进正文文件。
         </div>
       </div>
+      <div class="agent-context" id="agent-context"></div>
       <div class="composer">
         <textarea id="agent-input" placeholder="先选一个库，再和 Agent 聊…" disabled></textarea>
         <div class="row">
