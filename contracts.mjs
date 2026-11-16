@@ -204,7 +204,10 @@ export const ENDPOINTS = Object.freeze({
         root: 'string',
         sessionId: 'string?',
         content: 'string',
-        model: 'string?'
+        model: 'string?',
+        // ephemeral=true＝一次性调用（润笔/讨论/单段分析这类工具动作）：
+        // 不建会话、不落档、不出现在会话列表里，只在本次响应里回结果。
+        ephemeral: 'boolean?'
       }
     },
     response: { stream: 'string' },

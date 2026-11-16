@@ -1445,22 +1445,33 @@ async function handleAgentChat(req, res, request, context, root, libraries) {
   }
   const targetUrl = upstream.url ? new URL(upstream.url) : null
 
+  // ephemeral：一次性工具调用（润笔/讨论/单段分析）——不建会话、不落档、不留痕。
+  // 否则每润一次笔就在会话列表里多一条「【润笔请求】…」，作者的真会话会被淹没。
+  const ephemeral = request.ephemeral === true
+
   // 会话：sessionId 缺省＝新建（标题取首句）；给了就必须真存在。
   const sessionsDir = context.agentSessionsDir
   let loaded = request.sessionId ? await readSession(sessionsDir, root, request.sessionId) : null
   if (request.sessionId && !loaded) {
     return sendError(res, API_ERROR_CODES.NOT_FOUND, `会话不存在：${request.sessionId}`)
   }
-  if (!loaded) {
-    const title = text(request.content).replace(/\s+/gu, ' ').trim().slice(0, 24) || '新会话'
-    const created = await createSession(sessionsDir, root, title)
-    loaded = { session: created, items: [] }
+  let sessionId = ''
+  let history = { items: [] }
+  if (ephemeral) {
+    // 一次性调用：只带这一条，不读也不写任何会话文件
+    history = { items: [{ kind: 'msg', role: 'user', content: request.content, at: new Date().toISOString() }] }
+  } else {
+    if (!loaded) {
+      const title = text(request.content).replace(/\s+/gu, ' ').trim().slice(0, 24) || '新会话'
+      const created = await createSession(sessionsDir, root, title)
+      loaded = { session: created, items: [] }
+    }
+    sessionId = loaded.session.id
+    await appendSession(sessionsDir, root, sessionId, [{
+      t: 'msg', id: newMessageId(), role: 'user', content: request.content, at: new Date().toISOString()
+    }])
+    history = await readSession(sessionsDir, root, sessionId)
   }
-  const sessionId = loaded.session.id
-  await appendSession(sessionsDir, root, sessionId, [{
-    t: 'msg', id: newMessageId(), role: 'user', content: request.content, at: new Date().toISOString()
-  }])
-  const history = await readSession(sessionsDir, root, sessionId)
   const upstreamMessages = buildUpstreamMessages(await systemPromptFor(root, libraries, context.genresDirs, context.skillsDirs), history.items)
   const model = text(request.model || upstream.model).trim()
 
@@ -1496,9 +1507,11 @@ async function handleAgentChat(req, res, request, context, root, libraries) {
       onText: (piece) => sseFrame(res, { type: 'delta', text: piece })
     })
     if (result.ok && result.text.trim()) {
-      await appendSession(sessionsDir, root, sessionId, [{
-        t: 'msg', id: newMessageId(), role: 'assistant', content: result.text, at: new Date().toISOString()
-      }])
+      if (!ephemeral) {
+        await appendSession(sessionsDir, root, sessionId, [{
+          t: 'msg', id: newMessageId(), role: 'assistant', content: result.text, at: new Date().toISOString()
+        }])
+      }
       sseFrame(res, { type: 'done', sessionId, chars: result.text.length })
     } else {
       sseFrame(res, { type: 'error', error: { code: API_ERROR_CODES.AGENT_UPSTREAM_ERROR, message: result.message ?? 'DSH 无输出' } })
@@ -1519,9 +1532,11 @@ async function handleAgentChat(req, res, request, context, root, libraries) {
     const cli = await runCliChat(upstream.kit, upstreamMessages)
     if (cli.ok) {
       sseFrame(res, { type: 'delta', text: cli.text })
-      await appendSession(sessionsDir, root, sessionId, [{
-        t: 'msg', id: newMessageId(), role: 'assistant', content: cli.text, at: new Date().toISOString()
-      }])
+      if (!ephemeral) {
+        await appendSession(sessionsDir, root, sessionId, [{
+          t: 'msg', id: newMessageId(), role: 'assistant', content: cli.text, at: new Date().toISOString()
+        }])
+      }
       sseFrame(res, { type: 'done', sessionId, chars: cli.text.length })
     } else {
       sseFrame(res, { type: 'error', error: { code: API_ERROR_CODES.AGENT_UPSTREAM_ERROR, message: cli.message } })
@@ -1581,7 +1596,8 @@ async function handleAgentChat(req, res, request, context, root, libraries) {
   }
 
   // 落档：完整回答、或被停止/中断的部分回答，partial 如实标；空回答不落（错误帧已如实报）。
-  if (full.trim()) {
+  // ephemeral（润笔这类一次性调用）不落档。
+  if (!ephemeral && full.trim()) {
     const partial = controller.signal.aborted || Boolean(upstreamError)
     await appendSession(sessionsDir, root, sessionId, [{
       t: 'msg', id: newMessageId(), role: 'assistant', content: full,
