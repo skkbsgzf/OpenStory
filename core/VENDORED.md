@@ -20,3 +20,10 @@
   载体**实现**（tools.mjs）不上底座（OpenStory 从不调用，registry.install 的 impl 传空）。
 - `@pinax/core` 包是上游 pinax-core 抽包路线的既有产物（core README 禁 monorepo），
   本仓作为消费者依赖；底座升格时按同一模式把 core/pinax/ 逐步上收。
+
+
+## OS-29 追加（推演引擎）
+
+（18 文件）逐字 vendor 自同一提交 70a4f44：
+推演链 （turn/candidates/settle/opening/sessionState）＋ 
+＋ （aliases/stableId/vocabulary/validity/pediaSchema）。同步方式：改上游 → 重跑 。
