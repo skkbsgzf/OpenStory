@@ -70,6 +70,33 @@ function countHits(source, words) {
  * 分析一章。返回 {stats, rhythm, emotion, style, aiSmell, issues}。
  * `paragraphs` 来自调用方（正文面板按块给出），也接受原始 md（内部自己切）。
  */
+/**
+ * 定位工具：把「文本片段」映射到段落号（可能多段）。
+ * 直接 includes 找不到时（跨段、被空白隔断）退化成去空白匹配；
+ * 返回 [] 表示未定位——调用方会把它当「全章问题」，不再拿 -1 去痛打界面。
+ */
+function paragraphsOf(paras, needle) {
+  if (!needle) return []
+  const direct = []
+  paras.forEach((line, index) => { if (line.includes(needle)) direct.push(index) })
+  if (direct.length) return direct
+  const compact = String(needle).replace(/\s/gu, '')
+  if (!compact) return []
+  const loose = []
+  paras.forEach((line, index) => { if (line.replace(/\s/gu, '').includes(compact)) loose.push(index) })
+  if (loose.length) return loose
+  const head = compact.slice(0, 6)
+  if (head.length < 4) return []
+  const fuzzy = []
+  paras.forEach((line, index) => { if (line.replace(/\s/gu, '').includes(head)) fuzzy.push(index) })
+  return fuzzy
+}
+
+function paragraphOf(paras, needle) {
+  const hits = paragraphsOf(paras, needle)
+  return hits.length ? hits[0] : -1
+}
+
 export function analyzeChapter(source, { paragraphs = null } = {}) {
   const raw = text(source)
   const paras = (Array.isArray(paragraphs) && paragraphs.length ? paragraphs : raw.split(/\n{2,}/u))
@@ -145,7 +172,7 @@ export function analyzeChapter(source, { paragraphs = null } = {}) {
         label: '长句',
         excerpt: clean.slice(0, 40),
         detail: `${clean.length} 字一句（阈值 ${LONG_SENTENCE}）——中文长句易失焦，建议断成两到三句。`,
-        paragraph: paras.findIndex((line) => line.includes(sentence.slice(0, 12)))
+        paragraph: paragraphOf(paras, sentence.slice(0, 12))
       })
     }
   }
@@ -171,7 +198,8 @@ export function analyzeChapter(source, { paragraphs = null } = {}) {
       label: `套话「${hit.word}」`,
       excerpt: hit.word,
       detail: `全文出现 ${hit.count} 次——这类副词/短语是模板文高频特征，可换成具体动作或删掉。`,
-      paragraph: paras.findIndex((line) => line.includes(hit.word))
+      paragraph: paragraphOf(paras, hit.word),
+      paragraphs: paragraphsOf(paras, hit.word)
     })
   }
   for (const hit of connectiveHits) {
@@ -182,7 +210,8 @@ export function analyzeChapter(source, { paragraphs = null } = {}) {
       label: `连接词「${hit.word}」`,
       excerpt: hit.word,
       detail: `出现 ${hit.count} 次——书面连接词堆砌会让叙述变"报告体"。`,
-      paragraph: paras.findIndex((line) => line.includes(hit.word))
+      paragraph: paragraphOf(paras, hit.word),
+      paragraphs: paragraphsOf(paras, hit.word)
     })
   }
   // 重复用词（4 字块出现 ≥4 次）
@@ -197,7 +226,8 @@ export function analyzeChapter(source, { paragraphs = null } = {}) {
         label: `重复「${gram}」`,
         excerpt: gram,
         detail: `4 字串在全文重复 ${count} 次——若非刻意回环，建议换说法。`,
-        paragraph: paras.findIndex((line) => line.includes(gram))
+        paragraph: paragraphOf(paras, gram),
+        paragraphs: paragraphsOf(paras, gram)
       })
     }
   }

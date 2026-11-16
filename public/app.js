@@ -58,7 +58,7 @@ const state = {
   dirWork: {},
   write: { chapters: [], listLoading: false, mode: 'read', docPrefs: null, drawerOpen: false },
   sel: { text: '', blockIndex: -1, rect: null, busy: false, preview: null },
-  analyze: { open: false, result: null, busy: false, dismissed: {} },
+  analyze: { open: false, result: null, busy: false, dismissed: {}, activePara: -1, expandOthers: false },
   deduce: { premise: '', variables: '', question: '', sessionId: '', streaming: false, reply: '', controller: null, error: '',
     mode: 'engine', engine: { busy: false, data: null, pov: '', seed: '', error: '', hint: '' } },
   artifacts: { root: '', groups: [], totals: null, loading: false, error: '', previewFile: '', previewText: '', previewLoading: false },
@@ -223,9 +223,16 @@ function render() {
   if (switchName) switchName.textContent = current ? current.name : (state.libraries.length ? '选择库' : '还没有库')
   renderLibSwitchPanel()
   renderTabs()
+  // 正文页自己管滚动（页头吸顶＋纸面/右栏各自滚），外层不再滚动
+  viewEl.classList.toggle('content-locked', state.view === 'write')
   if (state.view === 'libraries') viewEl.innerHTML = libraryHtml()
   else if (state.view === 'entries') viewEl.innerHTML = state.entry ? entryDetailHtml() : entriesHtml()
-  else if (state.view === 'write') viewEl.innerHTML = writeHtml()
+  else if (state.view === 'write') {
+    viewEl.innerHTML = writeHtml()
+    // 版面换了 DOM：批注面板要重挂（否则右栏是空的），标注与吸顶也要重算
+    renderAnalyzePanel()
+    paintDocAnnotations()
+  }
   else if (state.view === 'wiki') viewEl.innerHTML = wikiHtml()
   else if (state.view === 'lib-create') viewEl.innerHTML = createHtml()
   else if (state.view === 'lib-import') viewEl.innerHTML = importHtml()
@@ -452,9 +459,13 @@ function setDocPref(key, value) {
 function renderDocBody(text) {
   if (!mdReady || !mdModule) return `<div class="doc-paper prose"><p>${esc(text)}</p></div>`
   const blocks = mdModule.splitBlocks(text).filter((block) => !/^\s*#\s+/u.test(block.text))
+  // 每段外面套一层 .doc-line：竖条批注条放在可编辑块之外（contenteditable 里放按钮会被一起编辑）
   const parts = blocks.map((block, index) => {
     const html = mdModule.renderMarkdown(block.text)
-    return `<div class="doc-block" contenteditable="true" spellcheck="false" data-block="${index}" data-start="${block.start}" data-end="${block.end}" data-raw="${esc(block.text)}">${html}</div>`
+    return `<div class="doc-line" data-line="${index}">
+      <button class="doc-gutter" data-action="gutter-jump" data-block-index="${index}" title="第 ${index + 1} 段的批注" aria-label="第 ${index + 1} 段的批注"></button>
+      <div class="doc-block" contenteditable="true" spellcheck="false" data-block="${index}" data-start="${block.start}" data-end="${block.end}" data-raw="${esc(block.text)}">${html}</div>
+    </div>`
   })
   return `<div class="doc-paper prose" id="doc-reader">${parts.join('')}</div>`
 }
@@ -818,6 +829,8 @@ async function runAgentOnce(prompt) {
 
 /* ---------- 分析面板（OS-25/26）：插件自管，纯本地计算 ---------- */
 
+let analyzeScrollTick = 0
+
 async function runAnalysis() {
   if (!state.chapterLoaded) return
   await loadAnalysis()
@@ -869,67 +882,204 @@ function barRow(factor) {
   return '<div class="bar-row"><span class="bar-label">' + esc(factor.label) + '</span><span class="bar-track"><span class="bar-fill" style="width:' + width + '%"></span></span><span class="bar-score">' + factor.score + '</span><span class="bar-detail">' + esc(factor.detail) + "</span></div>"
 }
 
+/**
+ * 分析面板（OS-33 重做）。
+ *
+ * 作者要的体验：「右侧每个具体注释问题，都像向上悬浮吸顶——滚到那个组件的位置时，
+ * 自动与左侧有标注的段落平齐」。右栏有 40 条问题时把它们全平铺、再靠滚右栏去对齐，
+ * 物理上做不到（内容比视口长，scrollTop 顶到头就没了）。
+ *
+ * 所以按「聚焦」重排：
+ *   · 顶部概览（字数/段/句/对白 + 两张曲线 + AI 味）——位置固定，永远看得见；
+ *   · 「本段批注」区＝**当前视口那一段**的问题，永远紧贴概况下面（天然吸顶，条数少）；
+ *   · 其下是「全章问题」＋「其它段落的问题」折叠列表，需要时再展开。
+ * 这样右栏的内容长度与视口无关，滚动正文时它只是换内容，不会滚丢。
+ */
 function analyzePanelHtml() {
   const result = state.analyze.result
   if (state.analyze.busy) return '<div class="analyze-body"><div class="loading">正在分析…</div></div>'
   if (!result) {
-    return '<div class="analyze-body"><p class="sub">纯本地计算：节奏、对白、情绪曲线、文风、AI 味。不调模型、不上传。</p><button class="btn-primary" data-action="analyze-run">开始分析本章</button></div>'
+    return '<div class="analyze-body"><button class="btn-primary" data-action="analyze-run">开始分析本章</button></div>'
   }
   const stats = result.stats
   const emotionValues = result.emotion.map((item) => item.value)
   const rhythmValues = result.rhythm.map((item) => item.chars)
   const openIssues = result.issues.filter((issue) => !state.analyze.dismissed[issue.id])
-  const issueRows = openIssues.map((issue) =>
-    '<div class="issue-row sev-' + esc(issue.severity) + '"><span class="issue-tag">' + esc(issue.label) +
-    '</span><span class="issue-detail">' + esc(issue.detail) + '</span><span class="issue-ops">' +
-    '<button class="issue-act" data-action="analyze-goto" data-paragraph="' + issue.paragraph + '">定位</button>' +
-    '<button class="issue-act" data-action="analyze-fix" data-issue-id="' + esc(issue.id) + '">让 Agent 改</button>' +
-    '<button class="issue-act" data-action="analyze-dismiss" data-issue-id="' + esc(issue.id) + '">解决</button>' +
-    "</span></div>"
-  ).join("")
+  // 每条问题可能落在多段（重复用词/套话）：paragraphs 是全集，paragraph 只是首段
+  const parasOf = (issue) => {
+    const list = Array.isArray(issue.paragraphs) && issue.paragraphs.length
+      ? issue.paragraphs
+      : [Number(issue.paragraph)]
+    return list.filter((n) => Number.isInteger(n) && n >= 0)
+  }
+  const located = openIssues.filter((issue) => parasOf(issue).length > 0)
+  const global = openIssues.filter((issue) => parasOf(issue).length === 0)
+  const viewPara = Number.isInteger(state.analyze.activePara) ? state.analyze.activePara : -1
+  // 「本段批注」＝离视口最近的有批注的那一段（视口这一段没批注时，退到上/下一段有批注的）
+  const issueParas = [...new Set(located.flatMap(parasOf))].sort((a, b) => a - b)
+  const pickPara = (() => {
+    if (!issueParas.length) return -1
+    if (issueParas.includes(viewPara)) return viewPara
+    const passed = issueParas.filter((n) => n <= viewPara)
+    if (passed.length) return passed[passed.length - 1]
+    return issueParas[0]
+  })()
+  const here = pickPara >= 0 ? located.filter((issue) => parasOf(issue).includes(pickPara)) : []
+  // 同一段里同类的重复问题（比如十几个「反复出现」的套话）聚成一条，避免右栏被刷屏
+  const groupHere = (list) => {
+    const groups = new Map()
+    for (const issue of list) {
+      const key = `${issue.type || ''}::${(issue.label || '').replace(/「.*」$/u, '')}`
+      if (!groups.has(key)) groups.set(key, [])
+      groups.get(key).push(issue)
+    }
+    return [...groups.values()].map((items) => items.length === 1 ? items[0] : {
+      merged: true,
+      id: items[0].id,
+      type: items[0].type,
+      severity: items.some((it) => it.severity === 'high') ? 'high' : items[0].severity,
+      label: `${items.length} 处${(items[0].label || '').replace(/「.*」$/u, '')}`,
+      detail: items.map((it) => it.label.replace(/^.*?「(.*)」$/u, '「$1」')).join(' ')
+        + '——都可以换成具体动作，或直接删掉。',
+      paragraph: items[0].paragraph,
+      paragraphs: items[0].paragraphs,
+      items
+    })
+  }
+  const hereShown = groupHere(here)
+  const atView = pickPara === viewPara
+  const elsewhere = located.filter((issue) => !here.includes(issue))
+    .sort((a, b) => (parasOf(a)[0] ?? 0) - (parasOf(b)[0] ?? 0))
+  const spanOf = (issue) => {
+    const ps = parasOf(issue)
+    if (!ps.length) return '全章'
+    if (ps.length === 1) return `第 ${ps[0] + 1} 段`
+    return `${ps.length} 段`
+  }
+  const card = (issue) => {
+    const ps = parasOf(issue)
+    return `<div class="issue-card sev-${esc(issue.severity)}" data-issue-id="${esc(issue.id)}" data-para="${ps[0] ?? ''}">
+      <div class="ic-head"><span class="ic-tag">${esc(issue.label)}</span><span class="ic-para">${spanOf(issue)}</span></div>
+      <div class="ic-detail">${esc(issue.detail)}</div>
+      <div class="ic-ops">
+        ${ps.length ? `<button class="issue-act" data-action="analyze-goto" data-paragraph="${ps[0]}">定位</button>` : ''}
+        <button class="issue-act" data-action="analyze-fix" data-issue-id="${esc(issue.id)}">让 Agent 改</button>
+        <button class="issue-act" data-action="analyze-dismiss" data-issue-id="${esc(issue.id)}">解决</button>
+      </div>
+    </div>`
+  }
   const aiClass = result.aiSmell.score >= 50 ? "bad" : result.aiSmell.score >= 25 ? "mid" : "good"
+  const expandOpen = state.analyze.expandOthers === true
   return '<div class="analyze-body">' +
     '<div class="analyze-kpis"><span><b>' + stats.chars + "</b> 字</span><span><b>" + stats.paragraphs +
     "</b> 段</span><span><b>" + stats.avgSentenceLen + "</b> 字/句</span><span><b>" + stats.dialogueRatio +
     "%</b> 对白</span></div>" +
-    (result.confidence === "low" ? '<div class="warn-box">本章偏短（&lt;800 字），指标置信度低——仅供参考。</div>' : "") +
-    '<section class="analyze-sec"><h4>情绪曲线</h4>' + sparkline(emotionValues) + '<p class="sub">逐段正负情绪强度（中线以上偏暖，以下偏冷）</p></section>' +
-    '<section class="analyze-sec"><h4>节奏（逐段字数）</h4>' + sparkline(rhythmValues, { color: "var(--ok)" }) + '<p class="sub">起伏太大＝长短段失衡，太平＝节奏单调</p></section>' +
+    (result.confidence === "low" ? '<div class="warn-box">本章偏短，指标仅供参考。</div>' : "") +
+    '<section class="analyze-sec"><h4>情绪曲线</h4>' + sparkline(emotionValues) + '</section>' +
+    '<section class="analyze-sec"><h4>节奏（逐段字数）</h4>' + sparkline(rhythmValues, { color: "var(--ok)" }) + '</section>' +
     '<section class="analyze-sec"><h4>AI 味 <b class="ai-score ' + aiClass + '">' + result.aiSmell.score + "</b></h4>" +
-    result.aiSmell.factors.map(barRow).join("") +
-    '<p class="sub">分数越高越像模板文；四个因子都能解释到具体词/句。</p></section>' +
-    '<section class="analyze-sec"><h4>问题 <span class="count">' + openIssues.length + " / " + result.issues.length + "</span></h4>" +
-    (issueRows || '<p class="sub">没有未解决的问题。</p>') + "</section>" +
+    result.aiSmell.factors.map(barRow).join("") + '</section>' +
+    // ↓ 这一段是「吸顶」的主体：永远对应你正在看的那一段（没批注就退到最近有批注的段）
+    '<section class="analyze-sec analyze-here" id="analyze-here">' +
+    '<h4>本段批注 <span class="count">' +
+    (pickPara < 0 ? '滚动正文即对齐'
+      : `第 ${pickPara + 1} 段${atView ? '' : '（最近）'} · ${hereShown.length} 条`) +
+    '</span></h4>' +
+    (hereShown.length
+      ? hereShown.map(card).join('')
+      : `<p class="sub">${viewPara >= 0 ? '这一段没有批注。' : '往下滚，这里会跟着你正在看的段落走。'}</p>`) +
+    '</section>' +
+    (global.length ? '<section class="analyze-sec"><h4>全章 <span class="count">' + global.length + '</span></h4>' + global.map(card).join('') + '</section>' : '') +
+    (elsewhere.length
+      ? `<section class="analyze-sec"><h4><button class="sec-toggle" data-action="analyze-expand">其它段落 ${elsewhere.length} 条<span class="caret">${expandOpen ? '▾' : '▸'}</span></button></h4>${expandOpen ? elsewhere.map(card).join('') : ''}</section>`
+      : '') +
     '<div class="ops"><button class="btn-ghost" data-action="analyze-run">重新分析</button></div></div>'
 }
 
 function renderAnalyzePanel() {
   const panel = document.getElementById("analyze-panel")
   if (!panel) return
-  panel.classList.toggle("open", state.analyze.open)
-  if (!state.analyze.open) return
+  const open = state.analyze.open && state.chapterLoaded
+  panel.classList.toggle("open", open)
+  document.querySelector('.doc-workspace')?.classList.toggle('with-analyze', open)
+  document.querySelector('[data-action="analyze-toggle"]')?.classList.toggle('on', open)
+  if (!open) return
   const name = state.chapterFile ? state.chapterFile.split("/").pop() : ""
   panel.innerHTML = '<div class="analyze-head"><b>分析</b><span class="count">' + esc(name) + '</span><span class="sp"></span><button class="doc-icon" data-action="analyze-close" title="关闭">×</button></div>' + analyzePanelHtml()
+  paintDocAnnotations()
+  syncAnalyzeScroll({ force: true })
 }
 
-/** 文档内标注：给有未解决问题的段落加高亮类（不动 contenteditable 结构）。 */
+/** 正文滚动容器（正文页自己滚，不靠外层 .content）。 */
+function docScroller() {
+  return document.getElementById('doc-scroll')
+}
+
+/**
+ * 吸顶同步（OS-33）。
+ * 右栏是「聚焦式」结构：概览固定，下面是「本段批注」区。正文滚动时只做两件事：
+ *   ① 算出当前视口顶部所在的段落；
+ *   ② 如果它变了，重画右栏那一段的内容（并高亮左侧对应竖条）。
+ * 不滚动右栏——所以「本段批注」永远紧贴概览，永远和你看的段落对齐。
+ */
+function syncAnalyzeScroll({ force = false } = {}) {
+  const scroller = docScroller()
+  const panel = document.getElementById('analyze-panel')
+  if (!scroller || !panel || !panel.classList.contains('open')) return
+  const lines = [...scroller.querySelectorAll('.doc-line')]
+  if (!lines.length) return
+  // 锚点：视口顶部往下 1/3 处。取「顶部越过这条线的最靠下那一段」＝视口里占面积最大的段。
+  // （用 1/3 而不是固定像素，是因为跳转后段顶常落在视口顶部附近十几到一百多像素，固定阈值会漏判。）
+  const scrollerRect = scroller.getBoundingClientRect()
+  const anchor = scrollerRect.top + scrollerRect.height / 3
+  let viewTop = 0
+  for (let i = 0; i < lines.length; i += 1) {
+    if (lines[i].getBoundingClientRect().top <= anchor) viewTop = i
+    else break
+  }
+  // 若下一段的顶部也已在视口内（且更靠近顶部），说明它才是「正在看的段」
+  const nextLine = lines[viewTop + 1]
+  if (nextLine && nextLine.getBoundingClientRect().top <= scrollerRect.top + 120) {
+    viewTop += 1
+  }
+  if (!force && state.analyze.activePara === viewTop) return
+  state.analyze.activePara = viewTop
+  // 重画内容（只换问题区，不动概览滚动位置）
+  const keepTop = panel.scrollTop
+  const head = panel.querySelector('.analyze-head')
+  panel.innerHTML = (head?.outerHTML ?? '') + analyzePanelHtml()
+  panel.scrollTop = keepTop
+  // 左侧竖条高亮当前段
+  scroller.querySelectorAll('.doc-gutter.has-issue').forEach((bar) => {
+    bar.classList.toggle('on', Number(bar.dataset.blockIndex) === viewTop)
+  })
+}
+
+/** 文档内标注（OS-33）：有问题的段落在左侧长出一根可点竖条——点它＝跳到那段＋右栏对齐。 */
 function paintDocAnnotations() {
   const result = state.analyze.result
-  const blocks = document.querySelectorAll(".doc-block")
-  blocks.forEach((block) => block.classList.remove("has-issue", "sev-high", "sev-medium", "sev-low"))
+  document.querySelectorAll('.doc-line').forEach((line) => {
+    line.classList.remove('has-issue', 'sev-high', 'sev-medium', 'sev-low')
+    line.querySelector('.doc-gutter')?.classList.remove('has-issue', 'on', 'sev-high', 'sev-medium', 'sev-low')
+  })
   if (!result) return
   const byParagraph = new Map()
   const rank = { high: 3, medium: 2, low: 1 }
   for (const issue of result.issues) {
     if (state.analyze.dismissed[issue.id]) continue
-    if (!Number.isInteger(issue.paragraph) || issue.paragraph < 0) continue
-    const prev = byParagraph.get(issue.paragraph)
-    if (!prev || (rank[issue.severity] || 0) > (rank[prev] || 0)) byParagraph.set(issue.paragraph, issue.severity)
+    const list = Array.isArray(issue.paragraphs) && issue.paragraphs.length ? issue.paragraphs : [issue.paragraph]
+    for (const n of list) {
+      if (!Number.isInteger(n) || n < 0) continue
+      const prev = byParagraph.get(n)
+      if (!prev || (rank[issue.severity] || 0) > (rank[prev] || 0)) byParagraph.set(n, issue.severity)
+    }
   }
   for (const entry of byParagraph) {
-    const block = blocks[entry[0]]
-    if (!block) continue
-    block.classList.add("has-issue", "sev-" + entry[1])
+    const line = document.querySelector(`.doc-line[data-line="${entry[0]}"]`)
+    if (!line) continue
+    line.classList.add('has-issue', 'sev-' + entry[1])
+    const bar = line.querySelector('.doc-gutter')
+    if (bar) bar.classList.add('has-issue', 'sev-' + entry[1])
   }
 }
 
@@ -946,11 +1096,45 @@ function dismissIssue(issueId) {
 }
 
 function gotoParagraph(index) {
-  const block = document.querySelectorAll(".doc-block")[Number(index)]
+  const n = Number(index)
+  const line = document.querySelector(`.doc-line[data-line="${n}"]`)
+  const block = line?.querySelector('.doc-block') || document.querySelectorAll('.doc-block')[n]
   if (!block) return
-  block.scrollIntoView({ block: "center", behavior: "smooth" })
-  block.classList.add("issue-flash")
-  setTimeout(() => block.classList.remove("issue-flash"), 1200)
+  const scroller = docScroller()
+  // 「点竖条跳转」是精确对齐动作：用即时定位（平滑滚动会和面板重画抢时序，
+  // 最终常常停在差一两段的位置，右栏也就对不上）。两帧各校一次，抗布局抖动。
+  const align = () => {
+    if (!scroller || !line) return
+    const delta = line.getBoundingClientRect().top - scroller.getBoundingClientRect().top
+    scroller.scrollTop = Math.max(0, scroller.scrollTop + delta - 10)
+  }
+  if (scroller) {
+    align()
+    requestAnimationFrame(align)
+  } else {
+    block.scrollIntoView({ block: 'center' })
+  }
+  block.classList.add('issue-flash')
+  setTimeout(() => block.classList.remove('issue-flash'), 1200)
+  // 右栏跟着切到这一段：滚动落位后再同步（两帧 + 一次延时，抗平滑/布局抖动）
+  if (state.analyze.open) {
+    state.analyze.activePara = -1 // 强制刷新
+    requestAnimationFrame(() => {
+      align()
+      syncAnalyzeScroll({ force: true })
+      setTimeout(() => { align(); syncAnalyzeScroll({ force: true }) }, 120)
+    })
+  }
+}
+
+/** 点段落左侧竖条：跳到那段 + 右栏把它的问题卡贴顶。 */
+function gutterJump(index) {
+  if (!state.analyze.open) {
+    state.analyze.open = true
+    renderAnalyzePanel()
+    if (!state.analyze.result) runAnalysis()
+  }
+  gotoParagraph(index)
 }
 
 /** 让 Agent 改：问题＋所在段落做上下文，交给 Agent 讨论流。 */
@@ -1075,7 +1259,10 @@ function writeHtml() {
     return match ? match[1].trim() : ''
   })()
   const docTitle = mdHeading || currentChapter?.title || state.chapterFile?.split('/').pop() || '正文'
-  return `<div class="doc-head doc-head-immersive">
+  // 只有真载入了章节才开分析栏（未选章时右栏留着空壳没意义）
+  const analyzeOpen = state.analyze.open && state.chapterLoaded
+  return `<div class="doc-workspace doc-workspace-sticky${analyzeOpen ? ' with-analyze' : ''}">
+    <header class="doc-head doc-head-immersive">
       <div class="docline">
         <span class="kick">${esc(state.current.name)}</span>
         <span class="docline-sep">·</span>
@@ -1096,17 +1283,17 @@ function writeHtml() {
           <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><circle cx="3.4" cy="8" r="1.35" fill="currentColor"/><circle cx="8" cy="8" r="1.35" fill="currentColor"/><circle cx="12.6" cy="8" r="1.35" fill="currentColor"/></svg>
         </button>
       </div>
-      <h1 class="doc-title">${esc(docTitle)}</h1>
-      <div class="doc-actions">
-        <button class="doc-link" data-action="chapter-nav" data-file="${esc(prev?.file ?? '')}"${prev ? '' : ' disabled'} title="上一章">←</button>
-        <button class="doc-link" data-action="chapter-nav" data-file="${esc(next?.file ?? '')}"${next ? '' : ' disabled'} title="下一章">→</button>
+      <div class="doc-title-row">
+        <h1 class="doc-title">${esc(docTitle)}</h1>
+        <div class="doc-actions">
+          <button class="doc-link" data-action="chapter-nav" data-file="${esc(prev?.file ?? '')}"${prev ? '' : ' disabled'} title="上一章">←</button>
+          <button class="doc-link" data-action="chapter-nav" data-file="${esc(next?.file ?? '')}"${next ? '' : ' disabled'} title="下一章">→</button>
+        </div>
       </div>
-      <div class="doc-mini-meta">
-        ${saved}${note}
-      </div>
-    </div>
-    ${errorHtml()}
-    <div class="chapter-grid doc-workspace">
+      <div class="doc-mini-meta">${saved}${note}</div>
+      ${errorHtml()}
+    </header>
+    <div class="chapter-grid">
       <aside class="chapter-list${state.write.drawerOpen ? ' open' : ''}">
         <div class="chapter-new">
           <input id="chapter-new-title" placeholder="新章标题…" value="">
@@ -1114,11 +1301,12 @@ function writeHtml() {
         </div>
         <div class="chapter-rows">${rows || '<div class="count" style="padding:8px">还没有章节——右上输入标题新建第一章。</div>'}</div>
       </aside>
-      <div class="chapter-editor-col">
-        ${editor}
+      <div class="doc-scroll" id="doc-scroll">
+        <div class="chapter-editor-col">${editor}</div>
       </div>
       <aside class="analyze-panel" id="analyze-panel"></aside>
-    </div>`
+    </div>
+  </div>`
 }
 
 function wikiHtml() {
@@ -3670,6 +3858,11 @@ document.addEventListener('click', (event) => {
     renderAgent()
   } else if (action === 'analyze-toggle') {
     toggleAnalyzePanel()
+  } else if (action === 'analyze-expand') {
+    state.analyze.expandOthers = !state.analyze.expandOthers
+    renderAnalyzePanel()
+  } else if (action === 'gutter-jump') {
+    gutterJump(target.dataset.blockIndex)
   } else if (action === 'analyze-close') {
     state.analyze.open = false
     renderAnalyzePanel()
@@ -3805,6 +3998,17 @@ document.addEventListener('keydown', (event) => {
     closeModal()
   }
 })
+
+// 正文滚动 → 右栏批注卡吸顶跟随（OS-33）。事件委托：容器会被 writeHtml 重建。
+document.addEventListener('scroll', (event) => {
+  if (event.target?.id === 'doc-scroll') {
+    if (analyzeScrollTick) return
+    analyzeScrollTick = requestAnimationFrame(() => {
+      analyzeScrollTick = 0
+      syncAnalyzeScroll()
+    })
+  }
+}, true)
 
 // 会话双击重命名（OS-31：列表在下拉面板里；损坏标题也给原始值让作者自己能改）
 document.addEventListener('dblclick', (event) => {
