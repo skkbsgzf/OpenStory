@@ -85,6 +85,8 @@ import {
   skillsForGenre
 } from './skills.mjs'
 import { precedentPromptSectionForGenre } from './kbRouter.mjs'
+import { bootstrapKbHealth, collectKbStatus, kbServiceState } from './kbHealth.mjs'
+import { defaultKbConfigPath } from './kbAdapter.mjs'
 import {
   allowedDirs,
   briefPromptSection,
@@ -707,6 +709,14 @@ async function handleApi(req, res, url, context) {
   if (endpointId === 'agentConfigPut') return handleAgentConfigPut(res, request, context)
   if (endpointId === 'agentRuntimesGet') return handleAgentRuntimesGet(res, context)
   if (endpointId === 'agentRuntimePut') return handleAgentRuntimePut(res, request, context)
+  if (endpointId === 'kbStatusGet') {
+    const status = await collectKbStatus({
+      configPath: defaultKbConfigPath(context.env ?? process.env),
+      services: kbServiceState.lastCheck ? kbServiceState : null
+    })
+    return sendJson(res, 200, status)
+  }
+
   if (endpointId === 'skillsGet') {
     const loaded = loadSkills(context.skillsDirs)
     const filtered = request.genre ? skillsForGenre(loaded.skills, request.genre) : loaded.skills
@@ -1169,7 +1179,7 @@ async function handleApi(req, res, url, context) {
   return sendError(res, API_ERROR_CODES.NOT_FOUND, `端点未实现：${endpointId}`)
 }
 
-const ENDPOINT_HAS_QUERY = new Set(['entries', 'entry', 'chapterGet', 'wiki', 'agentSessions', 'agentSessionGet', 'agentSessionDelete', 'wikiHtmlGet', 'libraryDiagnose', 'filesGet', 'chaptersGet', 'chapterDelete', 'artifactsGet', 'suiteStateDataGet', 'briefGet', 'skillsGet', 'skillGet', 'enrichStatus', 'enrichGraph'])
+const ENDPOINT_HAS_QUERY = new Set(['entries', 'entry', 'chapterGet', 'wiki', 'agentSessions', 'agentSessionGet', 'agentSessionDelete', 'wikiHtmlGet', 'libraryDiagnose', 'filesGet', 'chaptersGet', 'chapterDelete', 'artifactsGet', 'suiteStateDataGet', 'briefGet', 'skillsGet', 'skillGet', 'enrichStatus', 'enrichGraph', 'kbStatusGet'])
 
 /** 套件资产 MIME（page 模式自带页同源装载）。 */
 const SUITE_ASSET_MIME = Object.freeze({
@@ -1808,11 +1818,18 @@ export function startDaemon({
         logger.log(`OpenStory daemon → http://127.0.0.1:${actualPort}`)
         if (root) logger.log(`直接进入库：${resolve(root)}`)
       }
+      // KB-ARCH P1：知识库服务自愈探活——kb-config 存在才管（测试临时环境无配置＝不启动），close 时停表不留悬挂定时器
+      let kbHealthStop = null
+      try {
+        const health = bootstrapKbHealth({ env, repoRoot: HERE, logger })
+        if (health) kbHealthStop = health
+      } catch { /* 不阻塞启动 */ }
       resolvePromise({
         server,
         port: actualPort,
         host: bindHost,
         close: () => new Promise((done) => {
+          if (kbHealthStop) kbHealthStop()
           stopAllSidecars()
           server.close(() => done())
         })

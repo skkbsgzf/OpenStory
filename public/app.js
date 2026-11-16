@@ -63,6 +63,7 @@ const state = {
     mode: 'engine', engine: { busy: false, data: null, pov: '', seed: '', error: '', hint: '' } },
   artifacts: { root: '', groups: [], totals: null, loading: false, error: '', previewFile: '', previewText: '', previewLoading: false },
   settings: { userDir: '', section: 'plugins', suiteId: '', open: false, prevView: '', helpOpen: false },
+  kbStatus: null,
   tabHidden: {},
   suites: [],
   agent: {
@@ -673,7 +674,11 @@ function ensureSelBar() {
   const bar = document.createElement('div')
   bar.className = 'sel-bar'
   bar.dataset.selbar = '1'
-  bar.innerHTML = '<button data-action="sel-polish">润笔</button><button data-action="sel-discuss">与 Agent 讨论</button>'
+  bar.innerHTML = [
+    '<button data-action="para-polish">润笔</button>',
+    '<button data-action="para-to-agent">添加到 Agent</button>',
+    '<button data-action="para-analyze">分析这一段</button>'
+  ].join('')
   document.body.appendChild(bar)
   selBar.el = bar
   return bar
@@ -793,112 +798,102 @@ function selectionContext() {
 
 /* ---------- 润笔：选区＋上下文 → Agent → 预览卡 ---------- */
 
-async function polishSelection() {
-  if (state.sel.busy) return
-  if (!agent.configured) {
-    rememberAgentError('润笔要先配好模型端点（右上角设置 → Agent 运行时）')
+/**
+ * 默认临时会话（OS-39）。
+ * 作者口径：临时插入一个润笔或分析，应优先在一个「默认固定」的会话上完成，
+ * 而不是抢占正在聊的主会话。实现＝每库记一个 tempSessionId（localStorage）：
+ *  · 作者可在会话面板里把任意会话标成「临时」（再点一次取消）；
+ *  · 没标过就自动用一条叫「临时需求」的会话（首次临时动作时自动创建）。
+ */
+const TEMP_SESSION_KEY = (root) => `openstory-temp-session::${root || ''}`
+
+function getTempSessionId() {
+  const root = state.current?.path || ''
+  if (!agent.tempSessions) agent.tempSessions = {}
+  if (!(root in agent.tempSessions)) {
+    let saved = ''
+    try { saved = text(localStorage.getItem(TEMP_SESSION_KEY(root))) } catch { saved = '' }
+    agent.tempSessions[root] = saved
+  }
+  return agent.tempSessions[root]
+}
+
+function setTempSessionId(id) {
+  const root = state.current?.path || ''
+  if (!agent.tempSessions) agent.tempSessions = {}
+  agent.tempSessions[root] = id || ''
+  try {
+    if (id) localStorage.setItem(TEMP_SESSION_KEY(root), id)
+    else localStorage.removeItem(TEMP_SESSION_KEY(root))
+  } catch { /* 隐私模式 */ }
+}
+
+/** 切到（必要时创建）默认临时会话。失败如实抛。 */
+async function ensureTempSession() {
+  if (agent.streaming) return
+  await loadSessions()
+  const pinned = getTempSessionId()
+  if (pinned) {
+    const found = agent.sessions.find((session) => session.id === pinned)
+    if (found) {
+      if (agent.sessionId !== pinned) await openSession(pinned)
+      return
+    }
+    setTempSessionId('') // 钉住的会话被删了，回退自动
+  }
+  let found = agent.sessions.find((session) => session.title === '临时需求')
+  if (!found) {
+    const created = await api('/api/agent/sessions', {
+      method: 'POST',
+      body: JSON.stringify({ root: state.current.path, title: '临时需求' })
+    })
+    found = created.session
+    await loadSessions()
+  }
+  if (found && agent.sessionId !== found.id) await openSession(found.id)
+}
+
+/**
+ * 润笔（OS-39 重做）：不再弹窗锁屏等 Agent——把这段作为上下文转发给左列 Agent，
+ * 作者在 Agent 那边补一句要求、回车即可；回答落在会话里，可「转为待确认卡」写回正文。
+ * 临时需求走默认临时会话（默认自动建「临时需求」，也可在会话面板里 📌 钉住某条），
+ * 不抢占作者正在聊的主会话。
+ */
+async function startPolishRequest() {
+  const quote = (state.sel.text || '').trim()
+  if (!quote || !state.current) return
+  if (agent.streaming) {
+    rememberAgentError('Agent 正在跑上一步，等它出结果再润笔（DSH 一次只能跑一个）。')
     renderAgent()
     hideSelBar()
+    hideParaMenu()
     return
   }
-  if (!state.current) return
-  state.sel.busy = true
   hideSelBar()
-  openModal(`
-    <h3>润笔</h3>
-    <p class="sub">选中 ${state.sel.text.length} 字，连上下文一起交给 Agent 改写。</p>
-    <div class="field"><label>改写要求（可选）</label>
-      <input id="polish-hint" placeholder="例如：更冷峻、去掉形容词、加一句心理描写">
-    </div>
-    <div class="err" id="polish-err"></div>
-    <div class="ops">
-      <button class="btn-ghost" data-action="modal-close">取消</button>
-      <button class="btn-primary" data-action="sel-polish-run">开始润笔</button>
-    </div>
-  `)
-}
-
-/** 网络层错误翻译成人话（Failed to fetch 这类对作者毫无信息量）。 */
-function humanizeAgentError(error) {
-  const raw = text(error?.message || error)
-  if (error?.code) return `${error.code} · ${raw}`
-  if (/failed to fetch|networkerror|load failed/iu.test(raw)) {
-    return '连不上本地服务：可能正文服务已退出，或这次请求等待太久被浏览器断开。刷新页面后重试；反复出现说明 daemon 掉了。'
-  }
-  if (/aborted|abort/iu.test(raw)) return '已取消。'
-  return raw || '未知错误'
-}
-
-async function runPolish() {
-  const hint = document.getElementById('polish-hint')?.value?.trim() || ''
-  const errEl = document.getElementById('polish-err')
-  const runBtn = document.querySelector('[data-action="sel-polish-run"]')
-  const context = selectionContext()
-  const prompt = [
-    '【润笔请求】',
-    `要改的这段（只改这段，不要扩写整章）：
-${state.sel.text}`,
-    `所在段落上下文：
-${context}`,
-    hint ? `作者要求：${hint}` : '',
-    '请只输出改写后的这一段正文，不要解释、不要加引号、不要小标题。'
-  ].filter(Boolean).join('\n\n')
-  // 进度反馈：DSH 一 run 一进程，首次要 5~40 秒，不给计时作者会以为死了
-  state.sel.busy = true
-  if (runBtn) { runBtn.disabled = true; runBtn.textContent = '润笔中…' }
-  const startedAt = Date.now()
-  const tick = setInterval(() => {
-    if (!errEl) return
-    const sec = Math.round((Date.now() - startedAt) / 1000)
-    errEl.textContent = `润笔中…（${sec}s）——模型在跑，别关窗口`
-  }, 1000)
-  if (errEl) errEl.textContent = '润笔中…（0s）——模型在跑，别关窗口'
+  hideParaMenu()
+  window.getSelection?.()?.removeAllRanges?.()
   try {
-    const result = await runAgentOnce(prompt)
-    state.sel.preview = { text: result, original: state.sel.text }
-    state.sel.busy = false
-    openPolishPreview()
+    await ensureTempSession()
   } catch (error) {
-    state.sel.busy = false
-    if (errEl) errEl.textContent = humanizeAgentError(error)
-  } finally {
-    clearInterval(tick)
-    if (runBtn) { runBtn.disabled = false; runBtn.textContent = '开始润笔' }
-  }
-}
-
-function openPolishPreview() {
-  const preview = state.sel.preview
-  const diffHint = preview.text === preview.original ? '（与原文一致）' : ''
-  openModal(`
-    <h3>润笔结果${diffHint}</h3>
-    <div class="field"><label>改写后</label>
-      <textarea id="polish-result" style="min-height:180px">${esc(preview.text)}</textarea>
-    </div>
-    <div class="field"><label>原文（对照）</label>
-      <div class="sub" style="max-height:120px;overflow:auto">${esc(preview.original)}</div>
-    </div>
-    <div class="ops">
-      <button class="btn-ghost" data-action="modal-close">丢弃</button>
-      <button class="btn-primary" data-action="sel-polish-apply">替换原文</button>
-    </div>
-  `)
-}
-
-/** 用润笔结果替换选区所在的块（按块偏移回写，自动保存）。 */
-async function applyPolish() {
-  const value = document.getElementById('polish-result')?.value ?? ''
-  if (!state.current || !state.chapterFile || !value.trim()) return
-  // 同样要按「渲染序」（data-block）取块——直接用 splitBlocks 会因 H1 错位一格
-  const block = renderedBlocks()[state.sel.blockIndex]
-  if (!block) {
-    closeModal()
+    rememberAgentError(error)
+    renderAgent()
     return
   }
-  const text = state.chapterText.slice(0, block.start) + value.trim() + state.chapterText.slice(block.end)
-  closeModal()
-  await writeChapterText(text, '已替换选中段落')
-  state.sel.preview = null
+  state.agent.pendingContext = {
+    kind: 'polish',
+    quote,
+    context: selectionContext(),
+    label: `润笔 · ${quote.length} 字`
+  }
+  renderAgent()
+  const input = document.getElementById('agent-input')
+  if (input) {
+    input.value = '润笔这段，要求：'
+    input.focus()
+    // 光标落到末尾，作者接着写要求
+    const end = input.value.length
+    input.setSelectionRange?.(end, end)
+  }
 }
 
 /* ---------- 与 Agent 讨论：选中段落作上下文，进左列会话 ---------- */
@@ -917,44 +912,6 @@ function discussSelection() {
   const input = document.getElementById('agent-input')
   input?.focus()
 }
-
-/**
- * 一次性 Agent 调用（润笔/单段分析这类工具动作）：ephemeral＝不建会话、不落档。
- * 并发闸：左侧对话正在流式时不允许再开一个——DSH 是「一 run 一进程」，
- * 同时开两个会各起一个 dsh 子进程，既慢又容易互相拖死。
- */
-let oneShotBusy = false
-async function runAgentOnce(prompt) {
-  if (!state.current) throw new Error('没有选中的库')
-  if (oneShotBusy || agent.streaming) {
-    throw new Error('Agent 正在跑（左侧对话或上一步工具动作还没结束），等它出结果再来——DSH 一次只能跑一个进程。')
-  }
-  oneShotBusy = true
-  const controller = new AbortController()
-  // 前端也设一道超时（DSH 侧 180s）：避免弹层永远转不停
-  const timeoutId = setTimeout(() => controller.abort(), 180000)
-  let collected = ''
-  let failure = null
-  try {
-    await streamChat({
-      content: prompt,
-      sessionId: undefined,
-      controller,
-      ephemeral: true,
-      onStart: () => {},
-      onDelta: (piece) => { collected += piece },
-      onError: (error) => { failure = error }
-    })
-  } finally {
-    clearTimeout(timeoutId)
-    oneShotBusy = false
-  }
-  if (failure) throw Object.assign(new Error(failure.message || 'Agent 调用失败'), { code: failure.code })
-  const text = collected.trim()
-  if (!text) throw new Error('Agent 没有返回内容')
-  return text
-}
-
 
 /* ---------- 分析面板（OS-25/26）：插件自管，纯本地计算 ---------- */
 
@@ -1945,12 +1902,6 @@ async function streamChat({ content, sessionId, controller, ephemeral, onStart, 
 
 async function sendAgentMessage() {
   if (!state.current || agent.streaming) return
-  if (oneShotBusy) {
-    // 润笔这类一次性动作在跑：DSH 一 run 一进程，别挤
-    agent.lastError = 'Agent 正在跑上一步（润笔/分析），等它出结果再发。'
-    renderAgent()
-    return
-  }
   if (!agent.configured) {
     openSettingsModal('先配好模型端点再开始对话。')
     return
@@ -2030,6 +1981,7 @@ const SETTINGS_SECTIONS = Object.freeze([
   { id: 'plugins', label: '插件', hint: '套件与 Agent 运行时' },
   { id: 'discover', label: '发现与导入', hint: '货架路径与导入稿件' },
   { id: 'data', label: '数据与目录', hint: '库清单与配置位置' },
+  { id: 'kb', label: '知识库', hint: 'WeKnora 连接与健康' },
   { id: 'about', label: '关于', hint: '这台工作台是什么' }
 ])
 
@@ -2041,6 +1993,7 @@ const SETTINGS_HELP = Object.freeze({
   plugins: '插件分成两类：一类给写作能力（比如写作套件、编剧套件），一类给 Agent 一条能对话的模型通道。它们都可以随时启用或停用，停用只是让效果回到默认，你设过的值不会丢。点「设置 →」进各自的设置页。',
   discover: '插件不用安装：往本机的这几个文件夹里丢一个目录或一个 JSON 文件，刷新就出现在列表里。同名时你本机放的那份优先，内置的退到后面。文件坏掉只会跳过它，不会影响别的。',
   data: '你的稿子始终是磁盘上的文件夹，这个工作台不另建数据库，删掉这个软件稿子也还在。下面是各项配置存在哪儿——都只在这台机器上。',
+  kb: '知识库给 Agent 供弹药：技法配方、文风指纹、题材套路、读者信号、同型案例分库存放。写东西时 Agent 会自动取用，这里只看连接是否健康、每个库装了多少，不用做任何操作。',
   about: 'OpenStory 是给写小说用的工作台。它和 Pinax 桌面版看的是同一批库文件：两个入口，一份稿子，改哪边都算数。所有数据、密钥、会话都只留在本机，不上传也不联网同步。',
   suiteSettings: '这里的每一项都是这个套件自己的规则。停用它，规则会退回程序内置的默认值，但你现在填的内容会保留下来，重新启用就回到你设的样子。'
 })
@@ -2161,6 +2114,44 @@ function settingsAboutSectionHtml() {
   </div>`
 }
 
+function settingsKbSectionHtml() {
+  const s = state.kbStatus
+  if (!s) {
+    return `<div class="step"><h3>知识库</h3><div class="kv-line"><span class="k">状态</span><span class="v">读取中…</span></div></div>`
+  }
+  if (!s.configured) {
+    return `<div class="step">
+      <h3>知识库</h3>
+      <div class="kv-line"><span class="k">连接</span><span class="v">未配置</span></div>
+      <div class="kv-line"><span class="k">说明</span><span class="v">在 %LOCALAPPDATA%\\PinaxNext\\openstory\\kb-config.json 写入 WeKnora 连接后重启 daemon</span></div>
+      <div class="kv-line"><span class="k">配置路径</span><span class="v">${esc(s.configPath || '—')}</span></div>
+      ${s.configError ? `<div class="kv-line"><span class="k">读取问题</span><span class="v">${esc(s.configError)}</span></div>` : ''}
+    </div>`
+  }
+  const lamp = (up) => up ? '<span style="color:var(--green)">●</span>在线' : '<span style="color:var(--destructive)">●</span>离线'
+  const svc = s.services || {}
+  const rows = (s.collections || []).map((c) => {
+    const docs = c.docs === null || c.docs === undefined ? '—' : String(c.docs)
+    const parsed = c.parsed === null || c.parsed === undefined ? '—' : `${c.parsed}/${c.docs ?? '?'}`
+    return `<div class="kv-line"><span class="k">${esc(c.alias)}</span><span class="v">文档 ${docs}｜已解析 ${parsed}</span></div>`
+  }).join('')
+  const embed = svc.embedding || {}
+  const embedInfo = embed.up
+    ? `${esc(embed.model || 'embedding')}${embed.dim ? `（${embed.dim} 维）` : ''}${embed.autoStarted ? '·本进程自动拉起' : ''}`
+    : '离线'
+  return `<div class="step">
+    <h3>知识库</h3>
+    <div class="kv-line"><span class="k">WeKnora</span><span class="v">${lamp(!!(svc.weknora && svc.weknora.up))}${svc.weknora && svc.weknora.version ? ` · v${esc(svc.weknora.version)}${svc.weknora.edition ? ` · ${esc(svc.weknora.edition)}` : ''}` : ''}</span></div>
+    <div class="kv-line"><span class="k">Embedding</span><span class="v">${lamp(!!embed.up)}${embed.up ? ` · ${embedInfo}` : ''}</span></div>
+    <div class="kv-line"><span class="k">连接</span><span class="v">${esc(s.backend || '—')}</span></div>
+    <div class="kv-line"><span class="k">配置路径</span><span class="v">${esc(s.configPath || '—')}</span></div>
+    <div class="kv-line"><span class="k">最近检查</span><span class="v">${esc(s.lastCheck ? s.lastCheck.replace('T', ' ').slice(0, 19) : '—')}</span></div>
+    ${s.configError ? `<div class="kv-line"><span class="k">读取问题</span><span class="v">${esc(s.configError)}</span></div>` : ''}
+    <h3>分库清单</h3>
+    ${rows || '<div class="kv-line"><span class="k">状态</span><span class="v">读不到分库（WeKnora 离线或配置为空）</span></div>'}
+  </div>`
+}
+
 function settingsHtml() {
   const sectionRenderers = {
     plugins: settingsPluginsSectionHtml,
@@ -2171,6 +2162,7 @@ function settingsHtml() {
     appearance: settingsAppearanceSectionHtml,
     discover: settingsDiscoverSectionHtml,
     data: settingsDataSectionHtml,
+    kb: settingsKbSectionHtml,
     about: settingsAboutSectionHtml
   }
   const sectionId = sectionRenderers[state.settings.section] ? state.settings.section : 'plugins'
@@ -3993,7 +3985,7 @@ function go(view) {
   render()
   if (view === 'settings') {
     // 先并行拉数据，全部回来再渲染一次（否则先完成的 render 会用旧 state 覆盖）
-    Promise.all([loadAgentRuntimes(), loadStyles(), loadSuites()])
+    Promise.all([loadAgentRuntimes(), loadStyles(), loadSuites(), loadKbStatus()])
       .then(() => { if (state.view === 'settings') render() })
       .catch(() => render())
     return
@@ -4120,7 +4112,7 @@ document.addEventListener('click', (event) => {
   const action = target.dataset.action
   if (action === 'para-polish') {
     hideParaMenu()
-    polishSelection()
+    startPolishRequest()
   } else if (action === 'para-to-agent') {
     hideParaMenu()
     discussSelection()
@@ -4263,11 +4255,7 @@ document.addEventListener('click', (event) => {
     if (list) list.classList.toggle('open', state.write.drawerOpen)
     target.classList.toggle('on', state.write.drawerOpen)
   } else if (action === 'sel-polish') {
-    polishSelection()
-  } else if (action === 'sel-polish-run') {
-    runPolish()
-  } else if (action === 'sel-polish-apply') {
-    applyPolish()
+    startPolishRequest()
   } else if (action === 'sel-discuss') {
     discussSelection()
   } else if (action === 'clear-agent-context') {
@@ -4550,6 +4538,14 @@ async function loadStyles() {
     state.stylesWarnings = Array.isArray(payload.warnings) ? payload.warnings : []
   } catch {
     state.styles = []
+  }
+}
+
+async function loadKbStatus() {
+  try {
+    state.kbStatus = await api('/api/kb/status')
+  } catch {
+    state.kbStatus = null
   }
 }
 
