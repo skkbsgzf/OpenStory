@@ -77,6 +77,14 @@ import {
   stopAllSidecars
 } from './runtimes.mjs'
 import {
+  builtinSkillsDir,
+  craftInstructionBlock,
+  defaultUserSkillsDir,
+  loadSkills,
+  skillSummary,
+  skillsForGenre
+} from './skills.mjs'
+import {
   allowedDirs,
   briefPromptSection,
   builtinGenresDir,
@@ -109,6 +117,7 @@ import {
 } from './libraryManage.mjs'
 import { createFactFileStore } from './core/pinax/next/kernel/factFileStore.mjs'
 import { deducePresent, deduceSettle } from './deduceEngine.mjs'
+import { factHealth } from './factGuard.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 export const DEFAULT_PORT = 8807
@@ -692,6 +701,26 @@ async function handleApi(req, res, url, context) {
   if (endpointId === 'agentConfigPut') return handleAgentConfigPut(res, request, context)
   if (endpointId === 'agentRuntimesGet') return handleAgentRuntimesGet(res, context)
   if (endpointId === 'agentRuntimePut') return handleAgentRuntimePut(res, request, context)
+  if (endpointId === 'skillsGet') {
+    const loaded = loadSkills(context.skillsDirs)
+    const filtered = request.genre ? skillsForGenre(loaded.skills, request.genre) : loaded.skills
+    return sendJson(res, 200, {
+      ok: true,
+      skills: filtered.map(skillSummary),
+      warnings: loaded.warnings
+    })
+  }
+
+  if (endpointId === 'skillGet') {
+    const loaded = loadSkills(context.skillsDirs)
+    const skill = loaded.skills.find((item) => item.name === request.name)
+    if (!skill) return sendError(res, API_ERROR_CODES.NOT_FOUND, `货架上没有这个技能：${request.name}`)
+    return sendJson(res, 200, {
+      ok: true,
+      skill: { ...skillSummary(skill), body: skill.body, tools: skill.tools, output: skill.output, domain: skill.domain }
+    })
+  }
+
   if (endpointId === 'genresGet') {
     const loaded = loadGenres(context.genresDirs)
     return sendJson(res, 200, { ok: true, genres: loaded.genres, warnings: loaded.warnings })
@@ -934,11 +963,15 @@ async function handleApi(req, res, url, context) {
   if (endpointId === 'chapterPut') {
     const written = await writeChapterWithBackup(root, request.file, request.text)
     if (!written.ok) return sendError(res, written.code, written.message, written.details)
+    // FACT-FIRST 规则 5：正文写入**不**隐式触发事实链重建（重建要跑模型、要花钱），
+    // 但必须如实告诉调用方「这本书的事实链已落后于正文」，由 UI 决定提示还是自动重跑。
+    const health = await factHealth(root).catch(() => null)
     return sendJson(res, 200, {
       ok: true,
       chars: written.chars,
       savedAt: written.savedAt,
-      ...(written.backup ? { backup: written.backup } : {})
+      ...(written.backup ? { backup: written.backup } : {}),
+      ...(health ? { factStale: health.stale, factEntries: health.entries } : {})
     })
   }
 
@@ -1028,7 +1061,7 @@ async function handleApi(req, res, url, context) {
   return sendError(res, API_ERROR_CODES.NOT_FOUND, `端点未实现：${endpointId}`)
 }
 
-const ENDPOINT_HAS_QUERY = new Set(['entries', 'entry', 'chapterGet', 'wiki', 'agentSessions', 'agentSessionGet', 'agentSessionDelete', 'wikiHtmlGet', 'libraryDiagnose', 'filesGet', 'chaptersGet', 'chapterDelete', 'artifactsGet', 'suiteStateDataGet', 'briefGet'])
+const ENDPOINT_HAS_QUERY = new Set(['entries', 'entry', 'chapterGet', 'wiki', 'agentSessions', 'agentSessionGet', 'agentSessionDelete', 'wikiHtmlGet', 'libraryDiagnose', 'filesGet', 'chaptersGet', 'chapterDelete', 'artifactsGet', 'suiteStateDataGet', 'briefGet', 'skillsGet', 'skillGet'])
 
 /** 套件资产 MIME（page 模式自带页同源装载）。 */
 const SUITE_ASSET_MIME = Object.freeze({
@@ -1113,7 +1146,7 @@ function composeDshPrompt(items, { maxMessages = 24, maxChars = 48000 } = {}) {
   return lines.join('\n\n')
 }
 
-async function systemPromptFor(root, libraries, genresDirs) {
+async function systemPromptFor(root, libraries, genresDirs, skillsDirs) {
   const key = rootKey(root)
   const record = (Array.isArray(libraries) ? libraries : []).find((library) => rootKey(library.path) === key)
   const name = record?.name || basename(root) || '未命名库'
@@ -1131,6 +1164,11 @@ async function systemPromptFor(root, libraries, genresDirs) {
       const genre = genres.find((item) => item.id === loaded.brief.genre) ?? null
       const section = briefPromptSection(loaded.brief, genre)
       if (section) lines.push('', section)
+      // OS-22：按体裁选 craft 类技能（技法规则）注入——只取 craft，review/transform/extract 不注入
+      const loadedSkills = loadSkills(skillsDirs)
+      const matched = skillsForGenre(loadedSkills.skills, loaded.brief.genre)
+      const craft = craftInstructionBlock(matched)
+      if (craft) lines.push('', craft)
     }
   } catch { /* 简报读不到不影响对话 */ }
   return lines.join('\n')
@@ -1310,7 +1348,7 @@ async function handleAgentChat(req, res, request, context, root, libraries) {
     t: 'msg', id: newMessageId(), role: 'user', content: request.content, at: new Date().toISOString()
   }])
   const history = await readSession(sessionsDir, root, sessionId)
-  const upstreamMessages = buildUpstreamMessages(await systemPromptFor(root, libraries, context.genresDirs), history.items)
+  const upstreamMessages = buildUpstreamMessages(await systemPromptFor(root, libraries, context.genresDirs, context.skillsDirs), history.items)
   const model = text(request.model || upstream.model).trim()
 
   const headers = { 'content-type': 'application/json', accept: 'text/event-stream', ...upstream.headers }
@@ -1552,6 +1590,7 @@ export function createOpenStoryHandler({
   suitesDirs = null,
   suiteStatePath = null,
   genresDirs = null,
+  skillsDirs = null,
   env = process.env
 } = {}) {
   // 默认路径在体内解析（不能用参数默认值——那里的 env 还是调用方进程的，注入覆盖会失效）。
@@ -1562,6 +1601,7 @@ export function createOpenStoryHandler({
   const resolvedSuitesDirs = suitesDirs ?? [builtinSuitesDir(), defaultUserSuitesDir(env)]
   const resolvedSuiteStatePath = suiteStatePath ?? defaultSuiteStatePath(env)
   const resolvedGenresDirs = genresDirs ?? [builtinGenresDir(), defaultUserGenresDir(env)]
+  const resolvedSkillsDirs = skillsDirs ?? [builtinSkillsDir(), defaultUserSkillsDir(env)]
   return async function handler(req, res) {
     const url = new URL(req.url || '/', 'http://127.0.0.1')
     try {
@@ -1576,7 +1616,7 @@ export function createOpenStoryHandler({
         return await serveSuiteAsset(req, res, resolvedSuitesDirs, decodeURIComponent(suiteId), decodeURIComponent(relPath))
       }
       if (url.pathname === '/api' || url.pathname.startsWith('/api/')) {
-        return await handleApi(req, res, url, { preferencesPath, extraRoots, defaultRoot, agentConfigPath: resolvedConfigPath, agentSessionsDir: resolvedSessionsDir, stylesDirs: resolvedStylesDirs, runtimesDirs: resolvedRuntimesDirs, suitesDirs: resolvedSuitesDirs, suiteStatePath: resolvedSuiteStatePath, genresDirs: resolvedGenresDirs, env })
+        return await handleApi(req, res, url, { preferencesPath, extraRoots, defaultRoot, agentConfigPath: resolvedConfigPath, agentSessionsDir: resolvedSessionsDir, stylesDirs: resolvedStylesDirs, runtimesDirs: resolvedRuntimesDirs, suitesDirs: resolvedSuitesDirs, suiteStatePath: resolvedSuiteStatePath, genresDirs: resolvedGenresDirs, skillsDirs: resolvedSkillsDirs, env })
       }
       if (req.method !== 'GET' && req.method !== 'HEAD') {
         return sendError(res, API_ERROR_CODES.NOT_FOUND, `静态托管只支持 GET/HEAD：${req.method}`)
@@ -1606,6 +1646,7 @@ export function startDaemon({
   suitesDirs = null,
   suiteStatePath = null,
   genresDirs = null,
+  skillsDirs = null,
   env = process.env,
   logger = console
 } = {}) {
@@ -1624,6 +1665,7 @@ export function startDaemon({
     suitesDirs,
     suiteStatePath,
     genresDirs,
+    skillsDirs,
     env
   })
   const server = createServer((req, res) => {
