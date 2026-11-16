@@ -278,17 +278,27 @@ input, textarea, select { font: inherit; color: inherit; }
 #deduce-question:focus { border-color: var(--ink); }
 .deduce-reply { white-space: pre-wrap; overflow-wrap: anywhere; font-family: var(--serif); line-height: 1.9; max-height: 460px; overflow-y: auto; color: var(--ink-2); }
 
-/* ── 章节工作面（OS-10：正文页签＝章节列表＋编辑器）────── */
-.chapter-grid { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 16px; max-width: 1280px; }
-@media (max-width: 1000px) { .chapter-grid { grid-template-columns: minmax(0, 1fr); } }
-.chapter-list { border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--bg); display: flex; flex-direction: column; max-height: calc(100vh - 300px); min-height: 320px; }
-.chapter-new { display: flex; gap: 6px; padding: 10px; border-bottom: 1px solid var(--hair); }
-.chapter-new input { flex: 1; min-width: 0; border: 1px solid var(--line); border-radius: var(--radius); padding: 6px 8px; outline: none; background: var(--bg); font-size: 12px; }
-.chapter-new input:focus { border-color: var(--ink); }
+/* ── 正文工作面（OS-23：列表改悬浮抽屉；纸面与标题同基准顶满）────── */
+.chapter-grid { position: relative; display: block; max-width: none; }
+/* 章节抽屉：默认隐藏，靠标题旁的「⌸」悬浮唤出；虚线无框透明感 */
+.chapter-list {
+  position: absolute; left: 0; top: 0; z-index: 40;
+  width: 240px; max-height: calc(100vh - 220px); min-height: 280px;
+  display: flex; flex-direction: column;
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: blur(8px);
+  border: 1px dashed var(--line); border-radius: var(--radius-md);
+  opacity: 0; transform: translateX(-10px); pointer-events: none;
+  transition: opacity .16s ease, transform .16s ease;
+}
+.chapter-list.open { opacity: 1; transform: none; pointer-events: auto; }
+.chapter-new { display: flex; gap: 6px; padding: 8px; border-bottom: 1px dashed var(--hair); }
+.chapter-new input { flex: 1; min-width: 0; border: 0; border-bottom: 1px dashed var(--line); border-radius: 0; padding: 5px 4px; outline: none; background: transparent; font-size: 12px; }
+.chapter-new input:focus { border-bottom-color: var(--ink); }
 .chapter-rows { flex: 1; overflow-y: auto; }
-.ch-row { display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; gap: 8px; width: 100%; padding: 9px 12px; border-bottom: 1px solid var(--hair); text-align: left; align-items: baseline; }
+.ch-row { display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; gap: 8px; width: 100%; padding: 7px 10px; border-bottom: 1px dashed var(--hair); text-align: left; align-items: baseline; background: transparent; }
 .ch-row:hover { background: var(--soft); }
-.ch-row.on { background: var(--accent-soft); border-left: 2px solid var(--accent); padding-left: 10px; }
+.ch-row.on { background: color-mix(in srgb, var(--accent) 12%, transparent); border-left: 2px solid var(--accent); padding-left: 8px; }
 .ch-row .no { font-family: var(--mono); font-size: 11px; color: var(--meta); }
 .ch-row .tt { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ch-row .sz { font-size: 11px; color: var(--meta); }
@@ -373,6 +383,8 @@ html[data-doc-auto-gap="off"] .doc-paper p { margin-bottom: 0; }
 .doc-block p { margin: 0; }
 html[data-doc-auto-gap="off"] .doc-block { margin-bottom: 0; }
 .doc-icon { width: 26px; height: 26px; border-radius: 50%; color: var(--muted); display: grid; place-items: center; font-size: 14px; }
+.doc-drawer-btn { width: 26px; height: 26px; border-radius: 50%; color: var(--muted); display: grid; place-items: center; font-size: 13px; }
+.doc-drawer-btn:hover, .doc-drawer-btn.on { background: var(--soft); color: var(--ink); }
 .doc-icon:hover { background: var(--soft); color: var(--ink); }
 .doc-autosave { font-size: 11px; color: var(--meta); }
 .doc-editor { width: 100%; min-height: calc(100vh - 260px); border: 0; outline: none; background: transparent; resize: none; padding: 0; font-family: var(--serif); font-size: var(--doc-font-size); line-height: var(--doc-line-height); color: var(--ink-2); }
