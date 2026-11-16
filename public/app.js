@@ -455,16 +455,25 @@ function setDocPref(key, value) {
  * 逐块渲染（OS-22 认知修正：默认就能实时编辑，不做阅读/编辑切换）。
  * 每个块输出一个 contenteditable 段落组件——点进去直接改，失焦即按块偏移写回源码并自动保存。
  * 大标题（md 首个 H1）已在文档头显示，正文里跳过。
+ *
+ * OS-35：每块右侧带一组块操作（下方插入 / 删除本段），默认隐藏、悬停或聚焦才显。
+ * data-block 用「渲染序」（过滤掉 H1 后的下标）；data-orig 记它在 splitBlocks 里的原始下标，
+ * 回写源码时按 data-start/end 偏移走，不依赖下标，所以两者不会打架。
  */
 function renderDocBody(text) {
   if (!mdReady || !mdModule) return `<div class="doc-paper prose"><p>${esc(text)}</p></div>`
-  const blocks = mdModule.splitBlocks(text).filter((block) => !/^\s*#\s+/u.test(block.text))
-  // 每段外面套一层 .doc-line：竖条批注条放在可编辑块之外（contenteditable 里放按钮会被一起编辑）
+  const all = mdModule.splitBlocks(text)
+  const blocks = all.filter((block) => !/^\s*#\s+/u.test(block.text))
+  // 每段外面套一层 .doc-line：竖条批注条与块操作放在可编辑块之外（contenteditable 里放按钮会被一起编辑）
   const parts = blocks.map((block, index) => {
     const html = mdModule.renderMarkdown(block.text)
     return `<div class="doc-line" data-line="${index}">
       <button class="doc-gutter" data-action="gutter-jump" data-block-index="${index}" title="第 ${index + 1} 段的批注" aria-label="第 ${index + 1} 段的批注"></button>
       <div class="doc-block" contenteditable="true" spellcheck="false" data-block="${index}" data-start="${block.start}" data-end="${block.end}" data-raw="${esc(block.text)}">${html}</div>
+      <div class="doc-block-ops" role="toolbar" aria-label="第 ${index + 1} 段操作">
+        <button class="blk-op" data-action="block-insert-open" data-block-index="${index}" title="在这一段下面插入">＋</button>
+        <button class="blk-op blk-op-del" data-action="block-delete" data-block-index="${index}" title="删除这一段">×</button>
+      </div>
     </div>`
   })
   return `<div class="doc-paper prose" id="doc-reader">${parts.join('')}</div>`
@@ -558,7 +567,133 @@ function blockHtmlToMd(blockEl) {
   return text.split('\n').map((line) => line.trimEnd()).join('\n').trim()
 }
 
-/** 一个块改完：按 start/end 替换源码中那一段，然后自动保存。 */
+/**
+ * 插入形制（OS-35）：作者要「能选各种形制」，不是只能加一段普通话。
+ * template 里的 %s 是插入后要落笔的地方（空字符串＝直接留一个空块等人写）。
+ */
+const BLOCK_FORMS = Object.freeze([
+  { id: 'para', label: '正文段落', hint: '最常用', template: '' },
+  { id: 'h2', label: '小标题', hint: '二级标题', template: '## ' },
+  { id: 'h3', label: '细目标题', hint: '三级标题', template: '### ' },
+  { id: 'quote', label: '引用', hint: '引文/书信/摘录', template: '> ' },
+  { id: 'ul', label: '无序列表', hint: '要点陈列', template: '- ' },
+  { id: 'ol', label: '有序列表', hint: '步骤/次序', template: '1. ' },
+  { id: 'hr', label: '分隔线', hint: '场景切换', template: '---' },
+  { id: 'blank', label: '空一行', hint: '只留间隔', template: '' , blankOnly: true }
+])
+
+/** 当前章节的渲染块列表（与 data-block 的下标一致：已过滤掉 H1）。 */
+function renderedBlocks() {
+  if (!mdReady || !mdModule) return []
+  return mdModule.splitBlocks(state.chapterText).filter((block) => !/^\s*#\s+/u.test(block.text))
+}
+
+/**
+ * 相对某个块插入新块。at = 'after' | 'before'。
+ * 直接改 chapterText 的偏移再整篇落盘，随后重绘纸面（保留分析标注）。
+ */
+async function insertBlockAt(blockIndex, formId, at = 'after') {
+  if (!state.current || !state.chapterFile) return
+  const form = BLOCK_FORMS.find((item) => item.id === formId) || BLOCK_FORMS[0]
+  // 偏移取 DOM 上的 data-start/end（这一次渲染的坐标），不按 index 去重算源码
+  const line = document.querySelector(`.doc-line[data-line="${Number(blockIndex)}"]`)
+  const blockEl = line?.querySelector('.doc-block')
+  const anchorStart = Number(blockEl?.dataset.start)
+  const anchorEnd = Number(blockEl?.dataset.end)
+  if (!Number.isFinite(anchorStart) || !Number.isFinite(anchorEnd)) return
+  const body = form.blankOnly ? '' : (form.template || '')
+  const pos = at === 'after' ? anchorEnd : anchorStart
+  const before = state.chapterText.slice(0, pos)
+  const after = state.chapterText.slice(pos)
+  const joined = at === 'after'
+    ? `${before}\n\n${body}${after.startsWith('\n') ? '' : '\n'}${after}`
+    : `${before}${body ? `${body}\n\n` : '\n'}${after}`
+  const text = joined.replace(/\n{3,}/g, '\n\n')
+  closeModal()
+  await writeChapterText(text, form.blankOnly ? '已插入空行' : `已插入${form.label}`)
+  // 落笔到新块：带模板的定位到模板末尾，空块直接聚焦
+  requestAnimationFrame(() => {
+    const target = at === 'after' ? Number(blockIndex) + 1 : Number(blockIndex)
+    const targetLine = document.querySelector(`.doc-line[data-line="${target}"]`)
+    const targetEl = targetLine?.querySelector('.doc-block')
+    if (!targetEl) return
+    targetEl.focus()
+    const selection = window.getSelection()
+    if (selection) {
+      const range = document.createRange()
+      range.selectNodeContents(targetEl)
+      range.collapse(false)
+      selection.removeAllRanges()
+      selection.addRange(range)
+    }
+  })
+}
+
+/**
+ * 删除某一块（源码层面整块移除，连同它前后的空行）。
+ * 以 DOM 上 data-start/end 为准——那是「这一次渲染时」的偏移，永远和点中的那段对得上；
+ * 不能用 renderedBlocks()[index]，因为增删后 chapterText 可能已变而 DOM 还是旧的。
+ */
+async function deleteBlockAt(blockIndex) {
+  if (!state.current || !state.chapterFile) return
+  const line = document.querySelector(`.doc-line[data-line="${Number(blockIndex)}"]`)
+  const blockEl = line?.querySelector('.doc-block')
+  if (!blockEl) return
+  const start = Number(blockEl.dataset.start)
+  const end = Number(blockEl.dataset.end)
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return
+  const raw = (blockEl.dataset.raw || blockEl.textContent || '').trim()
+  const preview = raw.length > 24 ? `${raw.slice(0, 24)}…` : raw
+  const confirmed = globalThis.confirm?.(`删除这一段？\n\n${preview}\n\n（会立刻写盘；正文有多版本备份，可在产物中心找回）`)
+  if (!confirmed) return
+  // 连同尾随空行一起删，避免留下越来越大的空档
+  let stop = end
+  while (stop < state.chapterText.length && state.chapterText[stop] === '\n') stop += 1
+  const text = (state.chapterText.slice(0, start) + state.chapterText.slice(stop))
+    .replace(/\n{3,}/g, '\n\n')
+    .trimEnd() + '\n'
+  await writeChapterText(text, '已删除这一段')
+}
+
+/** 统一的「改整篇文本 → 落盘 → 重绘」出口（增删块用）。 */
+async function writeChapterText(text, note = '') {
+  if (!state.current || !state.chapterFile) return
+  state.chapterText = text
+  setAutosaveChip('保存中…')
+  try {
+    const payload = await api('/api/chapter', {
+      method: 'PUT',
+      body: JSON.stringify({ root: state.current.path, file: state.chapterFile, text })
+    })
+    state.savedAt = payload.savedAt
+    state.chapterNote = note
+    render()
+    paintDocAnnotations()
+    setAutosaveChip('已保存 · 刚刚')
+    clearTimeout(docSaveTimer)
+    docSaveTimer = setTimeout(() => { loadWriteChapters({ force: true }) }, 1200)
+  } catch (error) {
+    setAutosaveChip('保存失败')
+    state.error = `${error?.code ? `${error.code} · ` : ''}${text(error?.message || error)}`
+    render()
+  }
+}
+
+/** 插入形制选择面板。 */
+function openBlockInsert(blockIndex) {
+  const forms = BLOCK_FORMS.map((form) => `
+    <button class="form-opt" data-action="block-insert-run" data-form="${esc(form.id)}" data-block-index="${esc(blockIndex)}">
+      <b>${esc(form.label)}</b><span>${esc(form.hint)}</span>
+    </button>`).join('')
+  openModal(`
+    <h3>在这一段下面插入</h3>
+    <p class="sub">选一个形制，插进去就能直接写。</p>
+    <div class="form-grid">${forms}</div>
+    <div class="ops"><button class="btn-ghost" data-action="modal-close">取消</button></div>
+  `)
+}
+
+
 async function commitDocBlock(blockEl) {
   if (!state.current || !state.chapterFile) return
   const start = Number(blockEl.dataset.start)
@@ -684,8 +819,8 @@ function showSelBar(picked) {
 
 /** 选区上下文：所在块的整段＋前后各一块（给 Agent 足够语境又不淹）。 */
 function selectionContext() {
-  const blocks = state.write.chapters.length ? mdModule.splitBlocks(state.chapterText) : []
-  const raw = blocks.map((block) => block.text)
+  // 用 renderedBlocks()——与 data-block 同一套下标（已过滤 H1），否则有 H1 时整段错位一格
+  const raw = renderedBlocks().map((block) => block.text)
   const index = state.sel.blockIndex
   const near = [raw[index - 1], raw[index], raw[index + 1]].filter((line) => typeof line === 'string' && line.trim())
   return near.join('\n\n')
@@ -789,28 +924,16 @@ function openPolishPreview() {
 async function applyPolish() {
   const value = document.getElementById('polish-result')?.value ?? ''
   if (!state.current || !state.chapterFile || !value.trim()) return
-  const blocks = mdModule.splitBlocks(state.chapterText)
-  const block = blocks[state.sel.blockIndex]
+  // 同样要按「渲染序」（data-block）取块——直接用 splitBlocks 会因 H1 错位一格
+  const block = renderedBlocks()[state.sel.blockIndex]
   if (!block) {
     closeModal()
     return
   }
   const text = state.chapterText.slice(0, block.start) + value.trim() + state.chapterText.slice(block.end)
   closeModal()
-  state.chapterText = text
-  try {
-    await api('/api/chapter', {
-      method: 'PUT',
-      body: JSON.stringify({ root: state.current.path, file: state.chapterFile, text })
-    })
-    state.savedAt = new Date().toISOString()
-    state.sel.preview = null
-    setAutosaveChip('已替换 · 已保存')
-    render()
-  } catch (error) {
-    state.error = `${error?.code ? `${error.code} · ` : ''}${text(error?.message || error)}`
-    render()
-  }
+  await writeChapterText(text, '已替换选中段落')
+  state.sel.preview = null
 }
 
 /* ---------- 与 Agent 讨论：选中段落作上下文，进左列会话 ---------- */
@@ -3939,6 +4062,12 @@ document.addEventListener('click', (event) => {
   } else if (action === 'analyze-expand') {
     state.analyze.expandOthers = !state.analyze.expandOthers
     renderAnalyzePanel()
+  } else if (action === 'block-insert-open') {
+    openBlockInsert(target.dataset.blockIndex)
+  } else if (action === 'block-insert-run') {
+    insertBlockAt(target.dataset.blockIndex, target.dataset.form, 'after')
+  } else if (action === 'block-delete') {
+    deleteBlockAt(target.dataset.blockIndex)
   } else if (action === 'gutter-jump') {
     gutterJump(target.dataset.blockIndex)
   } else if (action === 'analyze-close') {

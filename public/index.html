@@ -527,7 +527,19 @@ html[data-doc-auto-gap="off"] .doc-block { margin-bottom: 0; }
 .issue-act { font-size: 11px; border: 1px solid var(--line); border-radius: var(--pill); padding: 1px 9px; color: var(--muted); }
 .issue-act:hover { border-color: var(--ink); color: var(--ink); }
 /* 文档内标注（OS-33）：左侧可点竖条＝这一段有批注；点它跳到那段并让右栏对齐 */
-.doc-line { position: relative; }
+.doc-line { position: relative; display: block; }
+/* 块操作（OS-35）：默认隐身，悬停该段或聚焦时才浮出来（贴在正文右缘，不遮字） */
+.doc-block-ops { position: absolute; right: -26px; top: 0; display: flex; flex-direction: column; gap: 1px; opacity: 0; pointer-events: none; transition: opacity .12s ease; }
+.doc-line:hover .doc-block-ops, .doc-line:focus-within .doc-block-ops { opacity: 1; pointer-events: auto; }
+.blk-op { width: 20px; height: 20px; border-radius: 50%; color: var(--meta); font-size: 13px; line-height: 1; display: grid; place-items: center; background: var(--bg); }
+.blk-op:hover { background: var(--soft); color: var(--ink); }
+.blk-op-del:hover { color: var(--danger); }
+/* 插入形制选择 */
+.form-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; margin-bottom: 6px; }
+.form-opt { display: flex; flex-direction: column; gap: 2px; border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 12px; text-align: left; background: var(--bg); }
+.form-opt:hover { border-color: var(--ink); background: var(--soft); }
+.form-opt b { font-size: 13px; }
+.form-opt span { font-size: 11px; color: var(--meta); }
 .doc-line .doc-block { margin-bottom: var(--doc-para-gap); }
 .doc-line:last-child .doc-block { margin-bottom: 0; }
 .doc-gutter { position: absolute; left: -22px; top: 6px; bottom: 6px; width: 14px; border: 0; background: none; cursor: default; padding: 0; display: block; }
