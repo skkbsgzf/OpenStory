@@ -77,7 +77,8 @@ import {
   stopAllSidecars
 } from './runtimes.mjs'
 import { runCliChat } from './cli-bridge.mjs'
-import { detectDsh, resolveDshChat } from './dsh-bridge.mjs'
+import { detectDsh, detectDshAny, resolveDshChat, resolveDshRun } from './dsh-bridge.mjs'
+import { runDshStdio } from './dsh-cli.mjs'
 import {
   builtinSuitesDir,
   defaultSuiteStatePath,
@@ -1018,6 +1019,24 @@ function isMissingColor(value) {
 
 /* ---------- Agent 通道（OS-4/9：会话 JSONL＋运行时 kit 货架，Pi 兜底）---------- */
 
+/** DSH 单条 prompt：system 守则＋最近历史（同 buildUpstreamMessages 口径）。 */
+function composeDshPrompt(items, { maxMessages = 24, maxChars = 48000 } = {}) {
+  const history = (Array.isArray(items) ? items : [])
+    .filter((item) => item?.kind === 'msg')
+    .map((item) => ({ role: item.role === 'assistant' ? 'assistant' : 'user', content: text(item.content) }))
+    .filter((message) => message.content.trim())
+  const picked = []
+  let used = 0
+  for (let index = history.length - 1; index >= 0 && picked.length < maxMessages; index -= 1) {
+    const message = history[index]
+    if (used + message.content.length > maxChars && picked.length > 0) break
+    picked.unshift(message)
+    used += message.content.length
+  }
+  const lines = picked.map((message) => message.role === 'assistant' ? `【助手】${message.content}` : `【作者】${message.content}`)
+  return lines.join('\n\n')
+}
+
 function systemPromptFor(root, libraries) {
   const key = rootKey(root)
   const record = (Array.isArray(libraries) ? libraries : []).find((library) => rootKey(library.path) === key)
@@ -1049,9 +1068,9 @@ async function handleAgentRuntimesGet(res, context) {
     let probeResult = null
     if (kit.probe) {
       if (kit.kind === 'dsh') {
-        const dsh = await detectDsh({ env: context.env })
+        const dsh = await detectDshAny({ env: context.env })
         probeResult = dsh.running
-          ? { installed: true, version: `chat 端点就绪（${dsh.source}）` }
+          ? { installed: true, version: dsh.mode === 'cli' ? `CLI 就绪（${dsh.version ?? 'dsh'}）` : `chat 端点就绪（${dsh.source}）` }
           : { installed: false, message: dsh.message }
       } else {
         probeResult = await probeRuntimeKit(kit)
@@ -1156,9 +1175,13 @@ async function resolveChatUpstream(config, context) {
     return { ok: true, execute: 'cli', kit, model: kit.model, runtimeName: kit.name }
   }
   if (kit.kind === 'dsh') {
-    const chat = await resolveDshChat(kit, { env: context.env })
-    if (!chat.ok) return fallbackToPi(config, `DSH 不可用：${chat.message}`)
-    return { ok: true, url: chat.url, headers, model: kit.model, runtimeName: kit.name }
+    const run = await resolveDshRun(kit, { env: context.env })
+    if (!run.ok) return fallbackToPi(config, `DSH 不可用：${run.message}`)
+    if (run.mode === 'cli') {
+      // CLI stdio（od 协议）：一 run 一进程
+      return { ok: true, execute: 'dsh-cli', dshRun: run, kit, model: kit.model, runtimeName: kit.name }
+    }
+    return { ok: true, url: run.url, headers, model: kit.model, runtimeName: kit.name }
   }
   const up = await ensureSidecar(kit, { env: context.env })
   if (!up.ok) return fallbackToPi(config, `运行时 ${kit.name} 起不来（${up.message}）`)
@@ -1208,6 +1231,36 @@ async function handleAgentChat(req, res, request, context, root, libraries) {
       controller.abort()
     }
   })
+
+  if (upstream.execute === 'dsh-cli') {
+    // DSH stdio（od 协议）：start → delta*（边收边转）→ done；会话 id 落档沿用本地会话
+    res.writeHead(200, {
+      'content-type': 'text/event-stream; charset=utf-8',
+      'cache-control': 'no-cache, no-transform',
+      connection: 'keep-alive',
+      'x-accel-buffering': 'no'
+    })
+    sseFrame(res, { type: 'start', sessionId, runtime: upstream.runtimeName })
+    if (upstream.notice) sseFrame(res, { type: 'notice', text: upstream.notice })
+    const dshPrompt = composeDshPrompt(history.items)
+    const result = await runDshStdio({
+      dshCmd: upstream.dshRun.dshCmd,
+      profile: upstream.dshRun.profile,
+      cwd: root,
+      prompt: dshPrompt,
+      timeoutMs: 180000,
+      onText: (piece) => sseFrame(res, { type: 'delta', text: piece })
+    })
+    if (result.ok && result.text.trim()) {
+      await appendSession(sessionsDir, root, sessionId, [{
+        t: 'msg', id: newMessageId(), role: 'assistant', content: result.text, at: new Date().toISOString()
+      }])
+      sseFrame(res, { type: 'done', sessionId, chars: result.text.length })
+    } else {
+      sseFrame(res, { type: 'error', error: { code: API_ERROR_CODES.AGENT_UPSTREAM_ERROR, message: result.message ?? 'DSH 无输出' } })
+    }
+    return res.end()
+  }
 
   if (upstream.execute === 'cli') {
     // CLI 嫁接：一次性子进程 → 整段一片 SSE（daemon 自有帧协议不变）

@@ -1,6 +1,11 @@
 /**
  * DSH 原生适配（OS-18）——探测 DSH Desktop，拿到它的 chat 端点就直连。
  *
+ * 双模（OS-19）：
+ *   A) **CLI stdio（首选）**——本机装了 DeepSeek Harness CLI（`dsh`）就用它，照 od 的
+ *      @open-design/dsh-runtime 协议起 `dsh --profile <p> --stdio`（一 run 一进程，JSONL 帧）；
+ *   B) **HTTP 端点（备选）**——没有 CLI 但有 OpenAI 兼容桥（env/studio-plugin-state）就直连。
+ *
  * 探测顺序（全部只读，本机）：
  *   1) env `DSH_CHAT_ENDPOINT`（显式配置优先）；
  *   2) env `DSH_STUDIO_STATE` 或 %LOCALAPPDATA%\.dsh\open-design\studio-plugin-state.json
@@ -10,8 +15,19 @@
  * chat 面只认 OpenAI 兼容 `POST <base>/v1/chat/completions`（SSE）——DSH 侧写成桥即可；
  * daemon 不逆向 DSH 私有会话协议。不可达如实报，不伪造。
  */
+import { spawn } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
+
+
+/** Windows：.cmd/.bat 不能直接 spawn（shell:false）——用 cmd /c 包一层；其余原样。 */
+export function spawnCommand(cmd, args, options = {}) {
+  const raw = String(cmd ?? '')
+  if (process.platform === 'win32' && /.(?:cmd|bat)$/iu.test(raw)) {
+    return spawn('cmd', ['/c', raw, ...args], options)
+  }
+  return spawn(raw, args, options)
+}
 
 function text(value) {
   return String(value ?? '')
@@ -47,6 +63,59 @@ export function pickChatBase(record) {
  * 探测 DSH。返回 {running, chatBase?, source, message?}：
  * running＝拿到 chatBase（可直连）；否则若 inspector 端口活着＝{running:false, message:'DSH 在跑但没配 chat 端点'}。
  */
+/**
+ * dsh CLI 探测：`dsh --version` 或 `dsh --help` 能跑即算装了（一 run 一进程的 stdio 桥前提）。
+ * 返回 {installed, version?, message?}。缓存由调用方管（daemon 货架每请求现探，同上限 60s）。
+ */
+export function detectDshCli({ env = process.env, dshCmd = null } = {}) {
+  return new Promise((resolvePromise) => {
+    const cmd = text(dshCmd || env.DSH_CLI || 'dsh')
+    let child
+    let settled = false
+    const finish = (result) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      resolvePromise(result)
+    }
+    const timer = setTimeout(() => {
+      try { child?.kill() } catch { /* 已经死了 */ }
+      finish({ installed: false, message: 'dsh --version 探测超时（5s）' })
+    }, 5000)
+    try {
+      child = spawnCommand(cmd, ['--version'], { shell: false, stdio: ['ignore', 'pipe', 'pipe'] })
+    } catch (error) {
+      finish({ installed: false, message: `dsh 不可执行：${text(error?.message || error)}——需要先装 DeepSeek Harness CLI（npm i -g @deepseek-ai/dsh）` })
+      return
+    }
+    let out = ''
+    child.stdout?.on('data', (chunk) => { out += text(chunk) })
+    child.stderr?.on('data', (chunk) => { out += text(chunk) })
+    child.on('error', (error) => finish({ installed: false, message: `dsh 不可执行：${text(error?.message || error)}——需要先装 DeepSeek Harness CLI（npm i -g @deepseek-ai/dsh）` }))
+    child.on('exit', (code) => {
+      const firstLine = out.split('\n').map((line) => line.trim()).filter(Boolean)[0] || ''
+      finish(code === 0
+        ? { installed: true, version: firstLine.slice(0, 80) || 'dsh CLI 就绪', profile: text(env.DSH_PROFILE || 'openstory') }
+        : { installed: false, message: `dsh 退出码 ${code}${firstLine ? `：${firstLine.slice(0, 120)}` : ''}——需要先装 DeepSeek Harness CLI（npm i -g @deepseek-ai/dsh）` })
+    })
+  })
+}
+
+/** 双模总探测：CLI 优先，HTTP 次之。 */
+export async function detectDshAny({ env = process.env, fetchImpl = fetch, dshCmd = null } = {}) {
+  const cli = await detectDshCli({ env, dshCmd })
+  if (cli.installed) {
+    return { running: true, mode: 'cli', dshCmd: text(dshCmd || env.DSH_CLI || 'dsh'), profile: cli.profile, source: 'dsh --version', version: cli.version }
+  }
+  const http = await detectDsh({ env, fetchImpl })
+  if (http.running) return { ...http, mode: 'http' }
+  return {
+    running: false,
+    mode: 'none',
+    message: `${cli.message ?? 'dsh CLI 未安装'}；也没有可用的 DSH chat 端点（${http.message ?? '未探测到'}）`
+  }
+}
+
 export async function detectDsh({ env = process.env, fetchImpl = fetch } = {}) {
   const explicit = text(env.DSH_CHAT_ENDPOINT).trim()
   if (explicit) {
@@ -70,6 +139,22 @@ export async function detectDsh({ env = process.env, fetchImpl = fetch } = {}) {
     }
     return { running: false, message: `DSH 探测失败：${message}`, source: 'inspector' }
   }
+}
+
+/**
+ * DSH kit 的单次执行解析（OS-19 双模）：
+ *   CLI 模式 → {ok:true, mode:'cli', dshCmd, profile}
+ *   HTTP 模式 → {ok:true, mode:'http', url}
+ *   都不可用 → {ok:false, message}（人话，含装 CLI 的指令）。
+ */
+export async function resolveDshRun(kit, options = {}) {
+  if (kit?.url) return { ok: true, mode: 'http', url: `${kit.url}${kit.chatPath || '/v1/chat/completions'}`, source: 'manifest' }
+  const any = await detectDshAny(options)
+  if (!any.running) return { ok: false, mode: 'none', message: any.message }
+  if (any.mode === 'cli') {
+    return { ok: true, mode: 'cli', dshCmd: any.dshCmd, profile: any.profile ?? 'openstory', source: any.source }
+  }
+  return { ok: true, mode: 'http', url: `${any.chatBase}${kit?.chatPath || '/v1/chat/completions'}`, source: any.source }
 }
 
 /** DSH kit 的 chat 直连地址：显式 manifest.url 优先，其次探测。 */
