@@ -1086,9 +1086,15 @@ function writeHtml() {
         <span class="count">${state.chapterMetaAt ? `改于 ${esc(formatAt(state.chapterMetaAt))}` : ''}</span>
         <span class="sp"></span>
         <span class="doc-autosave" id="doc-autosave"></span>
-        <button class="doc-drawer-btn" data-action="toggle-chapter-drawer" title="章节列表（悬浮）">⌸</button>
-        <button class="doc-drawer-btn" data-action="analyze-toggle" title="分析本章">◔</button>
-        <button class="doc-icon" data-action="doc-more" title="本章（版本历史 / 重命名 / 删除 / 显示设置）">⋯</button>
+        <button class="doc-drawer-btn" data-action="toggle-chapter-drawer" title="章节列表（悬浮）" aria-label="章节列表">
+          <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><rect x="2.5" y="2.5" width="11" height="11" rx="1.6" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M2.5 6h11M2.5 10h11" stroke="currentColor" stroke-width="1.4"/></svg>
+        </button>
+        <button class="doc-drawer-btn" data-action="analyze-toggle" title="分析本章" aria-label="分析本章">
+          <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><circle cx="8" cy="8" r="5.4" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M8 2.6A5.4 5.4 0 0 1 13.4 8H8z" fill="currentColor"/></svg>
+        </button>
+        <button class="doc-icon" data-action="doc-more" title="本章（版本历史 / 重命名 / 删除 / 显示设置）" aria-label="本章">
+          <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><circle cx="3.4" cy="8" r="1.35" fill="currentColor"/><circle cx="8" cy="8" r="1.35" fill="currentColor"/><circle cx="12.6" cy="8" r="1.35" fill="currentColor"/></svg>
+        </button>
       </div>
       <h1 class="doc-title">${esc(docTitle)}</h1>
       <div class="doc-actions">
@@ -1209,18 +1215,28 @@ function wikiDataHtml() {
 
 const agent = state.agent
 
+/**
+ * 模型 chip（OS-31 修）：运行时清单与 config 是两个独立异步，谁先回来都可能让别人算出空标签。
+ * 规则：能说出具体东西才显示，否则整个 chip 收起来——绝不摆一个空药丸。
+ */
 function updateAgentChip() {
   const chip = document.getElementById('agent-model-chip')
   if (!chip) return
-  const kit = agent.runtimeList.find((item) => item.id === agent.runtime && item.id)
-  const label = kit ? kit.name : agent.configured ? (agent.model || agent.endpoint) : '未配置模型'
-  chip.textContent = label
-  chip.classList.toggle('on', agent.configured)
+  const kit = agent.runtimeList.find((item) => item.id && item.id === agent.runtime)
+  const detail = kit ? kit.name : (agent.model || agent.endpoint || '')
+  if (!detail) {
+    chip.hidden = true
+    chip.textContent = ''
+    chip.className = 'agent-model'
+    chip.title = ''
+    return
+  }
+  chip.hidden = false
+  chip.textContent = detail
+  chip.classList.toggle('on', Boolean(kit) || agent.configured)
   chip.title = kit
     ? `运行时套件：${kit.name}（${kit.source}）${agent.model ? `\n模型：${agent.model}` : ''}`
-    : agent.configured
-      ? `端点：${agent.endpoint}${agent.apiKeyMasked ? `\nkey：${agent.apiKeyMasked}（完整 key 不回显）` : ''}`
-      : '点这里配置模型端点或选运行时套件'
+    : `端点：${agent.endpoint}${agent.apiKeyMasked ? `\nkey：${agent.apiKeyMasked}（完整 key 不回显）` : ''}`
 }
 
 async function loadAgentRuntimes() {
@@ -1337,13 +1353,63 @@ function rememberAgentError(error) {
   agent.lastError = `${error?.code ? `${error.code} · ` : ''}${text(error?.message || error)}`
 }
 
+/**
+ * 会话标题可用性（OS-31）：历史脏数据里存过 GBK 乱码（U+FFFD 已落盘不可逆），
+ * 与其在界面上摆一串方块，不如降级成「会话 · 时间」并让它可双击重命名。
+ */
+function sessionTitle(session, index) {
+  const raw = text(session.title).trim()
+  const broken = !raw || raw.includes('\uFFFD') || /[\u0000-\u0008\u000B\u000C\u000E-\u001F]/u.test(raw)
+  if (!broken) return { label: raw, broken: false }
+  const at = text(session.createdAt)
+  const stamp = at ? formatAt(at) : ''
+  return { label: `会话${index !== undefined ? ` ${index + 1}` : ''}${stamp ? ` · ${stamp}` : ''}`, broken: true }
+}
+
 function sessionsHtml() {
-  const pills = agent.sessions.map((session) => `
-    <span class="s${session.id === agent.sessionId ? ' on' : ''}" data-session-id="${esc(session.id)}" title="${esc(session.title)}（双击重命名）">
-      <span class="tt">${esc(session.title)}</span>
+  if (!agent.sessions.length) {
+    return `<div class="empty">还没有会话。<br>发第一条消息就会自动建。</div>
+      <div class="divider"></div>
+      <button class="new" data-action="agent-new-session">＋新会话</button>`
+  }
+  const rows = agent.sessions.map((session, index) => {
+    const title = sessionTitle(session, index)
+    // 空会话不摆「0」——只有真聊过才标条数
+    const meta = Number.isFinite(session.messageCount) && session.messageCount > 0 ? `${session.messageCount}` : ''
+    return `<div class="sess${session.id === agent.sessionId ? ' on' : ''}" data-session-id="${esc(session.id)}" title="${esc(title.label)}${title.broken ? '（历史标题编码损坏，双击重命名）' : '（双击重命名）'}">
+      <span class="tt">${esc(title.label)}</span>
+      ${meta ? `<span class="meta">${meta} 条</span>` : ''}
       <button class="x" data-session-del="${esc(session.id)}" title="删除会话">×</button>
-    </span>`).join('')
-  return `<button class="new" data-action="agent-new-session" title="开始一段新对话">＋新会话</button>${pills}`
+    </div>`
+  }).join('')
+  return `${rows}<div class="divider"></div>
+    <button class="new" data-action="agent-new-session" title="开始一段新对话">＋新会话</button>`
+}
+
+/** 当前会话一行：下拉收起时也能看出在聊哪条（含损坏标题的标记）。 */
+function renderAgentCurrent() {
+  const host = document.getElementById('agent-current')
+  if (!host) return
+  if (!agent.sessionId) { host.innerHTML = ''; return }
+  const index = agent.sessions.findIndex((session) => session.id === agent.sessionId)
+  const session = agent.sessions[index]
+  const title = session ? sessionTitle(session, index) : { label: '未落档的新会话', broken: false }
+  host.innerHTML = `<span>当前</span><span class="tt${title.broken ? ' bad' : ''}">${esc(title.label)}</span>`
+}
+
+function toggleAgentSessions() {
+  const panel = document.getElementById('agent-sess-panel')
+  const btn = document.getElementById('agent-sess-btn')
+  if (!panel) return
+  const open = !panel.classList.contains('open')
+  panel.classList.toggle('open', open)
+  btn?.classList.toggle('on', open)
+  if (open) renderAgent() // 展开时按最新会话刷新
+}
+
+function closeAgentSessions() {
+  document.getElementById('agent-sess-panel')?.classList.remove('open')
+  document.getElementById('agent-sess-btn')?.classList.remove('on')
 }
 
 function msgHtml(item, index) {
@@ -1412,10 +1478,14 @@ function renderContextChip() {
 
 function renderAgent() {
   renderContextChip()
-  const strip = document.getElementById('agent-sessions')
+  renderAgentCurrent()
+  const strip = document.getElementById('agent-sess-panel')
   if (strip) strip.innerHTML = sessionsHtml()
+  const count = document.getElementById('agent-sess-count')
+  if (count) count.textContent = String(agent.sessions.length)
   renderThread()
   updateComposerState()
+  updateAgentChip()
 }
 
 function handleChatFrame(frame, handlers = {}) {
@@ -3026,7 +3096,9 @@ function deduceAgentHtml() {
 /* ---------- 数据加载 ---------- */
 
 async function boot() {
-  bootAgentConfig()
+  // 运行时清单与 config 一起拉：chip 要能显示「DSH 原生」这类具体名字，不能等进设置页才加载
+  await Promise.all([bootAgentConfig(), loadAgentRuntimes()])
+  updateAgentChip()
   loadSuites()
   try {
     const payload = await api('/api/libraries')
@@ -3417,6 +3489,7 @@ document.addEventListener('click', (event) => {
   }
   if (target.dataset.sessionId) {
     openSession(target.dataset.sessionId)
+    closeAgentSessions() // 选完就收起，跟库切换器一致
     return
   }
   if (target.dataset.view) {
@@ -3466,6 +3539,7 @@ document.addEventListener('click', (event) => {
     go('settings')
   } else if (action === 'agent-new-session') {
     newSession()
+    closeAgentSessions()
   } else if (action === 'agent-stop') {
     agent.controller?.abort()
   } else if (action === 'agent-send') {
@@ -3619,6 +3693,8 @@ document.addEventListener('click', (event) => {
       panel.classList.toggle('open')
       renderLibSwitchPanel()
     }
+  } else if (action === 'toggle-agent-sessions') {
+    toggleAgentSessions()
   }
 })
 
@@ -3713,12 +3789,14 @@ document.addEventListener('keydown', (event) => {
   }
 })
 
-// 会话双击重命名
+// 会话双击重命名（OS-31：列表在下拉面板里；损坏标题也给原始值让作者自己能改）
 document.addEventListener('dblclick', (event) => {
-  const pill = event.target.closest('.agent-sessions .s[data-session-id]')
-  if (!pill || agent.streaming) return
-  const session = agent.sessions.find((item) => item.id === pill.dataset.sessionId)
-  if (session) renameSession(session.id, session.title)
+  const row = event.target.closest('.agent-sess-panel .sess[data-session-id]')
+  if (!row || agent.streaming) return
+  const session = agent.sessions.find((item) => item.id === row.dataset.sessionId)
+  if (!session) return
+  const title = sessionTitle(session)
+  renameSession(session.id, title.broken ? '' : title.label)
 })
 
 // 点弹层遮罩空白处＝关闭；点切换器之外＝收起库下拉
@@ -3754,6 +3832,10 @@ document.addEventListener('mousedown', (event) => {
   const panel = document.getElementById('lib-switch-panel')
   if (panel?.classList.contains('open') && switcher && !switcher.contains(event.target)) {
     panel.classList.remove('open')
+  }
+  const sessDd = document.getElementById('agent-sess-dd')
+  if (document.getElementById('agent-sess-panel')?.classList.contains('open') && sessDd && !sessDd.contains(event.target)) {
+    closeAgentSessions()
   }
 })
 
