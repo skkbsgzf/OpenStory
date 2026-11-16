@@ -63,6 +63,7 @@ const state = {
     mode: 'engine', engine: { busy: false, data: null, pov: '', seed: '', error: '', hint: '' } },
   artifacts: { root: '', groups: [], totals: null, loading: false, error: '', previewFile: '', previewText: '', previewLoading: false },
   settings: { userDir: '', section: 'plugins', suiteId: '', open: false, prevView: '', helpOpen: false },
+  tabHidden: {},
   suites: [],
   agent: {
     configured: false,
@@ -455,25 +456,16 @@ function setDocPref(key, value) {
  * 逐块渲染（OS-22 认知修正：默认就能实时编辑，不做阅读/编辑切换）。
  * 每个块输出一个 contenteditable 段落组件——点进去直接改，失焦即按块偏移写回源码并自动保存。
  * 大标题（md 首个 H1）已在文档头显示，正文里跳过。
- *
- * OS-35：每块右侧带一组块操作（下方插入 / 删除本段），默认隐藏、悬停或聚焦才显。
- * data-block 用「渲染序」（过滤掉 H1 后的下标）；data-orig 记它在 splitBlocks 里的原始下标，
- * 回写源码时按 data-start/end 偏移走，不依赖下标，所以两者不会打架。
  */
 function renderDocBody(text) {
   if (!mdReady || !mdModule) return `<div class="doc-paper prose"><p>${esc(text)}</p></div>`
-  const all = mdModule.splitBlocks(text)
-  const blocks = all.filter((block) => !/^\s*#\s+/u.test(block.text))
-  // 每段外面套一层 .doc-line：竖条批注条与块操作放在可编辑块之外（contenteditable 里放按钮会被一起编辑）
+  const blocks = mdModule.splitBlocks(text).filter((block) => !/^\s*#\s+/u.test(block.text))
+  // 每段外面套一层 .doc-line：竖条批注条放在可编辑块之外（contenteditable 里放按钮会被一起编辑）
   const parts = blocks.map((block, index) => {
     const html = mdModule.renderMarkdown(block.text)
     return `<div class="doc-line" data-line="${index}">
       <button class="doc-gutter" data-action="gutter-jump" data-block-index="${index}" title="第 ${index + 1} 段的批注" aria-label="第 ${index + 1} 段的批注"></button>
       <div class="doc-block" contenteditable="true" spellcheck="false" data-block="${index}" data-start="${block.start}" data-end="${block.end}" data-raw="${esc(block.text)}">${html}</div>
-      <div class="doc-block-ops" role="toolbar" aria-label="第 ${index + 1} 段操作">
-        <button class="blk-op" data-action="block-insert-open" data-block-index="${index}" title="在这一段下面插入">＋</button>
-        <button class="blk-op blk-op-del" data-action="block-delete" data-block-index="${index}" title="删除这一段">×</button>
-      </div>
     </div>`
   })
   return `<div class="doc-paper prose" id="doc-reader">${parts.join('')}</div>`
@@ -567,92 +559,11 @@ function blockHtmlToMd(blockEl) {
   return text.split('\n').map((line) => line.trimEnd()).join('\n').trim()
 }
 
-/**
- * 插入形制（OS-35）：作者要「能选各种形制」，不是只能加一段普通话。
- * template 里的 %s 是插入后要落笔的地方（空字符串＝直接留一个空块等人写）。
- */
-const BLOCK_FORMS = Object.freeze([
-  { id: 'para', label: '正文段落', hint: '最常用', template: '' },
-  { id: 'h2', label: '小标题', hint: '二级标题', template: '## ' },
-  { id: 'h3', label: '细目标题', hint: '三级标题', template: '### ' },
-  { id: 'quote', label: '引用', hint: '引文/书信/摘录', template: '> ' },
-  { id: 'ul', label: '无序列表', hint: '要点陈列', template: '- ' },
-  { id: 'ol', label: '有序列表', hint: '步骤/次序', template: '1. ' },
-  { id: 'hr', label: '分隔线', hint: '场景切换', template: '---' },
-  { id: 'blank', label: '空一行', hint: '只留间隔', template: '' , blankOnly: true }
-])
 
 /** 当前章节的渲染块列表（与 data-block 的下标一致：已过滤掉 H1）。 */
 function renderedBlocks() {
   if (!mdReady || !mdModule) return []
   return mdModule.splitBlocks(state.chapterText).filter((block) => !/^\s*#\s+/u.test(block.text))
-}
-
-/**
- * 相对某个块插入新块。at = 'after' | 'before'。
- * 直接改 chapterText 的偏移再整篇落盘，随后重绘纸面（保留分析标注）。
- */
-async function insertBlockAt(blockIndex, formId, at = 'after') {
-  if (!state.current || !state.chapterFile) return
-  const form = BLOCK_FORMS.find((item) => item.id === formId) || BLOCK_FORMS[0]
-  // 偏移取 DOM 上的 data-start/end（这一次渲染的坐标），不按 index 去重算源码
-  const line = document.querySelector(`.doc-line[data-line="${Number(blockIndex)}"]`)
-  const blockEl = line?.querySelector('.doc-block')
-  const anchorStart = Number(blockEl?.dataset.start)
-  const anchorEnd = Number(blockEl?.dataset.end)
-  if (!Number.isFinite(anchorStart) || !Number.isFinite(anchorEnd)) return
-  const body = form.blankOnly ? '' : (form.template || '')
-  const pos = at === 'after' ? anchorEnd : anchorStart
-  const before = state.chapterText.slice(0, pos)
-  const after = state.chapterText.slice(pos)
-  const joined = at === 'after'
-    ? `${before}\n\n${body}${after.startsWith('\n') ? '' : '\n'}${after}`
-    : `${before}${body ? `${body}\n\n` : '\n'}${after}`
-  const text = joined.replace(/\n{3,}/g, '\n\n')
-  closeModal()
-  await writeChapterText(text, form.blankOnly ? '已插入空行' : `已插入${form.label}`)
-  // 落笔到新块：带模板的定位到模板末尾，空块直接聚焦
-  requestAnimationFrame(() => {
-    const target = at === 'after' ? Number(blockIndex) + 1 : Number(blockIndex)
-    const targetLine = document.querySelector(`.doc-line[data-line="${target}"]`)
-    const targetEl = targetLine?.querySelector('.doc-block')
-    if (!targetEl) return
-    targetEl.focus()
-    const selection = window.getSelection()
-    if (selection) {
-      const range = document.createRange()
-      range.selectNodeContents(targetEl)
-      range.collapse(false)
-      selection.removeAllRanges()
-      selection.addRange(range)
-    }
-  })
-}
-
-/**
- * 删除某一块（源码层面整块移除，连同它前后的空行）。
- * 以 DOM 上 data-start/end 为准——那是「这一次渲染时」的偏移，永远和点中的那段对得上；
- * 不能用 renderedBlocks()[index]，因为增删后 chapterText 可能已变而 DOM 还是旧的。
- */
-async function deleteBlockAt(blockIndex) {
-  if (!state.current || !state.chapterFile) return
-  const line = document.querySelector(`.doc-line[data-line="${Number(blockIndex)}"]`)
-  const blockEl = line?.querySelector('.doc-block')
-  if (!blockEl) return
-  const start = Number(blockEl.dataset.start)
-  const end = Number(blockEl.dataset.end)
-  if (!Number.isFinite(start) || !Number.isFinite(end)) return
-  const raw = (blockEl.dataset.raw || blockEl.textContent || '').trim()
-  const preview = raw.length > 24 ? `${raw.slice(0, 24)}…` : raw
-  const confirmed = globalThis.confirm?.(`删除这一段？\n\n${preview}\n\n（会立刻写盘；正文有多版本备份，可在产物中心找回）`)
-  if (!confirmed) return
-  // 连同尾随空行一起删，避免留下越来越大的空档
-  let stop = end
-  while (stop < state.chapterText.length && state.chapterText[stop] === '\n') stop += 1
-  const text = (state.chapterText.slice(0, start) + state.chapterText.slice(stop))
-    .replace(/\n{3,}/g, '\n\n')
-    .trimEnd() + '\n'
-  await writeChapterText(text, '已删除这一段')
 }
 
 /** 统一的「改整篇文本 → 落盘 → 重绘」出口（增删块用）。 */
@@ -678,21 +589,6 @@ async function writeChapterText(text, note = '') {
     render()
   }
 }
-
-/** 插入形制选择面板。 */
-function openBlockInsert(blockIndex) {
-  const forms = BLOCK_FORMS.map((form) => `
-    <button class="form-opt" data-action="block-insert-run" data-form="${esc(form.id)}" data-block-index="${esc(blockIndex)}">
-      <b>${esc(form.label)}</b><span>${esc(form.hint)}</span>
-    </button>`).join('')
-  openModal(`
-    <h3>在这一段下面插入</h3>
-    <p class="sub">选一个形制，插进去就能直接写。</p>
-    <div class="form-grid">${forms}</div>
-    <div class="ops"><button class="btn-ghost" data-action="modal-close">取消</button></div>
-  `)
-}
-
 
 async function commitDocBlock(blockEl) {
   if (!state.current || !state.chapterFile) return
@@ -3006,30 +2902,165 @@ const DIR_ORDER = ['正文', '世界书', '大纲', '构思', '资料', '约束'
 const READONLY_DIRS = new Set(['日志'])
 const PAGE_TO_DIR_LOCAL = Object.freeze({ write: '正文', entries: '世界书', worldbook: '世界书', outline: '大纲', notes: '构思', material: '资料', dossier: '资料', script: '剧本', comic: '漫画', wiki: 'Wiki' })
 
+/**
+ * 页签栏（OS-36）。
+ * 作者口径：「上面的这些正文/世界书/大纲/产物，它应该能删除，也应该能添加」。
+ *  × ＝只把这个页签收起来，磁盘上的目录和稿子一个字节都不动；在「＋」里能再勾回来。
+ *  ＋ ＝列出库里所有还没显示的目录可勾选，也能现场新建一个目录。
+ * 全部是每库本机偏好（localStorage，按库路径分键），不写进 .pinax，不动任何稿子。
+ */
+const TAB_HIDE_KEY = (root) => `openstory-tab-hidden::${root || ''}`
+
+/** 关掉的页签集合（按库分键）。dirsPage 记的是页签名（write/entries/dir:xxx/artifacts/wiki/deduce）。 */
+function hiddenTabs() {
+  const root = state.current?.path || ''
+  if (!state.tabHidden) state.tabHidden = {}
+  if (!state.tabHidden[root]) {
+    let saved = []
+    try { saved = JSON.parse(localStorage.getItem(TAB_HIDE_KEY(root)) || '[]') } catch { saved = [] }
+    state.tabHidden[root] = Array.isArray(saved) ? saved : []
+  }
+  return new Set(state.tabHidden[root])
+}
+
+function setTabHidden(view, hidden) {
+  const root = state.current?.path || ''
+  const set = hiddenTabs()
+  if (hidden) set.add(view)
+  else set.delete(view)
+  if (!state.tabHidden) state.tabHidden = {}
+  state.tabHidden[root] = [...set]
+  try { localStorage.setItem(TAB_HIDE_KEY(root), JSON.stringify([...set])) } catch { /* 隐私模式 */ }
+  // 关掉当前正在看的页签 → 退到第一个还开着的
+  if (hidden && state.view === view) {
+    const next = state.current ? (state.libDirs.includes('正文') ? 'write' : 'entries') : 'libraries'
+    state.view = next
+  }
+  render()
+}
+
+/**
+ * 「＋」新增页签面板（OS-36）。
+ * 两块：① 勾选磁盘上已有的目录（勾上＝出现在页签栏）；② 现场新建一个目录。
+ * 被 × 收起的内置页签（正文/世界书/产物/Wiki/推演）也在这里列出来，可勾回来。
+ */
+function openTabAdd() {
+  if (!state.current) return
+  const hidden = hiddenTabs()
+  const libDirs = state.libDirs
+  // 内置页签（有独立视图，不一定是目录）
+  const builtins = [
+    { view: 'artifacts', label: '产物', need: null },
+    { view: 'write', label: '正文', need: '正文' },
+    { view: 'entries', label: '世界书', need: '世界书' },
+    { view: 'wiki', label: 'Wiki', need: null },
+    { view: 'deduce', label: '推演', need: null }
+  ]
+  const builtinRows = builtins
+    .filter((item) => (item.need ? libDirs.includes(item.need) : true))
+    .map((item) => {
+      const off = hidden.has(item.view)
+      return `<button class="tab-pick${off ? '' : ' on'}" data-action="tab-toggle-pick" data-tab-view="${esc(item.view)}">
+        <span class="tp-check">${off ? '' : '✓'}</span><b>${esc(item.label)}</b></button>`
+    }).join('')
+  // 目录型页签
+  const dirRows = libDirs
+    .filter((dir) => dir !== '正文' && dir !== '世界书')
+    .sort((left, right) => DIR_ORDER.indexOf(left) - DIR_ORDER.indexOf(right))
+    .map((dir) => {
+      const view = `dir:${dir}`
+      const off = hidden.has(view)
+      const known = Boolean(DIR_LABELS[dir])
+      return `<button class="tab-pick${off ? '' : ' on'}" data-action="tab-toggle-pick" data-tab-view="${esc(view)}">
+        <span class="tp-check">${off ? '' : '✓'}</span><b>${esc(DIR_LABELS[dir] || dir)}</b>${known ? '' : '<span class="tp-note">未识别</span>'}</button>`
+    }).join('')
+  // 磁盘上有、但没在任何页签里的目录（比如「出图」）也列出来——这是「加页签」的主用途之一
+  openModal(`
+    <h3>增加页签</h3>
+    <p class="sub">勾上就会出现在顶栏；取消勾选只是收起页签，磁盘上的文件和稿子不受影响。</p>
+    <div class="tab-pick-sec"><h4>常用</h4><div class="tab-pick-grid">${builtinRows}</div></div>
+    <div class="tab-pick-sec"><h4>库里已有目录</h4><div class="tab-pick-grid">${dirRows || '<span class="count">没有其它目录</span>'}</div></div>
+    <div class="tab-pick-sec"><h4>新建目录</h4>
+      <div class="row" style="display:flex;gap:8px;align-items:center">
+        <input id="tab-new-dir" placeholder="例如：分镜" style="flex:1">
+        <button class="btn-primary" data-action="tab-create-dir">建目录并加页签</button>
+      </div>
+      <div class="err" id="tab-add-err"></div>
+    </div>
+    <div class="ops"><button class="btn-ghost" data-action="modal-close">关闭</button></div>
+  `)
+}
+
+/** 勾/取消勾选某个页签（面板不关，所见即所得）。 */
+function toggleTabPick(view) {
+  const hidden = hiddenTabs()
+  setTabHidden(view, !hidden.has(view))
+  openTabAdd() // 重画面板保持打开
+}
+
+/** 新建目录并立刻让它出页签。 */
+async function createTabDir() {
+  const input = document.getElementById('tab-new-dir')
+  const errEl = document.getElementById('tab-add-err')
+  const name = text(input?.value).trim()
+  if (!name) { if (errEl) errEl.textContent = '先填一个目录名'; return }
+  try {
+    const payload = await api('/api/dir', {
+      method: 'POST',
+      body: JSON.stringify({ root: state.current.path, name })
+    })
+    // 刷新目录清单 → 新目录会以 dir:xxx 出现在页签里
+    const topPayload = await api(`/api/files?root=${encodeURIComponent(state.current.path)}`)
+    state.libDirs = Array.isArray(topPayload.dirs) ? topPayload.dirs : state.libDirs
+    setTabHidden(`dir:${payload.name || name}`, false)
+    openTabAdd()
+    if (input) input.value = ''
+    if (errEl) errEl.textContent = ''
+  } catch (error) {
+    if (errEl) errEl.textContent = `${error?.code ? `${error.code} · ` : ''}${text(error?.message || error)}`
+  }
+}
+
 function renderTabs() {
   const tabsEl = document.getElementById('tabs')
   if (!tabsEl) return
+  const hidden = state.current ? hiddenTabs() : new Set()
   const defs = []
   if (state.current) {
     // OS-12：页签首格固定＝产物中心（产出物＋多版本＋历史）；「库」上移顶栏。
-    defs.push({ view: 'artifacts', label: '产物', ic: '产' })
+    defs.push({ view: 'artifacts', label: '产物', ic: '产', closable: true })
     // OS-19：正文/世界书也走 libDirs 判断——体裁声明后（如短故事）就不出世界书页签
     const libDirs = state.libDirs
     const hasDir = (name) => libDirs.includes(name)
     const excluded = new Set((state.briefGenre?.excludedPages ?? []).map((page) => PAGE_TO_DIR_LOCAL[page] ?? page))
-    if (!state.brief || hasDir('正文')) defs.push({ view: 'write', label: '正文', ic: '章' })
-    if (!state.brief || hasDir('世界书')) defs.push({ view: 'entries', label: '世界书', ic: '条' })
+    if (!state.brief || hasDir('正文')) defs.push({ view: 'write', label: '正文', ic: '章', closable: true })
+    if (!state.brief || hasDir('世界书')) defs.push({ view: 'entries', label: '世界书', ic: '条', closable: true })
     const extra = libDirs
-      .filter((dir) => dir !== '正文' && dir !== '世界书' && DIR_LABELS[dir] && !excluded.has(dir))
-      .sort((left, right) => DIR_ORDER.indexOf(left) - DIR_ORDER.indexOf(right))
-      .map((dir) => ({ view: `dir:${dir}`, label: DIR_LABELS[dir], ic: DIR_LABELS[dir][0], readonly: READONLY_DIRS.has(dir) }))
+      // 作者要求页签可自选：库里任何顶层目录都能出页签（不再只认 DIR_LABELS 里的名单）
+      .filter((dir) => dir !== '正文' && dir !== '世界书' && !excluded.has(dir))
+      .sort((left, right) => {
+        const li = DIR_ORDER.indexOf(left)
+        const ri = DIR_ORDER.indexOf(right)
+        return (li === -1 ? 99 : li) - (ri === -1 ? 99 : ri)
+      })
+      .map((dir) => ({
+        view: `dir:${dir}`,
+        label: DIR_LABELS[dir] || dir,
+        ic: (DIR_LABELS[dir] || dir).slice(0, 1),
+        readonly: READONLY_DIRS.has(dir),
+        closable: true
+      }))
     defs.push(...extra)
-    if (!excluded.has('Wiki')) defs.push({ view: 'wiki', label: 'Wiki', ic: 'W' })
-    defs.push({ view: 'deduce', label: '推演', ic: '推' })
+    if (!excluded.has('Wiki')) defs.push({ view: 'wiki', label: 'Wiki', ic: 'W', closable: true })
+    defs.push({ view: 'deduce', label: '推演', ic: '推', closable: true })
   }
   // 设置是一个可关闭的页签（OS-32）：跟正文/产物同级，打开才出现，× 关掉回到原页
   if (state.settings.open) defs.push({ view: 'settings', label: '设置', ic: '设', closable: true })
-  tabsEl.innerHTML = defs.map((def) => `<button class="tab${state.view === def.view ? ' on' : ''}" data-view="${esc(def.view)}"><span class="ic">${esc(def.ic)}</span>${esc(def.label)}${def.readonly ? '<span class="pill">只读</span>' : ''}${def.closable ? '<span class="tab-x" data-action="settings-close" title="关闭设置">×</span>' : ''}</button>`).join('')
+  const visible = defs.filter((def) => !hidden.has(def.view))
+  const tabHtml = visible.map((def) => `<button class="tab${state.view === def.view ? ' on' : ''}" data-view="${esc(def.view)}"><span class="ic">${esc(def.ic)}</span>${esc(def.label)}${def.readonly ? '<span class="pill">只读</span>' : ''}${def.closable ? `<span class="tab-x" data-action="${def.view === 'settings' ? 'settings-close' : 'tab-hide'}" data-tab-view="${esc(def.view)}" title="收起这个页签（不动磁盘上的东西）">×</span>` : ''}</button>`).join('')
+  // 末尾「＋」：加回被收起的页签，或新建目录
+  const addBtn = state.current ? '<button class="tab tab-add" data-action="tab-add-open" title="增加页签">＋</button>' : ''
+  tabsEl.innerHTML = tabHtml + addBtn
 }
 
 /* ---------- 顶栏库切换器（OS-12）---------- */
@@ -3926,6 +3957,15 @@ document.addEventListener('click', (event) => {
   if (action === 'settings-close') {
     event.stopPropagation() // 点 × 不该先触发页签切换
     closeSettingsTab()
+  } else if (action === 'tab-hide') {
+    event.stopPropagation() // 点 × 不该先切到那个页签
+    setTabHidden(target.dataset.tabView, true)
+  } else if (action === 'tab-add-open') {
+    openTabAdd()
+  } else if (action === 'tab-toggle-pick') {
+    toggleTabPick(target.dataset.tabView)
+  } else if (action === 'tab-create-dir') {
+    createTabDir()
   } else if (action === 'settings-help-toggle') {
     state.settings.helpOpen = !state.settings.helpOpen
     render()
@@ -4062,12 +4102,6 @@ document.addEventListener('click', (event) => {
   } else if (action === 'analyze-expand') {
     state.analyze.expandOthers = !state.analyze.expandOthers
     renderAnalyzePanel()
-  } else if (action === 'block-insert-open') {
-    openBlockInsert(target.dataset.blockIndex)
-  } else if (action === 'block-insert-run') {
-    insertBlockAt(target.dataset.blockIndex, target.dataset.form, 'after')
-  } else if (action === 'block-delete') {
-    deleteBlockAt(target.dataset.blockIndex)
   } else if (action === 'gutter-jump') {
     gutterJump(target.dataset.blockIndex)
   } else if (action === 'analyze-close') {

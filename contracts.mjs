@@ -315,6 +315,15 @@ export const ENDPOINTS = Object.freeze({
     response: { ok: 'true', dirs: 'array?', files: 'array', warnings: 'array?' },
     errors: ['NO_LIBRARY', 'PATH_ESCAPE', 'INVALID_ENTRY', 'NOT_FOUND']
   },
+  dirCreate: {
+    method: 'POST',
+    path: '/api/dir',
+    // 新建库内顶层目录（页签栏「＋」用）：单段目录名，禁路径分隔符与保留目录；
+    // 已存在＝幂等成功（幂等不报错，前端刷新目录清单即可）。不写任何文件。
+    request: { body: { root: 'string', name: 'string' } },
+    response: { ok: 'true', name: 'string', created: 'boolean' },
+    errors: ['NO_LIBRARY', 'PATH_ESCAPE', 'INVALID_ENTRY', 'WRITE_PROTOCOL_IO_FAILED']
+  },
   chaptersGet: {
     method: 'GET',
     path: '/api/chapters',
