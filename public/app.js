@@ -61,7 +61,7 @@ const state = {
   analyze: { open: false, result: null, busy: false, dismissed: {} },
   deduce: { premise: '', variables: '', question: '', sessionId: '', streaming: false, reply: '', controller: null, error: '' },
   artifacts: { root: '', groups: [], totals: null, loading: false, error: '', previewFile: '', previewText: '', previewLoading: false },
-  settings: { userDir: '', section: 'runtime', suiteId: '' },
+  settings: { userDir: '', section: 'plugins', suiteId: '' },
   suites: [],
   agent: {
     configured: false,
@@ -1544,12 +1544,14 @@ function openSettingsModal() {
 
 /* ---------- 设置页（OS-14：左导航分节制——功能规则会持续变多，架子先立好）---------- */
 
+/**
+ * 应用级设置分节（OS-28 认知：应用只管插件的插拔、发现与导入）。
+ * 业务面板自己的偏好（正文排版等）归各面板的 ⚙，不在这里。
+ */
 const SETTINGS_SECTIONS = Object.freeze([
-  { id: 'runtime', label: 'Agent 运行时', hint: 'Agent 运行时、kit 货架' },
-  { id: 'suites', label: '套件（插件）', hint: '业务套件：版本/归属/启停/独立设置' },
-  { id: 'appearance', label: '外观', hint: '风格包、版面观感' },
-  { id: 'writing', label: '外观·写作', hint: '正文字号/行高/段距/缩进' },
-  { id: 'data', label: '数据与目录', hint: '库清单、配置与货架路径' },
+  { id: 'plugins', label: '插件', hint: '套件与 Agent 运行时的启停/设置' },
+  { id: 'discover', label: '发现与导入', hint: '货架路径、本机安装、库导入' },
+  { id: 'data', label: '数据与目录', hint: '库清单与配置位置' },
   { id: 'about', label: '关于', hint: '这台工作台是什么' }
 ])
 
@@ -1637,6 +1639,34 @@ function settingsWritingSectionHtml() {
   </div>`
 }
 
+
+/**
+ * 「插件」节（OS-28）：应用只管插件的插拔——两块货架，业务套件 + Agent 运行时。
+ * 每个插件的设置都归它自己的设置页（点进去），不在应用设置里摊开。
+ */
+function settingsPluginsSectionHtml() {
+  return suitesSectionHtml() +
+    '<div class="step" style="margin-top:14px"><h3>Agent 运行时</h3><p class="sub">模型对话走哪条通道：Pi 直连 / DSH 原生 / CLI 服务（嫁接）。每个运行时的配置归它自己的设置页。</p></div>' +
+    settingsRuntimeSectionHtml()
+}
+
+/**
+ * 「发现与导入」节（OS-28）：应用只管「从哪发现插件」和「怎么把稿子导进来」。
+ * 三类货架都是目录制——丢文件即上新，本机覆盖内置。
+ */
+function settingsDiscoverSectionHtml() {
+  const shelves = [
+    { label: "业务套件", dir: "%LOCALAPPDATA%\\PinaxNext\\openstory\\suites", spec: "openstory-suite@2 · PROTOCOL.md", what: "一个目录＋manifest.json（声明能力：设置页用宿主表单还是自带页）" },
+    { label: "Agent 运行时", dir: "%LOCALAPPDATA%\\PinaxNext\\openstory\\runtimes", spec: "openstory-runtime-kit@1 · runtimes/README.md", what: "一个目录＋manifest.json（sidecar / endpoint / cli / dsh 四种 kind）" },
+    { label: "风格包", dir: "%LOCALAPPDATA%\\PinaxNext\\openstory\\styles", spec: "tokens JSON", what: "一个 JSON 文件（--bg/--accent… 令牌，可带栅格密度）" }
+  ]
+  const rows = shelves.map((shelf) => '<div class="discover-row"><div><b>' + esc(shelf.label) + '</b><span class="pill">' + esc(shelf.spec) + '</span><div class="count">' + esc(shelf.what) + '</div></div><div class="hint">' + esc(shelf.dir) + "</div></div>").join("")
+  return '<div class="step"><h3>插件货架（丢目录/文件即上新）</h3>' + rows +
+    '<p class="sub">同名 id 时本机覆盖内置；坏档跳过并给 warning，不会拖垮货架。</p></div>' +
+    '<div class="step"><h3>库与稿件导入</h3><p class="sub">库＝磁盘上的文件夹（.pinax 兼容）。新建库/导入稿件在顶栏「库」切换器面板里；导入会把源目录按类别（正文/剧本/大纲/世界书/资料…）识别并复制进库，源目录只读。</p>' +
+    '<div class="row" style="display:flex;gap:10px"><button class="btn-ghost" data-action="flow-create">＋新建库</button><button class="btn-ghost" data-action="flow-import">导入稿件</button></div></div>'
+}
+
 function settingsDataSectionHtml() {
   const paths = [
     { label: '库清单', path: state.preferencesPath || '%LOCALAPPDATA%\\PinaxNext\\next-preferences.json' },
@@ -1666,18 +1696,20 @@ function settingsAboutSectionHtml() {
 
 function settingsHtml() {
   const sectionRenderers = {
-    runtime: settingsRuntimeSectionHtml,
+    plugins: settingsPluginsSectionHtml,
     suites: suitesSectionHtml,
     suite: () => suiteDetailHtml(state.settings.suiteId),
+    suiteSettings: () => suiteDetailHtml(state.settings.suiteId),
+    runtime: settingsRuntimeSectionHtml,
     appearance: settingsAppearanceSectionHtml,
-    writing: settingsWritingSectionHtml,
+    discover: settingsDiscoverSectionHtml,
     data: settingsDataSectionHtml,
     about: settingsAboutSectionHtml
   }
-  const sectionId = sectionRenderers[state.settings.section] ? state.settings.section : 'runtime'
-  // 套件独立设置页（suite:）在导航上高亮「套件（插件）」
-  const navOn = sectionId === 'suite' ? 'suites' : sectionId
-  const sectionHtml = (sectionRenderers[sectionId] ?? settingsRuntimeSectionHtml)()
+  const sectionId = sectionRenderers[state.settings.section] ? state.settings.section : 'plugins'
+  // 套件独立设置页 / 运行时节在导航上高亮「插件」
+  const navOn = sectionId === 'suite' || sectionId === 'suiteSettings' ? 'plugins' : sectionId
+  const sectionHtml = (sectionRenderers[sectionId] ?? settingsPluginsSectionHtml)()
   const nav = SETTINGS_SECTIONS.map((section) => `
     <button class="settings-nav-item${section.id === navOn ? ' on' : ''}" data-settings-section="${esc(section.id)}">
       <b>${esc(section.label)}</b>
@@ -1685,7 +1717,7 @@ function settingsHtml() {
     </button>`).join('')
   return `<div class="lib-wrap">
     <h1>设置</h1>
-    <p class="sub">全面设置：运行时与套件（插件）、外观、数据目录——全部只落本机，不上网。功能规则会持续变多，都归这里管。</p>
+    <p class="sub">应用级设置只管插件的插拔、发现与导入。业务面板自己的偏好（如正文排版、分析）在各自的 ⚙ 里，不在这里。</p>
     ${errorHtml()}
     <div class="settings-layout">
       <nav class="settings-nav">${nav}</nav>
@@ -1802,7 +1834,7 @@ function settingFieldHtml(setting) {
 function suiteDetailHtml(id) {
   const suite = suiteById(id)
   if (!suite) {
-    return `<div class="step"><h3>套件不在货架上</h3><p class="sub">可能已被移除。<button class="btn-ghost" data-settings-section="suites">← 回套件列表</button></p></div>`
+    return `<div class="step"><h3>套件不在货架上</h3><p class="sub">可能已被移除。<button class="btn-ghost" data-settings-section="plugins">← 回插件</button></p></div>`
   }
   state.settings.draftValues = { ...suite.values }
   const caps = suite.capabilities ?? { settings: { mode: 'none' }, pages: [], services: [] }
@@ -1846,7 +1878,7 @@ function suiteDetailHtml(id) {
     ${body}
     <div class="row" style="display:flex;gap:10px;align-items:center;margin-top:14px">
       <button class="btn-ghost" data-action="suite-toggle" data-id="${esc(suite.id)}" data-enabled="${suite.enabled ? 'true' : 'false'}">${suite.enabled ? '停用' : '启用'}</button>
-      <button class="btn-ghost" data-settings-section="suites">← 回套件列表</button>
+      <button class="btn-ghost" data-settings-section="plugins">← 回插件</button>
     </div>
   </div>`
 }
@@ -3160,9 +3192,10 @@ function go(view) {
   if (view === 'entries') state.entry = null
   render()
   if (view === 'settings') {
-    loadAgentRuntimes().then(render)
-    loadStyles().then(render)
-    loadSuites().then(render)
+    // 先并行拉数据，全部回来再渲染一次（否则先完成的 render 会用旧 state 覆盖）
+    Promise.all([loadAgentRuntimes(), loadStyles(), loadSuites()])
+      .then(() => { if (state.view === 'settings') render() })
+      .catch(() => render())
     return
   }
   if (view === 'artifacts') {
