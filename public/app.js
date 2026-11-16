@@ -59,7 +59,8 @@ const state = {
   write: { chapters: [], listLoading: false, mode: 'read', docPrefs: null, drawerOpen: false },
   sel: { text: '', blockIndex: -1, rect: null, busy: false, preview: null },
   analyze: { open: false, result: null, busy: false, dismissed: {} },
-  deduce: { premise: '', variables: '', question: '', sessionId: '', streaming: false, reply: '', controller: null, error: '' },
+  deduce: { premise: '', variables: '', question: '', sessionId: '', streaming: false, reply: '', controller: null, error: '',
+    mode: 'engine', engine: { busy: false, data: null, pov: '', seed: '', error: '', hint: '' } },
   artifacts: { root: '', groups: [], totals: null, loading: false, error: '', previewFile: '', previewText: '', previewLoading: false },
   settings: { userDir: '', section: 'plugins', suiteId: '' },
   suites: [],
@@ -2796,6 +2797,68 @@ function dirViewHtml(dir) {
 
 /* ---------- 推演页（前提/变量/分支三段 → Agent 通道 → 待确认卡）---------- */
 
+
+/* ---------- 推演引擎（OS-29）：接 Pinax fact 推演链 ---------- */
+
+/** 呈现一拍：局面卡＋候选（引擎确定性，不需要模型）。 */
+async function deduceEnginePresent(opts) {
+  const options = opts || {}
+  if (!state.current) return
+  const engine = state.deduce.engine
+  const povInput = document.getElementById('deduce-pov')
+  const seedInput = document.getElementById('deduce-seed')
+  if (povInput) engine.pov = povInput.value.trim()
+  if (seedInput) engine.seed = seedInput.value.trim()
+  engine.busy = true
+  engine.error = ""
+  render()
+  try {
+    const payload = await api("/api/deduce/present", {
+      method: "POST",
+      body: JSON.stringify({
+        root: state.current.path,
+        bookId: state.bookId || "default",
+        pov: engine.pov || undefined,
+        seed: engine.seed === "" ? undefined : Number(engine.seed),
+        reset: options.reset === true
+      })
+    })
+    engine.data = payload
+    engine.hint = opts && opts.hint ? opts.hint : ""
+  } catch (error) {
+    engine.error = (error && error.code ? error.code + " · " : "") + text((error && error.message) || error)
+    engine.data = null
+  }
+  engine.busy = false
+  render()
+}
+
+/** 结算：选择某候选（或否决）。 */
+async function deduceEngineSettle(candidateId, action) {
+  const engine = state.deduce.engine
+  if (!state.current || !engine.data) return
+  engine.busy = true
+  engine.error = ""
+  render()
+  try {
+    const payload = await api("/api/deduce/settle", {
+      method: "POST",
+      body: JSON.stringify({
+        root: state.current.path,
+        bookId: state.bookId || "default",
+        candidateId: candidateId || undefined,
+        action: action || "choose"
+      })
+    })
+    engine.hint = "已结算（第 " + payload.round + " 拍）——再呈现一拍继续"
+    await deduceEnginePresent({})
+  } catch (error) {
+    engine.error = (error && error.code ? error.code + " · " : "") + text((error && error.message) || error)
+  }
+  engine.busy = false
+  render()
+}
+
 function composeDeduceContent() {
   const deduce = state.deduce
   const variables = deduce.variables.split('\n').map((line) => line.trim()).filter(Boolean).map((line) => `- ${line}`).join('\n')
@@ -2856,15 +2919,95 @@ async function startDeduce() {
 function deduceHtml() {
   const deduce = state.deduce
   if (!state.current) return needLibraryHtml()
-  return `<div class="doc-head">
+  const engine = deduce.engine
+  const tabs = `<span class="subtabs">
+      <button class="chip${deduce.mode === 'engine' ? ' on' : ''}" data-action="deduce-mode-engine" title="确定性推演引擎（种子化 2d6，不需要模型）">引擎</button>
+      <button class="chip${deduce.mode === 'agent' ? ' on' : ''}" data-action="deduce-mode-agent" title="Agent 分支推理（需要模型）">Agent</button>
+    </span>`
+  const head = `<div class="doc-head">
       <div class="kick">${esc(state.current.name)} / 推演</div>
-      <h1>推演稿</h1>
+      <div class="doc-line-row"><h1>推演</h1>${tabs}</div>
       <div class="doc-meta">
-        <span class="b">Agent 推演</span>
-        ${deduce.sessionId ? '<span class="count">推演会话已建——卡在左列会话里采纳</span>' : ''}
+        <span class="b">${deduce.mode === 'engine' ? '事实推演引擎' : 'Agent 推演'}</span>
+        ${deduce.mode === 'engine' ? '<span class="count">局面卡＋三层候选（必然/命运/戏剧）· 种子化确定性</span>' : ''}
+        ${deduce.mode === 'agent' && deduce.sessionId ? '<span class="count">推演会话已建——卡在左列会话里采纳</span>' : ''}
       </div>
-    </div>
-    ${flowError(deduce.error)}
+    </div>`
+  if (deduce.mode === 'agent') return head + deduceAgentHtml()
+  return head + deduceEngineHtml()
+}
+
+/** 引擎模式：局面卡＋候选列表＋张力/前线。 */
+function deduceEngineHtml() {
+  const engine = state.deduce.engine
+  const data = engine.data
+  const controls = `<div class="toolbar">
+      <input class="file-input" id="deduce-pov" placeholder="POV 角色（可选，如 林砚）" value="${esc(engine.pov)}">
+      <input class="file-input" id="deduce-seed" placeholder="种子（留空＝随机，可复现）" value="${esc(engine.seed)}">
+      <button class="btn-primary" data-action="deduce-engine-present"${engine.busy ? ' disabled' : ''}>${engine.busy ? '推演中…' : data ? '再推一拍' : '开始推演'}</button>
+      ${data ? '<button class="btn-ghost" data-action="deduce-engine-reset">重新开局</button>' : ''}
+    </div>`
+  if (!data) {
+    return `${controls}
+      ${flowError(engine.error || '')}
+      ${engine.hint ? `<div class="warn-box">${esc(engine.hint)}</div>` : ''}
+      <div class="empty-state">
+        <h2>事实推演引擎</h2>
+        <p>读本库的拆解条目（worldview/角色/剧情）作为事实包，推出一拍局面与三层候选：<br>
+        <b>必然</b>（世界事实推导）· <b>命运</b>（种子化 2d6 检定）· <b>戏剧</b>（需模型，可选）。</p>
+        <p class="sub">引擎是确定性的：同一个种子＋同一份事实包＝同一拍。</p>
+      </div>`
+  }
+  const card = data.sceneCard ?? {}
+  const tension = data.tension ?? {}
+  const candidates = Array.isArray(data.candidates) ? data.candidates : []
+  const fronts = Array.isArray(data.fronts) ? data.fronts : []
+  const sourceBadge = { 必然: 'certain', 命运: 'fate', 戏剧: 'drama' }
+  const rows = candidates.map((candidate) => {
+    const kind = sourceBadge[candidate.source] || 'other'
+    const trace = candidate.trace && candidate.trace.sum !== undefined
+      ? `2d6=${candidate.trace.a}+${candidate.trace.b}=${candidate.trace.sum}（${candidate.trace.success ? '顺遂' : '受阻'}）`
+      : ''
+    return `<div class="cand-row src-${kind}">
+      <div class="cand-main">
+        <span class="cand-badge">${esc(candidate.source || '候选')}</span>
+        <span class="cand-text">${esc(candidate.text)}</span>
+        ${trace ? `<span class="cand-trace">${esc(trace)}</span>` : ''}
+        ${candidate.refs && candidate.refs.length ? `<span class="count">引用：${esc(candidate.refs.join('、'))}</span>` : ''}
+      </div>
+      <div class="cand-ops">
+        <button class="btn-ghost" data-action="deduce-engine-choose" data-candidate-id="${esc(candidate.id)}">选这条</button>
+        <button class="issue-act" data-action="deduce-engine-veto" data-candidate-id="${esc(candidate.id)}">否决</button>
+      </div>
+    </div>`
+  }).join('')
+  return `${controls}
+    ${flowError(engine.error || '')}
+    ${engine.hint ? `<div class="warn-box">${esc(engine.hint)}</div>` : ''}
+    <div class="deduce-engine-grid">
+      <div class="step">
+        <h3>第 ${esc(data.round)} 拍 · 局面卡</h3>
+        <div class="scene-card">
+          <div><span class="k">在场</span><span class="v">${esc((card.who || []).join('、') || '—')}</span></div>
+          <div><span class="k">地点</span><span class="v">${esc(card.where || '—')}</span></div>
+          <div><span class="k">张力</span><span class="v">${esc(card.tension || '—')}</span></div>
+          <div><span class="k">钩子</span><span class="v">${esc(card.hook || '—')}</span></div>
+        </div>
+        <div class="count" style="margin-top:8px">种子 ${esc(data.seed)} · 张力档 ${esc(tension.level ?? '—')} · AI 预算 ${esc((data.budget && data.budget.used) ?? 0)}/${esc((data.budget && data.budget.max) ?? 8)}</div>
+        ${fronts.length ? `<h4 style="margin:14px 0 6px;font-size:12px;color:var(--meta)">前线（world 压力）</h4>${fronts.map((front) => `<div class="front-row"><span>${esc(front.name)}</span><span class="front-bar"><span style="width:${Math.min(100, Math.round((front.value / Math.max(1, front.max)) * 100))}%"></span></span><span class="count">${front.value}/${front.max}</span></div>`).join('')}` : ''}
+      </div>
+      <div class="step">
+        <h3>候选 <span class="count">${candidates.length}</span></h3>
+        ${rows || '<p class="sub">这一拍没有候选：检查事实包是否够（worldview/角色/剧情）。</p>'}
+        <p class="sub" style="margin-top:10px">选择会结算成事件条目（不自动写库）；「否决」只记账不落库。</p>
+      </div>
+    </div>`
+}
+
+/** Agent 模式（原三栏表单，保留）。 */
+function deduceAgentHtml() {
+  const deduce = state.deduce
+  return `${flowError(deduce.error)}
     <div class="deduce-grid">
       <div class="step">
         <h3><span class="no">1</span>前提（设定为真）</h3>
@@ -2876,13 +3019,13 @@ function deduceHtml() {
         <div class="row" style="display:flex;gap:10px;margin-top:12px;align-items:center">
           <button class="btn-primary" data-action="deduce-start"${deduce.streaming || !agent.configured ? ' disabled' : ''}>${deduce.streaming ? '推演中…' : '开始推演'}</button>
           <button class="btn-ghost" data-action="deduce-stop"${deduce.streaming ? '' : ' hidden'}>停止</button>
-          ${!agent.configured ? '<span class="count">先在右上角「设置」里配好模型端点。</span>' : '<span class="count">推演＝Agent 分支推理；产出经待确认卡落正文。</span>'}
+          ${!agent.configured ? '<span class="count">先在右上角设置里配好模型端点。</span>' : '<span class="count">Agent 分支推理；产出经待确认卡落正文。</span>'}
         </div>
       </div>
       <div class="step">
         <h3><span class="no">→</span>推演回答</h3>
         <div class="deduce-reply">${deduce.reply ? esc(deduce.reply) : (deduce.streaming ? '推演中…' : '填好左边三段，点「开始推演」。回答可整段转成待确认卡，采纳后写进正文。')}</div>
-        ${deduce.reply && !deduce.streaming ? `<div class="repair-actions"><button class="btn-primary" data-action="deduce-card">转为待确认卡（写正文）</button></div>` : ''}
+        ${deduce.reply && !deduce.streaming ? '<div class="repair-actions"><button class="btn-primary" data-action="deduce-card">转为待确认卡（写正文）</button></div>' : ''}
       </div>
     </div>`
 }
@@ -2947,7 +3090,11 @@ async function openLibrary(path) {
   state.libDirs = []
   state.dirWork = {}
   state.write = { chapters: [], listLoading: false }
-  state.deduce = { premise: '', variables: '', question: '', sessionId: '', streaming: false, reply: '', controller: null, error: '' }
+  state.deduce = {
+    premise: '', variables: '', question: '', sessionId: '', streaming: false, reply: '', controller: null, error: '',
+    mode: 'engine',
+    engine: { busy: false, data: null, pov: '', seed: '', error: '', hint: '' }
+  }
   state.chapterFiles = []
   try {
     const [topPayload, chapterList, chaptersPayload] = await Promise.all([
@@ -3388,6 +3535,20 @@ document.addEventListener('click', (event) => {
     if (state.view?.startsWith('dir:')) saveDirFile(state.view.slice(4))
   } else if (action === 'dirfile-new') {
     if (state.view?.startsWith('dir:')) createDirFile(state.view.slice(4))
+  } else if (action === 'deduce-engine-present') {
+    deduceEnginePresent({})
+  } else if (action === 'deduce-engine-reset') {
+    deduceEnginePresent({ reset: true, hint: '新开了推演会话' })
+  } else if (action === 'deduce-engine-choose') {
+    deduceEngineSettle(target.dataset.candidateId, 'choose')
+  } else if (action === 'deduce-engine-veto') {
+    deduceEngineSettle(target.dataset.candidateId, 'veto')
+  } else if (action === 'deduce-mode-engine') {
+    state.deduce.mode = 'engine'
+    render()
+  } else if (action === 'deduce-mode-agent') {
+    state.deduce.mode = 'agent'
+    render()
   } else if (action === 'deduce-start') {
     startDeduce()
   } else if (action === 'deduce-stop') {

@@ -108,6 +108,7 @@ import {
   setPrimaryCarrier
 } from './libraryManage.mjs'
 import { createFactFileStore } from './core/pinax/next/kernel/factFileStore.mjs'
+import { deducePresent, deduceSettle } from './deduceEngine.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 export const DEFAULT_PORT = 8807
@@ -729,6 +730,34 @@ async function handleApi(req, res, url, context) {
     if (!set.ok) return sendError(res, set.code ?? API_ERROR_CODES.INVALID_ENTRY, set.message)
     return sendJson(res, 200, { ok: true, enabled: set.enabled })
   }
+  if (endpointId === 'deducePresent') {
+    const authorized = authorizeRoot(allowlist, request.root)
+    if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
+    const result = await deducePresent({
+      root: authorized.root,
+      bookId: text(request.bookId || 'default'),
+      pov: text(request.pov),
+      seed: Number.isSafeInteger(request.seed) ? request.seed : null,
+      reset: request.reset === true
+    })
+    if (!result.ok) return sendError(res, result.code === 'WORLD_EMPTY' ? API_ERROR_CODES.INVALID_ENTRY : (result.code ?? API_ERROR_CODES.INVALID_ENTRY), result.message)
+    return sendJson(res, 200, result)
+  }
+
+  if (endpointId === 'deduceSettle') {
+    const authorized = authorizeRoot(allowlist, request.root)
+    if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
+    const result = await deduceSettle({
+      root: authorized.root,
+      bookId: text(request.bookId || 'default'),
+      candidateId: text(request.candidateId),
+      action: text(request.action || 'choose'),
+      note: text(request.note)
+    })
+    if (!result.ok) return sendError(res, result.code ?? API_ERROR_CODES.INVALID_ENTRY, result.message)
+    return sendJson(res, 200, result)
+  }
+
   if (endpointId === 'agentRuntimeSetup') {
     const { kits } = loadRuntimeKits(context.runtimesDirs)
     const kit = kits.find((item) => item.id === text(request.id).trim())

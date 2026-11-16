@@ -414,6 +414,23 @@ export const ENDPOINTS = Object.freeze({
     response: { ok: 'true', id: 'string', values: 'object' },
     errors: ['INVALID_ENTRY']
   },
+  deducePresent: {
+    method: 'POST',
+    path: '/api/deduce/present',
+    // 推演引擎（Pinax fact 推演链 vendor 进 core/）：开局/续拍 → 局面卡＋候选。
+    // 引擎确定性（种子化 2d6）；LLM 只是「戏剧」候选可选来源。worldview 缺失＝WORLD_EMPTY 如实报。
+    request: { body: { root: 'string', bookId: 'string?', pov: 'string?', seed: 'integer?', reset: 'boolean?' } },
+    response: { ok: 'true', round: 'integer', sceneCard: 'object', candidates: 'array', tension: 'object?', fronts: 'array?', budget: 'object?' },
+    errors: ['NO_LIBRARY', 'INVALID_ENTRY']
+  },
+  deduceSettle: {
+    method: 'POST',
+    path: '/api/deduce/settle',
+    // 结算一拍：作者选择候选（或 veto 等导演动作）。产出的条目交回客户端，不自动写库。
+    request: { body: { root: 'string', bookId: 'string?', candidateId: 'string?', action: 'string?', note: 'string?' } },
+    response: { ok: 'true', action: 'string', round: 'integer' },
+    errors: ['NO_LIBRARY', 'INVALID_ENTRY', 'NOT_FOUND']
+  },
   agentRuntimeSetup: {
     method: 'POST',
     path: '/api/agent/runtime/setup',
