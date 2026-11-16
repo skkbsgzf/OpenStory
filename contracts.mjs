@@ -387,6 +387,14 @@ export const ENDPOINTS = Object.freeze({
     response: { ok: 'true', skill: 'object' },
     errors: ['NOT_FOUND']
   },
+  kbStatusGet: {
+    method: 'GET',
+    path: '/api/kb/status',
+    // KB-ARCH P1：知识库状态聚合——WeKnora/embedding 健康灯＋六库文档数/解析状态。KB 未配置时 configured=false 降级，不报错。
+    request: { query: {} },
+    response: { ok: 'true', configured: 'boolean', backend: 'string?', configPath: 'string', configError: 'string?', services: 'object', lastCheck: 'string?', collections: 'array' },
+    errors: []
+  },
   genresGet: {
     method: 'GET',
     path: '/api/genres',
