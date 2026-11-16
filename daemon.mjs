@@ -84,6 +84,7 @@ import {
   skillSummary,
   skillsForGenre
 } from './skills.mjs'
+import { precedentPromptSectionForGenre } from './kbRouter.mjs'
 import {
   allowedDirs,
   briefPromptSection,
@@ -127,6 +128,9 @@ export const DEFAULT_PUBLIC_DIR = join(HERE, 'public')
 const MAX_JSON_BODY = 16 * 1024 * 1024
 const MAX_STATIC_BYTES = 8 * 1024 * 1024
 const METADATA_DIR = '.pinax'
+
+/** 库内不许当页签目录的名字：元数据与备份目录。 */
+const RESERVED_LIB_DIRS = new Set([METADATA_DIR, '.history', '.openstory', 'node_modules'])
 
 const MIME = Object.freeze({
   '.html': 'text/html; charset=utf-8',
@@ -836,6 +840,32 @@ async function handleApi(req, res, url, context) {
     return sendJson(res, 200, payload)
   }
 
+  if (endpointId === 'dirCreate') {
+    const authorized = authorizeRoot(allowlist, request.root)
+    if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
+    const name = String(request.name ?? '').trim()
+    // 单段目录名：禁分隔符、禁 . / .. / 隐藏名、禁库内保留目录，字符集收紧到常见可写名字
+    if (!name) return sendError(res, API_ERROR_CODES.INVALID_ENTRY, '目录名不能为空')
+    if (/[\\/:*?"<>|]/u.test(name) || name.startsWith('.') || name.length > 64) {
+      return sendError(res, API_ERROR_CODES.INVALID_ENTRY, '目录名不能含路径分隔符或特殊字符，也不能以 . 开头')
+    }
+    if (RESERVED_LIB_DIRS.has(name)) {
+      return sendError(res, API_ERROR_CODES.INVALID_ENTRY, `${name}/ 是库内保留目录，请换一个名字`)
+    }
+    const abs = join(authorized.root, name)
+    try {
+      if (!existsSync(abs)) {
+        await mkdir(abs, { recursive: false })
+        return sendJson(res, 200, { ok: true, name, created: true })
+      }
+      const stat = statSync(abs)
+      if (!stat.isDirectory()) return sendError(res, API_ERROR_CODES.INVALID_ENTRY, `${name} 已存在且不是目录`)
+      return sendJson(res, 200, { ok: true, name, created: false })
+    } catch (error) {
+      return sendError(res, API_ERROR_CODES.WRITE_PROTOCOL_IO_FAILED, `建目录失败：${error?.message ?? error}`)
+    }
+  }
+
   if (endpointId === 'chaptersGet') {
     const authorized = authorizeRoot(allowlist, request.root)
     if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
@@ -1247,6 +1277,11 @@ async function systemPromptFor(root, libraries, genresDirs, skillsDirs) {
       const matched = skillsForGenre(loadedSkills.skills, loaded.brief.genre)
       const craft = craftInstructionBlock(matched)
       if (craft) lines.push('', craft)
+      // KB-ARCH P0：同题材先例检索（案例库＋套路库）——kb-config 缺失或 KB 不可用时静默降级，不阻塞对话
+      const kbSection = await precedentPromptSectionForGenre(genre?.name ?? loaded.brief.genre, {
+        configPath: join(process.env.LOCALAPPDATA || process.env.APPDATA || '', 'PinaxNext', 'openstory', 'kb-config.json')
+      })
+      if (kbSection) lines.push('', kbSection)
     }
   } catch { /* 简报读不到不影响对话 */ }
   return lines.join('\n')
