@@ -974,10 +974,12 @@ function runtimeCard(runtime) {
   const status = RUNTIME_STATUS_LABEL[runtime.status] ?? runtime.status ?? ''
   const probe = runtime.probe ?? null
   const probeNote = probe?.version ? ` · ${esc(probe.version)}` : probe?.message ? ` · ${esc(probe.message)}` : ''
-  return `<button class="big-opt${on ? ' on' : ''}${runtime.status === 'missing' ? ' is-missing' : ''}" data-runtime-id="${esc(runtime.id)}">
+  const canFix = runtime.status === 'missing' && runtime.kind === 'dsh'
+  return `<div class="big-opt${on ? ' on' : ''}${runtime.status === 'missing' ? ' is-missing' : ''}" data-runtime-id="${esc(runtime.id)}">
     <b>${esc(runtime.name)}<span class="src">${esc(runtime.source)}</span><span class="rt-status ${esc(runtime.status || '')}">${esc(status)}</span></b>
     <span>${esc(runtime.description || '')}${probeNote}</span>
-  </button>`
+    ${canFix ? `<div class="rt-fix" data-action="runtime-setup" data-id="${esc(runtime.id)}">修复（自动装 profile 与 runtime 组件）</div>` : ''}
+  </div>`
 }
 
 function settingsRuntimeSectionHtml() {
@@ -1079,6 +1081,26 @@ function settingsHtml() {
       <div class="settings-content">${sectionHtml}</div>
     </div>
   </div>`
+}
+
+/** 一键修复（od 口径：显式确认后才动 profile）——只支持 DSH。 */
+async function runRuntimeSetup(id) {
+  const runtime = (agent.runtimeList || []).find((item) => item.id === id)
+  const confirmed = globalThis.confirm?.(`为「${runtime?.name ?? id}」装连接组件？
+
+只会：建 openstory profile（首次自动初始化）＋装 runtime 插件 tgz。
+凭据、模型、工具、会话都仍归你 Harness 自己所有。`)
+  if (!confirmed) return
+  const errEl = document.getElementById('settings-err')
+  try {
+    const payload = await api('/api/agent/runtime/setup', { method: 'POST', body: JSON.stringify({ id }) })
+    await loadAgentRuntimes()
+    render()
+    if (errEl) errEl.textContent = ''
+    globalThis.alert?.(payload.message ?? '已就绪')
+  } catch (error) {
+    if (errEl) errEl.textContent = `${error?.code ? `${error.code} · ` : ''}${text(error?.message || error)}`
+  }
 }
 
 async function selectRuntime(id) {
@@ -2742,6 +2764,8 @@ document.addEventListener('click', (event) => {
     toggleSuite(target.dataset.id)
   } else if (action === 'suite-settings-save') {
     saveSuiteValues(target.dataset.id)
+  } else if (action === 'runtime-setup') {
+    runRuntimeSetup(target.dataset.id)
   } else if (action === 'toggle-lib-switch') {
     const panel = document.getElementById('lib-switch-panel')
     if (panel) {

@@ -4,7 +4,8 @@
   "name": "DSH 原生",
   "kind": "dsh",
   "category": "dsh",
-  "description": "直连本地 DeepSeek Harness：本机装了 dsh CLI 就走 od 同款 stdio 协议（一 run 一进程）；否则退回 DSH_CHAT_ENDPOINT/studio-plugin-state 的 OpenAI 兼容桥；都没有如实报。",
+  "description": "直连本地 DeepSeek Harness（规格与 od 对齐）：本机 dsh CLI + openstory profile + runtime 组件三层就绪后，走 od 同款 stdio JSONL 协议（一 run 一进程）。凭据、模型、工具、会话都归你 Harness 自己所有——本组件只加协议边界。缺哪层点「修复」按需装，不静默改动你的 Harness 设置。",
   "chatPath": "/v1/chat/completions",
-  "probe": { "cmd": "node", "args": ["-e", "process.exit(0)"] }
+  "probe": { "cmd": "dsh", "args": ["--version"] },
+  "setup": { "runtimeTarball": "" }
 }

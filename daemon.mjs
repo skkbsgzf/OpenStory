@@ -86,7 +86,7 @@ import {
   writeBrief
 } from './genres.mjs'
 import { runCliChat } from './cli-bridge.mjs'
-import { detectDsh, detectDshAny, resolveDshChat, resolveDshRun } from './dsh-bridge.mjs'
+import { detectDsh, detectDshAny, probeDshStack, resolveDshChat, resolveDshRun, setupDshStack } from './dsh-bridge.mjs'
 import { runDshStdio } from './dsh-cli.mjs'
 import {
   builtinSuitesDir,
@@ -729,6 +729,21 @@ async function handleApi(req, res, url, context) {
     if (!set.ok) return sendError(res, set.code ?? API_ERROR_CODES.INVALID_ENTRY, set.message)
     return sendJson(res, 200, { ok: true, enabled: set.enabled })
   }
+  if (endpointId === 'agentRuntimeSetup') {
+    const { kits } = loadRuntimeKits(context.runtimesDirs)
+    const kit = kits.find((item) => item.id === text(request.id).trim())
+    if (!kit) return sendError(res, API_ERROR_CODES.INVALID_ENTRY, `货架上没有这个运行时套件：${text(request.id)}`)
+    if (kit.kind !== 'dsh') {
+      return sendError(res, API_ERROR_CODES.INVALID_ENTRY, '只有 DSH 原生支持一键修复（CLI 服务请按货架提示自行安装）')
+    }
+    const tarball = text(request.runtimeTarball || kit.setup?.runtimeTarball || context.env.DSH_RUNTIME_TARBALL)
+    const fixed = await setupDshStack({ env: context.env, dshCmd: text(context.env.DSH_CLI || 'dsh'), runtimeTarball: tarball })
+    if (!fixed.ok) {
+      return sendError(res, API_ERROR_CODES.INVALID_ENTRY, fixed.message, { steps: fixed.steps })
+    }
+    return sendJson(res, 200, { ok: true, state: fixed.state ?? 'ready', steps: fixed.steps, message: fixed.message })
+  }
+
   if (endpointId === 'suiteStateDataGet') {
     const loaded = await getSuiteStateData(context.suitesDirs, context.suiteStatePath, request.id)
     if (!loaded.ok) return sendError(res, loaded.code ?? API_ERROR_CODES.INVALID_ENTRY, loaded.message)
@@ -1111,10 +1126,16 @@ async function handleAgentRuntimesGet(res, context) {
     let probeResult = null
     if (kit.probe) {
       if (kit.kind === 'dsh') {
-        const dsh = await detectDshAny({ env: context.env })
-        probeResult = dsh.running
-          ? { installed: true, version: dsh.mode === 'cli' ? `CLI 就绪（${dsh.version ?? 'dsh'}）` : `chat 端点就绪（${dsh.source}）` }
-          : { installed: false, message: dsh.message }
+        // od 口径分层：CLI → profile → runtime 组件 → 就绪；每层都带「下一步」
+        const stack = await probeDshStack({ env: context.env })
+        if (stack.state === 'ready') {
+          probeResult = { installed: true, version: `就绪（${stack.version ?? 'dsh'} · profile ${stack.profile}）`, state: 'ready' }
+        } else {
+          const http = await detectDshAny({ env: context.env })
+          probeResult = http.running && http.mode === 'http'
+            ? { installed: true, version: `chat 端点就绪（${http.source}）`, state: 'ready', mode: 'http' }
+            : { installed: false, state: stack.state, message: stack.message, commands: stack.commands ?? [] }
+        }
       } else {
         probeResult = await probeRuntimeKit(kit)
       }
