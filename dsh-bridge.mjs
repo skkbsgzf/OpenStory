@@ -131,6 +131,108 @@ export function detectDshCli({ env = process.env, dshCmd = null } = {}) {
   })
 }
 
+/**
+ * 分层探测（od 口径）：CLI → profile 就绪 → runtime 插件在册 → 就绪。
+ * 每层都能给出「下一步该做什么」——上层 UI 按状态摆卡，不靠手抄命令。
+ * 返回 {state, message?, commands?, profile, dshCmd, version}
+ *   state: 'ready' | 'no-cli' | 'no-profile' | 'no-runtime'
+ */
+export async function probeDshStack({ env = process.env, dshCmd = null } = {}) {
+  const cmd = text(dshCmd || env.DSH_CLI || 'dsh')
+  const profile = text(env.DSH_PROFILE || 'openstory')
+  const cli = await detectDshCli({ env, dshCmd: cmd })
+  if (!cli.installed) {
+    return {
+      state: 'no-cli',
+      dshCmd: cmd,
+      profile,
+      message: `没装 DeepSeek Harness CLI（${cli.message ?? 'dsh --version 失败'}）——它是独立 npm 包，随 DSH Desktop 打包的那份在 asar 内不可调用`,
+      commands: [`npm i -g @deepseek-ai/dsh@${text(env.DSH_CLI_VERSION || '0.2.2-rc.1')}`]
+    }
+  }
+  // profile 是否存在：$DSH_HOME/profiles/<p> 或默认 ~/.dsh/profiles/<p>
+  const dshHome = text(env.DSH_HOME).trim() || join(text(env.USERPROFILE || env.HOME || '.'), '.dsh')
+  const profileDir = join(dshHome, 'profiles', profile)
+  if (!existsSync(profileDir)) {
+    return {
+      state: 'no-profile',
+      dshCmd: cmd,
+      profile,
+      version: cli.version,
+      message: `dsh CLI 就绪（${cli.version}），但还没有「${profile}」profile——它只是一层插件组合，建它不改动你的 Harness 设置`,
+      commands: [`dsh plugin --profile ${profile} add <openstory-dsh-runtime.tgz>`]
+    }
+  }
+  // runtime 插件是否在册（profile 的 package.json dependencies 里有 @open-design/dsh-runtime）
+  let profilePkg = null
+  try {
+    profilePkg = JSON.parse(fs.readFileSync(join(profileDir, 'package.json'), 'utf-8'))
+  } catch { /* 无 package.json＝空 profile */ }
+  const deps = profilePkg?.dependencies ?? {}
+  if (!Object.keys(deps).some((name) => /dsh-runtime$/u.test(name))) {
+    return {
+      state: 'no-runtime',
+      dshCmd: cmd,
+      profile,
+      version: cli.version,
+      message: `「${profile}」profile 还没装 OpenStory 的 DSH 连接组件（runtime 插件）——装上即可用，凭据/模型仍归你 Harness`,
+      commands: [`dsh plugin --profile ${profile} add <openstory-dsh-runtime.tgz>`]
+    }
+  }
+  return { state: 'ready', dshCmd: cmd, profile, version: cli.version }
+}
+
+/**
+ * 一键自愈（od 口径「Setup is always explicit on the first incompatible selection」）：
+ * 只在作者点了「修复」后执行——建 profile（首次自动初始化）＋装 runtime 插件 tgz。
+ * setupSpec＝kit.setup：{ runtimeTarball }（tgz 绝对路径；可由环境变量覆盖）。
+ * 返回 {ok, steps[], message?}。
+ */
+export async function setupDshStack({ env = process.env, dshCmd = null, runtimeTarball = '' } = {}) {
+  const cmd = text(dshCmd || env.DSH_CLI || 'dsh')
+  const profile = text(env.DSH_PROFILE || 'openstory')
+  const stack = await probeDshStack({ env, dshCmd: cmd })
+  if (stack.state === 'ready') return { ok: true, steps: [], message: '已经就绪' }
+  const steps = []
+  if (stack.state === 'no-cli') {
+    return {
+      ok: false,
+      steps,
+      message: `需要先安装 DeepSeek Harness CLI：${(stack.commands ?? []).join(' && ')}（这一步要你自己确认执行——它是全局 npm 安装）`
+    }
+  }
+  const tarball = text(runtimeTarball || env.DSH_RUNTIME_TARBALL).trim()
+  if (!tarball || !existsSync(tarball)) {
+    return {
+      ok: false,
+      steps,
+      message: `找不到 runtime 组件 tgz${tarball ? `：${tarball}` : ''}——设 DSH_RUNTIME_TARBALL 指向 open-design-dsh-runtime-*.tgz（或本仓 runtimes/dsh/*.tgz）`
+    }
+  }
+  // dsh plugin --profile <p> add <tgz> 会首次初始化 profile（dsh 自身行为）
+  const args = ['plugin', '--profile', profile, 'add', tarball]
+  const result = await new Promise((resolvePromise) => {
+    let child
+    try {
+      child = spawnCommand(cmd, args, { shell: false, stdio: ['ignore', 'pipe', 'pipe'] })
+    } catch (error) {
+      resolvePromise({ ok: false, message: `${text(error?.message || error)}` })
+      return
+    }
+    let out = ''
+    child.stdout?.on('data', (c) => { out += text(c) })
+    child.stderr?.on('data', (c) => { out += text(c) })
+    child.on('error', (error) => resolvePromise({ ok: false, message: text(error?.message || error) }))
+    child.on('exit', (code) => resolvePromise({ ok: code === 0, code, message: out.trim().slice(0, 1200) }))
+  })
+  steps.push({ step: 'dsh plugin add', ok: result.ok, detail: result.message })
+  if (!result.ok) {
+    return { ok: false, steps, message: `装 runtime 组件失败（退出码 ${result.code}）：${result.message}` }
+  }
+  const after = await probeDshStack({ env, dshCmd: cmd })
+  return { ok: after.state === 'ready', steps, state: after.state, message: after.state === 'ready' ? 'DSH 原生就绪' : `装完仍未就绪：${after.message ?? after.state}` }
+}
+
 /** 双模总探测：CLI 优先，HTTP 次之。 */
 export async function detectDshAny({ env = process.env, fetchImpl = fetch, dshCmd = null } = {}) {
   const cli = await detectDshCli({ env, dshCmd })

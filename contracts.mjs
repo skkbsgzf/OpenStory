@@ -414,6 +414,15 @@ export const ENDPOINTS = Object.freeze({
     response: { ok: 'true', id: 'string', values: 'object' },
     errors: ['INVALID_ENTRY']
   },
+  agentRuntimeSetup: {
+    method: 'POST',
+    path: '/api/agent/runtime/setup',
+    // 一键修复（od 口径：Setup is always explicit on the first incompatible selection）：
+    // 只在作者显式触发时建 profile / 装 runtime 组件；不静默改动 Harness 设置。
+    request: { body: { id: 'string', runtimeTarball: 'string?' } },
+    response: { ok: 'true', state: 'string', steps: 'array', message: 'string?' },
+    errors: ['INVALID_ENTRY']
+  },
   suiteStateDataPut: {
     method: 'PUT',
     path: '/api/suite/state-data',

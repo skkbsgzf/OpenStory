@@ -13,7 +13,7 @@ import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { dshFrameText, parseDshFrame, runDshStdio } from '../dsh-cli.mjs'
-import { detectDshAny, detectDshCli, resolveDshRun } from '../dsh-bridge.mjs'
+import { detectDshAny, detectDshCli, probeDshStack, resolveDshRun, setupDshStack } from '../dsh-bridge.mjs'
 import { startDaemon } from '../daemon.mjs'
 
 async function makeFakeDsh() {
@@ -178,7 +178,7 @@ test('daemon 端到端：dsh kit（假 dsh shim）→ start/delta*/done，会话
     const shelves = await (await fetch(`${origin}/api/agent/runtimes`)).json()
     const dsh = shelves.runtimes.find((runtime) => runtime.id === 'dsh')
     assert.equal(dsh.status, 'ready', JSON.stringify(dsh.probe))
-    assert.match(dsh.probe.version, /CLI 就绪/)
+    assert.match(dsh.probe.version, /就绪/, '分层探测就绪文案')
 
     await put('/api/agent/runtime', { id: 'dsh' })
     const chat = await post('/api/agent/chat', { root, content: '第一章的开头给一段' })
@@ -222,6 +222,65 @@ test('daemon 端到端：dsh 不可用 → 无 Pi ＝ 502 如实报（不伪造�
     assert.match(JSON.stringify(body), /DSH 不可用|DeepSeek Harness CLI/)
   } finally {
     await daemon.close()
+    await rm(base, { recursive: true, force: true })
+  }
+})
+
+/* ---------- 分层探测 + 一键修复（od 口径） ---------- */
+
+test('probeDshStack：no-cli / no-profile / no-runtime / ready 四态各自带下一步', async () => {
+  const { base } = await makeFakeDsh()
+  const dshHome = join(base, 'dshhome')
+  try {
+    // no-cli：裸名不存在
+    const noCli = await probeDshStack({ env: { DSH_HOME: dshHome }, dshCmd: '绝对不存在的dsh-xyz' })
+    assert.equal(noCli.state, 'no-cli')
+    assert.ok(noCli.commands[0].includes('npm i -g @deepseek-ai/dsh'))
+
+    // no-profile：CLI 在（用 node 假 shim 语义务实）——直接造 dsh.cmd
+    const shim = join(base, 'dsh.cmd')
+    await writeFile(shim, '@echo off\r\nnode "%~dp0fake-dsh.mjs" %*\r\n', 'utf-8')
+    const noProfile = await probeDshStack({ env: { DSH_HOME: dshHome, DSH_PROFILE: 'openstory' }, dshCmd: shim })
+    assert.equal(noProfile.state, 'no-profile')
+    assert.match(noProfile.message, /profile/)
+
+    // no-runtime：profile 目录在但没装 runtime
+    await mkdir(join(dshHome, 'profiles', 'openstory'), { recursive: true })
+    await writeFile(join(dshHome, 'profiles', 'openstory', 'package.json'), JSON.stringify({ name: 'p', dependencies: {} }), 'utf-8')
+    const noRuntime = await probeDshStack({ env: { DSH_HOME: dshHome, DSH_PROFILE: 'openstory' }, dshCmd: shim })
+    assert.equal(noRuntime.state, 'no-runtime')
+    assert.match(noRuntime.message, /连接组件/)
+
+    // ready：profile 里声明了 runtime 依赖
+    await writeFile(join(dshHome, 'profiles', 'openstory', 'package.json'), JSON.stringify({ name: 'p', dependencies: { '@open-design/dsh-runtime': 'file:x.tgz' } }), 'utf-8')
+    const ready = await probeDshStack({ env: { DSH_HOME: dshHome, DSH_PROFILE: 'openstory' }, dshCmd: shim })
+    assert.equal(ready.state, 'ready')
+  } finally {
+    await rm(base, { recursive: true, force: true })
+  }
+})
+
+test('setupDshStack：no-cli 拒绝并给命令；缺 tgz 如实报；ok 路径调 dsh plugin add', async () => {
+  const { base } = await makeFakeDsh()
+  const dshHome = join(base, 'dshhome')
+  try {
+    const noCli = await setupDshStack({ env: { DSH_HOME: dshHome }, dshCmd: '绝对不存在的dsh-xyz' })
+    assert.equal(noCli.ok, false)
+    assert.match(noCli.message, /npm i -g/)
+
+    const shim = join(base, 'dsh.cmd')
+    await writeFile(shim, '@echo off\r\nnode "%~dp0fake-dsh.mjs" %*\r\n', 'utf-8')
+    const noTgz = await setupDshStack({ env: { DSH_HOME: dshHome, DSH_PROFILE: 'openstory' }, dshCmd: shim })
+    assert.equal(noTgz.ok, false)
+    assert.match(noTgz.message, /DSH_RUNTIME_TARBALL|找不到 runtime 组件/)
+
+    // 假 tgz 文件存在 → setup 执行 dsh plugin add（假 CLI 会因非 --version/--stdio 退出 2）
+    const tarball = join(base, 'fake-runtime.tgz')
+    await writeFile(tarball, 'fake', 'utf-8')
+    const withTgz = await setupDshStack({ env: { DSH_HOME: dshHome, DSH_PROFILE: 'openstory' }, dshCmd: shim, runtimeTarball: tarball })
+    assert.equal(withTgz.ok, false, '假 dsh 不认 plugin 子命令')
+    assert.ok(withTgz.steps.length >= 1)
+  } finally {
     await rm(base, { recursive: true, force: true })
   }
 })
