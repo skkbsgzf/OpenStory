@@ -73,17 +73,17 @@ category: review
 
 /* ---------- 装载 ---------- */
 
-test('内置货架：23 个技能全部合规，四类齐全', () => {
+test('内置货架：30 个技能全部合规，四类齐全', () => {
   const { skills, warnings } = loadSkills([builtinSkillsDir()])
   assert.equal(warnings.length, 0, `不应有 warning：${JSON.stringify(warnings)}`)
-  assert.equal(skills.length, 23)
+  assert.equal(skills.length, 30)
   const byCat = {}
   for (const skill of skills) (byCat[skill.category] ||= []).push(skill.name)
-  assert.equal(byCat.craft.length, 14, 'craft：剧本/分镜/去AI/humanizer/信息投放/文风延续/冷感短句/番茄套路/需求铁律/套路设计法/文风×4（彭湃+白月光+年上+末世）')
+  assert.equal(byCat.craft.length, 21, 'craft：剧本/分镜/去AI/humanizer/信息投放/文风延续/冷感短句/番茄套路/需求铁律/套路设计法/文风×11（彭湃+女频短篇×3+长篇头部×7）')
   assert.equal(byCat.transform.length, 4)
   assert.equal(byCat.review.length, 3, 'review：连续性/一致性/爽文自检')
   assert.equal(byCat.extract.length, 2, 'extract：fact 抽取/采集质量守则')
-  for (const expected of ['screenplay-craft', 'storyboard-craft', 'de-ai-writing', 'humanizer', 'shuangwen-chapter-check', 'info-reveal-budget', 'rule-horror-cold-prose', 'prose-continuity-rules', 'fanqie-pattern-playbook', 'reader-needs-ironrules', 'pattern-design-method', 'style-yishou-micheng', 'fact-extraction-quality', 'style-wangbuliao-baiyue', 'style-nianshang-yinshi', 'style-moshi-danmu']) {
+  for (const expected of ['screenplay-craft', 'storyboard-craft', 'de-ai-writing', 'humanizer', 'shuangwen-chapter-check', 'info-reveal-budget', 'rule-horror-cold-prose', 'prose-continuity-rules', 'fanqie-pattern-playbook', 'reader-needs-ironrules', 'pattern-design-method', 'style-yishou-micheng', 'fact-extraction-quality', 'style-wangbuliao-baiyue', 'style-nianshang-yinshi', 'style-moshi-danmu', 'style-rejinzhi', 'style-fengpi-fanpai', 'style-huanqin-baofu', 'style-chixie-rusong', 'style-da-qin-yaoren', 'style-shangan-guanchang', 'style-shangjiao-guojia']) {
     assert.ok(skills.some((skill) => skill.name === expected), `缺 ${expected}`)
   }
 })
@@ -154,7 +154,7 @@ test('daemon 端到端：列技能（体裁过滤）→ 取全文 → 未知技�
   try {
     const all = await (await fetch(`${origin}/api/skills`)).json()
     assert.equal(all.ok, true)
-    assert.equal(all.skills.length, 23)
+    assert.equal(all.skills.length, 30)
     assert.ok(all.skills.every((skill) => skill.body === undefined), '清单不带正文')
 
     const drama = await (await fetch(`${origin}/api/skills?genre=short-drama`)).json()
@@ -162,7 +162,7 @@ test('daemon 端到端：列技能（体裁过滤）→ 取全文 → 未知技�
     assert.ok(drama.skills.some((skill) => skill.name === 'storyboard-craft'), '分镜在短剧体裁可用')
     const featureOnly = all.skills.filter((skill) => skill.genres.length && !skill.genres.includes('*'))
     assert.ok(featureOnly.length >= 2, '有技能声明了具体体裁')
-    assert.equal(drama.skills.length, 15, '短剧：排除长篇/短篇专属 8 个，其余 15 个兼容')
+    assert.equal(drama.skills.length, 15, '短剧：排除长篇/短篇专属 15 个，其余 15 个兼容')
     assert.ok(!drama.skills.some((skill) => skill.name === 'rule-horror-cold-prose'), '长篇专属技能在短剧下被过滤')
 
     const one = await (await fetch(`${origin}/api/skill?name=screenplay-craft`)).json()
