@@ -815,7 +815,11 @@ function getTempSessionId() {
     try { saved = text(localStorage.getItem(TEMP_SESSION_KEY(root))) } catch { saved = '' }
     agent.tempSessions[root] = saved
   }
-  return agent.tempSessions[root]
+  // 显式钉过就返回钉的那条；没钉过则动态认「临时需求」会话（自动模式也要在面板上标出来）
+  const explicit = agent.tempSessions[root]
+  if (explicit) return explicit
+  const auto = agent.sessions.find((session) => session.title === '临时需求')
+  return auto ? auto.id : ''
 }
 
 function setTempSessionId(id) {
@@ -935,27 +939,24 @@ async function runAnalysis() {
 }
 
 /**
- * 单段分析（OS-37）：把全章分析引擎收窄到一段。
- * 作者口径：全章分析是全局功能，右键一段也该能只针对这一段落做分析。
- * 复用同一个 analyzeChapter（它本来就接受任意段落数组），把结果落进独立的面板，
- * 不覆盖右栏的全章分析结果。
+ * 选区级分析（OS-37→OS-39）：把全章分析引擎收窄到你框住的那一段/那几句。
+ * 作者口径：全章分析是全局功能，框选/右键也应该能只针对选中的内容做分析。
+ * 复用同一个 analyzeChapter（它本来就接受任意段落数组），结果落独立浮窗，
+ * 不覆盖右栏的全章分析结果，也不锁屏。
  */
-async function analyzeParagraph(index) {
-  const n = Number(index)
-  const blocks = renderedBlocks()
-  const block = blocks[n]
-  if (!block) return
+async function analyzeSelection({ text, label, para = -1 } = {}) {
+  const selected = (text ?? state.sel.text ?? '').trim()
+  if (!selected) return
   await loadAnalysis()
-  state.sel.paraResult = { para: n, text: block.text, loading: true, result: null, error: '' }
+  state.sel.paraResult = { para, label, text: selected, loading: true, result: null, error: '' }
   hideParaMenu()
-  state.sel.para = n
+  hideSelBar()
   renderParaResult()
   try {
-    const one = [block.text]
-    const result = analysisModule.analyzeChapter(block.text, { paragraphs: one })
-    state.sel.paraResult = { para: n, text: block.text, loading: false, result, error: '' }
+    const result = analysisModule.analyzeChapter(selected, { paragraphs: [selected] })
+    state.sel.paraResult = { para, label, text: selected, loading: false, result, error: '' }
   } catch (error) {
-    state.sel.paraResult = { para: n, text: block.text, loading: false, result: null, error: humanizeAgentError(error) }
+    state.sel.paraResult = { para, label, text: selected, loading: false, result: null, error: humanizeAgentError(error) }
   }
   renderParaResult()
 }
@@ -986,7 +987,7 @@ function renderParaResult() {
       <div class="ic-detail">${esc(issue.detail)}</div>
     </div>`).join('')
   host.innerHTML = `<div class="pr-head">
-      <b>分析这一段</b><span class="count">第 ${data.para + 1} 段 · ${stats.chars} 字</span>
+      <b>分析这一段</b><span class="count">${data.label || `第 ${data.para + 1} 段`} · ${stats.chars} 字</span>
       <span class="sp"></span><button class="pr-x" data-action="para-result-close" title="关闭">×</button>
     </div>
     <div class="pr-body">
@@ -1001,7 +1002,7 @@ function renderParaResult() {
       <div class="pr-sec"><h5>这一段的问题 <span class="count">${r.issues.length}</span></h5>
         ${issueRows || '<p class="sub">这一段没有明显问题。</p>'}</div>
       <div class="ops">
-        <button class="btn-ghost" data-action="para-analyze" data-block-index="${data.para}">重新分析</button>
+        <button class="btn-ghost" data-action="para-analyze">重新分析</button>
       </div>
     </div>`
 }
@@ -1602,11 +1603,16 @@ function updateComposerState() {
   if (!input || !send) return
   input.disabled = !state.current || agent.streaming
   send.disabled = !state.current || !agent.configured || agent.streaming
+  const polish = agent.pendingContext?.kind === 'polish'
+  const modeChip = document.getElementById('agent-mode-chip')
+  if (modeChip) modeChip.textContent = polish ? '润笔' : '对话'
   input.placeholder = !state.current
     ? '先选一个库，再和 Agent 聊…'
     : !agent.configured
       ? '先点右上角「设置」配置模型端点…'
-      : '问问剧情、要一段正文…（Enter 发送，Shift+Enter 换行）'
+      : polish
+        ? '补一句润笔要求（如：更冷峻、去掉形容词），回车发给 Agent'
+        : '问问剧情、要一段正文…（Enter 发送，Shift+Enter 换行）'
   if (libChip) libChip.textContent = state.current ? state.current.name : '未选库'
 }
 
@@ -1712,8 +1718,10 @@ function sessionTitle(session, index) {
 }
 
 function sessionsHtml() {
+  const pinnedId = getTempSessionId()
+  const hint = `<div class="sess-hint">润笔这类临时需求会发到标了「临时」的会话（默认自动建「临时需求」），不抢占你正在聊的这条。</div>`
   if (!agent.sessions.length) {
-    return `<div class="empty">还没有会话。<br>发第一条消息就会自动建。</div>
+    return `${hint}<div class="empty">还没有会话。<br>发第一条消息就会自动建。</div>
       <div class="divider"></div>
       <button class="new" data-action="agent-new-session">＋新会话</button>`
   }
@@ -1721,13 +1729,15 @@ function sessionsHtml() {
     const title = sessionTitle(session, index)
     // 空会话不摆「0」——只有真聊过才标条数
     const meta = Number.isFinite(session.messageCount) && session.messageCount > 0 ? `${session.messageCount}` : ''
+    const isTemp = session.id === pinnedId
     return `<div class="sess${session.id === agent.sessionId ? ' on' : ''}" data-session-id="${esc(session.id)}" title="${esc(title.label)}${title.broken ? '（历史标题编码损坏，双击重命名）' : '（双击重命名）'}">
       <span class="tt">${esc(title.label)}</span>
       ${meta ? `<span class="meta">${meta} 条</span>` : ''}
+      <button class="pin${isTemp ? ' on' : ''}" data-action="session-pin" data-session-id="${esc(session.id)}" title="${isTemp ? '临时需求固定走这条（点一下取消）' : '把这条设为默认临时会话（润笔/分析都走它）'}">${isTemp ? '临时' : '设临'}</button>
       <button class="x" data-session-del="${esc(session.id)}" title="删除会话">×</button>
     </div>`
   }).join('')
-  return `${rows}<div class="divider"></div>
+  return `${hint}${rows}<div class="divider"></div>
     <button class="new" data-action="agent-new-session" title="开始一段新对话">＋新会话</button>`
 }
 
@@ -1908,16 +1918,20 @@ async function sendAgentMessage() {
   }
   const input = document.getElementById('agent-input')
   const typed = text(input?.value).trim()
-  // OS-24：若有选中段落上下文，拼进消息（并在气泡里保留引用）
+  // OS-24/39：若有选中段落上下文，拼进消息（并在气泡里保留引用）；
+  // 润笔类（kind=polish）用「润笔请求/作者要求」的措辞，让 Agent 明确知道这是改写任务
   const ctx = agent.pendingContext
+  const polish = ctx?.kind === 'polish'
+  const head = polish ? '【润笔请求】' : '【选中段落】'
+  const askTag = polish ? '【作者要求】' : '【我的问题】'
   const content = ctx
-    ? `【选中段落】\n${ctx.quote}\n\n【所在段落上下文】\n${ctx.context}${typed ? `\n\n【我的问题】\n${typed}` : ''}`
+    ? `${head}\n${ctx.quote}\n\n【所在段落上下文】\n${ctx.context}${typed ? `\n\n${askTag}\n${typed}` : ''}`
     : typed
   if (!content) return
   if (input) input.value = ''
   agent.lastError = null
   agent.cardError = null
-  agent.items.push({ kind: 'msg', id: 'local-user', role: 'user', content: typed ? content : `【选中段落】${ctx.quote}`, at: '' })
+  agent.items.push({ kind: 'msg', id: 'local-user', role: 'user', content: typed ? content : `${head}${ctx.quote}`, at: '' })
   agent.pendingContext = null
   agent.items.push({ kind: 'msg', id: 'streaming', role: 'assistant', content: '', at: '' })
   agent.streaming = true
@@ -4072,6 +4086,13 @@ document.addEventListener('click', (event) => {
     deleteSession(target.dataset.sessionDel)
     return
   }
+  if (target.dataset.action === 'session-pin') {
+    // 把这条设为默认临时会话（再点一次取消）；面板不关，所见即所得
+    const id = target.dataset.sessionId
+    setTempSessionId(getTempSessionId() === id ? '' : id)
+    renderAgent()
+    return
+  }
   if (target.dataset.sessionId) {
     openSession(target.dataset.sessionId)
     closeAgentSessions() // 选完就收起，跟库切换器一致
@@ -4118,7 +4139,12 @@ document.addEventListener('click', (event) => {
     discussSelection()
   } else if (action === 'para-analyze') {
     hideParaMenu()
-    analyzeParagraph(target.dataset.blockIndex !== undefined ? target.dataset.blockIndex : state.sel.para)
+    // 右键整段：label 带段号；框选半句：label 带字数。两种都只分析框住的内容。
+    const wholeLen = (renderedBlocks()[state.sel.para]?.text ?? '').trim().length
+    const label = state.sel.para >= 0 && (state.sel.text || '').length === wholeLen
+      ? `第 ${state.sel.para + 1} 段`
+      : '选区'
+    analyzeSelection({ text: state.sel.text, label, para: state.sel.para })
   } else if (action === 'para-result-close') {
     state.sel.paraResult = null
     renderParaResult()

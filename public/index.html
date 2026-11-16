@@ -94,6 +94,11 @@ input, textarea, select { font: inherit; color: inherit; }
 .agent-sess-panel .sess .meta { font-size: 10px; color: var(--meta); font-variant-numeric: tabular-nums; flex: 0 0 auto; }
 .agent-sess-panel .sess .x { flex: 0 0 auto; color: var(--meta); font-size: 13px; padding: 0 2px; border-radius: 4px; }
 .agent-sess-panel .sess .x:hover { color: var(--danger); background: var(--soft); }
+/* 临时会话标记（OS-39）：润笔/分析这类一次性需求固定走标了「临时」的那条 */
+.agent-sess-panel .sess-hint { padding: 4px 8px 8px; font-size: 11px; color: var(--meta); line-height: 1.6; }
+.agent-sess-panel .sess .pin { flex: 0 0 auto; font-size: 10px; color: var(--meta); border: 1px solid var(--line); border-radius: var(--pill); padding: 1px 6px; }
+.agent-sess-panel .sess .pin:hover { border-color: var(--ink); color: var(--ink); }
+.agent-sess-panel .sess .pin.on { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
 .agent-sess-panel .divider { border-top: 1px solid var(--hair); margin: 6px 4px; }
 .agent-sess-panel .new { width: 100%; border: 1px dashed var(--line); border-radius: var(--radius); padding: 7px 8px; font-size: 12px; color: var(--muted); }
 .agent-sess-panel .new:hover { border-color: var(--ink); color: var(--ink); }
@@ -653,7 +658,7 @@ html[data-doc-auto-gap="off"] .doc-block { margin-bottom: 0; }
       <div class="composer">
         <textarea id="agent-input" placeholder="先选一个库，再和 Agent 聊…" disabled></textarea>
         <div class="row">
-          <span class="mode">对话</span>
+          <span class="mode" id="agent-mode-chip">对话</span>
           <span class="mode" id="agent-lib-chip">未选库</span>
           <button class="send" id="agent-send" title="发送" data-action="agent-send" disabled>↑</button>
           <button class="send stop" id="agent-stop" title="停止" data-action="agent-stop" hidden>■</button>
