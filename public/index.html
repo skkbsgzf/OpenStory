@@ -432,6 +432,47 @@ html[data-doc-auto-gap="off"] .doc-block { margin-bottom: 0; }
 .ctx-chip .ctx-x { color: var(--meta); font-size: 14px; line-height: 1; }
 .ctx-chip .ctx-x:hover { color: var(--danger); }
 
+/* ── 分析面板（OS-26）：右侧抽屉，SVG 图零依赖 ────────── */
+.analyze-panel { position: absolute; right: 0; top: 0; bottom: 0; width: 340px; z-index: 45;
+  background: color-mix(in srgb, var(--bg) 96%, transparent); backdrop-filter: blur(6px);
+  border-left: 1px solid var(--hair); display: none; flex-direction: column; overflow-y: auto; }
+.analyze-panel.open { display: flex; }
+.analyze-head { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--hair); position: sticky; top: 0; background: inherit; }
+.analyze-head .sp { flex: 1; }
+.analyze-body { padding: 12px 14px 18px; display: flex; flex-direction: column; gap: 14px; }
+.analyze-kpis { display: flex; gap: 14px; font-size: 12px; color: var(--muted); flex-wrap: wrap; }
+.analyze-kpis b { color: var(--ink); font-size: 15px; margin-right: 2px; }
+.analyze-sec h4 { margin: 0 0 6px; font-size: 13px; display: flex; align-items: center; gap: 6px; }
+.analyze-sec .sub { font-size: 11px; color: var(--meta); margin: 6px 0 0; line-height: 1.6; }
+.spark { width: 100%; height: 54px; display: block; background: var(--soft); border-radius: var(--radius); }
+.ai-score { font-size: 15px; }
+.ai-score.good { color: var(--ok); }
+.ai-score.mid { color: #c48a00; }
+.ai-score.bad { color: var(--danger); }
+.bar-row { display: grid; grid-template-columns: 74px minmax(0,1fr) 28px; gap: 6px; align-items: center; font-size: 11px; margin-bottom: 5px; }
+.bar-label { color: var(--muted); }
+.bar-track { height: 6px; background: var(--hair); border-radius: 999px; overflow: hidden; }
+.bar-fill { display: block; height: 100%; background: var(--accent); border-radius: 999px; }
+.bar-score { text-align: right; color: var(--ink-2); }
+.bar-detail { grid-column: 1 / -1; color: var(--meta); font-size: 10px; margin: -2px 0 2px; }
+.issue-row { border-left: 2px solid var(--line); padding: 7px 9px; margin-bottom: 6px; background: var(--soft); border-radius: 0 var(--radius) var(--radius) 0; font-size: 12px; }
+.issue-row.sev-high { border-left-color: var(--danger); }
+.issue-row.sev-medium { border-left-color: #c48a00; }
+.issue-row.sev-low { border-left-color: var(--line); }
+.issue-tag { font-weight: 600; display: block; margin-bottom: 2px; }
+.issue-detail { color: var(--muted); line-height: 1.6; display: block; }
+.issue-ops { display: flex; gap: 6px; margin-top: 6px; }
+.issue-act { font-size: 11px; border: 1px solid var(--line); border-radius: var(--pill); padding: 1px 9px; color: var(--muted); }
+.issue-act:hover { border-color: var(--ink); color: var(--ink); }
+/* 文档内标注（OS-27） */
+.doc-block.has-issue { position: relative; }
+.doc-block.has-issue::after { content: ''; position: absolute; left: -10px; top: 4px; bottom: 4px; width: 2px; border-radius: 2px; background: var(--line); }
+.doc-block.has-issue.sev-high::after { background: var(--danger); }
+.doc-block.has-issue.sev-medium::after { background: #c48a00; }
+.doc-block.has-issue.sev-low::after { background: var(--meta); }
+.doc-block.issue-flash { animation: issueFlash 1.2s ease; }
+@keyframes issueFlash { 0%,100% { background: transparent; } 30% { background: var(--accent-soft); } }
+
 /* ── 色板（左下角浮层）──────────────────────────────────── */
 .palette-fab { position: fixed; left: 14px; bottom: 118px; width: 38px; height: 38px; border-radius: 50%; background: conic-gradient(from 210deg, #ff385c, #7a5c2e, #2c2e35, #ff385c); border: 2px solid var(--bg); box-shadow: var(--shadow); z-index: 60; }
 .palette { position: fixed; left: 14px; bottom: 164px; width: 260px; background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius-md); box-shadow: var(--shadow); padding: 12px; z-index: 60; display: none; }

@@ -58,6 +58,7 @@ const state = {
   dirWork: {},
   write: { chapters: [], listLoading: false, mode: 'read', docPrefs: null, drawerOpen: false },
   sel: { text: '', blockIndex: -1, rect: null, busy: false, preview: null },
+  analyze: { open: false, result: null, busy: false, dismissed: {} },
   deduce: { premise: '', variables: '', question: '', sessionId: '', streaming: false, reply: '', controller: null, error: '' },
   artifacts: { root: '', groups: [], totals: null, loading: false, error: '', previewFile: '', previewText: '', previewLoading: false },
   settings: { userDir: '', section: 'runtime', suiteId: '' },
@@ -89,6 +90,14 @@ async function loadMd() {
   if (!mdModule) mdModule = await import('./md.mjs')
   return mdModule
 }
+// OS-25：分析引擎（纯计算，插件自管，不走 daemon）
+let analysisModule = null
+async function loadAnalysis() {
+  if (!analysisModule) analysisModule = await import('./analysis.mjs')
+  return analysisModule
+}
+loadAnalysis().catch(() => {})
+
 let mdReady = false
 loadMd().then(() => { mdReady = true; if (state.view === 'write') render() }).catch(() => {})
 
@@ -800,6 +809,164 @@ async function runAgentOnce(prompt) {
   return text
 }
 
+
+/* ---------- 分析面板（OS-25/26）：插件自管，纯本地计算 ---------- */
+
+async function runAnalysis() {
+  if (!state.chapterLoaded) return
+  await loadAnalysis()
+  state.analyze.busy = true
+  renderAnalyzePanel()
+  try {
+    const paragraphs = analysisParagraphs()
+    state.analyze.result = analysisModule.analyzeChapter(state.chapterText, { paragraphs })
+  } catch (error) {
+    state.analyze.result = null
+    rememberAgentError(error)
+  }
+  state.analyze.busy = false
+  renderAnalyzePanel()
+  paintDocAnnotations()
+}
+
+/** 分析用的段落（与渲染块一致；去掉大标题）。 */
+function analysisParagraphs() {
+  if (!mdReady || !mdModule) return []
+  return mdModule.splitBlocks(state.chapterText)
+    .filter((block) => !/^\s*#\s+/u.test(block.text))
+    .map((block) => block.text)
+}
+
+/** 折线（SVG viewBox，零图表库）。 */
+function sparkline(values, opts) {
+  const options = opts || {}
+  const width = options.width || 260
+  const height = options.height || 54
+  const color = options.color || "var(--accent)"
+  const useFill = options.fill !== false
+  if (!values.length) return ""
+  const max = Math.max.apply(null, values.map((v) => Math.abs(v)).concat([1]))
+  const step = values.length > 1 ? width / (values.length - 1) : width
+  const points = values.map((value, index) => [
+    Math.round(index * step),
+    Math.round(height / 2 - (value / max) * (height / 2 - 4))
+  ])
+  const line = points.map((pair, index) => (index === 0 ? "M" : "L") + pair[0] + "," + pair[1]).join(" ")
+  const area = useFill
+    ? '<path d="' + line + " L" + points[points.length - 1][0] + "," + height / 2 + " L0," + height / 2 + ' Z" fill="' + color + '" opacity=".12"/>'
+    : ""
+  return '<svg class="spark" viewBox="0 0 ' + width + " " + height + '" preserveAspectRatio="none">' + area + '<path d="' + line + '" fill="none" stroke="' + color + '" stroke-width="1.6"/></svg>'
+}
+
+function barRow(factor) {
+  const width = Math.min(100, Math.max(0, factor.score))
+  return '<div class="bar-row"><span class="bar-label">' + esc(factor.label) + '</span><span class="bar-track"><span class="bar-fill" style="width:' + width + '%"></span></span><span class="bar-score">' + factor.score + '</span><span class="bar-detail">' + esc(factor.detail) + "</span></div>"
+}
+
+function analyzePanelHtml() {
+  const result = state.analyze.result
+  if (state.analyze.busy) return '<div class="analyze-body"><div class="loading">正在分析…</div></div>'
+  if (!result) {
+    return '<div class="analyze-body"><p class="sub">纯本地计算：节奏、对白、情绪曲线、文风、AI 味。不调模型、不上传。</p><button class="btn-primary" data-action="analyze-run">开始分析本章</button></div>'
+  }
+  const stats = result.stats
+  const emotionValues = result.emotion.map((item) => item.value)
+  const rhythmValues = result.rhythm.map((item) => item.chars)
+  const openIssues = result.issues.filter((issue) => !state.analyze.dismissed[issue.id])
+  const issueRows = openIssues.map((issue) =>
+    '<div class="issue-row sev-' + esc(issue.severity) + '"><span class="issue-tag">' + esc(issue.label) +
+    '</span><span class="issue-detail">' + esc(issue.detail) + '</span><span class="issue-ops">' +
+    '<button class="issue-act" data-action="analyze-goto" data-paragraph="' + issue.paragraph + '">定位</button>' +
+    '<button class="issue-act" data-action="analyze-fix" data-issue-id="' + esc(issue.id) + '">让 Agent 改</button>' +
+    '<button class="issue-act" data-action="analyze-dismiss" data-issue-id="' + esc(issue.id) + '">解决</button>' +
+    "</span></div>"
+  ).join("")
+  const aiClass = result.aiSmell.score >= 50 ? "bad" : result.aiSmell.score >= 25 ? "mid" : "good"
+  return '<div class="analyze-body">' +
+    '<div class="analyze-kpis"><span><b>' + stats.chars + "</b> 字</span><span><b>" + stats.paragraphs +
+    "</b> 段</span><span><b>" + stats.avgSentenceLen + "</b> 字/句</span><span><b>" + stats.dialogueRatio +
+    "%</b> 对白</span></div>" +
+    (result.confidence === "low" ? '<div class="warn-box">本章偏短（&lt;800 字），指标置信度低——仅供参考。</div>' : "") +
+    '<section class="analyze-sec"><h4>情绪曲线</h4>' + sparkline(emotionValues) + '<p class="sub">逐段正负情绪强度（中线以上偏暖，以下偏冷）</p></section>' +
+    '<section class="analyze-sec"><h4>节奏（逐段字数）</h4>' + sparkline(rhythmValues, { color: "var(--ok)" }) + '<p class="sub">起伏太大＝长短段失衡，太平＝节奏单调</p></section>' +
+    '<section class="analyze-sec"><h4>AI 味 <b class="ai-score ' + aiClass + '">' + result.aiSmell.score + "</b></h4>" +
+    result.aiSmell.factors.map(barRow).join("") +
+    '<p class="sub">分数越高越像模板文；四个因子都能解释到具体词/句。</p></section>' +
+    '<section class="analyze-sec"><h4>问题 <span class="count">' + openIssues.length + " / " + result.issues.length + "</span></h4>" +
+    (issueRows || '<p class="sub">没有未解决的问题。</p>') + "</section>" +
+    '<div class="ops"><button class="btn-ghost" data-action="analyze-run">重新分析</button></div></div>'
+}
+
+function renderAnalyzePanel() {
+  const panel = document.getElementById("analyze-panel")
+  if (!panel) return
+  panel.classList.toggle("open", state.analyze.open)
+  if (!state.analyze.open) return
+  const name = state.chapterFile ? state.chapterFile.split("/").pop() : ""
+  panel.innerHTML = '<div class="analyze-head"><b>分析</b><span class="count">' + esc(name) + '</span><span class="sp"></span><button class="doc-icon" data-action="analyze-close" title="关闭">×</button></div>' + analyzePanelHtml()
+}
+
+/** 文档内标注：给有未解决问题的段落加高亮类（不动 contenteditable 结构）。 */
+function paintDocAnnotations() {
+  const result = state.analyze.result
+  const blocks = document.querySelectorAll(".doc-block")
+  blocks.forEach((block) => block.classList.remove("has-issue", "sev-high", "sev-medium", "sev-low"))
+  if (!result) return
+  const byParagraph = new Map()
+  const rank = { high: 3, medium: 2, low: 1 }
+  for (const issue of result.issues) {
+    if (state.analyze.dismissed[issue.id]) continue
+    if (!Number.isInteger(issue.paragraph) || issue.paragraph < 0) continue
+    const prev = byParagraph.get(issue.paragraph)
+    if (!prev || (rank[issue.severity] || 0) > (rank[prev] || 0)) byParagraph.set(issue.paragraph, issue.severity)
+  }
+  for (const entry of byParagraph) {
+    const block = blocks[entry[0]]
+    if (!block) continue
+    block.classList.add("has-issue", "sev-" + entry[1])
+  }
+}
+
+function toggleAnalyzePanel() {
+  state.analyze.open = !state.analyze.open
+  renderAnalyzePanel()
+  if (state.analyze.open && !state.analyze.result) runAnalysis()
+}
+
+function dismissIssue(issueId) {
+  state.analyze.dismissed[issueId] = true
+  renderAnalyzePanel()
+  paintDocAnnotations()
+}
+
+function gotoParagraph(index) {
+  const block = document.querySelectorAll(".doc-block")[Number(index)]
+  if (!block) return
+  block.scrollIntoView({ block: "center", behavior: "smooth" })
+  block.classList.add("issue-flash")
+  setTimeout(() => block.classList.remove("issue-flash"), 1200)
+}
+
+/** 让 Agent 改：问题＋所在段落做上下文，交给 Agent 讨论流。 */
+function fixIssueWithAgent(issueId) {
+  const result = state.analyze.result
+  const issue = result ? result.issues.find((item) => item.id === issueId) : null
+  if (!issue) return
+  const paragraphs = analysisParagraphs()
+  const text = paragraphs[issue.paragraph] || ""
+  state.agent.pendingContext = {
+    quote: issue.excerpt,
+    context: text,
+    label: issue.label + "（第 " + (Number(issue.paragraph) + 1) + " 段）"
+  }
+  state.analyze.open = false
+  renderAnalyzePanel()
+  paintDocAnnotations()
+  renderAgent()
+  const input = document.getElementById("agent-input")
+  if (input) input.focus()
+}
+
 async function createChapterFlow() {
   const input = document.getElementById('chapter-new-title')
   await loadSuites() // 写作套件的默认标题要新鲜
@@ -914,6 +1081,7 @@ function writeHtml() {
         <span class="sp"></span>
         <span class="doc-autosave" id="doc-autosave"></span>
         <button class="doc-drawer-btn" data-action="toggle-chapter-drawer" title="章节列表（悬浮）">⌸</button>
+        <button class="doc-drawer-btn" data-action="analyze-toggle" title="分析本章">◔</button>
         <button class="doc-icon" data-action="doc-panel-settings" title="本章显示设置">⚙</button>
         <button class="doc-icon" data-action="doc-more" title="更多（版本历史 / 重命名 / 删除）">⋯</button>
       </div>
@@ -938,6 +1106,7 @@ function writeHtml() {
       <div class="chapter-editor-col">
         ${editor}
       </div>
+      <aside class="analyze-panel" id="analyze-panel"></aside>
     </div>`
 }
 
@@ -3217,6 +3386,19 @@ document.addEventListener('click', (event) => {
   } else if (action === 'clear-agent-context') {
     state.agent.pendingContext = null
     renderAgent()
+  } else if (action === 'analyze-toggle') {
+    toggleAnalyzePanel()
+  } else if (action === 'analyze-close') {
+    state.analyze.open = false
+    renderAnalyzePanel()
+  } else if (action === 'analyze-run') {
+    runAnalysis()
+  } else if (action === 'analyze-dismiss') {
+    dismissIssue(target.dataset.issueId)
+  } else if (action === 'analyze-goto') {
+    gotoParagraph(target.dataset.paragraph)
+  } else if (action === 'analyze-fix') {
+    fixIssueWithAgent(target.dataset.issueId)
   } else if (action === 'doc-panel-settings') {
     openDocPanelSettings()
   } else if (action === 'doc-more') {
