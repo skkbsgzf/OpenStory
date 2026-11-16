@@ -148,7 +148,7 @@ test('weknora 客户端：打真实端点与请求体；不可达＝KB_UNAVAILAB
   assert.ok(searchCall, '走 knowledge-search 端点')
   assert.deepEqual(searchCall.body.knowledge_base_ids, ['kb1'])
   assert.equal(searchCall.body.match_count, 8, 'WeKnora 用 match_count 而非 top_k')
-  assert.equal(searchCall.headers.authorization, 'Bearer sk-x')
+  assert.equal(searchCall.headers['x-api-key'], 'sk-x', 'WeKnora API key 走 X-API-Key 头')
 
   const down = createKbClient({ backend: 'weknora', baseUrl: 'http://127.0.0.1:1' }, { fetchImpl: async () => { throw new Error('ECONNREFUSED') } })
   assert.equal((await down.query({ collectionIds: ['kb1'], query: 'x' })).code, KB_ERROR_CODES.KB_UNAVAILABLE)
