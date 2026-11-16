@@ -109,6 +109,7 @@ const server = createServer(async (req, res) => {
   // OpenAI 兼容 /v1/embeddings：input 可以是字符串或字符串数组
   if (url.pathname === '/v1/embeddings') {
     const input = Array.isArray(payload.input) ? payload.input.map((item) => String(item)) : [String(payload.input ?? '')]
+    if (process.env.EMBED_LOG === '1') console.log(`[embedding] ← /v1/embeddings ×${input.length}: ${input.map((t) => t.slice(0, 40).replace(/\s+/g, ' ')).join(' ‖ ').slice(0, 200)}`)
     if (!input.length || input.every((item) => !item.trim())) {
       return sendJson(res, 400, { error: { message: 'input 不能为空', type: 'invalid_request_error' } })
     }
@@ -129,6 +130,7 @@ const server = createServer(async (req, res) => {
   // Ollama 风格兼容（WeKnora 的 local source 走这个）
   if (url.pathname === '/api/embeddings') {
     const prompt = String(payload.prompt ?? payload.input ?? '')
+    if (process.env.EMBED_LOG === '1') console.log(`[embedding] ← /api/embeddings: ${prompt.slice(0, 60).replace(/\s+/g, ' ')}`)
     try {
       const { vectors, dim } = await embed([prompt])
       cachedDim = dim
