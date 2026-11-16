@@ -77,16 +77,31 @@ input, textarea, select { font: inherit; color: inherit; }
 .agent-name { font-weight: 700; }
 .agent-model { font-size: 11px; color: var(--meta); border: 1px solid var(--line); border-radius: var(--pill); padding: 1px 8px; max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .agent-model.on { color: var(--ok); border-color: var(--ok); }
-.agent-head .sp { flex: 1; }
-.agent-sessions { display: flex; gap: 6px; padding: 2px 12px 8px; overflow-x: auto; flex: 0 0 auto; scrollbar-width: thin; }
-.agent-sessions .s { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); border-radius: var(--pill); padding: 3px 10px; font-size: 12px; color: var(--muted); max-width: 150px; }
-.agent-sessions .s .tt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.agent-sessions .s.on { border-color: var(--ink); color: var(--ink); font-weight: 600; }
-.agent-sessions .s:hover { border-color: var(--ink); }
-.agent-sessions .s .x { color: var(--meta); font-size: 12px; padding: 0 2px; }
-.agent-sessions .s .x:hover { color: var(--danger); }
-.agent-sessions .new { border: 1px dashed var(--line); border-radius: var(--pill); padding: 3px 10px; font-size: 12px; color: var(--muted); flex: 0 0 auto; }
-.agent-sessions .new:hover { border-color: var(--ink); color: var(--ink); }
+.agent-model[hidden] { display: none; }
+.agent-head .sp, .agent-head-sp { flex: 1; }
+/* 会话下拉（OS-31）：标题栏只留一个计数按钮，全量列表收在面板里 */
+.agent-sess-dd { position: relative; flex: 0 0 auto; }
+.agent-sess-btn { display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 9px; border: 1px solid var(--line); border-radius: var(--pill); color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.agent-sess-btn:hover { border-color: var(--ink); color: var(--ink); }
+.agent-sess-btn.on { border-color: var(--ink); color: var(--ink); }
+.agent-sess-btn svg { flex: 0 0 13px; }
+.agent-sess-panel { position: absolute; right: 0; top: calc(100% + 6px); width: 274px; max-height: 60vh; overflow-y: auto; background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius-md); box-shadow: var(--shadow); padding: 6px; display: none; z-index: 85; }
+.agent-sess-panel.open { display: block; }
+.agent-sess-panel .sess { display: flex; align-items: center; gap: 8px; width: 100%; padding: 7px 8px; border-radius: var(--radius); text-align: left; color: var(--muted); font-size: 12px; }
+.agent-sess-panel .sess:hover { background: var(--soft); }
+.agent-sess-panel .sess.on { background: var(--accent-soft); color: var(--ink); }
+.agent-sess-panel .sess .tt { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.agent-sess-panel .sess .meta { font-size: 10px; color: var(--meta); font-variant-numeric: tabular-nums; flex: 0 0 auto; }
+.agent-sess-panel .sess .x { flex: 0 0 auto; color: var(--meta); font-size: 13px; padding: 0 2px; border-radius: 4px; }
+.agent-sess-panel .sess .x:hover { color: var(--danger); background: var(--soft); }
+.agent-sess-panel .divider { border-top: 1px solid var(--hair); margin: 6px 4px; }
+.agent-sess-panel .new { width: 100%; border: 1px dashed var(--line); border-radius: var(--radius); padding: 7px 8px; font-size: 12px; color: var(--muted); }
+.agent-sess-panel .new:hover { border-color: var(--ink); color: var(--ink); }
+.agent-sess-panel .empty { padding: 12px 10px; color: var(--muted); font-size: 12px; line-height: 1.7; text-align: center; }
+/* 当前会话一行（下拉收起时也能看出在聊哪条） */
+.agent-current { padding: 0 14px 8px; font-size: 11px; color: var(--meta); display: flex; align-items: center; gap: 6px; min-height: 16px; }
+.agent-current .tt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.agent-current .bad { color: var(--danger); }
 .agent-body { flex: 1; overflow-y: auto; padding: 10px 14px; display: flex; flex-direction: column; gap: 10px; }
 .agent-empty { margin-top: 18px; color: var(--muted); font-size: 13px; line-height: 1.7; }
 .agent-empty strong { color: var(--ink-2); display: block; margin-bottom: 4px; }
@@ -388,8 +403,9 @@ html[data-doc-auto-gap="off"] .doc-paper p { margin-bottom: 0; }
 .doc-block > *:last-child { margin-bottom: 0; }
 .doc-block p { margin: 0; }
 html[data-doc-auto-gap="off"] .doc-block { margin-bottom: 0; }
-.doc-icon { width: 26px; height: 26px; border-radius: 50%; color: var(--muted); display: grid; place-items: center; font-size: 14px; }
-.doc-drawer-btn { width: 26px; height: 26px; border-radius: 50%; color: var(--muted); display: grid; place-items: center; font-size: 13px; }
+.doc-icon { width: 26px; height: 26px; border-radius: 50%; color: var(--muted); display: grid; place-items: center; }
+.doc-drawer-btn { width: 26px; height: 26px; border-radius: 50%; color: var(--muted); display: grid; place-items: center; }
+.doc-icon svg, .doc-drawer-btn svg { display: block; }
 .doc-drawer-btn:hover, .doc-drawer-btn.on { background: var(--soft); color: var(--ink); }
 .doc-icon:hover { background: var(--soft); color: var(--ink); }
 .doc-autosave { font-size: 11px; color: var(--meta); }
@@ -539,9 +555,18 @@ html[data-doc-auto-gap="off"] .doc-block { margin-bottom: 0; }
     <aside class="agent-col">
       <div class="agent-head">
         <span class="agent-avatar">P</span><span class="agent-name">Pi-Agent</span>
-        <span class="agent-model" id="agent-model-chip" title="运行时状态——全面设置在右上角">未配置模型</span>
+        <span class="agent-model" id="agent-model-chip" hidden></span>
+        <span class="agent-head-sp"></span>
+        <!-- 会话列表（OS-31）：从横条药丸改成右上角下拉，标题栏只留一个带计数的按钮 -->
+        <div class="agent-sess-dd" id="agent-sess-dd">
+          <button class="agent-sess-btn" id="agent-sess-btn" data-action="toggle-agent-sessions" title="会话列表">
+            <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M2.5 3.5h11M2.5 8h11M2.5 12.5h7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" fill="none"/></svg>
+            <span id="agent-sess-count">0</span>
+          </button>
+          <div class="agent-sess-panel" id="agent-sess-panel"></div>
+        </div>
       </div>
-      <div class="agent-sessions" id="agent-sessions"></div>
+      <div class="agent-current" id="agent-current"></div>
       <div class="agent-body" id="agent-thread">
         <div class="agent-empty">
           <strong>问剧情、要一段正文、改设定…</strong>
