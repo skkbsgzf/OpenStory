@@ -63,7 +63,7 @@ const state = {
     mode: 'engine', engine: { busy: false, data: null, pov: '', seed: '', error: '', hint: '' } },
   artifacts: { root: '', groups: [], totals: null, loading: false, error: '', previewFile: '', previewText: '', previewLoading: false },
   // 参考载体（OS-44）：索引 / 当前笔记 / 反链 / 筛选标签
-  reference: { loaded: false, loading: false, notes: [], tags: [], tagNotes: {}, stats: null, error: '', activePath: '', activeTag: '', note: null, backlinks: { linked: [], unlinked: [] }, draft: '', view: 'note', q: '', focus: null, absorb: {}, flash: '' },
+  reference: { loaded: false, loading: false, notes: [], tags: [], tagNotes: {}, stats: null, error: '', activePath: '', activeTag: '', note: null, backlinks: { linked: [], unlinked: [] }, draft: '', view: 'note', q: '', focus: null, absorb: {}, flash: '', tagFilter: '', from: '' },
   // 左内容栏三模块（OS-44）：章节树 / 参考图谱 / 参考摘要
   refCol: { graph: null, graphLoading: false, graphError: '', summary: '', summaryBusy: false, summaryError: '' },
   settings: { userDir: '', section: 'plugins', suiteId: '', open: false, prevView: '', helpOpen: false },
@@ -242,8 +242,9 @@ function render() {
   }
   else if (state.view === 'reference') {
     viewEl.innerHTML = referencePageHtml()
-    // 图谱视图：DOM 就位后挂大画布（聚焦模式）；笔记视图无需画布
+    // 图谱视图：挂大画布（focus 模式）；笔记视图：详情页右上角小图谱（本词条邻域）
     if ((state.reference.view || 'note') === 'graph') mountReferenceGraph()
+    else if (state.reference.activePath && state.reference.note) mountDetailGraph()
   }
   else if (state.view === 'wiki') viewEl.innerHTML = wikiHtml()
   else if (state.view === 'lib-create') viewEl.innerHTML = createHtml()
@@ -1760,7 +1761,13 @@ function updateComposerState() {
   send.disabled = !state.current || !agent.configured || agent.streaming
   const polish = agent.pendingContext?.kind === 'polish'
   const modeChip = document.getElementById('agent-mode-chip')
-  if (modeChip) modeChip.textContent = polish ? '润笔' : '对话'
+  if (modeChip) {
+    // OS-51：模式不再占一颗药丸——只在润笔上下文挂着时显示小灰字
+    modeChip.hidden = !polish
+    modeChip.textContent = polish ? '润笔' : '对话'
+  }
+  const styleBtn = document.getElementById('agent-style-btn')
+  if (styleBtn) styleBtn.classList.toggle('on', polish)
   input.placeholder = !state.current
     ? '先选一个库，再和 Agent 聊…'
     : !agent.configured
@@ -1769,6 +1776,103 @@ function updateComposerState() {
         ? '补一句润笔要求（如：更冷峻、去掉形容词），回车发给 Agent'
         : '问问剧情、要一段正文…（Enter 发送，Shift+Enter 换行）'
   if (libChip) libChip.textContent = state.current ? state.current.name : '未选库'
+}
+
+/* ---------- 输入区工具菜单（OS-51）：风格 / ＋，对齐其它 Agent 的输入行 ---------- */
+
+function closeComposerMenus() {
+  for (const id of ['agent-style-menu', 'agent-plus-menu']) {
+    const el = document.getElementById(id)
+    if (el) el.hidden = true
+  }
+  document.getElementById('agent-style-btn')?.classList.remove('on')
+  document.getElementById('agent-plus-btn')?.classList.remove('on')
+}
+
+function toggleComposerMenu(which) {
+  const menu = document.getElementById(which === 'style' ? 'agent-style-menu' : 'agent-plus-menu')
+  const other = document.getElementById(which === 'style' ? 'agent-plus-menu' : 'agent-style-menu')
+  if (other) other.hidden = true
+  if (!menu) return
+  const willOpen = menu.hidden
+  closeComposerMenus()
+  if (!willOpen) return
+  menu.innerHTML = which === 'style' ? styleMenuHtml() : plusMenuHtml()
+  menu.hidden = false
+  document.getElementById(which === 'style' ? 'agent-style-btn' : 'agent-plus-btn')?.classList.add('on')
+}
+
+/** 风格菜单：当前模式 + 库 + 清除上下文（原那排显眼 chip 的职能收进这里）。 */
+function styleMenuHtml() {
+  const polish = agent.pendingContext?.kind === 'polish'
+  const rows = []
+  rows.push(`<div class="pop-item" data-action="style-mode-plain"><span class="pi-ic">💬</span><b>对话模式</b><i>问剧情、查设定、要产物</i></div>`)
+  rows.push(`<div class="pop-item" data-action="style-mode-polish"><span class="pi-ic">✎</span><b>润笔模式</b><i>选中一段正文后改写</i></div>`)
+  if (polish) rows.push(`<div class="pop-item" data-action="clear-agent-context"><span class="pi-ic">✕</span><b>清除当前上下文</b><i>${esc((agent.pendingContext?.label || '').slice(0, 24))}</i></div>`)
+  rows.push('<div class="pop-div"></div>')
+  rows.push(`<div class="pop-item plain"><span class="pi-ic">📚</span><b>${esc(state.current?.name || '未选库')}</b><i>${esc(agent.model || (agent.configured ? '已配置' : '未配置端点'))}</i></div>`)
+  return `<div class="pop-title">风格与模式</div>${rows.join('')}`
+}
+
+/** ＋菜单：引用文件 / 指令 / 技能（对齐其它 Agent 的 ＋ 键）。 */
+function plusMenuHtml() {
+  return `<div class="pop-title">引用文件</div>
+    <div class="pop-item" data-action="pick-file" data-dir="正文"><span class="pi-ic">📄</span><b>引用正文</b><i>把一章喂给 Agent</i></div>
+    <div class="pop-item" data-action="pick-file" data-dir="参考"><span class="pi-ic">🗂</span><b>引用参考</b><i>把一篇参考喂给 Agent</i></div>
+    <div class="pop-div"></div>
+    <div class="pop-title">指令</div>
+    <div class="pop-item" data-action="cmd-fill" data-cmd="请总结当前章节的剧情要点、出场人物与埋下的伏笔。"><span class="pi-ic">☑</span><b>总结本章</b><i>要点+伏笔清单</i></div>
+    <div class="pop-item" data-action="cmd-fill" data-cmd="请根据已有章节与参考资料，续写下一章的正文，用待确认卡交付。"><span class="pi-ic">✎</span><b>续写下一章</b><i>产出走待确认卡</i></div>
+    <div class="pop-item" data-action="cmd-fill" data-cmd="列出与本章相关的参考，逐条说明在写作时怎么用。"><span class="pi-ic">◈</span><b>查关联参考</b><i>图谱优先</i></div>
+    <div class="pop-div"></div>
+    <div class="pop-title">技能</div>
+    ${plusSkillsHtml()}
+    <div class="pop-item" data-action="pick-file" data-dir="__more" hidden></div>`
+}
+
+/** 技能节：列启用中的套件，点选把套件规范注入下一句。 */
+function plusSkillsHtml() {
+  const kits = state.suites.filter((kit) => kit.enabled !== false)
+  if (!kits.length) return '<div class="pop-item plain"><span class="pi-ic">◇</span><b>还没有启用的套件</b><i>设置 · 套件货架里开</i></div>'
+  return kits.map((kit) => `<div class="pop-item" data-action="cmd-fill" data-cmd="请按《${esc(kit.name)}》套件的默认规范处理。"><span class="pi-ic">✦</span><b>${esc(kit.name)}</b><i>${esc((kit.description || '').slice(0, 26))}</i></div>`).join('')
+}
+
+/** 引用文件：列该目录下的文件，点选喂给 Agent（内容截 2000 字，与参考 chip 同口径）。 */
+async function pickReferenceFile(dir) {
+  if (!state.current) return
+  try {
+    const payload = await api(`/api/files?root=${encodeURIComponent(state.current.path)}&dir=${encodeURIComponent(dir)}`)
+    const menu = document.getElementById('agent-plus-menu')
+    const files = Array.isArray(payload.files) ? payload.files : []
+    if (!menu) return
+    menu.innerHTML = `<div class="pop-title">${esc(dir)} · 点选引用</div>` +
+      (files.length
+        ? files.map((file) => `<div class="pop-item" data-action="attach-file" data-dir="${esc(dir)}" data-file="${esc(file.path || file.name || file)}"><span class="pi-ic">📄</span><b>${esc(String(file.name || file.path || file).replace(/\.md$/u, ''))}</b><i>${file.chars ? file.chars + ' 字' : ''}</i></div>`).join('')
+        : '<div class="pop-item plain"><span class="pi-ic">◇</span><b>这个目录还没有文件</b></div>') +
+      '<div class="pop-div"></div><div class="pop-item" data-action="plus-back"><span class="pi-ic">←</span><b>返回</b></div>'
+  } catch (error) {
+    rememberError(error)
+  }
+}
+
+/** 引用文件落地：读内容 → 塞 pendingContext（上下文条显示）。 */
+async function attachFileToAgent(dir, file) {
+  if (!state.current || !file) return
+  closeComposerMenus()
+  try {
+    const payload = await api(`/api/chapter?root=${encodeURIComponent(state.current.path)}&file=${encodeURIComponent(`${dir}/${file}`)}`)
+    const body = text(payload.chapter?.text ?? payload.text)
+    agent.pendingContext = {
+      quote: file,
+      context: body.slice(0, 2000),
+      label: `文件：${dir}/${file}（${body.replace(/\s/gu, '').length} 字）`
+    }
+    renderAgent()
+    document.getElementById('agent-input')?.focus()
+  } catch (error) {
+    rememberError(error)
+    renderAgent()
+  }
 }
 
 async function bootAgentConfig() {
@@ -3130,10 +3234,12 @@ async function loadReferences({ force = false } = {}) {
 }
 
 /** 打开一篇参考笔记（含反链）。 */
-async function openReference(path) {
+/** 打开一篇参考笔记（含反链）。from='graph' 时详情页给「← 返回图谱」键。 */
+async function openReference(path, { from = '' } = {}) {
   const ref = state.reference
   if (!state.current || !path) return
   ref.activePath = path
+  ref.from = from
   ref.error = ''
   render()
   try {
@@ -3149,7 +3255,13 @@ async function openReference(path) {
   render()
 }
 
-/** 参考页正文区（Markdown 渲染 + 编辑切换）。 */
+/**
+ * 参考详情页（OS-51，作者 Wiki 式分层）：
+ *   上半＝左简介（标签 chips＋一句话摘要）＋右关系图谱（本词条邻域）；
+ *   下半＝词条详情（完整 Markdown）；
+ *   最下＝关联说明（已链接 / 未链接 反链两段）。
+ * 标签是笔记的附加数据属性——它出现在简介卡上，不再是标题下方的游离块。
+ */
 function referenceEditorHtml() {
   const ref = state.reference
   const note = ref.note
@@ -3174,17 +3286,35 @@ function referenceEditorHtml() {
   const bodySource = stripFrontmatter(note.text)
   const body = (mdReady && mdModule) ? mdModule.renderMarkdown(bodySource) : `<p>${esc(bodySource)}</p>`
   const tagChips = (Array.isArray(note.tags) ? note.tags : [])
-    .map((tag) => `<button class="pill tag-pick" data-ref-tag="${esc(tag)}">#${esc(tag)}</button>`).join('')
-  return `<h2>${esc(note.title || note.path)}</h2>
-    <div class="rf-meta">
-      <span>${esc(note.path)}</span>
-      ${note.chars !== undefined ? `<span>${note.chars} 字</span>` : ''}
-      ${tagChips}
-      <span class="sp" style="flex:1"></span>
+    .map((tag) => `<button class="pill tag-pick" data-ref-tag="${esc(tag)}" title="按这个标签筛选">#${esc(tag)}</button>`).join('')
+  const mdPlain = (source) => text(source).replace(/[*_`#>[\]()|]/gu, ' ').replace(/-{2,}/gu, ' ').replace(/\s+/gu, ' ').trim()
+  const excerpt = mdPlain(note.excerpt) || mdPlain(bodySource).slice(0, 120)
+  const backlinks = refModule.backlinksHtml(ref.backlinks)
+  return `<div class="ref-detail">
+    <div class="ref-detail-head">
+      ${ref.from === 'graph' ? '<button class="btn-ghost" data-action="ref-back-graph" title="回到关系图谱">← 返回图谱</button>' : ''}
+      <h2>${esc(note.title || note.path)}</h2>
+      <span class="ref-detail-path">${esc(note.path)}${note.chars !== undefined ? ` · ${note.chars} 字` : ''}</span>
+      <span class="sp"></span>
       <button class="btn-ghost" data-action="ref-edit">编辑</button>
       <button class="btn-ghost" data-action="ref-to-agent">发给 Agent</button>
     </div>
-    <div class="prose-block">${body}</div>`
+    <div class="ref-detail-top">
+      <div class="ref-detail-brief">
+        <div class="brief-tags">${tagChips || '<span class="nav-empty">无标签</span>'}</div>
+        <p class="brief-text">${esc(excerpt)}</p>
+      </div>
+      <div class="ref-detail-graph">
+        <div class="rd-graph-head">关系图谱 <span>本词条的关联 · 点节点跳转</span></div>
+        <div class="graph-box detail"><canvas id="ref-detail-canvas"></canvas></div>
+      </div>
+    </div>
+    <div class="prose-block">${body}</div>
+    <div class="ref-detail-backlinks">
+      <h4>关联说明</h4>
+      ${backlinks}
+    </div>
+  </div>`
 }
 
 /** 参考页整体（OS-48：侧栏导航 + 视图制主区）。 */
@@ -3203,7 +3333,6 @@ function referencePageHtml() {
     view: ref.view || 'note',
     q: ref.q || '',
     mainHtml,
-    backlinks: ref.backlinks,
     stats: ref.stats,
     absorbable: absorbTotal
   })
@@ -3212,7 +3341,7 @@ function referencePageHtml() {
   return `<div class="topic-workspace"><div class="topic-main">${errorHtml()}${ref.flash ? `<div class="ok-note">${esc(ref.flash)}</div>` : ''}${shell}</div></div>`
 }
 
-/** 参考页·关系图谱视图（OS-48）：大画布 + 聚焦交互，对齐作者 Wiki 的图谱口径。 */
+/** 参考页·关系图谱视图（OS-51）：大画布＋节点信息卡（简介＋跳转按钮）＋标签筛选行。 */
 function referenceGraphHtml() {
   const rc = state.refCol
   if (rc.graphError) return `<div class="error-box">${esc(rc.graphError)}</div>`
@@ -3226,55 +3355,98 @@ function referenceGraphHtml() {
     ['entry', '条目（只读）', 'var(--meta)']
   ].filter(([kind]) => byKind[kind]).map(([, label, color]) =>
     `<span><i style="background:${color}"></i>${esc(label)}</span>`).join('')
-  const focusNode = state.reference.focus
-    ? rc.graph.nodes.find((node) => node.id === state.reference.focus)
-    : null
+  const ref = state.reference
+  const focusNode = ref.focus ? rc.graph.nodes.find((node) => node.id === ref.focus) : null
   const hint = focusNode
-    ? `聚焦「${focusNode.label || focusNode.id}」的邻域——再点它进详情，点空白复位`
-    : '点节点聚焦邻域，再点进详情，点空白复位'
+    ? `聚焦「${focusNode.label || focusNode.id}」的邻域——跳转走卡片按钮，点空白复位`
+    : '点节点看简介与跳转，点空白复位'
+  // 标签筛选行（作者口径：在图谱里按固定标签筛子图）
+  const topTags = (ref.tags || []).slice(0, 10)
+  const tagBar = topTags.length
+    ? `<div class="ref-graph-tagbar"><button class="chart-tab${ref.tagFilter ? '' : ' on'}" data-action="ref-graph-tag" data-tag="">全部</button>${topTags.map((tag) =>
+      `<button class="chart-tab${ref.tagFilter === tag.name ? ' on' : ''}" data-action="ref-graph-tag" data-tag="${esc(tag.name)}">#${esc(tag.name)} ${tag.count}</button>`).join('')}</div>`
+    : ''
+  // 节点信息卡（点节点→邻域聚焦＋卡片；跳转只走卡片按钮）
+  const card = focusNode ? refNodeCardHtml(focusNode) : ''
   return `<div class="ref-graph">
     <div class="ref-graph-meta">${stats.nodes ?? 0} 个节点 · ${stats.edges ?? 0} 条边 · ${esc(hint)}</div>
-    <div class="graph-box big" id="ref-graph-box"><canvas id="ref-graph-canvas"></canvas></div>
+    ${tagBar}
+    <div class="graph-box big" id="ref-graph-box"><canvas id="ref-graph-canvas"></canvas>${card}</div>
     <div class="graph-legend">${legend || '<span>没有节点</span>'}</div>
   </div>`
 }
 
-/** 图谱画布的数据视图：聚焦时取邻域子图，全景只画有连接的节点（孤立节点在侧栏里看），上限 120。 */
-function graphFocusView() {
+/** 图谱节点信息卡：类型徽章＋标签＋一句话摘要＋「打开详情」。 */
+function refNodeCardHtml(node) {
+  const kindLabels = { reference: '参考', tag: '标签', artifact: '章节/产物', entry: '条目' }
+  const degree = (state.refCol.graph?.edges || [])
+    .filter((edge) => edge.a === node.id || edge.b === node.id).length
+  const tags = Array.isArray(node.tags) ? node.tags : []
+  const tagChips = tags.map((tag) => `<button class="pill tag-pick" data-ref-tag="${esc(tag)}">#${esc(tag)}</button>`).join('')
+  const excerpt = text(node.excerpt).replace(/[*_`#>[\]()|]/gu, ' ').replace(/-{2,}/gu, ' ').replace(/\s+/gu, ' ').trim()
+  return `<div class="ref-node-card">
+    <div class="rn-head"><span class="rn-kind ${esc(node.kind)}">${esc(kindLabels[node.kind] || node.kind)}</span><b>${esc(node.label || node.id)}</b></div>
+    ${tagChips ? `<div class="rn-tags">${tagChips}</div>` : ''}
+    ${excerpt ? `<p class="rn-excerpt">${esc(excerpt.slice(0, 90))}</p>` : ''}
+    <div class="rn-ops">
+      <span class="rn-deg">${degree} 条关联</span>
+      <span class="sp"></span>
+      <button class="btn-ghost" data-action="ref-node-open">打开详情 →</button>
+    </div>
+  </div>`
+}
+
+/**
+ * 图谱画布的数据视图（OS-51 参数化）：
+ *   tagFilter：只看某个标签挂着的子图（标签节点＋直接相连节点）——作者口径「在图谱里搜索固定的标签」
+ *   focusId：聚焦时取邻域；全景（无 focus 无 tagFilter）只画有连接的节点，上限 120。
+ */
+function graphFocusView(focusId = state.reference.focus, tagFilter = state.reference.tagFilter || '') {
   const graph = state.refCol.graph
   if (!graph) return { nodes: [], edges: [], stats: {} }
-  const focus = state.reference.focus
-  if (!focus) {
+  let nodes = graph.nodes
+  let edges = graph.edges
+  if (tagFilter) {
+    const tid = `tag:${tagFilter}`
+    const keep = new Set([tid])
+    for (const edge of edges) {
+      if (edge.a === tid) keep.add(edge.b)
+      if (edge.b === tid) keep.add(edge.a)
+    }
+    nodes = nodes.filter((node) => keep.has(node.id))
+    edges = edges.filter((edge) => keep.has(edge.a) && keep.has(edge.b))
+  }
+  if (!focusId) {
+    if (tagFilter) return { nodes, edges, stats: graph.stats }
     const degree = new Map()
-    for (const edge of graph.edges) {
+    for (const edge of edges) {
       degree.set(edge.a, (degree.get(edge.a) || 0) + 1)
       degree.set(edge.b, (degree.get(edge.b) || 0) + 1)
     }
-    const nodes = graph.nodes
+    const visible = nodes
       .filter((node) => degree.get(node.id))
       .sort((left, right) => (degree.get(right.id) || 0) - (degree.get(left.id) || 0))
       .slice(0, 120)
-    const keep = new Set(nodes.map((node) => node.id))
-    return { nodes, edges: graph.edges.filter((edge) => keep.has(edge.a) && keep.has(edge.b)), stats: graph.stats }
+    const keep = new Set(visible.map((node) => node.id))
+    return { nodes: visible, edges: edges.filter((edge) => keep.has(edge.a) && keep.has(edge.b)), stats: graph.stats }
   }
-  const keep = new Set([focus])
-  for (const edge of graph.edges) {
-    if (edge.a === focus) keep.add(edge.b)
-    if (edge.b === focus) keep.add(edge.a)
+  const keep = new Set([focusId])
+  for (const edge of edges) {
+    if (edge.a === focusId) keep.add(edge.b)
+    if (edge.b === focusId) keep.add(edge.a)
   }
   return {
-    nodes: graph.nodes.filter((node) => keep.has(node.id)),
-    edges: graph.edges.filter((edge) => keep.has(edge.a) && keep.has(edge.b)),
+    nodes: nodes.filter((node) => keep.has(node.id)),
+    edges: edges.filter((edge) => keep.has(edge.a) && keep.has(edge.b)),
     stats: graph.stats
   }
 }
 
-/** 图谱节点跳详情（聚焦模式：再点同节点）。 */
+/** 图谱节点跳详情（OS-51：跳转只走信息卡按钮；来路是图谱，详情页给返回键，返回时聚焦保留）。 */
 function navigateFromGraphNode(node) {
-  state.reference.focus = null
   if (node.kind === 'reference') {
     state.reference.view = 'note'
-    openReference(node.id)
+    openReference(node.id, { from: 'graph' })
     return
   }
   if (node.kind === 'artifact') {
@@ -3288,8 +3460,14 @@ function navigateFromGraphNode(node) {
     return
   }
   if (node.kind === 'tag') {
-    state.reference.view = 'note'
-    state.reference.activeTag = node.id.replace(/^tag:/u, '')
+    // 标签没有「详情页」——跳转＝按该标签筛选笔记列表（清掉旧详情，主区回列表空态）
+    const ref = state.reference
+    ref.view = 'note'
+    ref.activeTag = node.id.replace(/^tag:/u, '')
+    ref.focus = null
+    ref.note = null
+    ref.activePath = ''
+    ref.from = ''
     render()
     return
   }
@@ -3315,17 +3493,40 @@ async function mountReferenceGraph() {
     mode: 'focus',
     focusId: state.reference.focus,
     onPick: (node) => {
-      if (state.reference.focus === node.id) navigateFromGraphNode(node)
-      else {
-        state.reference.focus = node.id
-        render()
-      }
+      // OS-51：点节点＝聚焦邻域＋出信息卡（跳转走卡片按钮，不再「再点进详情」）
+      state.reference.focus = node.id
+      render()
     },
     onBlank: () => {
-      if (state.reference.focus) {
+      if (state.reference.focus || state.reference.tagFilter) {
         state.reference.focus = null
         render()
       }
+    }
+  })
+}
+
+/** 详情页右上角小图谱（OS-51）：本词条的邻域；jump 模式点节点即跳。 */
+let detailGraphCleanup = null
+async function mountDetailGraph() {
+  const canvas = document.getElementById('ref-detail-canvas')
+  if (!canvas) return
+  if (!state.refCol.graph) {
+    await loadRefGraph()
+    if (!document.getElementById('ref-detail-canvas')) return // 等待期间页面切走了
+  }
+  const view = graphFocusView(state.reference.activePath, '')
+  if (!view.nodes.length) return
+  const mod = await import('./graph.mjs')
+  detailGraphCleanup?.()
+  detailGraphCleanup = mod.mountGraph({
+    canvas,
+    graph: view,
+    mode: 'jump',
+    focusId: state.reference.activePath,
+    onPick: (node) => {
+      if (node.id === state.reference.activePath) return
+      navigateFromGraphNode(node)
     }
   })
 }
@@ -5724,6 +5925,20 @@ document.addEventListener('click', (event) => {
     openAbsorbModal()
   } else if (action === 'ref-absorb-run') {
     runAbsorbFromModal()
+  } else if (action === 'ref-node-open') {
+    // 图谱信息卡的「打开详情」（OS-51）：跳转只走这个按钮
+    const focusNode = state.refCol.graph?.nodes?.find((node) => node.id === state.reference.focus)
+    if (focusNode) navigateFromGraphNode(focusNode)
+  } else if (action === 'ref-back-graph') {
+    state.reference.view = 'graph'
+    state.reference.from = ''
+    render()
+  } else if (action === 'ref-graph-tag') {
+    // 图谱按标签筛子图（作者口径）；切标签时顺手复位聚焦
+    const tag = target.dataset.tag || ''
+    state.reference.tagFilter = state.reference.tagFilter === tag ? '' : tag
+    state.reference.focus = null
+    render()
   } else if (action === 'ref-new-note') {
     openNewReferenceModal('note')
   } else if (action === 'ref-new-tag') {

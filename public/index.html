@@ -137,11 +137,10 @@ input, textarea, select { font: inherit; color: inherit; }
 .ref-toolbar h1 { margin: 0; font-size: 22px; }
 .ref-toolbar .sp { flex: 1; }
 .ok-note { font-size: 12px; color: var(--ok); background: var(--soft); border-radius: var(--radius); padding: 8px 12px; }
-.ref-grid { display: grid; grid-template-columns: 236px minmax(0,1fr) 200px; gap: 12px; align-items: start; }
-.ref-grid.graphing { grid-template-columns: 236px minmax(0,1fr); }
-@media (max-width: 1280px) { .ref-grid, .ref-grid.graphing { grid-template-columns: 212px minmax(0,1fr); } .ref-grid:not(.graphing) .ref-backlinks { display: none; } }
-.ref-sidenav, .ref-backlinks { border: 0; border-radius: var(--radius-md); background: var(--soft); padding: 10px 8px; max-height: calc(100vh - 230px); overflow-y: auto; }
-/* 侧栏导航（Wiki renderSide 口径）：视图 / 标签 / 笔记 三组一列 */
+.ref-grid { display: grid; grid-template-columns: 236px minmax(0,1fr); gap: 12px; align-items: start; }
+@media (max-width: 1280px) { .ref-grid { grid-template-columns: 212px minmax(0,1fr); } }
+.ref-sidenav { border: 0; border-radius: var(--radius-md); background: var(--soft); padding: 10px 8px; max-height: calc(100vh - 230px); overflow-y: auto; }
+/* 侧栏导航（OS-51）：视图 / 按标签筛选（三级折叠树） / 笔记（主体） */
 .ref-nav { display: flex; flex-direction: column; gap: 10px; }
 .ref-nav .search { width: 100%; border: 1px solid var(--line); border-radius: var(--radius); padding: 5px 10px; font-size: 12px; background: var(--bg); }
 .ref-nav .search:focus { outline: none; border-color: var(--ink-2); }
@@ -153,15 +152,57 @@ input, textarea, select { font: inherit; color: inherit; }
 .nav-row.on { background: var(--accent-soft); color: var(--ink); }
 .nav-row.view span { font-weight: 600; color: var(--ink-2); }
 .nav-row.on.view span { color: var(--ink); }
-.nav-row.sub { padding-left: 22px; }
 .nav-row .tag-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nav-count { font-size: 10px; color: var(--meta); font-variant-numeric: tabular-nums; }
 .nav-empty { font-size: 11px; color: var(--meta); padding: 4px 8px; margin: 0; line-height: 1.7; }
+/* 标签筛选三级树：子级在父级下方缩进展开，每级 14px＋折叠指示（OS-51） */
+.tag-branch, .tag-leaf { margin-left: calc(var(--depth, 0) * 14px); }
+.tag-branch > summary { list-style: none; cursor: pointer; position: relative; }
+.tag-branch > summary::-webkit-details-marker { display: none; }
+.tag-branch > summary .nav-row { width: calc(100% - 20px); }
+.tw-chev { position: absolute; right: 8px; top: 9px; width: 7px; height: 7px; border-right: 1.4px solid var(--meta); border-bottom: 1.4px solid var(--meta); transform: rotate(-45deg); transition: transform .12s ease; }
+.tag-branch[open] > summary .tw-chev { transform: rotate(45deg); }
+.nav-row.on .tag-name { font-weight: 600; }
 .tag-desc-dot { display: inline-block; width: 4px; height: 4px; border-radius: 50%; background: var(--accent); margin-left: 4px; vertical-align: 2px; }
-/* 图谱视图（OS-48）：一等视图，大画布＋聚焦交互 */
+/* 图谱视图（OS-51）：大画布＋节点信息卡＋标签筛选行 */
 .ref-graph { display: flex; flex-direction: column; gap: 8px; }
 .ref-graph-meta { font-size: 12px; color: var(--meta); }
-.graph-box.big { height: calc(100vh - 320px); min-height: 380px; border-radius: var(--radius-md); }
+.ref-graph-tagbar { display: flex; flex-wrap: wrap; gap: 4px; }
+.graph-box.big { height: calc(100vh - 360px); min-height: 380px; border-radius: var(--radius-md); }
+/* 节点信息卡：画布右上角浮层——类型/标签/简介＋「打开详情」（OS-51 作者口径） */
+.ref-node-card { position: absolute; top: 10px; right: 10px; width: 244px; background: var(--bg); border-radius: var(--radius-md); box-shadow: 0 10px 28px -10px rgba(var(--shadow-base, 28,27,26), .3), 0 2px 6px rgba(var(--shadow-base, 28,27,26), .1); padding: 12px; z-index: 5; display: flex; flex-direction: column; gap: 8px; }
+.ref-node-card .rn-head { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.ref-node-card .rn-head b { font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rn-kind { font-size: 10px; border-radius: var(--pill); padding: 1px 8px; background: var(--soft); color: var(--muted); flex: 0 0 auto; }
+.rn-kind.reference { background: var(--accent-soft); color: var(--accent); }
+.rn-kind.tag { background: color-mix(in srgb, #c48a00 12%, transparent); color: #a06a00; }
+.rn-kind.artifact { background: color-mix(in srgb, var(--ok) 12%, transparent); color: var(--ok); }
+.rn-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+.rn-tags .pill { font-size: 10px; padding: 1px 8px; }
+.rn-excerpt { margin: 0; font-size: 11.5px; color: var(--muted); line-height: 1.7; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.rn-ops { display: flex; align-items: center; gap: 6px; }
+.rn-ops .sp { flex: 1; }
+.rn-deg { font-size: 10.5px; color: var(--meta); }
+.ref-node-card .btn-ghost { font-size: 12px; }
+/* 详情页（OS-51，Wiki 式分层）：上半＝左简介＋右小图谱；下半＝详情；最下＝关联说明 */
+.ref-detail { display: flex; flex-direction: column; gap: 14px; }
+.ref-detail-head { display: flex; align-items: center; gap: 10px; }
+.ref-detail-head h2 { margin: 0; font-size: 20px; }
+.ref-detail-head .sp { flex: 1; }
+.ref-detail-path { font-size: 11px; color: var(--meta); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ref-detail-top { display: grid; grid-template-columns: minmax(0, 1fr) minmax(300px, 46%); gap: 12px; align-items: stretch; }
+@media (max-width: 1100px) { .ref-detail-top { grid-template-columns: minmax(0, 1fr); } }
+.ref-detail-brief { background: var(--bg); border-radius: var(--radius-md); padding: 14px 16px; box-shadow: var(--shadow-card, 0 1px 2px rgba(28,27,26,.05)); display: flex; flex-direction: column; gap: 10px; }
+.brief-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.brief-tags .pill { font-size: 11px; }
+.brief-text { margin: 0; font-size: 13px; line-height: 1.8; color: var(--ink-2); }
+.ref-detail-graph { background: var(--bg); border-radius: var(--radius-md); padding: 12px 14px; box-shadow: var(--shadow-card, 0 1px 2px rgba(28,27,26,.05)); display: flex; flex-direction: column; gap: 8px; }
+.rd-graph-head { font-size: 12px; font-weight: 600; color: var(--ink-2); display: flex; gap: 8px; align-items: baseline; }
+.rd-graph-head span { font-weight: 400; font-size: 10.5px; color: var(--meta); }
+.graph-box.detail { height: 240px; flex: 1; min-height: 200px; }
+.ref-detail-backlinks { border-top: 1px solid var(--hair); padding-top: 12px; }
+.ref-detail-backlinks h4 { margin: 0 0 8px; font-size: 13px; }
+.ref-detail-backlinks .bl-row { max-width: 720px; }
 /* 迁入旧目录弹层（动稿需显式确认） */
 .absorb-list { display: flex; flex-direction: column; gap: 6px; margin: 4px 0 8px; }
 .absorb-row { display: flex; align-items: center; gap: 8px; font-size: 13px; padding: 6px 4px; cursor: pointer; }
@@ -331,10 +372,24 @@ input, textarea, select { font: inherit; color: inherit; }
 .card-block .state-chip.ok { color: var(--ok); border-color: var(--ok); }
 .card-block .state-chip.dead { color: var(--meta); }
 .card-block .rev-error { margin-top: 8px; font-size: 12px; color: var(--danger); }
-.composer { margin: 10px 14px 12px; border: 1px solid var(--line); border-radius: var(--radius-md); padding: 10px 12px 8px; }
+.composer { margin: 10px 14px 12px; border: 1px solid var(--line); border-radius: var(--radius-md); padding: 10px 12px 8px; position: relative; }
 .composer textarea { width: 100%; border: 0; resize: none; outline: none; background: none; height: 44px; }
 .composer .row { display: flex; align-items: center; gap: 8px; }
 .composer .mode { font-size: 12px; color: var(--muted); border: 1px solid var(--line); border-radius: var(--pill); padding: 2px 10px; }
+/* 工具小按钮（OS-51）：风格/＋ 与发送键平级，极简圆形，不抢眼 */
+.composer-tools { display: flex; align-items: center; gap: 4px; }
+.c-tool { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; color: var(--meta); }
+.c-tool:hover { background: color-mix(in srgb, var(--ink) 6%, transparent); color: var(--ink); }
+.c-tool.on { color: var(--accent); background: var(--accent-soft); }
+/* 工具弹出菜单（OS-51）：从底部弹出，对齐其它 Agent 的 ＋ 菜单 */
+.composer-pop { position: absolute; left: 8px; right: 8px; bottom: calc(100% - 4px); z-index: 88; background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius-md); box-shadow: var(--shadow); padding: 8px; max-height: 300px; overflow-y: auto; }
+.composer-pop .pop-title { font-size: 10.5px; font-weight: 600; color: var(--meta); letter-spacing: .04em; padding: 2px 6px 4px; }
+.composer-pop .pop-item { display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 8px; border-radius: var(--radius); text-align: left; font-size: 12.5px; color: var(--ink-2); }
+.composer-pop .pop-item:hover { background: var(--soft); }
+.composer-pop .pop-item b { font-weight: 600; }
+.composer-pop .pop-item i { font-style: normal; font-size: 11px; color: var(--meta); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.composer-pop .pop-item .pi-ic { flex: 0 0 auto; width: 22px; height: 22px; border-radius: 6px; background: var(--soft); display: grid; place-items: center; font-size: 12px; }
+.composer-pop .pop-div { border-top: 1px solid var(--hair); margin: 6px 2px; }
 .composer .send { margin-left: auto; width: 30px; height: 30px; border-radius: 50%; background: var(--ink); color: var(--bg); display: grid; place-items: center; }
 .composer .send:hover { background: var(--accent); }
 .composer .send:disabled { background: var(--line); cursor: not-allowed; }
@@ -899,12 +954,24 @@ html[data-doc-auto-gap="off"] .doc-block { margin-bottom: 0; }
       <div class="agent-context" id="agent-context"></div>
       <div class="composer">
         <textarea id="agent-input" placeholder="先选一个库，再和 Agent 聊…" disabled></textarea>
+        <!-- 工具行（OS-51）：风格/＋ 与发送键平级，靠左小按钮，不再占显眼位置 -->
         <div class="row">
-          <span class="mode" id="agent-mode-chip">对话</span>
-          <span class="mode" id="agent-lib-chip">未选库</span>
+          <div class="composer-tools">
+            <button class="c-tool" id="agent-style-btn" data-action="toggle-style-menu" title="风格与模式">
+              <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M8 2.6c-3 0-5.4 2.3-5.4 5.2 0 1.7.9 2.6 2 3.4.6.4.9 1 .9 1.7v.5c0 .4.3.7.7.7h3.6c.4 0 .7-.3.7-.7v-.5c0-.7.3-1.3.9-1.7 1.1-.8 2-1.7 2-3.4C13.4 4.9 11 2.6 8 2.6z" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M6.2 15h3.6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+            </button>
+            <button class="c-tool" id="agent-plus-btn" data-action="toggle-plus-menu" title="引用文件 / 指令 / 技能">
+              <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+            </button>
+          </div>
+          <span class="mode" id="agent-mode-chip" hidden>对话</span>
+          <span class="mode" id="agent-lib-chip" hidden></span>
+          <span class="sp"></span>
           <button class="send" id="agent-send" title="发送" data-action="agent-send" disabled>↑</button>
           <button class="send stop" id="agent-stop" title="停止" data-action="agent-stop" hidden>■</button>
         </div>
+        <div class="composer-pop" id="agent-style-menu" hidden></div>
+        <div class="composer-pop" id="agent-plus-menu" hidden></div>
       </div>
     </aside>
 
