@@ -184,6 +184,8 @@ input, textarea, select { font: inherit; color: inherit; }
 .rn-ops .sp { flex: 1; }
 .rn-deg { font-size: 10.5px; color: var(--meta); }
 .ref-node-card .btn-ghost { font-size: 12px; }
+/* 小图信息卡（正文页左栏，OS-52）：画布下方内嵌全宽，不做浮层 */
+.ref-node-card.inline { position: static; width: 100%; box-shadow: none; background: transparent; padding: 8px 2px 2px; }
 /* 详情页（OS-51，Wiki 式分层）：上半＝左简介＋右小图谱；下半＝详情；最下＝关联说明 */
 .ref-detail { display: flex; flex-direction: column; gap: 14px; }
 .ref-detail-head { display: flex; align-items: center; gap: 10px; }
@@ -323,6 +325,9 @@ input, textarea, select { font: inherit; color: inherit; }
 @keyframes blink { 50% { opacity: 0; } }
 .msg .partial-tag { display: block; margin-top: 6px; font-size: 11px; color: var(--danger); }
 .msg .waiting { display: block; font-size: 11px; color: var(--meta); font-style: italic; }
+/* 消息内路径（OS-51）：像路径的行内码可点——hover 出下划线提示「这是入口」 */
+.msg.assistant code { cursor: pointer; transition: color .12s ease; }
+.msg.assistant code:hover { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
 /* 活动状态（OS-39）：思考 / 调工具 / 等首字，带脉冲点，一眼看出在动 */
 .msg .act { display: block; font-size: 11px; color: var(--meta); margin-bottom: 4px; }
 .msg .act-dot { display: inline-block; width: 5px; height: 5px; border-radius: 50%; background: var(--accent); margin-right: 6px; vertical-align: 1px; animation: actPulse 1.1s ease-in-out infinite; }
@@ -343,6 +348,19 @@ input, textarea, select { font: inherit; color: inherit; }
 .proc-block:hover { border-color: var(--line); }
 .proc-body { padding: 2px 10px 8px; border-top: 1px dashed var(--hair); max-height: 190px; overflow-y: auto; white-space: normal; }
 .proc-think { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--muted); font-size: 11px; line-height: 1.75; padding: 6px 0; }
+/* 分段思维链（OS-51）：每段独立小节，写完折叠成一行摘要保留原地，最新段直播展开 */
+.proc-seg { border-top: 1px dashed var(--hair); }
+.proc-seg:first-child { border-top: 0; }
+.proc-seg > summary { display: flex; align-items: center; gap: 6px; padding: 5px 0; cursor: pointer; list-style: none; color: var(--meta); font-size: 11px; }
+.proc-seg > summary::-webkit-details-marker { display: none; }
+.proc-seg > summary::marker { content: ''; }
+.proc-seg > summary:hover { color: var(--ink-2); }
+.proc-seg-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.proc-seg-n { flex: 0 0 auto; font-size: 10px; color: var(--meta); opacity: .8; }
+.proc-seg[open] > summary .proc-chev { transform: rotate(-90deg); }
+.proc-seg.live { border-top: 1px dashed var(--hair); }
+.proc-seg.live .proc-seg-head { display: flex; align-items: center; gap: 6px; padding: 5px 0; color: var(--ink-2); font-size: 11px; }
+.proc-seg.live .proc-dot { background: var(--accent); animation: actPulse 1.1s ease-in-out infinite; }
 .tool-row { display: flex; align-items: baseline; gap: 6px; padding: 3px 0; font-size: 11px; color: var(--muted); border-top: 1px dashed var(--hair); }
 /* 工具图标（OS-43）：一眼分辨读/写/搜/跑 */
 .tool-icon { flex: 0 0 14px; text-align: center; font-size: 10px; color: var(--meta); line-height: 1; cursor: help; }
