@@ -58,7 +58,7 @@ const state = {
   dirWork: {},
   write: { chapters: [], listLoading: false, mode: 'read', docPrefs: null, drawerOpen: false },
   sel: { text: '', blockIndex: -1, rect: null, busy: false, preview: null, para: -1 },
-  analyze: { open: false, result: null, busy: false, dismissed: {}, activePara: -1, expandOthers: false },
+  analyze: { open: false, result: null, busy: false, dismissed: {}, activePara: -1, expandOthers: false, fact: null, factRoot: '', factTab: 'emotion' },
   deduce: { premise: '', variables: '', question: '', sessionId: '', streaming: false, reply: '', controller: null, error: '',
     mode: 'engine', engine: { busy: false, data: null, pov: '', seed: '', error: '', hint: '' } },
   artifacts: { root: '', groups: [], totals: null, loading: false, error: '', previewFile: '', previewText: '', previewLoading: false },
@@ -968,9 +968,43 @@ async function discussSelection() {
 
 let analyzeScrollTick = 0
 
+/** 图表模块惰性加载（charts.mjs 与 analysis.mjs 同口径：浏览器本地，零依赖）。 */
+let chartsModule = null
+function loadCharts() {
+  if (!chartsModule) chartsModule = import('./charts.mjs')
+  return chartsModule
+}
+
+/**
+ * fact 曲线数据（OS-41·对齐拆解线）：库内 拆解/ 的章级 序列/情绪/剧情点/事件数。
+ * 按 root 缓存；拉不到（无拆解数据/网络失败）＝fact:null，面板降级到本地词典近似层。
+ */
+async function loadFactCurve(force = false) {
+  const rootPath = state.current?.path ?? ''
+  if (!rootPath) return
+  if (!force && state.analyze.factRoot === rootPath && state.analyze.fact !== null) return
+  if (!force && state.analyze.factRoot === rootPath && state.analyze.fact === null && state.analyze.factTried) return
+  state.analyze.factRoot = rootPath
+  state.analyze.factTried = true
+  try {
+    const payload = await api(`/api/fact/curve?${new URLSearchParams({ root: rootPath }).toString()}`)
+    state.analyze.fact = payload?.chapters?.length ? payload : null
+  } catch {
+    state.analyze.fact = null
+  }
+  if (state.analyze.open) renderAnalyzePanel()
+}
+
+/** 章号 ← 文件名（NNN-标题.md 约定，与 daemon/chapters 同口径）。 */
+function chapterNoFromFile(file) {
+  const m = String(file ?? '').match(/(\d+)/)
+  return m ? Number(m[1]) : 0
+}
+
 async function runAnalysis() {
   if (!state.chapterLoaded) return
   await loadAnalysis()
+  loadFactCurve()
   state.analyze.busy = true
   renderAnalyzePanel()
   try {
@@ -1107,7 +1141,7 @@ function analyzePanelHtml() {
     return '<div class="analyze-body"><button class="btn-primary" data-action="analyze-run">开始分析本章</button></div>'
   }
   const stats = result.stats
-  const emotionValues = result.emotion.map((item) => item.value)
+
   const rhythmValues = result.rhythm.map((item) => item.chars)
   const openIssues = result.issues.filter((issue) => !state.analyze.dismissed[issue.id])
   // 每条问题可能落在多段（重复用词/套话）：paragraphs 是全集，paragraph 只是首段
@@ -1175,12 +1209,34 @@ function analyzePanelHtml() {
   }
   const aiClass = result.aiSmell.score >= 50 ? "bad" : result.aiSmell.score >= 25 ? "mid" : "good"
   const expandOpen = state.analyze.expandOthers === true
+  // OS-41 剧情曲线区（对齐拆解线算法）：fact 可用＝章级语义曲线（点峰值跳章）；否则本地词典近似（点段定位）
+  const charts = chartsModule
+  const fact = state.analyze.fact
+  const activeNo = chapterNoFromFile(state.chapterFile)
+  let curveSection = ''
+  if (charts && fact && (fact.chapters?.length ?? 0) >= 2) {
+    const tab = state.analyze.factTab === 'events' ? 'events' : 'emotion'
+    const chart = tab === 'events'
+      ? charts.renderEventArea(fact.chapters, { activeNo })
+      : charts.renderEmotionCurve(fact.chapters, { activeNo })
+    const ribbon = charts.renderFunctionRibbon(fact.chapters, { activeNo })
+    curveSection = '<section class="analyze-sec"><h4>剧情曲线 <span class="count">fact · ' + esc(fact.title || fact.bookId) +
+      ' · ' + fact.chapters.length + ' 章</span></h4>' +
+      '<div class="chart-tabs"><button class="chart-tab' + (tab === 'emotion' ? ' on' : '') + '" data-action="analyze-chart" data-tab="emotion">情绪曲线</button>' +
+      '<button class="chart-tab' + (tab === 'events' ? ' on' : '') + '" data-action="analyze-chart" data-tab="events">事件密度</button></div>' +
+      chart + ribbon +
+      '<p class="sub">图上的点/柱/彩带都可以点——跳到对应章；正文切章或滚动，当前章在这里高亮回看。</p></section>'
+  } else if (charts) {
+    curveSection = '<section class="analyze-sec"><h4>情绪曲线 <span class="count">词典近似 · 低置信</span></h4>' +
+      charts.renderLocalCurve(result.emotion, { activePara: viewPara }) +
+      '<p class="sub">本库还没有拆解 fact——曲线只是词典近似。跑一次「拆解 → enrich」后，这里会换成语义级剧情曲线：峰值标情绪、可点击跳章。</p></section>'
+  }
   return '<div class="analyze-body">' +
     '<div class="analyze-kpis"><span><b>' + stats.chars + "</b> 字</span><span><b>" + stats.paragraphs +
     "</b> 段</span><span><b>" + stats.avgSentenceLen + "</b> 字/句</span><span><b>" + stats.dialogueRatio +
     "%</b> 对白</span></div>" +
     (result.confidence === "low" ? '<div class="warn-box">本章偏短，指标仅供参考。</div>' : "") +
-    '<section class="analyze-sec"><h4>情绪曲线</h4>' + sparkline(emotionValues) + '</section>' +
+    curveSection +
     '<section class="analyze-sec"><h4>节奏（逐段字数）</h4>' + sparkline(rhythmValues, { color: "var(--ok)" }) + '</section>' +
     '<section class="analyze-sec"><h4>AI 味 <b class="ai-score ' + aiClass + '">' + result.aiSmell.score + "</b></h4>" +
     result.aiSmell.factors.map(barRow).join("") + '</section>' +
@@ -1291,7 +1347,11 @@ function paintDocAnnotations() {
 function toggleAnalyzePanel() {
   state.analyze.open = !state.analyze.open
   renderAnalyzePanel()
-  if (state.analyze.open && !state.analyze.result) runAnalysis()
+  if (state.analyze.open) {
+    loadCharts()
+    loadFactCurve()
+    if (!state.analyze.result) runAnalysis()
+  }
 }
 
 function dismissIssue(issueId) {
@@ -4111,6 +4171,8 @@ async function loadChapter(file) {
     const meta = state.write.chapters.find((chapter) => chapter.file === target)
     state.chapterMetaAt = meta?.mtime || ''
     state.write.mode = 'read'
+    // OS-41：分析面板开着＝切章后自动重跑（曲线/批注跟着新章走，不用手点）
+    if (state.analyze.open) runAnalysis()
   } catch (error) {
     if (error.code === 'NOT_FOUND') {
       state.chapterText = ''
@@ -4552,6 +4614,20 @@ document.addEventListener('click', (event) => {
     runAnalysis()
   } else if (action === 'analyze-dismiss') {
     dismissIssue(target.dataset.issueId)
+  } else if (action === 'curve-para') {
+    gotoParagraph(target.dataset.paragraph)
+  } else if (action === 'analyze-chart') {
+    state.analyze.factTab = target.dataset.tab === 'events' ? 'events' : 'emotion'
+    renderAnalyzePanel()
+  } else if (action === 'curve-chapter') {
+    const no = Number(target.dataset.chapterNo)
+    const file = (state.write.chapters || []).find((c) => chapterNoFromFile(c.file) === no)?.file
+    if (file) {
+      loadChapter(file)
+    } else {
+      state.error = '曲线指向第 ' + no + ' 章，但正文列表里没有对应文件（章节号按文件名 NNN- 前缀匹配）。'
+      render()
+    }
   } else if (action === 'analyze-goto') {
     gotoParagraph(target.dataset.paragraph)
   } else if (action === 'analyze-fix') {

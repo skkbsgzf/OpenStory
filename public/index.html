@@ -544,6 +544,11 @@ html[data-doc-auto-gap="off"] .doc-block { margin-bottom: 0; }
 .analyze-sec h4 { margin: 0 0 6px; font-size: 13px; display: flex; align-items: center; gap: 6px; }
 .analyze-sec .sub { font-size: 11px; color: var(--meta); margin: 6px 0 0; line-height: 1.6; }
 .spark { width: 100%; height: 46px; display: block; background: var(--soft); border-radius: var(--radius); }
+.chart-tabs { display: flex; gap: 6px; margin: 2px 0 8px; }
+.chart-tab { border: 1px solid var(--border); background: transparent; color: var(--meta); border-radius: 999px; padding: 3px 12px; font-size: 12px; cursor: pointer; }
+.chart-tab.on { background: var(--accent-soft, color-mix(in srgb, var(--accent) 12%, transparent)); color: var(--accent); border-color: transparent; font-weight: 600; }
+.analyze-sec svg [data-action] { transition: fill-opacity .15s; }
+.analyze-sec svg [data-action]:hover { fill-opacity: 1; }
 .ai-score { font-size: 15px; }
 .ai-score.good { color: var(--ok); }
 .ai-score.mid { color: #c48a00; }
