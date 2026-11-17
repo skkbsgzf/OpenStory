@@ -3,10 +3,8 @@
  *
  * 全部数据来自本机 daemon（127.0.0.1）：
  *   GET  /api/libraries → 库卡
- *   GET  /api/entries   → 拆解条目清单（S1 factFileStore 同构）
- *   GET  /api/entry     → 单条
+ *   （OS-54：条目/wiki 视图端点已剔除——fact 数据由推演/曲线/图谱通道消费）
  *   GET/PUT /api/chapter→ 正文读/写（PUT 同目录 .history 备份）
- *   GET  /api/wiki、POST /api/wiki/derive → S4 派生 wiki
  *   GET/PUT /api/agent/config            → 模型端点（key 只存 daemon 本机，这里只拿到掩码）
  *   GET/POST /api/agent/sessions…        → 会话（JSONL 在 daemon 侧）
  *   POST /api/agent/chat                 → 流式对话（SSE：start → delta* → done/error）
@@ -39,14 +37,11 @@ const state = {
   books: [],
   bookId: '',
   wiki: null,
-  wikiFrom: null,
-  wikiLoaded: false,
   loading: false,
   error: '',
   styles: [],
   stylesWarnings: [],
   skin: '',
-  wikiMode: 'html',
   libFlow: null,
   create: { parent: '', name: '', primary: 'pinax.carrier.novel', genre: '', length: null, deliverables: [], running: false, result: null, error: '' },
   genres: [],
@@ -110,28 +105,7 @@ loadAnalysis().catch(() => {})
 let mdReady = false
 loadMd().then(() => { mdReady = true; if (state.view === 'write') render() }).catch(() => {})
 
-const LAYER_LABELS = {
-  plot: '剧情',
-  character: '人物',
-  world: '世界观',
-  worldview: '世界观',
-  setting: '设定',
-  term: '术语',
-  item: '物品',
-  location: '地点',
-  faction: '势力',
-  event: '事件',
-  relation: '关系',
-  concept: '概念',
-  rule: '规则'
-}
 
-const STATUS_LABELS = {
-  draft: '草稿',
-  confirmed: '已确认',
-  reviewed: '已审',
-  archived: '归档'
-}
 
 function esc(value) {
   return String(value ?? '').replace(/[&<>"']/gu, (char) => ({
@@ -147,43 +121,14 @@ function text(value) {
   return String(value ?? '')
 }
 
-function layerLabel(layer) {
-  const key = text(layer).trim()
-  return LAYER_LABELS[key] ?? (key || '未分层')
-}
 
-function statusLabel(status) {
-  const key = text(status).trim()
-  return STATUS_LABELS[key] ?? key
-}
 
-function entrySummary(entry) {
-  for (const value of [entry?.summary, entry?.definition, entry?.notes]) {
-    const body = text(value).trim()
-    if (body) return body
-  }
-  const events = Array.isArray(entry?.events) ? entry.events : []
-  for (const event of events) {
-    const body = text(event?.content).trim()
-    if (body) return body
-  }
-  return ''
-}
 
 function truncate(value, max = 110) {
   const body = text(value).replace(/\s+/gu, ' ').trim()
   return body.length > max ? `${body.slice(0, max)}…` : body
 }
 
-/** 拆解条目的 name 常是「第1章·正文/x.txt·段1」：清单里只显示「第1章 · 段1」，全名留在详情。 */
-function entryDisplayName(entry) {
-  const raw = text(entry?.name || entry?.id).trim()
-  const parts = raw.split('·').map((part) => part.trim()).filter(Boolean)
-  if (parts.length >= 2 && /^段\d+$/u.test(parts[parts.length - 1])) {
-    return `${parts[0]} · ${parts[parts.length - 1]}`
-  }
-  return raw
-}
 
 function formatAt(value) {
   const raw = text(value).trim()
@@ -234,7 +179,6 @@ function render() {
   // 正文页自己管滚动（页头吸顶＋纸面/右栏各自滚），外层不再滚动
   viewEl.classList.toggle('content-locked', state.view === 'write')
   if (state.view === 'libraries') viewEl.innerHTML = libraryHtml()
-  else if (state.view === 'entries') viewEl.innerHTML = state.entry ? entryDetailHtml() : entriesHtml()
   else if (state.view === 'write') {
     viewEl.innerHTML = writeHtml()
     // 版面换了 DOM：批注面板要重挂（否则右栏是空的），标注与吸顶也要重算
@@ -248,7 +192,6 @@ function render() {
     if ((state.reference.view || 'note') === 'graph') mountReferenceGraph()
     else if (state.reference.activePath && state.reference.note) mountDetailGraph()
   }
-  else if (state.view === 'wiki') viewEl.innerHTML = wikiHtml()
   else if (state.view === 'lib-create') viewEl.innerHTML = createHtml()
   else if (state.view === 'lib-import') viewEl.innerHTML = importHtml()
   else if (state.view === 'repair') viewEl.innerHTML = repairHtml()
@@ -317,113 +260,8 @@ function libraryHtml() {
   </div>`
 }
 
-function entriesHtml() {
-  if (!state.current) return needLibraryHtml()
-  if (state.loading && state.entries.length === 0) return '<div class="loading">正在读取拆解条目…</div>'
-  if (state.entries.length === 0) {
-    return `<div class="empty-state">
-      <h2>这个库还没有拆解条目</h2>
-      <p>OpenStory 读的是 <span class="hint">拆解/&lt;bookId&gt;.json</span> 里的 entries；先在 Pinax 里跑一次抽取，或确认库路径。</p>
-    </div>`
-  }
 
-  const layers = [...new Set(state.entries.map((entry) => text(entry.layer).trim()).filter(Boolean))]
-  const layerChips = [`<button class="chip${state.layerFilter === '' ? ' on' : ''}" data-layer="">全部</button>`]
-    .concat(layers.map((layer) => `<button class="chip${state.layerFilter === layer ? ' on' : ''}" data-layer="${esc(layer)}">${esc(layerLabel(layer))}</button>`))
-    .join('')
 
-  const visible = visibleEntries()
-  const rows = visible.map((entry) => `<button class="entry-row" data-entry-id="${esc(entry.id)}">
-    <span class="nm">${esc(entryDisplayName(entry))}</span>
-    <span class="sm${entrySummary(entry) ? '' : ' empty'}">${esc(truncate(entrySummary(entry)) || '（无摘要）')}</span>
-    <span class="ly">${esc(layerLabel(entry.layer))}${entry.status ? ` · ${esc(statusLabel(entry.status))}` : ''}</span>
-  </button>`).join('')
-
-  const more = state.entries.length < state.total
-    ? `<div class="pager"><span>已显示 ${state.entries.length} / ${state.total}</span><button class="btn-ghost" data-load-more>加载更多</button></div>`
-    : `<div class="pager"><span>共 ${state.total} 条</span></div>`
-
-  return `<div class="toolbar">
-      <input class="search" id="entry-search" type="search" placeholder="按名称 / 摘要过滤…" value="${esc(state.search)}">
-      <span class="sp"></span>
-      <span class="count">${state.current.name} · 拆解条目</span>
-    </div>
-    ${errorHtml()}
-    ${warningsHtml(state.entryWarnings)}
-    <div class="toolbar">${layerChips}</div>
-    <div class="entry-list">${rows || '<div class="loading">没有匹配的条目</div>'}</div>
-    ${more}`
-}
-
-function visibleEntries() {
-  const needle = state.search.trim().toLowerCase()
-  return state.entries.filter((entry) => {
-    if (state.layerFilter && text(entry.layer) !== state.layerFilter) return false
-    if (!needle) return true
-    const haystack = [
-      entry.name,
-      entrySummary(entry),
-      Array.isArray(entry.aliases) ? entry.aliases.join(' ') : '',
-      entry.bookName
-    ].join(' ').toLowerCase()
-    return haystack.includes(needle)
-  })
-}
-
-function entryDetailHtml() {
-  const entry = state.entry
-  if (!entry) return entriesHtml()
-  const summary = entrySummary(entry)
-  const aliases = Array.isArray(entry.aliases) ? entry.aliases : []
-  const events = Array.isArray(entry.events) ? entry.events : []
-  const sources = Array.isArray(entry.sources) ? entry.sources : []
-  const identity = entry.identity && typeof entry.identity === 'object' ? Object.entries(entry.identity) : []
-
-  const eventBlocks = events.map((event) => {
-    const who = text(event?.who).trim()
-    const channel = text(event?.channel).trim()
-    const label = [who, channel].filter(Boolean).join(' · ')
-    return `<div class="e-sec"><h3>${esc(label || '事件')}</h3><p>${esc(text(event?.content).trim())}</p></div>`
-  }).join('')
-
-  const identityBlocks = identity
-    .filter(([, value]) => typeof value === 'string' || Array.isArray(value))
-    .map(([key, value]) => `<div class="e-sec"><h3>${esc(key)}</h3><p>${esc(Array.isArray(value) ? value.join('、') : value)}</p></div>`)
-    .join('')
-
-  return `<div class="toolbar">
-      <button class="btn-ghost" data-action="back-entries">← 条目清单</button>
-      <span class="sp"></span>
-      <span class="count">${esc(layerLabel(entry.layer))}${entry.status ? ` · ${esc(statusLabel(entry.status))}` : ''}</span>
-    </div>
-    ${errorHtml()}
-    <div class="entry-grid">
-      <div>
-        <h1 class="e-title">${esc(entryDisplayName(entry))}</h1>
-        <p class="e-sum">${esc(summary || '（没有摘要）')}</p>
-        <div class="e-meta">
-          <span class="t">${esc(layerLabel(entry.layer))}</span>
-          ${aliases.length ? `<span>触发词 ${esc(aliases.join('、'))}</span>` : ''}
-          ${entry.bookName ? `<span>${esc(entry.bookName)}</span>` : ''}
-        </div>
-        ${entry.definition ? `<div class="e-sec"><h3>定义</h3><p>${esc(entry.definition)}</p></div>` : ''}
-        ${identityBlocks}
-        ${eventBlocks}
-        ${entry.notes ? `<div class="e-sec"><h3>备注</h3><p>${esc(entry.notes)}</p></div>` : ''}
-      </div>
-      <aside class="e-side">
-        <h4>条目信息</h4>
-        <div class="kv"><span class="k">id</span><span class="v">${esc(entry.id)}</span></div>
-        <div class="kv"><span class="k">名称</span><span class="v">${esc(entry.name || '—')}</span></div>
-        <div class="kv"><span class="k">分层</span><span class="v">${esc(layerLabel(entry.layer))}</span></div>
-        <div class="kv"><span class="k">状态</span><span class="v">${esc(statusLabel(entry.status) || '—')}</span></div>
-        <div class="kv"><span class="k">书</span><span class="v">${esc(entry.bookName || '—')}</span></div>
-        <div class="kv"><span class="k">版本</span><span class="v">${esc(state.entryRevision ?? '—')}</span></div>
-        <h4>来源 · ${sources.length}</h4>
-        ${sources.map((source) => `<div class="kv"><span class="k">文件</span><span class="v">${esc(source?.sourceId || '—')}</span></div>`).join('') || '<div class="kv"><span class="k">文件</span><span class="v">—</span></div>'}
-      </aside>
-    </div>`
-}
 
 function needLibraryHtml() {
   return `<div class="empty-state">
@@ -1628,95 +1466,8 @@ function writeHtml() {
   </div>`
 }
 
-function wikiHtml() {
-  if (!state.current) return needLibraryHtml()
-  if (state.loading && !state.wikiLoaded) return '<div class="loading">正在读取 wiki…</div>'
 
-  const bookOptions = state.books
-    .map((book) => `<option value="${esc(book.bookId)}"${book.bookId === state.bookId ? ' selected' : ''}>${esc(book.bookName || book.bookId)}（${book.count} 条）</option>`)
-    .join('')
 
-  const modeTabs = `<span class="subtabs">
-      <button class="chip${state.wikiMode === 'html' ? ' on' : ''}" data-wiki-mode="html" title="派生 HTML，沙箱 iframe 装载">网页</button>
-      <button class="chip${state.wikiMode === 'data' ? ' on' : ''}" data-wiki-mode="data" title="JSON 卡片视图（对照）">数据</button>
-    </span>`
-
-  if (!state.wiki) {
-    return `<div class="toolbar">
-        ${bookOptions ? `<select class="select" id="wiki-book">${bookOptions}</select>` : '<span class="count">没有可派生的书</span>'}
-        <span class="sp"></span>
-        <button class="btn-primary" data-action="derive-wiki"${state.loading || !state.bookId ? ' disabled' : ''}>派生 wiki</button>
-      </div>
-      ${errorHtml()}
-      <div class="empty-state">
-        <h2>这本书还没有 wiki</h2>
-        <p>wiki 是零模型纯计算派生，随时可重建；派生结果落在 <span class="hint">拆解/&lt;bookId&gt;.wiki.json</span>。派生后「网页」态以沙箱 HTML 呈现。</p>
-      </div>`
-  }
-
-  const toolbar = `<div class="toolbar">
-      ${bookOptions ? `<select class="select" id="wiki-book">${bookOptions}</select>` : ''}
-      ${modeTabs}
-      <span class="sp"></span>
-      <span class="count">派生自 fact revision ${esc(state.wikiFrom?.factRevision ?? '—')}</span>
-      <button class="btn-ghost" data-action="derive-wiki"${state.loading ? ' disabled' : ''}>重新派生</button>
-    </div>`
-
-  return `${toolbar}${errorHtml()}${state.wikiMode === 'html' ? wikiFrameHtml() : wikiDataHtml()}`
-}
-
-/** 网页态：daemon 现渲的独立 HTML，沙箱 iframe 装载；强调色取当前风格包。 */
-function wikiFrameHtml() {
-  const pack = currentPack()
-  const params = new URLSearchParams({
-    root: state.current.path,
-    bookId: state.bookId,
-    accent: pack?.tokens?.['--accent'] || '#ff385c',
-    bg: pack?.tokens?.['--bg'] || '#ffffff',
-    ink: pack?.tokens?.['--ink'] || '#222222'
-  })
-  return `<iframe class="wiki-frame" sandbox src="/api/wiki/html?${params.toString()}" title="wiki 派生网页"></iframe>`
-}
-
-/** 数据态（对照）：JSON 卡片视图，OS-3 老渲染保留。 */
-function wikiDataHtml() {
-  const wiki = state.wiki
-  const book = wiki.book ?? {}
-  const characters = Array.isArray(wiki.characters) ? wiki.characters : []
-  const chapters = Array.isArray(wiki.chapters) ? wiki.chapters : []
-  const terms = Array.isArray(wiki.terms) ? wiki.terms : []
-
-  const characterCards = characters.map((character) => {
-    const detail = [character.identity, character.archetype, character.summary]
-      .map((value) => text(value).trim())
-      .filter(Boolean)
-      .join(' · ')
-    return `<div class="wiki-card"><b>${esc(character.name)}</b><span class="sub">${esc(detail || '（无画像）')}${character.appearances ? ` · 出现 ${esc(character.appearances)} 次` : ''}</span></div>`
-  }).join('')
-
-  const chapterLines = chapters.map((chapter) => `<div class="wiki-line">
-      <span class="no">${esc(chapter.no ?? '—')}</span>
-      <span class="tt">${esc(chapter.title || `第 ${chapter.no} 章`)}${chapter.summary ? ` · ${esc(truncate(chapter.summary, 80))}` : ''}</span>
-    </div>`).join('')
-
-  const termCards = terms.map((term) => `<div class="wiki-card"><b>${esc(term.name || term.term || '—')}</b><span class="sub">${esc(truncate(term.summary || term.definition || '', 80) || '—')}</span></div>`).join('')
-
-  return `<div class="wiki-wrap">
-      <div class="wiki-head">
-        <h2>${esc(book.title || state.current.name)}</h2>
-        <div class="meta">
-          ${book.author ? `<span>作者 ${esc(book.author)}</span>` : ''}
-          ${book.group ? `<span>${esc(book.group)}</span>` : ''}
-          <span>${chapters.length} 章</span>
-          <span>${characters.length} 人</span>
-          <span>${terms.length} 术语</span>
-        </div>
-      </div>
-      <section class="wiki-section"><h3>人物 · ${characters.length}</h3><div class="wiki-cards">${characterCards || '<span class="count">没有人物条目</span>'}</div></section>
-      <section class="wiki-section"><h3>章节 · ${chapters.length}</h3>${chapterLines || '<span class="count">没有章节</span>'}</section>
-      ${termCards ? `<section class="wiki-section"><h3>术语 · ${terms.length}</h3><div class="wiki-cards">${termCards}</div></section>` : ''}
-    </div>`
-}
 
 /* ---------- Agent 左列（OS-4）---------- */
 
@@ -3641,8 +3392,8 @@ function navigateFromGraphNode(node) {
     return
   }
   if (node.kind === 'entry') {
-    openEntry(node.id.replace(/^entry:/u, ''))
-    go('entries')
+    // 条目工作面已剔除（OS-54）：条目数据的消费方是推演——切过去
+    go('deduce')
   }
 }
 
@@ -4854,7 +4605,7 @@ function setTabHidden(view, hidden) {
   try { localStorage.setItem(TAB_HIDE_KEY(root), JSON.stringify([...set])) } catch { /* 隐私模式 */ }
   // 关掉当前正在看的页签 → 退到第一个还开着的
   if (hidden && state.view === view) {
-    const next = state.current ? (state.libDirs.includes('正文') ? 'write' : 'entries') : 'libraries'
+    const next = state.current ? 'write' : 'libraries'
     state.view = next
   }
   render()
@@ -4873,8 +4624,6 @@ function openTabAdd() {
   const builtins = [
     { view: 'artifacts', label: '产物', need: null },
     { view: 'write', label: '正文', need: '正文' },
-    { view: 'entries', label: '条目', need: '世界书' },
-    { view: 'wiki', label: 'Wiki', need: null },
     { view: 'deduce', label: '推演', need: null }
   ]
   const builtinRows = builtins
@@ -4956,7 +4705,6 @@ function renderTabs() {
     const excluded = new Set((state.briefGenre?.excludedPages ?? []).map((page) => PAGE_TO_DIR_LOCAL[page] ?? page))
     if (!state.brief || hasDir('正文')) defs.push({ view: 'write', label: '正文', ic: '章', closable: true })
     // OS-48：这个页签暴露的其实是 fact 拆解条目（真源 拆解/*.json），改名「条目」消除与世界书目录/参考的定位混淆
-    if (!state.brief || hasDir('世界书')) defs.push({ view: 'entries', label: '条目', ic: '条', closable: true })
     const extra = libDirs
       // 作者要求页签可自选：库里任何顶层目录都能出页签（不再只认 DIR_LABELS 里的名单）
       .filter((dir) => dir !== '正文' && dir !== '世界书' && !excluded.has(dir))
@@ -4974,7 +4722,6 @@ function renderTabs() {
         closable: true
       }))
     defs.push(...extra)
-    if (!excluded.has('Wiki')) defs.push({ view: 'wiki', label: 'Wiki', ic: 'W', closable: true })
     defs.push({ view: 'deduce', label: '推演', ic: '推', closable: true })
   }
   // 设置是一个可关闭的页签（OS-32）：跟正文/产物同级，打开才出现，× 关掉回到原页
@@ -5171,13 +4918,13 @@ async function deduceEnginePresent(opts) {
       method: "POST",
       body: JSON.stringify({
         root: state.current.path,
-        bookId: state.bookId || "default",
         pov: engine.pov || undefined,
         seed: engine.seed === "" ? undefined : Number(engine.seed),
         reset: options.reset === true
       })
     })
     engine.data = payload
+    if (Array.isArray(payload.characters)) state.deduce.characters = payload.characters
     engine.hint = opts && opts.hint ? opts.hint : ""
   } catch (error) {
     engine.error = (error && error.code ? error.code + " · " : "") + text((error && error.message) || error)
@@ -5199,7 +4946,6 @@ async function deduceEngineSettle(candidateId, action) {
       method: "POST",
       body: JSON.stringify({
         root: state.current.path,
-        bookId: state.bookId || "default",
         candidateId: candidateId || undefined,
         action: action || "choose"
       })
@@ -5270,36 +5016,8 @@ async function startDeduce() {
   render()
 }
 
-/** 本库拆解里的角色名（推演 POV 自动补全用；读不到就返回空，不影响手动输入）。 */
-function characterNames() {
-  try {
-    const list = state.entries
-    if (!Array.isArray(list) || !list.length) return []
-    return [...new Set(list
-      .filter((entry) => entry.layer === 'character' && entry.name)
-      .map((entry) => String(entry.name).trim())
-      .filter(Boolean))].slice(0, 40)
-  } catch { return [] }
-}
 
-/** 进推演页时补一次拆解条目（只为 POV 候选；失败静默，不拦推演）。 */
-let deduceEntriesTried = false
-async function ensureEntriesForDeduce() {
-  if (deduceEntriesTried || !state.current) return
-  deduceEntriesTried = true
-  if (state.entries.length) return
-  try {
-    const query = new URLSearchParams({ root: state.current.path, offset: '0', limit: '500' })
-    const payload = await api(`/api/entries?${query.toString()}`)
-    const incoming = Array.isArray(payload.entries) ? payload.entries : []
-    if (incoming.length) {
-      state.entries = incoming
-      state.total = Number(payload.total) || incoming.length
-      if (state.view === 'deduce') render()
-    }
-  } catch { /* 没拆解条目＝推演本来就开不了局，这里只是补 POV 候选 */ }
-}
-
+async 
 function deduceHtml() {
   const deduce = state.deduce
   if (!state.current) return needLibraryHtml()
@@ -5327,7 +5045,7 @@ function deduceEngineHtml() {
   const data = engine.data
   const controls = `<div class="toolbar">
       <input class="file-input" id="deduce-pov" list="deduce-pov-list" placeholder="POV 角色（可选）" value="${esc(engine.pov)}">
-      <datalist id="deduce-pov-list">${characterNames().map((name) => `<option value="${esc(name)}"></option>`).join('')}</datalist>
+      <datalist id="deduce-pov-list">${(state.deduce.characters || []).map((name) => `<option value="${esc(name)}"></option>`).join('')}</datalist>
       <input class="file-input" id="deduce-seed" placeholder="种子（留空＝随机，可复现）" value="${esc(engine.seed)}">
       <button class="btn-primary" data-action="deduce-engine-present"${engine.busy ? ' disabled' : ''}>${engine.busy ? '推演中…' : data ? '再推一拍' : '开始推演'}</button>
       ${data ? '<button class="btn-ghost" data-action="deduce-engine-reset">重新开局</button>' : ''}
@@ -5472,17 +5190,6 @@ async function openLibrary(path) {
       return
     }
   } catch { /* 体检接口失败不拦工作台 */ }
-  state.entries = []
-  state.total = 0
-  state.entryWarnings = []
-  state.entry = null
-  state.entryRevision = null
-  deduceEntriesTried = false // 换库了：POV 候选要重新拉
-  state.books = []
-  state.bookId = ''
-  state.wiki = null
-  state.wikiFrom = null
-  state.wikiLoaded = false
   state.chapterFiles = []
   state.chapterFile = ''
   state.chapterText = ''
@@ -5492,7 +5199,7 @@ async function openLibrary(path) {
   state.layerFilter = ''
   state.search = ''
   state.error = ''
-  state.view = 'entries'
+  state.view = 'write'
   // OS-8/10：按库扫描顶层目录（动态页签）＋章节清单（正文工作面）＋文件直列（转卡兜底）。
   state.libDirs = []
   state.dirWork = {}
@@ -5535,83 +5242,16 @@ async function openLibrary(path) {
   } catch { /* 清单失败不拦工作台 */ }
   renderAgent()
   render()
-  await ensureEntries()
   await loadSessions()
   // 默认会话：接着这个库上次那条聊（OS-39），不用手动去下拉里点
   await restoreAgentSession()
   renderAgent()
 }
 
-async function ensureEntries({ append = false } = {}) {
-  if (!state.current) return
-  if (!append && state.entries.length > 0) return
-  state.loading = true
-  state.error = ''
-  render()
-  try {
-    const query = new URLSearchParams({
-      root: state.current.path,
-      offset: String(append ? state.entries.length : 0),
-      limit: '500'
-    })
-    const payload = await api(`/api/entries?${query.toString()}`)
-    const incoming = Array.isArray(payload.entries) ? payload.entries : []
-    state.entries = append ? [...state.entries, ...incoming] : incoming
-    state.total = Number(payload.total) || 0
-    state.entryWarnings = Array.isArray(payload.warnings) ? payload.warnings : []
-    state.books = collectBooks(state.entries)
-    if (!state.bookId && state.books.length) state.bookId = state.books[0].bookId
-    // 正文候选：OS-8 起以 filesGet 直列为主，拆解 sources 只在直列空时兜底。
-    if (!state.chapterFiles.length) state.chapterFiles = collectChapterFiles(state.entries)
-    if (!state.chapterFile && state.chapterFiles.length) state.chapterFile = state.chapterFiles[0]
-  } catch (error) {
-    rememberError(error)
-  }
-  state.loading = false
-  render()
-}
+async 
 
-function collectBooks(entries) {
-  const byId = new Map()
-  for (const entry of entries) {
-    const bookId = text(entry.bookId).trim()
-    if (!bookId) continue
-    const found = byId.get(bookId)
-    if (found) found.count += 1
-    else byId.set(bookId, { bookId, bookName: text(entry.bookName).trim() || bookId, count: 1 })
-  }
-  return [...byId.values()]
-}
 
-/** 正文候选：拆解条目的 sources[].sourceId（通常是 `正文/<file>`）。 */
-function collectChapterFiles(entries) {
-  const files = new Set()
-  for (const entry of entries) {
-    const sources = Array.isArray(entry?.sources) ? entry.sources : []
-    for (const source of sources) {
-      const id = text(source?.sourceId).trim()
-      if (!id) continue
-      if (id.startsWith('正文/') || /\.(md|txt)$/iu.test(id)) files.add(id)
-    }
-  }
-  return [...files].sort((left, right) => left.localeCompare(right, 'zh-Hans-CN'))
-}
-
-async function openEntry(id) {
-  state.loading = true
-  state.error = ''
-  render()
-  try {
-    const payload = await api(`/api/entry?${new URLSearchParams({ root: state.current.path, id }).toString()}`)
-    state.entry = payload.entry
-    state.entryRevision = payload.revision
-  } catch (error) {
-    rememberError(error)
-  }
-  state.loading = false
-  render()
-}
-
+async 
 async function loadChapter(file) {
   if (!state.current) return
   const target = text(file).trim()
@@ -5679,52 +5319,8 @@ async function saveChapter() {
   render()
 }
 
-async function ensureWiki({ force = false } = {}) {
-  if (!state.current) return
-  if (state.wikiLoaded && !force) return
-  const bookId = state.bookId || collectBooks(state.entries)[0]?.bookId || ''
-  if (!bookId) {
-    state.wikiLoaded = true
-    render()
-    return
-  }
-  state.bookId = bookId
-  state.loading = true
-  state.error = ''
-  render()
-  try {
-    const payload = await api(`/api/wiki?${new URLSearchParams({ root: state.current.path, bookId }).toString()}`)
-    state.wiki = payload.wiki ?? null
-    state.wikiFrom = payload.derivedFrom ?? null
-    state.wikiLoaded = true
-  } catch (error) {
-    rememberError(error)
-  }
-  state.loading = false
-  render()
-}
-
-async function deriveWiki() {
-  if (!state.current || !state.bookId) return
-  state.loading = true
-  state.error = ''
-  render()
-  try {
-    const operationId = `openstory-derive-${state.bookId}-${globalThis.crypto?.randomUUID?.() ?? Date.now()}`
-    const payload = await api('/api/wiki/derive', {
-      method: 'POST',
-      body: JSON.stringify({ root: state.current.path, bookId: state.bookId, operationId })
-    })
-    state.wiki = payload.wiki ?? null
-    state.wikiFrom = payload.derivedFrom ?? null
-    state.wikiLoaded = true
-  } catch (error) {
-    rememberError(error)
-  }
-  state.loading = false
-  render()
-}
-
+async 
+async 
 /* ---------- 交互 ---------- */
 
 /**
@@ -5765,7 +5361,6 @@ function go(view) {
   // 点页签进设置就算「打开」；切到别的页签不关闭它（真页签常驻，直到点 ×）
   if (view === 'settings') state.settings.open = true
   state.view = view
-  if (view === 'entries') state.entry = null
   render()
   if (view === 'settings') {
     // 先并行拉数据，全部回来再渲染一次（否则先完成的 render 会用旧 state 覆盖）
@@ -5781,7 +5376,6 @@ function go(view) {
     return
   }
   if (view === 'deduce') {
-    ensureEntriesForDeduce() // POV 候选：有拆解就补上角色名
     return
   }
   if (view === 'artifacts') {
@@ -5804,15 +5398,6 @@ function go(view) {
       .catch(() => {})
     return
   }
-  if (view === 'entries') ensureEntries()
-  const needsEntries = view === 'wiki' && state.current && state.entries.length === 0
-  if (needsEntries) {
-    ensureEntries().then(() => {
-      if (state.view === 'wiki') ensureWiki()
-    })
-    return
-  }
-  if (view === 'wiki') ensureWiki()
 }
 
 document.addEventListener('click', (event) => {
@@ -5857,7 +5442,7 @@ document.addEventListener('click', (event) => {
       if (state.libDirs.includes(dir)) { go(`dir:${dir}`); return }
     }
   }
-  const target = event.target.closest('[data-view], [data-go], [data-action], [data-skin], [data-lib-path], [data-entry-id], [data-layer], [data-kind], [data-load-more], [data-session-id], [data-session-del], [data-wiki-mode], [data-create-primary], [data-create-genre], [data-runtime-id], [data-chapter-file], [data-settings-section], [data-ref-path], [data-ref-tag], [data-ref-view], a.wl[data-ref]')
+  const target = event.target.closest('[data-view], [data-go], [data-action], [data-skin], [data-lib-path], [data-kind], [data-session-id], [data-session-del], [data-create-primary], [data-create-genre], [data-runtime-id], [data-chapter-file], [data-settings-section], [data-ref-path], [data-ref-tag], [data-ref-view], a.wl[data-ref]')
   // 点在菜单/按钮之外：收起输入区菜单（OS-51）——注意这不 return，
   // 后面消息内路径 code 的点击不携带任何 data-*，必须继续往下走
   if (!event.target.closest?.('.composer-pop, .c-tool')) closeComposerMenus()
@@ -5895,9 +5480,8 @@ document.addEventListener('click', (event) => {
       if (state.libDirs.includes(dir)) { go(`dir:${dir}`); return }
       return
     }
-    // 条目链接
-    const entry = /^条目[:：](.+)$/u.exec(ref)
-    if (entry) { openEntry(entry[1].trim()); go('entries'); return }
+    // 条目链接：条目工作面已剔除，条目数据的消费方是推演
+    if (/^条目[:：]/u.test(ref)) { go('deduce'); return }
     // 否则当参考笔记：标题/相对路径/「参考/」前缀都能认（OS-51）
     const hit = findReferenceByRef(ref)
     if (hit) {
@@ -5948,12 +5532,6 @@ document.addEventListener('click', (event) => {
     return
   }
 
-  if (target.dataset.wikiMode !== undefined) {
-    state.wikiMode = target.dataset.wikiMode
-    render()
-    return
-  }
-
   if (target.dataset.sessionDel) {
     deleteSession(target.dataset.sessionDel)
     return
@@ -5995,19 +5573,6 @@ document.addEventListener('click', (event) => {
     openLibrary(target.dataset.libPath)
     return
   }
-  if (target.dataset.entryId) {
-    openEntry(target.dataset.entryId)
-    return
-  }
-  if (target.dataset.layer !== undefined) {
-    state.layerFilter = target.dataset.layer
-    render()
-    return
-  }
-  if (target.dataset.loadMore !== undefined) {
-    ensureEntries({ append: true })
-    return
-  }
   const action = target.dataset.action
   if (action === 'para-polish') {
     hideParaMenu()
@@ -6041,16 +5606,11 @@ document.addEventListener('click', (event) => {
   } else if (action === 'settings-help-toggle') {
     state.settings.helpOpen = !state.settings.helpOpen
     render()
-  } else if (action === 'back-entries') {
-    state.entry = null
-    render()
   } else if (action === 'load-chapter') {
     const input = document.getElementById('chapter-file')
     loadChapter(input?.value || state.chapterFile)
   } else if (action === 'save-chapter') {
     saveChapter()
-  } else if (action === 'derive-wiki') {
-    deriveWiki()
   } else if (action === 'agent-settings') {
     go('settings')
   } else if (action === 'agent-new-session') {
@@ -6419,12 +5979,6 @@ document.addEventListener('change', (event) => {
     loadDirFile(state.view.slice(4), target.value)
     return
   }
-  if (target.id === 'wiki-book') {
-    state.bookId = target.value
-    state.wiki = null
-    state.wikiLoaded = false
-    ensureWiki({ force: true })
-  }
 })
 
 document.addEventListener('input', (event) => {
@@ -6464,19 +6018,6 @@ document.addEventListener('input', (event) => {
         activePath: state.reference.activePath,
         q: state.reference.q
       })
-    }
-    return
-  }
-  if (target.id === 'entry-search') {
-    state.search = target.value
-    const list = document.querySelector('.entry-list')
-    if (list) {
-      const rows = visibleEntries().map((entry) => `<button class="entry-row" data-entry-id="${esc(entry.id)}">
-        <span class="nm">${esc(entryDisplayName(entry))}</span>
-        <span class="sm${entrySummary(entry) ? '' : ' empty'}">${esc(truncate(entrySummary(entry)) || '（无摘要）')}</span>
-        <span class="ly">${esc(layerLabel(entry.layer))}${entry.status ? ` · ${esc(statusLabel(entry.status))}` : ''}</span>
-      </button>`).join('')
-      list.innerHTML = rows || '<div class="loading">没有匹配的条目</div>'
     }
     return
   }
@@ -6639,7 +6180,7 @@ function setSkin(id) {
   applySkin(pack)
   try { localStorage.setItem('openstory-skin', id) } catch { /* 隐私模式存不了就本次有效 */ }
   // wiki 网页态的强调色跟包走，换皮即重载 iframe；设置页要刷新选中态。
-  if (state.view === 'wiki' || state.view === 'settings') render()
+  if (state.view === 'settings') render()
   // 图谱是 canvas 绘制、配色取自 CSS 变量；换皮后重挂一次才能跟上新色板
   // （参考页大图是 focus 模式，正文页左栏小图是 jump 模式——按当前页分流，OS-49）
   if (document.getElementById('ref-graph-canvas')) {

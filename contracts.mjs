@@ -46,27 +46,6 @@ export const ENDPOINTS = Object.freeze({
     },
     errors: []
   },
-  entries: {
-    method: 'GET',
-    path: '/api/entries',
-    request: {
-      query: {
-        root: 'string',
-        layer: 'string?',
-        offset: 'integer?',
-        limit: 'integer?'
-      }
-    },
-    response: { ok: 'true', entries: 'array', total: 'integer', warnings: 'array' },
-    errors: ['NO_LIBRARY', 'PATH_ESCAPE', 'INVALID_ENTRY']
-  },
-  entry: {
-    method: 'GET',
-    path: '/api/entry',
-    request: { query: { root: 'string', id: 'string' } },
-    response: { ok: 'true', entry: 'object', revision: 'integer' },
-    errors: ['NO_LIBRARY', 'PATH_ESCAPE', 'INVALID_ENTRY', 'NOT_FOUND']
-  },
   chapterGet: {
     method: 'GET',
     path: '/api/chapter',
@@ -81,30 +60,6 @@ export const ENDPOINTS = Object.freeze({
     // FACT-FIRST：写入后如实回报事实链健康度（stale=正文比事实链新），UI 据此提示重跑。
     response: { ok: 'true', chars: 'integer', savedAt: 'string', backup: 'string?', factStale: 'boolean?', factEntries: 'integer?' },
     errors: ['NO_LIBRARY', 'PATH_ESCAPE', 'INVALID_ENTRY', 'NOT_FOUND', 'WRITE_PROTOCOL_IO_FAILED']
-  },
-  wiki: {
-    method: 'GET',
-    path: '/api/wiki',
-    request: { query: { root: 'string', bookId: 'string' } },
-    response: { ok: 'true', wiki: 'object?', derivedFrom: 'object?' },
-    errors: ['NO_LIBRARY', 'PATH_ESCAPE', 'INVALID_ENTRY', 'NOT_FOUND']
-  },
-  wikiDerive: {
-    method: 'POST',
-    path: '/api/wiki/derive',
-    request: { body: { root: 'string', bookId: 'string', operationId: 'string' } },
-    response: { ok: 'true', wiki: 'object?', derivedFrom: 'object?', revision: 'integer?', duplicate: 'boolean?' },
-    errors: [
-      'NO_LIBRARY',
-      'PATH_ESCAPE',
-      'INVALID_ENTRY',
-      'NOT_FOUND',
-      'REVISION_MISMATCH',
-      'WRITE_PROTOCOL_OPERATION_ID_REQUIRED',
-      'WRITE_PROTOCOL_VALIDATION_FAILED',
-      'WRITE_PROTOCOL_INVALID_INPUT',
-      'WRITE_PROTOCOL_IO_FAILED'
-    ]
   },
   agentConfigGet: {
     method: 'GET',
@@ -265,23 +220,6 @@ export const ENDPOINTS = Object.freeze({
     // 风格包清单：内置目录＋本机目录合并（本机按 id 覆盖内置）。
     response: { ok: 'true', styles: 'array', warnings: 'array' },
     errors: []
-  },
-  wikiHtmlGet: {
-    method: 'GET',
-    path: '/api/wiki/html',
-    // 成功响应是 text/html 文档本身（内联 CSS＋CSP default-src 'none'），不是 JSON 包络；
-    // wiki 数据仍走 GET /api/wiki（「数据」对照态用）。色参只收 #rgb/#rrggbb。
-    request: {
-      query: {
-        root: 'string',
-        bookId: 'string',
-        accent: 'string?',
-        bg: 'string?',
-        ink: 'string?'
-      }
-    },
-    response: { html: 'string' },
-    errors: ['NO_LIBRARY', 'PATH_ESCAPE', 'INVALID_ENTRY', 'NOT_FOUND']
   },
   libraryDiagnose: {
     method: 'GET',

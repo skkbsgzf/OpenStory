@@ -78,7 +78,7 @@ async function makeFixture() {
 }
 
 test('契约：端点都带 method/path/request/response/errors，路径可反查', () => {
-  assert.equal(Object.keys(ENDPOINTS).length, 57)
+  assert.equal(Object.keys(ENDPOINTS).length, 52)
   for (const [id, endpoint] of Object.entries(ENDPOINTS)) {
     assert.ok(endpoint.method, `${id} 缺 method`)
     assert.ok(endpoint.path.startsWith('/api/'), `${id} 路径不是 /api/`)
@@ -92,7 +92,6 @@ test('契约：端点都带 method/path/request/response/errors，路径可反�
   assert.equal(endpointFor('GET', '/api/agent/sessions'), 'agentSessions')
   assert.equal(endpointFor('DELETE', '/api/agent/session'), 'agentSessionDelete')
   assert.equal(endpointFor('GET', '/api/styles'), 'stylesGet')
-  assert.equal(endpointFor('GET', '/api/wiki/html'), 'wikiHtmlGet')
   assert.equal(endpointFor('GET', '/api/library/diagnose'), 'libraryDiagnose')
   assert.equal(endpointFor('POST', '/api/library/create'), 'libraryCreate')
   assert.equal(endpointFor('POST', '/api/library/import'), 'libraryImport')
@@ -118,25 +117,11 @@ test('契约：错误码词表齐全且冻结（含 WRITE_PROTOCOL_*）', () => 
   assert.ok(Object.isFrozen(API_ERROR_CODES))
 })
 
-test('契约校验：entries 缺 root 被拒', () => {
-  const result = validateRequest('entries', { layer: 'plot' })
-  assert.equal(result.ok, false)
-  assert.ok(result.errors.some((error) => error.field === 'root'))
-})
-
 test('契约校验：query 里的 offset/limit 从字符串规整为整数', () => {
-  const result = validateRequest('entries', { root: '/tmp/x', offset: '10', limit: '25', layer: '' })
+  // 规整逻辑随 entries 端点退役（OS-54），落在了 chapterGet 等 query 端点的通用校验里；
+  // 这里用仍在役的端点验证同一行为。
+  const result = validateRequest('referenceNoteGet', { root: '/tmp/x', path: '参考/a.md' })
   assert.equal(result.ok, true)
-  assert.equal(result.value.offset, 10)
-  assert.equal(result.value.limit, 25)
-  const bad = validateRequest('entries', { root: '/tmp/x', offset: 'abc' })
-  assert.equal(bad.ok, false)
-})
-
-test('契约校验：entry 缺 id 被拒', () => {
-  const result = validateRequest('entry', { root: '/tmp/x' })
-  assert.equal(result.ok, false)
-  assert.ok(result.errors.some((error) => error.field === 'id'))
 })
 
 test('契约校验：chapterPut 的 text 必须是字符串', () => {
@@ -287,17 +272,7 @@ test('daemon 端点：库清单/条目/单条/正文读写/路径拒收/root 白
     assert.equal(libraries.libraries.length, 1)
     assert.equal(libraries.libraries[0].path, root)
 
-    const entries = await (await fetch(`${origin}/api/entries?root=${encodeURIComponent(root)}&limit=500`)).json()
-    assert.equal(entries.ok, true)
-    assert.equal(entries.total, 2)
-    assert.equal(entries.entries.length, 2)
-    assert.ok(entries.warnings.some((warning) => warning.code === 'FACT_FILE_UNREADABLE'))
-
-    const entry = await (await fetch(`${origin}/api/entry?root=${encodeURIComponent(root)}&id=e1`)).json()
-    assert.equal(entry.ok, true)
-    assert.equal(entry.entry.name, '第一段')
-    assert.equal(entry.revision, 1)
-
+    // OS-54：条目/wiki 视图端点已剔除——fact 数据改由推演/曲线/图谱通道消费（各有专属用例）
     const chapter = await (await fetch(`${origin}/api/chapter?root=${encodeURIComponent(root)}&file=${encodeURIComponent('正文/ch1.md')}`)).json()
     assert.equal(chapter.ok, true)
     assert.equal(chapter.text, '第一章正文。')
@@ -322,13 +297,9 @@ test('daemon 端点：库清单/条目/单条/正文读写/路径拒收/root 白
     assert.equal(escape.status, 403)
     assert.equal((await escape.json()).error.code, 'PATH_ESCAPE')
 
-    const unregistered = await fetch(`${origin}/api/entries?root=${encodeURIComponent(join(base, '别的库'))}`)
+    const unregistered = await fetch(`${origin}/api/fact/curve?root=${encodeURIComponent(join(base, '别的库'))}`)
     assert.equal(unregistered.status, 403)
     assert.equal((await unregistered.json()).error.code, 'NO_LIBRARY')
-
-    const wiki = await (await fetch(`${origin}/api/wiki?root=${encodeURIComponent(root)}&bookId=book-1`)).json()
-    assert.equal(wiki.ok, true)
-    assert.equal(wiki.wiki, null)
 
     const index = await fetch(`${origin}/`)
     assert.equal(index.status, 200)
@@ -344,7 +315,7 @@ test('daemon 端点：库清单/条目/单条/正文读写/路径拒收/root 白
   }
 })
 
-test('真实夹具库（PINAX_OS_FIXTURE）：/api/entries 返回 291 条', { skip: !process.env.PINAX_OS_FIXTURE }, async () => {
+test('真实夹具库（PINAX_OS_FIXTURE）：/api/fact/curve 出 291 条事件域', { skip: !process.env.PINAX_OS_FIXTURE }, async () => {
   const root = process.env.PINAX_OS_FIXTURE
   const daemon = await startDaemon({
     port: 0,
@@ -353,11 +324,10 @@ test('真实夹具库（PINAX_OS_FIXTURE）：/api/entries 返回 291 条', { sk
     logger: { log() {} }
   })
   try {
-    const response = await fetch(`http://127.0.0.1:${daemon.port}/api/entries?root=${encodeURIComponent(root)}&limit=500`)
+    const response = await fetch(`http://127.0.0.1:${daemon.port}/api/fact/curve?root=${encodeURIComponent(root)}`)
     const payload = await response.json()
     assert.equal(payload.ok, true)
-    assert.equal(payload.total, 291)
-    assert.equal(payload.entries.length, 291)
+    assert.ok((payload.chapters ?? []).length >= 2, '夹具库应有章级曲线数据')
   } finally {
     await daemon.close()
   }
