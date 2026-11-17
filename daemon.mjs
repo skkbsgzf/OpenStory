@@ -62,7 +62,7 @@ import {
   defaultUserStylesDir,
   loadStylePacks
 } from './stylePacks.mjs'
-import { isHexColor } from './wikiHtml.mjs'
+import { isHexColor } from './stylePacks.mjs'
 import {
   createChapter,
   deleteChapter,
