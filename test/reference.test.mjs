@@ -227,3 +227,33 @@ test('反链：已链接与未链接分段', async () => {
     await rm(base, { recursive: true, force: true })
   }
 })
+
+/* ---------- 系统提示：只给链接不给全文（OS-45 作者口径） ---------- */
+
+test('系统提示：参考只暴露路径/标题/标签，正文一个字都不进上下文', async () => {
+  const { __test } = await import('../daemon.mjs')
+  const base = await mkdtemp(join(tmpdir(), 'openstory-refprompt-'))
+  const root = join(base, '库')
+  await mkdir(join(root, '参考'), { recursive: true })
+  // 独一无二的句子，用来探测是否泄漏
+  await writeFile(join(root, '参考', '渡口钟声.md'),
+    '---\ntags: [道具, 伏笔]\n---\n\n# 渡口钟声\n\n这是秘密句子XYZQ，钟只在雾起时响。\n', 'utf-8')
+  try {
+    const bundle = await __test.systemPromptFor(root, [], [], [], { canReadFiles: true })
+    const prompt = bundle.prompt
+    // ① 路径与标题要给（Agent 靠它去读）
+    assert.ok(prompt.includes('参考/渡口钟声.md'), '要给路径')
+    assert.ok(prompt.includes('渡口钟声'), '要给标题')
+    assert.ok(prompt.includes('#道具'), '要给标签')
+    // ② 正文一个字都不能有（这是作者明确要求：不可全量丢上下文）
+    assert.ok(!prompt.includes('XYZQ'), '正文不能进上下文')
+    assert.ok(!prompt.includes('钟只在雾起时响'), '摘要也不能进上下文')
+    // ③ 要明确告诉它「自己用工具读」
+    assert.match(prompt, /文件读取工具/u)
+    assert.match(prompt, /不要一次读一堆参考/u)
+    // ④ 只读约束
+    assert.match(prompt, /只能读/u)
+  } finally {
+    await rm(base, { recursive: true, force: true })
+  }
+})

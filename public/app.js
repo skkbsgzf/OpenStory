@@ -229,7 +229,6 @@ function render() {
   if (switchName) switchName.textContent = current ? current.name : (state.libraries.length ? '选择库' : '还没有库')
   renderLibSwitchPanel()
   renderTabs()
-  renderRefCol() // 左内容栏（OS-44）：章节树/参考图谱/参考摘要
   // 正文页自己管滚动（页头吸顶＋纸面/右栏各自滚），外层不再滚动
   viewEl.classList.toggle('content-locked', state.view === 'write')
   if (state.view === 'libraries') viewEl.innerHTML = libraryHtml()
@@ -239,8 +238,12 @@ function render() {
     // 版面换了 DOM：批注面板要重挂（否则右栏是空的），标注与吸顶也要重算
     renderAnalyzePanel()
     paintDocAnnotations()
+    afterRefColMount()
   }
-  else if (state.view === 'reference') viewEl.innerHTML = referencePageHtml()
+  else if (state.view === 'reference') {
+    viewEl.innerHTML = referencePageHtml()
+    afterRefColMount()
+  }
   else if (state.view === 'wiki') viewEl.innerHTML = wikiHtml()
   else if (state.view === 'lib-create') viewEl.innerHTML = createHtml()
   else if (state.view === 'lib-import') viewEl.innerHTML = importHtml()
@@ -1608,6 +1611,7 @@ function writeHtml() {
       ${errorHtml()}
     </header>
     <div class="chapter-grid">
+      ${refColHtml()}
       <aside class="chapter-list${state.write.drawerOpen ? ' open' : ''}">
         <div class="chapter-new">
           <input id="chapter-new-title" placeholder="新章标题…" value="">
@@ -3187,7 +3191,11 @@ function referencePageHtml() {
     backlinks: ref.backlinks,
     stats: ref.stats
   })
-  return `${errorHtml()}${shell}`
+  // 参考页也带题材左栏（章节树/图谱/摘要）——但它自己的四栏是双链文档本体，不冲突
+  return `<div class="topic-workspace">
+    ${refColHtml()}
+    <div class="topic-main">${errorHtml()}${shell}</div>
+  </div>`
 }
 
 /* ---------- 左内容栏（OS-44）：章节树 / 参考图谱 / 参考摘要 ---------- */
@@ -3259,37 +3267,41 @@ const REF_MODULES = Object.freeze([
   { id: 'summary', label: '参考摘要', hint: 'AI 基于图谱总结本章', render: () => refSummaryHtml(), badge: () => '' }
 ])
 
-function renderRefCol() {
-  const host = document.getElementById('ref-col')
-  if (!host) return
-  // 只在有库、且是内容页时显示（设置/库清单这类全屏页不需要）
-  const contentViews = new Set(['write', 'reference', 'entries', 'wiki', 'deduce', 'artifacts'])
-  if (!state.current || !(contentViews.has(state.view) || state.view?.startsWith('dir:'))) {
-    host.innerHTML = ''
-    host.classList.add('collapsed-all')
-    return
-  }
+/**
+ * 题材工作面左栏（OS-45）。
+ * 注意它是「小说/参考」这类题材页自己的内部左栏（二等公民的内部结构），
+ * Agent 始终在最外层最左（一等公民），两者不抢位置——所以这里返回 HTML 字符串，
+ * 由各题材页自己决定往哪插，而不是去改全局 .main 布局。
+ */
+function refColHtml() {
+  if (!state.current) return ''
   const hidden = hiddenModules()
   const visible = REF_MODULES.filter((mod) => !hidden.has(mod.id))
-  if (!visible.length) {
-    host.innerHTML = ''
-    host.classList.add('collapsed-all')
-    return
-  }
-  host.classList.remove('collapsed-all')
+  if (!visible.length) return ''
   const openState = state.refCol.open ?? (state.refCol.open = {})
-  host.innerHTML = visible.map((mod) => {
+  return `<aside class="ref-col" id="ref-col">${visible.map((mod) => {
     const open = openState[mod.id] !== false
     const badge = mod.badge()
     return `<details class="ref-mod" data-ref-mod="${esc(mod.id)}"${open ? ' open' : ''}>
       <summary>${esc(mod.label)}${badge ? `<span class="rm-badge">${esc(badge)}</span>` : ''}<span class="rm-chev">›</span></summary>
       <div class="ref-mod-body">${open ? mod.render() : ''}</div>
     </details>`
-  }).join('')
-  // 图谱必须在 DOM 就位后挂载
-  if (visible.some((mod) => mod.id === 'graph') && openState.graph !== false) {
+  }).join('')}</aside>`
+}
+
+/** 题材页渲染完后统一挂图谱（各页只负责插 refColHtml()）。 */
+function afterRefColMount() {
+  const host = document.getElementById('ref-col')
+  if (!host) return
+  const openState = state.refCol.open ?? {}
+  if (host.querySelector('[data-ref-mod="graph"]') && openState.graph !== false) {
     requestAnimationFrame(() => mountRefGraph())
   }
+}
+
+function renderRefCol() {
+  // 兼容旧调用点：不再操作全局容器，交给各题材页自己插
+  afterRefColMount()
 }
 
 /**
