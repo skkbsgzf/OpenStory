@@ -1,7 +1,7 @@
 {
   "name": "openstory",
   "version": "0.1.0",
-  "description": "跑在浏览器/DSH 里的小说工作台——OpenDesign 形态的小说版（底座插件体系以 pinax-core 为原型）",
+  "description": "跑在浏览器/DSH 里的小说工作台——文件即真相，daemon 只监听本机；参考双链图谱＋实时写作＋确定性推演＋可插拔 Agent 运行时",
   "type": "module",
   "private": true,
   "scripts": {
@@ -13,5 +13,18 @@
     "sharp": "^0.33.5",
     "@xenova/transformers": "^2.17.2",
     "onnxruntime-web": "^1.22.0"
-  }
+  },
+  "author": "Pinax 作者（OpenStory 线）",
+  "license": "SEE LICENSE IN LICENSE",
+  "engines": {
+    "node": ">=18"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/skkbsgzf/OpenStory.git"
+  },
+  "bugs": {
+    "url": "https://github.com/skkbsgzf/OpenStory/issues"
+  },
+  "homepage": "https://github.com/skkbsgzf/OpenStory#readme"
 }
