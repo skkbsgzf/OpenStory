@@ -488,11 +488,12 @@ export function mountGraph({ canvas, graph, onPick, onBlank, mode = 'jump', focu
    * 迭代上限按节点数调（O(n²)），120 节点 ~30ms 量级，感知不到；
    * 收敛后 alpha 归零不再跑 rAF，拖拽/聚焦时才唤醒（alpha>=0.35）。
    */
-  const prewarmIters = Math.min(420, Math.max(120, nodes.length * 6))
+  const prewarmIters = Math.min(800, Math.max(200, nodes.length * 10))
   for (let it = 0; it < prewarmIters && alpha > 0.02; it += 1) physicsStep()
-  if (alpha <= 0.02) alpha = 0
+  // 预热就是「跑到位」：无条件停动画（alpha=0），拖拽/聚焦时再唤醒（alpha>=0.35）。
+  // 上限不足时也硬停——入场绝不晃，剩余收敛交给下一次交互。
+  alpha = 0
   draw()
-  if (alpha > 0.02) raf = requestAnimationFrame(tick)
 
   return () => {
     if (raf) cancelAnimationFrame(raf)
