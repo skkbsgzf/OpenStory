@@ -3550,6 +3550,8 @@ function graphFocusView(focusId = state.reference.focus, tagFilter = state.refer
 function navigateFromGraphNode(node) {
   if (node.kind === 'reference') {
     state.reference.view = 'note'
+    // 正文页小图也走这里（OS-52）：不在参考页时先切页签
+    if (state.view !== 'reference') go('reference')
     openReference(node.id, { from: 'graph' })
     return
   }
@@ -3572,7 +3574,8 @@ function navigateFromGraphNode(node) {
     ref.note = null
     ref.activePath = ''
     ref.from = ''
-    render()
+    if (state.view !== 'reference') go('reference')
+    else render()
     return
   }
   if (node.kind === 'entry') {
