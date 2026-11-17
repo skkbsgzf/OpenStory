@@ -970,8 +970,8 @@ let analyzeScrollTick = 0
 
 /** 图表模块惰性加载（charts.mjs 与 analysis.mjs 同口径：浏览器本地，零依赖）。 */
 let chartsModule = null
-function loadCharts() {
-  if (!chartsModule) chartsModule = import('./charts.mjs')
+async function loadCharts() {
+  if (!chartsModule) chartsModule = await import('./charts.mjs')
   return chartsModule
 }
 
@@ -1004,6 +1004,7 @@ function chapterNoFromFile(file) {
 async function runAnalysis() {
   if (!state.chapterLoaded) return
   await loadAnalysis()
+  await loadCharts()
   loadFactCurve()
   state.analyze.busy = true
   renderAnalyzePanel()
@@ -1348,7 +1349,7 @@ function toggleAnalyzePanel() {
   state.analyze.open = !state.analyze.open
   renderAnalyzePanel()
   if (state.analyze.open) {
-    loadCharts()
+    loadCharts().then(() => { if (state.analyze.open) renderAnalyzePanel() }).catch(() => {})
     loadFactCurve()
     if (!state.analyze.result) runAnalysis()
   }

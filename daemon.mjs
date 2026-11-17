@@ -741,17 +741,16 @@ async function handleApi(req, res, url, context) {
         && name !== '拆解汇总.json' && name !== '拆解索引.json')
     } catch { files = [] }
     const wanted = text(request.bookId).trim()
-    const pick = wanted
-      ? files.find((name) => name.replace(/\.json$/, '') === wanted) ?? null
-      : files.map((name) => ({ name, path: join(dir, name), mtime: statSync(join(dir, name)).mtimeMs }))
+    const pickPath = wanted
+      ? (files.find((name) => name.replace(/\.json$/, '') === wanted) ? join(dir, wanted + '.json') : null)
+      : files.map((name) => ({ path: join(dir, name), mtime: statSync(join(dir, name)).mtimeMs }))
         .sort((left, right) => right.mtime - left.mtime)[0]?.path ?? null
-    if (!pick) {
+    if (!pickPath) {
       return sendJson(res, 200, { ok: true, bookId: '', title: '', words: 0, chapters: [], books: files.map((name) => name.replace(/\.json$/, '')) })
     }
-    const bookId = wanted ? wanted : (typeof pick === 'string' ? basename(pick).replace(/\.json$/, '') : basename(pick.path).replace(/\.json$/, ''))
-    const filePath = typeof pick === 'string' ? pick : pick.path
+    const bookId = basename(pickPath).replace(/\.json$/, '')
     let document = null
-    try { document = JSON.parse(readFileSync(filePath, 'utf8')) } catch { document = null }
+    try { document = JSON.parse(readFileSync(pickPath, 'utf8')) } catch { document = null }
     if (!document) return sendError(res, API_ERROR_CODES.INVALID_ENTRY, `拆解文件读不了：${bookId}`)
     const { readFactWiki } = await import('./core/pinax/next/kernel/factFileStore.mjs')
     const { wiki } = readFactWiki({ root: authorized.root, id: bookId, document })
