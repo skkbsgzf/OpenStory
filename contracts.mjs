@@ -127,7 +127,8 @@ export const ENDPOINTS = Object.freeze({
     method: 'PUT',
     path: '/api/agent/config',
     // 字段缺省＝保留原值；空串＝清除（endpoint 清空即回到未配置）。
-    request: { body: { endpoint: 'string?', model: 'string?', apiKey: 'string?', runtime: 'string?' } },
+    // reasoningEffort：DSH 的 reasoning_effort（low/medium/high…），空＝用 DSH 自己的默认档。
+    request: { body: { endpoint: 'string?', model: 'string?', apiKey: 'string?', runtime: 'string?', reasoningEffort: 'string?' } },
     response: {
       ok: 'true',
       configured: 'boolean',
@@ -135,6 +136,7 @@ export const ENDPOINTS = Object.freeze({
       model: 'string?',
       apiKeyMasked: 'string?',
       runtime: 'string?',
+      reasoningEffort: 'string?',
       configPath: 'string'
     },
     errors: ['INVALID_ENTRY']
@@ -146,6 +148,15 @@ export const ENDPOINTS = Object.freeze({
     // userDir＝本机套件目录（设置页展示）。
     request: { query: {} },
     response: { ok: 'true', active: 'string?', runtimes: 'array', userDir: 'string?' },
+    errors: []
+  },
+  agentDshModelsGet: {
+    method: 'GET',
+    path: '/api/agent/dsh/models',
+    // DSH 模型与推理深度选项（`dsh --profile <p> --models` 的解析结果，服务端缓存 5 分钟）。
+    // 设置页「推理深度」下拉的选项来源；DSH 没装时如实报，不伪造列表。
+    request: { query: { profile: 'string?' } },
+    response: { ok: 'true', models: 'array' },
     errors: []
   },
   agentRuntimePut: {
@@ -195,9 +206,16 @@ export const ENDPOINTS = Object.freeze({
     method: 'POST',
     path: '/api/agent/chat',
     // 成功响应是 text/event-stream，不是 JSON。帧协议（daemon 自有，非上游透传）：
-    //   data:{"type":"delta","text":"…"}   增量
-    //   data:{"type":"done","sessionId":"…","chars":N}  结束（sessionId 在新建会话时回填给工作台）
-    //   data:{"type":"error","error":{code,message}}    上游失败/中断，如实报
+    //   data:{"type":"start","sessionId":"…","runtime":"…"}      开始（sessionId 回填给工作台）
+    //   data:{"type":"notice","text":"…"}                        提示（降级/会话重开等）
+    //   data:{"type":"thinking","text":"…"}                      推理片段（DSH；不进正文）
+    //   data:{"type":"tool","phase":"call","id","name","input"}   工具调用
+    //   data:{"type":"tool","phase":"result","id","output","isError"}  工具返回
+    //   data:{"type":"usage","input":N,"output":N,"total":N}      本轮 token 用量
+    //   data:{"type":"delta","text":"…"}                         正文增量
+    //   data:{"type":"done","sessionId":"…","chars":N,"truncated"?}  结束（被长度上限截断时带 truncated）
+    //   data:{"type":"error","error":{code,message}}             上游失败/中断/取消，如实报
+    // 会话：sessionId 缺省＝接着该库最近一条会话；newSession:true ＝强制新开一条。
     // 消息由 daemon 从会话 JSONL 组装；端点/密钥只来自 daemon 本机配置，请求不带 key。
     request: {
       body: {
@@ -205,9 +223,11 @@ export const ENDPOINTS = Object.freeze({
         sessionId: 'string?',
         content: 'string',
         model: 'string?',
-        // ephemeral=true＝一次性调用（润笔/讨论/单段分析这类工具动作）：
+        // ephemeral=true＝一次性调用（润笔这类工具动作）：
         // 不建会话、不落档、不出现在会话列表里，只在本次响应里回结果。
-        ephemeral: 'boolean?'
+        ephemeral: 'boolean?',
+        // newSession=true＝作者主动点了「＋新会话」：忽略服务端的「接着上次聊」
+        newSession: 'boolean?'
       }
     },
     response: { stream: 'string' },
@@ -394,6 +414,15 @@ export const ENDPOINTS = Object.freeze({
     request: { query: {} },
     response: { ok: 'true', configured: 'boolean', backend: 'string?', configPath: 'string', configError: 'string?', services: 'object', lastCheck: 'string?', collections: 'array' },
     errors: []
+  },
+  factCurveGet: {
+    method: 'GET',
+    path: '/api/fact/curve',
+    // 分析面板 fact 曲线（对齐拆解线算法）：读库内 拆解/ 的 fact+wiki，返回章级 序列/情绪/剧情点/事件数/伏笔数。
+    // bookId 可选（默认取最近修改的一本）；库无拆解数据时 chapters=[] 降级，不报错。
+    request: { query: { root: 'string', bookId: 'string?' } },
+    response: { ok: 'true', bookId: 'string', title: 'string', words: 'number', chapters: 'array', books: 'array' },
+    errors: ['INVALID_ENTRY']
   },
   genresGet: {
     method: 'GET',

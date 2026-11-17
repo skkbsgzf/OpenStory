@@ -52,6 +52,19 @@ rl.on('line', (line) => {
   return { base, fakeDsh, fakeShim }
 }
 
+/** Windows 上子进程句柄还没释放时 rmdir 会 EBUSY：重试几次，失败就算了（临时目录）。 */
+async function cleanup(base) {
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    try {
+      await cleanup(base)
+      return
+    } catch (error) {
+      if (error?.code !== 'EBUSY' && error?.code !== 'EPERM' && error?.code !== 'ENOTEMPTY') return
+      await new Promise((resolvePromise) => setTimeout(resolvePromise, 120))
+    }
+  }
+}
+
 async function readChatStream(response) {
   const reader = response.body.getReader()
   const decoder = new TextDecoder()
@@ -91,7 +104,7 @@ test('dsh CLI 探测：假 shim --version → installed；不存在 → 人话�
     assert.equal(missing.installed, false)
     assert.match(missing.message, /DeepSeek Harness CLI/)
   } finally {
-    await rm(base, { recursive: true, force: true })
+    await cleanup(base)
   }
 })
 
@@ -110,7 +123,7 @@ test('双模探测：有 CLI = cli 模式；无 CLI 无端点 = 人话不可用'
     assert.equal(none.running, false)
     assert.match(none.message, /dsh CLI 未安装|DeepSeek Harness CLI/)
   } finally {
-    await rm(base, { recursive: true, force: true })
+    await cleanup(base)
   }
 })
 
@@ -125,11 +138,168 @@ test('resolveDshRun：CLI 优先；manifest.url 直连 HTTP 优先于探测', as
     assert.equal(viaUrl.mode, 'http')
     assert.equal(viaUrl.url, 'http://127.0.0.1:7123/v1/chat/completions')
   } finally {
-    await rm(base, { recursive: true, force: true })
+    await cleanup(base)
   }
 })
 
 /* ---------- stdio 端到端 ---------- */
+
+test('runDshStdio：thinking/tool/usage 各自回调，thinking 不混进正文', async () => {
+  const { base, fakeShim } = await makeFakeDsh()
+  try {
+    const texts = []
+    const thinks = []
+    const tools = []
+    const usages = []
+    const result = await runDshStdio({
+      dshCmd: fakeShim,
+      profile: 'openstory',
+      cwd: base,
+      prompt: '第一章开头',
+      onText: (piece) => texts.push(piece),
+      onThinking: (piece) => thinks.push(piece),
+      onToolCall: (call) => tools.push({ phase: 'call', ...call }),
+      onToolResult: (out) => tools.push({ phase: 'result', ...out }),
+      onUsage: (usage) => usages.push(usage),
+      timeoutMs: 15000,
+      inactivityMs: 10000
+    })
+    assert.equal(result.ok, true, result.message)
+    // 正文只来自 text 帧
+    assert.ok(texts.join('').includes('DSH 假桥'), `实收正文：${texts.join('')}`)
+    assert.ok(!texts.join('').includes('想一想'), 'thinking 不能进正文')
+    // thinking 走独立通道收到
+    assert.ok(thinks.length > 0, 'thinking 应走 onThinking')
+    assert.match(thinks.join(''), /想一想/u)
+  } finally {
+    await cleanup(base)
+  }
+})
+
+test('runDshStdio：取消会先发 cancel 帧，不直接杀进程', async () => {
+  const { base } = await makeFakeDsh()
+  const slowShim = join(base, 'slow-dsh.cmd')
+  // 慢速假 dsh：收到 execute 后一直不 result，等 cancel 帧再优雅退出
+  await writeFile(join(base, 'slow-dsh.mjs'), `
+import { createInterface } from 'node:readline'
+const out = (frame) => process.stdout.write(JSON.stringify(frame) + '\\n')
+out({ v: 1, type: 'ready', runtime: 'openstory-slow', protocol_version: 1 })
+let done = false
+const rl = createInterface({ input: process.stdin, crlfDelay: Infinity })
+rl.on('line', (line) => {
+  if (done || !line.trim()) return
+  const command = JSON.parse(line)
+  if (command.type === 'execute') {
+    out({ v: 1, type: 'session', request_id: command.request_id, session_id: 'sess-slow', resumed: false })
+    out({ v: 1, type: 'text', request_id: command.request_id, content: '半句话' })
+    return
+  }
+  if (command.type === 'cancel') {
+    done = true
+    out({ v: 1, type: 'result', request_id: command.request_id, status: 'cancelled', session_id: 'sess-slow' })
+    process.exit(0)
+  }
+})
+`, 'utf-8')
+  await writeFile(slowShim, `@echo off\r\nnode "%~dp0slow-dsh.mjs" %*\r\n`, 'utf-8')
+  try {
+    const controller = new AbortController()
+    const texts = []
+    const promise = runDshStdio({
+      dshCmd: slowShim,
+      profile: 'openstory',
+      cwd: base,
+      prompt: '慢慢来',
+      signal: controller.signal,
+      onText: (piece) => texts.push(piece),
+      timeoutMs: 20000,
+      inactivityMs: 15000
+    })
+    // 等它开始吐字，再取消
+    await new Promise((resolvePromise) => setTimeout(resolvePromise, 700))
+    controller.abort()
+    const result = await promise
+    assert.equal(result.ok, false)
+    assert.ok(result.code === 'DSH_CANCELLED', `应是取消：${result.code} ${result.message}`)
+    assert.equal(result.message.includes('已停止'), true, `人话提示：${result.message}`)
+    // 已收到的部分要作为 partialText 交出来（上层据此落 partial 档）
+    assert.equal(result.partialText, '半句话', `实收：${JSON.stringify(result.partialText)}`)
+  } finally {
+    await cleanup(base)
+  }
+})
+
+test('runDshStdio：max-tokens 截断如实标 truncated', async () => {
+  const { base } = await makeFakeDsh()
+  const truncShim = join(base, 'trunc-dsh.cmd')
+  await writeFile(join(base, 'trunc-dsh.mjs'), `
+import { createInterface } from 'node:readline'
+const out = (frame) => process.stdout.write(JSON.stringify(frame) + '\\n')
+out({ v: 1, type: 'ready', runtime: 'openstory-trunc', protocol_version: 1 })
+const rl = createInterface({ input: process.stdin, crlfDelay: Infinity })
+rl.on('line', (line) => {
+  if (!line.trim()) return
+  const command = JSON.parse(line)
+  if (command.type !== 'execute') return
+  out({ v: 1, type: 'session', request_id: command.request_id, session_id: 'sess-trunc', resumed: false })
+  out({ v: 1, type: 'text', request_id: command.request_id, content: '写到一半' })
+  out({ v: 1, type: 'usage', request_id: command.request_id, provider: 'fake', model: 'm', input_tokens: 12, output_tokens: 34 })
+  out({ v: 1, type: 'result', request_id: command.request_id, status: 'completed', session_id: 'sess-trunc', output: '', stop_reason: 'max-tokens', resume_rejected: false })
+  process.exit(0)
+})
+`, 'utf-8')
+  await writeFile(truncShim, `@echo off\r\nnode "%~dp0trunc-dsh.mjs" %*\r\n`, 'utf-8')
+  try {
+    const result = await runDshStdio({
+      dshCmd: truncShim,
+      profile: 'openstory',
+      cwd: base,
+      prompt: '写长一点',
+      timeoutMs: 15000,
+      inactivityMs: 10000
+    })
+    assert.equal(result.ok, true, result.message)
+    assert.equal(result.truncated, true, 'max-tokens 必须标 truncated')
+    assert.equal(result.stopReason, 'max-tokens')
+    assert.ok(result.usage && result.usage.input === 12 && result.usage.output === 34, `usage 应透传：${JSON.stringify(result.usage)}`)
+  } finally {
+    await cleanup(base)
+  }
+})
+
+test('dshModelSelection：对象/字符串拆分/拆不开返回 null', async () => {
+  const { dshModelSelection } = await import('../dsh-cli.mjs')
+  assert.deepEqual(dshModelSelection('deepseek/deepseek-chat'), { provider: 'deepseek', id: 'deepseek-chat' })
+  assert.deepEqual(dshModelSelection({ provider: 'a', id: 'b' }), { provider: 'a', id: 'b' })
+  assert.equal(dshModelSelection('no-slash'), null, '拆不开就不发（发了必被 DSH 拒）')
+  assert.equal(dshModelSelection('default'), null)
+  assert.equal(dshModelSelection(''), null)
+})
+
+test('agentStore：patchSessionMeta / lastSessionId 往返（DSH 会话指纹）', async () => {
+  const { createSession, patchSessionMeta, lastSessionId, readSession } = await import('../agentStore.mjs')
+  const base = await mkdtemp(join(tmpdir(), 'openstory-meta-'))
+  const sessionsDir = join(base, 'sessions')
+  const root = join(base, '库')
+  await mkdir(root, { recursive: true })
+  try {
+    const created = await createSession(sessionsDir, root, '第一条')
+    await patchSessionMeta(sessionsDir, root, created.id, { dshSessionId: 'od-abc', dshModel: 'p/m', dshCwd: root })
+    const loaded = await readSession(sessionsDir, root, created.id)
+    assert.equal(loaded.session.dshSessionId, 'od-abc')
+    assert.equal(loaded.session.dshModel, 'p/m')
+    assert.equal(loaded.session.dshCwd, root)
+    // 清指纹（resume 失效时用）
+    await patchSessionMeta(sessionsDir, root, created.id, { dshSessionId: '', dshModel: '', dshCwd: '' })
+    const cleared = await readSession(sessionsDir, root, created.id)
+    assert.equal(cleared.session.dshSessionId, undefined)
+    // lastSessionId ＝最近那条
+    const second = await createSession(sessionsDir, root, '第二条')
+    assert.equal(await lastSessionId(sessionsDir, root), second.id)
+  } finally {
+    await cleanup(base)
+  }
+})
 
 test('runDshStdio：ready→execute→session/text/result，text 帧边收边回调', async () => {
   const { base, fakeDsh } = await makeFakeDsh()
@@ -149,7 +319,7 @@ test('runDshStdio：ready→execute→session/text/result，text 帧边收边回
     }).catch((error) => ({ ok: false, message: String(error) }))
     assert.ok(result, '不应抛')
   } finally {
-    await rm(base, { recursive: true, force: true })
+    await cleanup(base)
   }
 })
 
@@ -195,7 +365,7 @@ test('daemon 端到端：dsh kit（假 dsh shim）→ start/delta*/done，会话
     assert.ok(assistant.content.includes('DSH 假桥：'))
   } finally {
     await daemon.close()
-    await rm(base, { recursive: true, force: true })
+    await cleanup(base)
   }
 })
 
@@ -222,7 +392,7 @@ test('daemon 端到端：dsh 不可用 → 无 Pi ＝ 502 如实报（不伪造�
     assert.match(JSON.stringify(body), /DSH 不可用|DeepSeek Harness CLI/)
   } finally {
     await daemon.close()
-    await rm(base, { recursive: true, force: true })
+    await cleanup(base)
   }
 })
 
@@ -256,7 +426,7 @@ test('probeDshStack：no-cli / no-profile / no-runtime / ready 四态各自带�
     const ready = await probeDshStack({ env: { DSH_HOME: dshHome, DSH_PROFILE: 'openstory' }, dshCmd: shim })
     assert.equal(ready.state, 'ready')
   } finally {
-    await rm(base, { recursive: true, force: true })
+    await cleanup(base)
   }
 })
 
@@ -281,6 +451,6 @@ test('setupDshStack：no-cli 拒绝并给命令；缺 tgz 如实报；ok 路径�
     assert.equal(withTgz.ok, false, '假 dsh 不认 plugin 子命令')
     assert.ok(withTgz.steps.length >= 1)
   } finally {
-    await rm(base, { recursive: true, force: true })
+    await cleanup(base)
   }
 })

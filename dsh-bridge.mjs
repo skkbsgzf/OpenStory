@@ -95,9 +95,25 @@ export function pickChatBase(record) {
  */
 /**
  * dsh CLI 探测：`dsh --version` 或 `dsh --help` 能跑即算装了（一 run 一进程的 stdio 桥前提）。
- * 返回 {installed, version?, message?}。缓存由调用方管（daemon 货架每请求现探，同上限 60s）。
+ * 返回 {installed, version?, message?}。
+ * OS-39：内置 60s 缓存——这段代码原来注释里写了缓存但没实现，
+ * 结果是每发一条消息都白起一个 `dsh --version` 子进程（几百毫秒白等）。
  */
-export function detectDshCli({ env = process.env, dshCmd = null } = {}) {
+const cliProbeCache = new Map() // key: cmd → { at, promise }
+
+export function detectDshCli({ env = process.env, dshCmd = null, cacheMs = 60000 } = {}) {
+  const cmd = text(dshCmd || env.DSH_CLI || 'dsh')
+  const now = Date.now()
+  const hit = cliProbeCache.get(cmd)
+  if (hit && Number(cacheMs) > 0 && now - hit.at < Number(cacheMs)) return hit.promise
+  const promise = detectDshCliUncached({ env, dshCmd: cmd })
+  cliProbeCache.set(cmd, { at: now, promise })
+  // 失败的探测不缓存（装好之后应该立刻能用）；成功也只在 cacheMs 内复用
+  promise.then((result) => { if (!result.installed) cliProbeCache.delete(cmd) }).catch(() => { cliProbeCache.delete(cmd) })
+  return promise
+}
+
+function detectDshCliUncached({ env = process.env, dshCmd = null } = {}) {
   return new Promise((resolvePromise) => {
     const cmd = text(dshCmd || env.DSH_CLI || 'dsh')
     let child
@@ -127,6 +143,77 @@ export function detectDshCli({ env = process.env, dshCmd = null } = {}) {
       finish(code === 0
         ? { installed: true, version: firstLine.slice(0, 80) || 'dsh CLI 就绪', profile: text(env.DSH_PROFILE || 'openstory') }
         : { installed: false, message: `dsh 退出码 ${code}${firstLine ? `：${firstLine.slice(0, 120)}` : ''}——需要先装 DeepSeek Harness CLI（npm i -g @deepseek-ai/dsh）` })
+    })
+  })
+}
+
+/**
+ * 模型与推理深度选项（OS-39）：`dsh --profile <p> --models` 会吐一帧 JSON
+ *   {v:1,type:"models",models:[{provider,provider_name,id,name,reasoning_options?:[{id,name,default?}]}]}
+ * 设置页的「推理深度」下拉就靠它；结果同样缓存（模型是慢变量）。
+ */
+const modelsCache = new Map() // key: cmd|profile → { at, promise }
+
+export function detectDshModels({ env = process.env, dshCmd = null, profile = null, cacheMs = 300000 } = {}) {
+  const cmd = text(dshCmd || env.DSH_CLI || 'dsh')
+  const prof = text(profile || env.DSH_PROFILE || 'openstory')
+  const key = `${cmd}|${prof}`
+  const now = Date.now()
+  const hit = modelsCache.get(key)
+  if (hit && Number(cacheMs) > 0 && now - hit.at < Number(cacheMs)) return hit.promise
+  const promise = detectDshModelsUncached({ cmd, prof })
+  modelsCache.set(key, { at: now, promise })
+  promise.then((result) => { if (!result.ok) modelsCache.delete(key) }).catch(() => { modelsCache.delete(key) })
+  return promise
+}
+
+function detectDshModelsUncached({ cmd, prof }) {
+  return new Promise((resolvePromise) => {
+    let child
+    let settled = false
+    const finish = (result) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      try { child?.kill() } catch { /* 已经死了 */ }
+      resolvePromise(result)
+    }
+    const timer = setTimeout(() => finish({ ok: false, models: [], message: 'dsh --models 探测超时（10s）' }), 10000)
+    try {
+      child = spawnCommand(cmd, ['--profile', prof, '--models'], { shell: false, stdio: ['ignore', 'pipe', 'pipe'] })
+    } catch (error) {
+      finish({ ok: false, models: [], message: `dsh 不可执行：${text(error?.message || error)}` })
+      return
+    }
+    let out = ''
+    let err = ''
+    child.stdout?.on('data', (chunk) => { out += text(chunk) })
+    child.stderr?.on('data', (chunk) => { err += text(chunk) })
+    child.on('error', (error) => finish({ ok: false, models: [], message: `dsh 不可执行：${text(error?.message || error)}` }))
+    child.on('exit', (code) => {
+      if (code !== 0) {
+        finish({ ok: false, models: [], message: `dsh --models 退出码 ${code}${err.trim() ? `：${err.trim().slice(0, 200)}` : ''}` })
+        return
+      }
+      // 找第一行能解析成 {type:'models'} 的帧
+      const line = out.split('\n').map((row) => row.trim()).filter(Boolean)
+        .find((row) => row.startsWith('{') && row.includes('"models"'))
+      if (!line) { finish({ ok: false, models: [], message: 'dsh --models 没有返回模型清单' }); return }
+      let frame
+      try { frame = JSON.parse(line) } catch { finish({ ok: false, models: [], message: 'dsh --models 返回的帧不是合法 JSON' }); return }
+      const models = (Array.isArray(frame.models) ? frame.models : []).map((model) => ({
+        provider: text(model.provider),
+        providerName: text(model.provider_name) || text(model.provider),
+        id: text(model.id),
+        name: text(model.name) || text(model.id),
+        // 推理深度选项（low/medium/high…）；default:true 是 DSH 自己的默认档
+        reasoningOptions: (Array.isArray(model.reasoning_options) ? model.reasoning_options : []).map((option) => ({
+          id: text(option.id),
+          name: text(option.name) || text(option.id),
+          default: option.default === true
+        })).filter((option) => option.id)
+      })).filter((model) => model.id)
+      finish({ ok: true, models })
     })
   })
 }
@@ -278,12 +365,23 @@ export async function detectDsh({ env = process.env, fetchImpl = fetch } = {}) {
  *   CLI 模式 → {ok:true, mode:'cli', dshCmd, profile}
  *   HTTP 模式 → {ok:true, mode:'http', url}
  *   都不可用 → {ok:false, message}（人话，含装 CLI 的指令）。
+ *
+ * OS-39：CLI 模式先过一遍分层探测（probeDshStack）。原先只测 `dsh --version`，
+ * 于是「profile 没初始化」「runtime 插件没装」这种注定失败的 run 也会照发，
+ * 失败信息还误导成「请先安装 CLI」。
  */
 export async function resolveDshRun(kit, options = {}) {
   if (kit?.url) return { ok: true, mode: 'http', url: `${kit.url}${kit.chatPath || '/v1/chat/completions'}`, source: 'manifest' }
   const any = await detectDshAny(options)
   if (!any.running) return { ok: false, mode: 'none', message: any.message }
   if (any.mode === 'cli') {
+    // 分层探测：CLI 装了但 profile/runtime 没就绪时，直接给「下一步该做什么」
+    try {
+      const stack = await probeDshStack({ env: options.env ?? process.env, dshCmd: any.dshCmd })
+      if (stack.state && stack.state !== 'ready') {
+        return { ok: false, mode: 'cli', state: stack.state, message: stack.message ?? `DSH 未就绪（${stack.state}）` }
+      }
+    } catch { /* 探测失败不拦（可能是权限/超时），交给真正的 run 去报 */ }
     return { ok: true, mode: 'cli', dshCmd: any.dshCmd, profile: any.profile ?? 'openstory', source: any.source }
   }
   return { ok: true, mode: 'http', url: `${any.chatBase}${kit?.chatPath || '/v1/chat/completions'}`, source: any.source }

@@ -806,6 +806,37 @@ function selectionContext() {
  *  · 没标过就自动用一条叫「临时需求」的会话（首次临时动作时自动创建）。
  */
 const TEMP_SESSION_KEY = (root) => `openstory-temp-session::${root || ''}`
+const TEMP_MODE_KEY = (root) => `openstory-temp-mode::${root || ''}`
+
+/**
+ * 临时需求路由模式（OS-39b，作者裁定为「选项」而非写死）：
+ *  · 'fixed'（推荐默认）：润笔/添加到 Agent 都切到固定临时会话再发送——每次添加都会切过去；
+ *  · 'current'：跟当前打开的会话走，不切换。
+ */
+function getTempMode() {
+  const root = state.current?.path || ''
+  if (!agent.tempModes) agent.tempModes = {}
+  if (!(root in agent.tempModes)) {
+    let saved = 'fixed'
+    try { saved = text(localStorage.getItem(TEMP_MODE_KEY(root))) || 'fixed' } catch { saved = 'fixed' }
+    agent.tempModes[root] = saved === 'current' ? 'current' : 'fixed'
+  }
+  return agent.tempModes[root]
+}
+
+function setTempMode(mode) {
+  const root = state.current?.path || ''
+  if (!agent.tempModes) agent.tempModes = {}
+  agent.tempModes[root] = mode === 'current' ? 'current' : 'fixed'
+  try {
+    localStorage.setItem(TEMP_MODE_KEY(root), agent.tempModes[root])
+  } catch { /* 隐私模式 */ }
+}
+
+/** 临时需求路由：fixed 模式先切到固定临时会话，current 模式原地不动。 */
+async function routeTemp() {
+  if (getTempMode() === 'fixed') await ensureTempSession()
+}
 
 function getTempSessionId() {
   const root = state.current?.path || ''
@@ -877,7 +908,7 @@ async function startPolishRequest() {
   hideParaMenu()
   window.getSelection?.()?.removeAllRanges?.()
   try {
-    await ensureTempSession()
+    await routeTemp()
   } catch (error) {
     rememberAgentError(error)
     renderAgent()
@@ -902,16 +933,32 @@ async function startPolishRequest() {
 
 /* ---------- 与 Agent 讨论：选中段落作上下文，进左列会话 ---------- */
 
-function discussSelection() {
+async function discussSelection() {
   if (!state.current) return
+  if (agent.streaming) {
+    rememberAgentError('Agent 正在跑上一步，等它出结果再发。')
+    renderAgent()
+    hideSelBar()
+    hideParaMenu()
+    return
+  }
   const context = selectionContext()
+  hideSelBar()
+  hideParaMenu()
+  window.getSelection?.()?.removeAllRanges?.()
+  try {
+    await routeTemp() // fixed 模式＝切到固定临时会话再挂上下文；current 模式原地不动
+  } catch (error) {
+    rememberAgentError(error)
+    renderAgent()
+    return
+  }
   state.agent.pendingContext = {
+    kind: 'discuss',
     quote: state.sel.text,
-    context,
+    context: selectionContext(),
     label: `${state.sel.text.slice(0, 18)}${state.sel.text.length > 18 ? '…' : ''}（${state.sel.text.length} 字）`
   }
-  hideSelBar()
-  window.getSelection?.()?.removeAllRanges?.()
   renderAgent()
   const input = document.getElementById('agent-input')
   input?.focus()
@@ -1624,6 +1671,7 @@ async function bootAgentConfig() {
     agent.model = text(payload.model)
     agent.apiKeyMasked = text(payload.apiKeyMasked)
     agent.runtime = text(payload.runtime)
+    agent.reasoningEffort = text(payload.reasoningEffort)
     agent.configPath = text(payload.configPath)
   } catch { /* 读不到就按未配置摆，不拦工作台 */ }
   updateAgentChip()
@@ -1651,11 +1699,42 @@ async function reloadThread() {
   } catch { /* 保留本地视图 */ }
 }
 
+/**
+ * 当前会话持久化（OS-39）：按库分键存本机。
+ * 作者口径：不要每次进来都是新会话——默认接着上次那条聊，只有主动点「＋新会话」才开新的。
+ * 注意：临时需求会话（润笔/分析走的「临时需求」）不记进这个槽位，
+ * 否则刷新后会打开临时会话而不是作者真正在聊的主对话。
+ */
+const AGENT_SESSION_KEY = (root) => `openstory-agent-session::${root || ''}`
+
+function isTempSession(id) {
+  if (!id) return false
+  const pinned = getTempSessionId()
+  if (pinned && pinned === id) return true
+  const session = agent.sessions.find((item) => item.id === id)
+  return session?.title === '临时需求'
+}
+
+function rememberSession(id) {
+  const root = state.current?.path || ''
+  try {
+    // 临时会话不进「上次会话」槽：它由 TEMP_SESSION_KEY 单独记
+    if (id && !isTempSession(id)) localStorage.setItem(AGENT_SESSION_KEY(root), id)
+    else if (!id) localStorage.removeItem(AGENT_SESSION_KEY(root))
+  } catch { /* 隐私模式 */ }
+}
+
+function recallSession() {
+  const root = state.current?.path || ''
+  try { return localStorage.getItem(AGENT_SESSION_KEY(root)) || '' } catch { return '' }
+}
+
 async function openSession(id) {
   if (agent.streaming) return
   agent.sessionId = id
   agent.cardError = null
   agent.lastError = null
+  rememberSession(id)
   await reloadThread()
   renderAgent()
 }
@@ -1666,8 +1745,27 @@ function newSession() {
   agent.items = []
   agent.cardError = null
   agent.lastError = null
+  agent.forceNewSession = true // 下一条消息强制新建，不吃 daemon 的「接着上次聊」
+  rememberSession('')
   renderAgent()
   document.getElementById('agent-input')?.focus()
+}
+
+/**
+ * 打开库之后恢复上次会话（OS-39）：优先 localStorage 记的那条，
+ * 它没了就退到服务端最新的那条（换机器/清了 localStorage 也能接上）。
+ * 临时会话不参与恢复——那是润笔/分析的落脚点，不是作者的对话主线。
+ */
+async function restoreAgentSession() {
+  if (!state.current || agent.sessionId) return
+  const remembered = recallSession()
+  const usable = agent.sessions.filter((session) => !isTempSession(session.id) && session.title !== '临时需求')
+  const candidate = remembered && usable.some((session) => session.id === remembered)
+    ? remembered
+    : text(usable[0]?.id)
+  if (!candidate) return
+  agent.sessionId = candidate
+  await reloadThread()
 }
 
 async function deleteSession(id) {
@@ -1719,9 +1817,19 @@ function sessionTitle(session, index) {
 
 function sessionsHtml() {
   const pinnedId = getTempSessionId()
-  const hint = `<div class="sess-hint">润笔这类临时需求会发到标了「临时」的会话（默认自动建「临时需求」），不抢占你正在聊的这条。</div>`
+  const mode = getTempMode()
+  // 模式切换（OS-39b）：fixed＝推荐默认，每次添加都切到固定会话；current＝跟当前会话走
+  const modeSwitch = `<div class="sess-mode">
+      <span class="sm-label">临时需求去哪</span>
+      <button class="mode-opt${mode === 'fixed' ? ' on' : ''}" data-action="temp-mode" data-mode="fixed">固定会话（推荐）</button>
+      <button class="mode-opt${mode === 'current' ? ' on' : ''}" data-action="temp-mode" data-mode="current">当前会话</button>
+    </div>`
+  const fixedName = agent.sessions.find((session) => session.id === pinnedId)?.title || '临时需求'
+  const hint = mode === 'fixed'
+    ? `<div class="sess-hint">润笔/添加到 Agent 都会切到「${esc(fixedName)}」发送，不打断你正在聊的这条；点行上的「设临」可换一条。</div>`
+    : `<div class="sess-hint">临时需求会发到你当前打开的会话（不切换）。</div>`
   if (!agent.sessions.length) {
-    return `${hint}<div class="empty">还没有会话。<br>发第一条消息就会自动建。</div>
+    return `${modeSwitch}${hint}<div class="empty">还没有会话。<br>发第一条消息就会自动建。</div>
       <div class="divider"></div>
       <button class="new" data-action="agent-new-session">＋新会话</button>`
   }
@@ -1729,7 +1837,7 @@ function sessionsHtml() {
     const title = sessionTitle(session, index)
     // 空会话不摆「0」——只有真聊过才标条数
     const meta = Number.isFinite(session.messageCount) && session.messageCount > 0 ? `${session.messageCount}` : ''
-    const isTemp = session.id === pinnedId
+    const isTemp = mode === 'fixed' && session.id === getTempSessionId()
     return `<div class="sess${session.id === agent.sessionId ? ' on' : ''}" data-session-id="${esc(session.id)}" title="${esc(title.label)}${title.broken ? '（历史标题编码损坏，双击重命名）' : '（双击重命名）'}">
       <span class="tt">${esc(title.label)}</span>
       ${meta ? `<span class="meta">${meta} 条</span>` : ''}
@@ -1737,7 +1845,7 @@ function sessionsHtml() {
       <button class="x" data-session-del="${esc(session.id)}" title="删除会话">×</button>
     </div>`
   }).join('')
-  return `${hint}${rows}<div class="divider"></div>
+  return `${modeSwitch}${hint}${rows}<div class="divider"></div>
     <button class="new" data-action="agent-new-session" title="开始一段新对话">＋新会话</button>`
 }
 
@@ -1767,17 +1875,35 @@ function closeAgentSessions() {
   document.getElementById('agent-sess-btn')?.classList.remove('on')
 }
 
+/** 活动状态行（OS-39）：思考/调工具/等首字，让作者知道它没死。 */
+function activityLine(item, streamingThis) {
+  if (!streamingThis) return ''
+  const sec = item.waiting || 0
+  if (item.activity === 'thinking') return `<span class="act"><i class="act-dot"></i>正在思考… ${sec}s</span>`
+  if (item.activity === 'tool') return `<span class="act"><i class="act-dot"></i>正在调用工具… ${sec}s</span>`
+  if (item.activity === 'after-tool') return `<span class="act"><i class="act-dot"></i>工具已返回，继续处理… ${sec}s</span>`
+  if (!item.content && sec) return `<span class="act"><i class="act-dot"></i>模型正在跑… ${sec}s（DSH 首次要拉子进程，通常几秒到半分钟）</span>`
+  return ''
+}
+
 function msgHtml(item, index) {
   if (item.role === 'user') return `<div class="bub user">${esc(item.content)}</div>`
   const streamingThis = agent.streaming && index === agent.items.length - 1
   const cursor = streamingThis ? '<span class="cursor"></span>' : ''
-  // 等首字时给计时（DSH 一 run 一进程，5~40 秒很常见）
-  const waiting = streamingThis && !item.content && item.waiting
-    ? `<span class="waiting">模型正在跑… ${item.waiting}s（DSH 首次要拉子进程，通常几秒到半分钟）</span>`
+  const activity = activityLine(item, streamingThis)
+  const truncated = item.truncated
+    ? '<span class="partial-tag">回答被模型长度上限截断——可以让我接着写完</span>'
     : ''
-  const partial = item.partial ? '<span class="partial-tag">已停止——这段是不完整回答，以服务器落档为准</span>' : ''
-  const foot = streamingThis || !item.content ? '' : `<div class="bub-foot"><button class="mini" data-action="card-from" data-msg-index="${index}">转为待确认卡</button></div>`
-  return `<div class="bub assistant">${waiting}${esc(item.content)}${cursor}${partial}${foot}</div>`
+  const partial = item.partial
+    ? '<span class="partial-tag">已停止——这段是不完整回答，以服务器落档为准</span>'
+    : ''
+  const usage = !streamingThis && item.usage
+    ? `<span class="usage-note">本轮 ${item.usage.input} 入 / ${item.usage.output} 出 tokens</span>`
+    : ''
+  const foot = streamingThis || !item.content
+    ? ''
+    : `<div class="bub-foot"><button class="mini" data-action="card-from" data-msg-index="${index}">转为待确认卡</button>${usage}</div>`
+  return `<div class="bub assistant">${activity}${esc(item.content)}${cursor}${truncated}${partial}${foot}</div>`
 }
 
 function cardHtml(item) {
@@ -1847,6 +1973,11 @@ function renderAgent() {
   updateAgentChip()
 }
 
+/**
+ * SSE 帧分派（daemon 自有帧协议，OS-39 补齐）：
+ *   start → notice? → (thinking | tool | usage | delta)* → done
+ *   error 随时可能出现（上游失败/超时/取消）
+ */
 function handleChatFrame(frame, handlers = {}) {
   const line = frame.split('\n').find((row) => row.startsWith('data:'))
   if (!line) return
@@ -1860,6 +1991,25 @@ function handleChatFrame(frame, handlers = {}) {
     handlers.onStart?.(payload.sessionId)
   } else if (payload?.type === 'delta') {
     handlers.onDelta?.(text(payload.text))
+  } else if (payload?.type === 'thinking') {
+    handlers.onThinking?.(text(payload.text))
+  } else if (payload?.type === 'tool') {
+    handlers.onTool?.({
+      phase: payload.phase === 'result' ? 'result' : 'call',
+      id: text(payload.id),
+      name: text(payload.name),
+      input: payload.input ?? null,
+      output: text(payload.output),
+      isError: payload.isError === true
+    })
+  } else if (payload?.type === 'usage') {
+    handlers.onUsage?.({
+      input: Number(payload.input) || 0,
+      output: Number(payload.output) || 0,
+      total: Number(payload.total) || 0
+    })
+  } else if (payload?.type === 'done') {
+    handlers.onDone?.(payload)
   } else if (payload?.type === 'notice') {
     handlers.onNotice?.(text(payload.text))
   } else if (payload?.type === 'error') {
@@ -1868,10 +2018,10 @@ function handleChatFrame(frame, handlers = {}) {
 }
 
 /**
- * 走 daemon Agent 通道的一条流式对话（左列对话与推演页共用）。
+ * 走 daemon Agent 通道的一条流式对话（左列对话、推演页、润笔共用）。
  * controller 由调用方持有（停止按钮 abort 它）；帧回调按调用方各自的状态落地。
  */
-async function streamChat({ content, sessionId, controller, ephemeral, onStart, onDelta, onNotice, onError }) {
+async function streamChat({ content, sessionId, newSession, controller, ephemeral, onStart, onDelta, onThinking, onTool, onUsage, onDone, onNotice, onError }) {
   try {
     const response = await fetch('/api/agent/chat', {
       method: 'POST',
@@ -1880,6 +2030,7 @@ async function streamChat({ content, sessionId, controller, ephemeral, onStart, 
       body: JSON.stringify({
         root: state.current.path,
         ...(sessionId ? { sessionId } : {}),
+        ...(newSession ? { newSession: true } : {}),
         ...(ephemeral ? { ephemeral: true } : {}),
         content
       })
@@ -1898,7 +2049,7 @@ async function streamChat({ content, sessionId, controller, ephemeral, onStart, 
       buffer += decoder.decode(value, { stream: true })
       let index
       while ((index = buffer.indexOf('\n\n')) >= 0) {
-        handleChatFrame(buffer.slice(0, index), { onStart, onDelta, onNotice, onError })
+        handleChatFrame(buffer.slice(0, index), { onStart, onDelta, onThinking, onTool, onUsage, onDone, onNotice, onError })
         buffer = buffer.slice(index + 2)
       }
     }
@@ -1951,14 +2102,48 @@ async function sendAgentMessage() {
     await streamChat({
       content,
       sessionId: agent.sessionId || undefined,
+      newSession: agent.forceNewSession === true,
       controller,
-      onStart: (sessionId) => { agent.sessionId = sessionId },
+      onStart: (sessionId) => {
+        agent.sessionId = sessionId
+        agent.forceNewSession = false
+        rememberSession(sessionId) // 记住当前会话：刷新/换库回来接着聊
+      },
       onDelta: (piece) => {
         const last = agent.items[agent.items.length - 1]
         if (last?.kind === 'msg' && last.role === 'assistant') {
           last.content += piece
           last.waiting = 0
+          last.activity = null
           renderThread()
+        }
+      },
+      onThinking: () => {
+        const last = agent.items[agent.items.length - 1]
+        if (last?.kind === 'msg' && last.role === 'assistant') {
+          last.activity = 'thinking'
+          last.waiting = Math.round((Date.now() - startedAt) / 1000)
+          renderThread()
+        }
+      },
+      onTool: (payload) => {
+        const last = agent.items[agent.items.length - 1]
+        if (last?.kind === 'msg' && last.role === 'assistant') {
+          last.activity = payload.phase === 'result' ? 'after-tool' : 'tool'
+          last.waiting = Math.round((Date.now() - startedAt) / 1000)
+          renderThread()
+        }
+      },
+      onUsage: (usage) => {
+        agent.lastUsage = usage
+        const last = agent.items[agent.items.length - 1]
+        if (last?.kind === 'msg' && last.role === 'assistant') last.usage = usage
+      },
+      onDone: (payload) => {
+        const last = agent.items[agent.items.length - 1]
+        if (last?.kind === 'msg' && last.role === 'assistant') {
+          if (payload?.truncated) last.truncated = true
+          if (agent.lastUsage) last.usage = agent.lastUsage
         }
       },
       onNotice: (noticeText) => {
@@ -2053,10 +2238,29 @@ function settingsRuntimeSectionHtml() {
     <div class="field"><label>API Key${agent.apiKeyMasked ? `（已设置 ${esc(agent.apiKeyMasked)}）` : ''}</label>
       <input id="cfg-key" type="password" placeholder="${agent.apiKeyMasked ? '留空保留原 key' : 'sk-…'}">
     </div>
+    ${dshDepthFieldHtml()}
     <div class="err" id="settings-err"></div>
     <div class="row" style="display:flex;gap:10px;align-items:center;margin-top:8px">
       <button class="btn-primary" data-action="agent-config-save">保存</button>
     </div>
+  </div>`
+}
+
+/**
+ * 推理深度（OS-39）：DSH 支持 reasoning_effort，档位由 `dsh --models` 报上来。
+ * 只在 DSH 就绪时展示；取不到清单就不摆假选项。
+ */
+function dshDepthFieldHtml() {
+  const options = agent.dshReasoningOptions || []
+  if (!options.length) return ''
+  const current = text(agent.reasoningEffort)
+  const rows = [
+    `<option value=""${current ? '' : ' selected'}>默认（用 DSH 自己的档）</option>`,
+    ...options.map((option) => `<option value="${esc(option.id)}"${option.id === current ? ' selected' : ''}>${esc(option.name)}${option.default ? '（DSH 默认）' : ''}</option>`)
+  ].join('')
+  return `<div class="field"><label>推理深度（仅 DSH）</label>
+    <select class="select" id="cfg-reasoning">${rows}</select>
+    <span class="count">想得更久＝答案更稳但更慢；留默认即可</span>
   </div>`
 }
 
@@ -2535,21 +2739,47 @@ async function saveAgentSettings() {
   const endpoint = document.getElementById('cfg-endpoint').value.trim()
   const model = document.getElementById('cfg-model').value.trim()
   const key = document.getElementById('cfg-key').value
+  const reasoningEl = document.getElementById('cfg-reasoning')
+  const reasoningEffort = reasoningEl ? reasoningEl.value.trim() : undefined
   try {
     const payload = await api('/api/agent/config', {
       method: 'PUT',
-      body: JSON.stringify({ endpoint, model, ...(key.trim() ? { apiKey: key } : {}) })
+      body: JSON.stringify({
+        endpoint,
+        model,
+        ...(key.trim() ? { apiKey: key } : {}),
+        ...(reasoningEffort !== undefined ? { reasoningEffort } : {})
+      })
     })
     agent.configured = payload.configured === true
     agent.endpoint = text(payload.endpoint)
     agent.model = text(payload.model)
     agent.apiKeyMasked = text(payload.apiKeyMasked)
     agent.configPath = text(payload.configPath)
+    agent.reasoningEffort = text(payload.reasoningEffort)
     updateAgentChip()
     updateComposerState()
     render()
   } catch (error) {
     if (errEl) errEl.textContent = `${error?.code ? `${error.code} · ` : ''}${text(error?.message || error)}`
+  }
+}
+
+/** 拉 DSH 的模型与推理深度选项（设置页下拉的选项源；失败静默，不摆假选项）。 */
+async function loadDshReasoningOptions() {
+  try {
+    const payload = await api('/api/agent/dsh/models')
+    const options = []
+    for (const model of payload.models || []) {
+      for (const option of model.reasoningOptions || []) {
+        if (!options.some((item) => item.id === option.id)) {
+          options.push({ id: option.id, name: option.name, default: option.default === true })
+        }
+      }
+    }
+    agent.dshReasoningOptions = options
+  } catch {
+    agent.dshReasoningOptions = []
   }
 }
 
@@ -3689,7 +3919,24 @@ async function boot() {
 async function openLibrary(path) {
   const library = state.libraries.find((item) => item.path === path)
   if (!library) return
+  // 换库先掐掉还在跑的对话（DSH 一 run 一进程，跨库挂着会把两个库搅在一起）
+  if (agent.streaming) {
+    try { agent.controller?.abort() } catch { /* 已结束 */ }
+    agent.streaming = false
+    agent.controller = null
+    agent.notices = []
+    agent.lastError = '换库，已停止上一段对话'
+  }
   state.current = library
+  // Agent 列跟库走：这一组重置必须早于任何 early return，
+  // 否则"坏库"分支会让上一库的 sessionId 留在内存里，接着打新库的 root 就是 NOT_FOUND。
+  agent.sessions = []
+  agent.sessionId = ''
+  agent.items = []
+  agent.cardError = null
+  agent.lastError = null
+  agent.pendingContext = null
+  agent.forceNewSession = false
   // 先体检：形态不对（空地/有稿无标记/缺主模块/坏档）不进空工作台，摆修复卡（A-5 同口径）。
   try {
     const diagnosed = await api(`/api/library/diagnose?root=${encodeURIComponent(path)}`)
@@ -3697,6 +3944,8 @@ async function openLibrary(path) {
       state.repair = { path, shape: diagnosed.shape ?? {}, verdict: diagnosed.verdict }
       state.view = 'repair'
       render()
+      await loadSessions().then(restoreAgentSession).catch(() => {})
+      renderAgent()
       return
     }
   } catch { /* 体检接口失败不拦工作台 */ }
@@ -3761,16 +4010,12 @@ async function openLibrary(path) {
       if (!state.chapterFiles.length) state.chapterFiles = state.write.chapters.map((chapter) => chapter.file)
     }
   } catch { /* 清单失败不拦工作台 */ }
-  // Agent 列跟库走：换库＝换会话集。
-  agent.sessions = []
-  agent.sessionId = ''
-  agent.items = []
-  agent.cardError = null
-  agent.lastError = null
   renderAgent()
   render()
   await ensureEntries()
   await loadSessions()
+  // 默认会话：接着这个库上次那条聊（OS-39），不用手动去下拉里点
+  await restoreAgentSession()
   renderAgent()
 }
 
@@ -3999,7 +4244,7 @@ function go(view) {
   render()
   if (view === 'settings') {
     // 先并行拉数据，全部回来再渲染一次（否则先完成的 render 会用旧 state 覆盖）
-    Promise.all([loadAgentRuntimes(), loadStyles(), loadSuites(), loadKbStatus()])
+    Promise.all([loadAgentRuntimes(), loadStyles(), loadSuites(), loadKbStatus(), loadDshReasoningOptions()])
       .then(() => { if (state.view === 'settings') render() })
       .catch(() => render())
     return
@@ -4090,6 +4335,12 @@ document.addEventListener('click', (event) => {
     // 把这条设为默认临时会话（再点一次取消）；面板不关，所见即所得
     const id = target.dataset.sessionId
     setTempSessionId(getTempSessionId() === id ? '' : id)
+    renderAgent()
+    return
+  }
+  if (target.dataset.action === 'temp-mode') {
+    // 切换临时需求路由：固定会话（推荐）/ 当前会话
+    setTempMode(target.dataset.mode)
     renderAgent()
     return
   }

@@ -45,10 +45,12 @@ import {
   defaultSessionsDir,
   deleteSession,
   fileSnapshot,
+  lastSessionId,
   listSessions,
   loadAgentConfig,
   newCardId,
   newMessageId,
+  patchSessionMeta,
   readSession,
   renameSession,
   saveAgentConfig,
@@ -97,7 +99,7 @@ import {
   writeBrief
 } from './genres.mjs'
 import { runCliChat } from './cli-bridge.mjs'
-import { detectDsh, detectDshAny, probeDshStack, resolveDshChat, resolveDshRun, setupDshStack } from './dsh-bridge.mjs'
+import { detectDsh, detectDshAny, detectDshModels, probeDshStack, resolveDshChat, resolveDshRun, setupDshStack } from './dsh-bridge.mjs'
 import { runDshStdio } from './dsh-cli.mjs'
 import {
   builtinSuitesDir,
@@ -708,6 +710,15 @@ async function handleApi(req, res, url, context) {
   if (endpointId === 'agentConfigGet') return handleAgentConfigGet(res, context)
   if (endpointId === 'agentConfigPut') return handleAgentConfigPut(res, request, context)
   if (endpointId === 'agentRuntimesGet') return handleAgentRuntimesGet(res, context)
+  if (endpointId === 'agentDshModelsGet') {
+    const profile = text(request.profile).trim() || text(context.env?.DSH_PROFILE || 'openstory').trim()
+    const probed = await detectDshModels({ env: context.env, profile })
+    return sendJson(res, 200, {
+      ok: true,
+      models: probed.models ?? [],
+      ...(probed.ok ? {} : { message: probed.message })
+    })
+  }
   if (endpointId === 'agentRuntimePut') return handleAgentRuntimePut(res, request, context)
   if (endpointId === 'kbStatusGet') {
     const status = await collectKbStatus({
@@ -715,6 +726,67 @@ async function handleApi(req, res, url, context) {
       services: kbServiceState.lastCheck ? kbServiceState : null
     })
     return sendJson(res, 200, status)
+  }
+
+  // 分析面板 fact 曲线（KB-ARCH 对齐拆解线算法）：读库内 拆解/ 的 fact+wiki，给章级曲线数据。
+  // 无拆解数据时返回 ok:true + chapters:[]（前端降级到本地词典近似），绝不报错。
+  if (endpointId === 'factCurveGet') {
+    const authorized = authorizeRoot(allowlist, request.root)
+    if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
+    const dir = join(authorized.root, '拆解')
+    let files = []
+    try {
+      files = (await readdir(dir)).filter((name) => name.endsWith('.json')
+        && !name.endsWith('.wiki.json') && !name.includes('.operations')
+        && name !== '拆解汇总.json' && name !== '拆解索引.json')
+    } catch { files = [] }
+    const wanted = text(request.bookId).trim()
+    const pick = wanted
+      ? files.find((name) => name.replace(/\.json$/, '') === wanted) ?? null
+      : files.map((name) => ({ name, path: join(dir, name), mtime: statSync(join(dir, name)).mtimeMs }))
+        .sort((left, right) => right.mtime - left.mtime)[0]?.path ?? null
+    if (!pick) {
+      return sendJson(res, 200, { ok: true, bookId: '', title: '', words: 0, chapters: [], books: files.map((name) => name.replace(/\.json$/, '')) })
+    }
+    const bookId = wanted ? wanted : (typeof pick === 'string' ? basename(pick).replace(/\.json$/, '') : basename(pick.path).replace(/\.json$/, ''))
+    const filePath = typeof pick === 'string' ? pick : pick.path
+    let document = null
+    try { document = JSON.parse(readFileSync(filePath, 'utf8')) } catch { document = null }
+    if (!document) return sendError(res, API_ERROR_CODES.INVALID_ENTRY, `拆解文件读不了：${bookId}`)
+    const { readFactWiki } = await import('./core/pinax/next/kernel/factFileStore.mjs')
+    const { wiki } = readFactWiki({ root: authorized.root, id: bookId, document })
+    // 事件密度：plot 条目按 provenance.chapters 首章归组计数
+    const eventsByChapter = new Map()
+    for (const entry of document.entries ?? []) {
+      if ((entry.layer ?? entry.type) !== 'plot') continue
+      const no = Number(entry.provenance?.chapters?.[0] ?? 0)
+      if (!no) continue
+      eventsByChapter.set(no, (eventsByChapter.get(no) ?? 0) + (entry.events?.length ?? 1))
+    }
+    const foreshadowsByChapter = new Map()
+    for (const f of wiki?.foreshadows ?? []) {
+      const no = Number(f.chapter ?? 0)
+      if (!no) continue
+      foreshadowsByChapter.set(no, (foreshadowsByChapter.get(no) ?? 0) + 1)
+    }
+    const chapters = (wiki?.chapterSummaries ?? []).map((c) => ({
+      no: Number(c.chapter ?? 0),
+      title: text(c.title ?? ''),
+      summary: text(c.summary ?? '').slice(0, 120),
+      function: text(c.function ?? ''),
+      emotion: text(c.emotion ?? ''),
+      beats: Number(c.beats ?? 0),
+      events: eventsByChapter.get(Number(c.chapter ?? 0)) ?? 0,
+      foreshadows: foreshadowsByChapter.get(Number(c.chapter ?? 0)) ?? 0
+    }))
+    return sendJson(res, 200, {
+      ok: true,
+      bookId,
+      title: text(document.book?.title ?? ''),
+      words: Number(document.book?.word_count ?? 0),
+      chapters,
+      books: files.map((name) => name.replace(/\.json$/, ''))
+    })
   }
 
   if (endpointId === 'skillsGet') {
@@ -1179,7 +1251,7 @@ async function handleApi(req, res, url, context) {
   return sendError(res, API_ERROR_CODES.NOT_FOUND, `端点未实现：${endpointId}`)
 }
 
-const ENDPOINT_HAS_QUERY = new Set(['entries', 'entry', 'chapterGet', 'wiki', 'agentSessions', 'agentSessionGet', 'agentSessionDelete', 'wikiHtmlGet', 'libraryDiagnose', 'filesGet', 'chaptersGet', 'chapterDelete', 'artifactsGet', 'suiteStateDataGet', 'briefGet', 'skillsGet', 'skillGet', 'enrichStatus', 'enrichGraph', 'kbStatusGet'])
+const ENDPOINT_HAS_QUERY = new Set(['entries', 'entry', 'chapterGet', 'wiki', 'agentSessions', 'agentSessionGet', 'agentSessionDelete', 'wikiHtmlGet', 'libraryDiagnose', 'filesGet', 'chaptersGet', 'chapterDelete', 'artifactsGet', 'suiteStateDataGet', 'briefGet', 'skillsGet', 'skillGet', 'enrichStatus', 'enrichGraph', 'kbStatusGet', 'agentDshModelsGet', 'factCurveGet'])
 
 /** 套件资产 MIME（page 模式自带页同源装载）。 */
 const SUITE_ASSET_MIME = Object.freeze({
@@ -1246,22 +1318,76 @@ function isMissingColor(value) {
 
 /* ---------- Agent 通道（OS-4/9：会话 JSONL＋运行时 kit 货架，Pi 兜底）---------- */
 
-/** DSH 单条 prompt：system 守则＋最近历史（同 buildUpstreamMessages 口径）。 */
-function composeDshPrompt(items, { maxMessages = 24, maxChars = 48000 } = {}) {
-  const history = (Array.isArray(items) ? items : [])
-    .filter((item) => item?.kind === 'msg')
-    .map((item) => ({ role: item.role === 'assistant' ? 'assistant' : 'user', content: text(item.content) }))
-    .filter((message) => message.content.trim())
-  const picked = []
-  let used = 0
-  for (let index = history.length - 1; index >= 0 && picked.length < maxMessages; index -= 1) {
-    const message = history[index]
-    if (used + message.content.length > maxChars && picked.length > 0) break
-    picked.unshift(message)
-    used += message.content.length
+/**
+ * DSH 单条 prompt 组装（DSH 只有「一条 prompt」通道，系统提示也得拼进去）。
+ * - systemPrompt 放最前，用明确分隔线与对话历史隔开
+ * - 已采纳的 card 也带上（文件＋摘要）——只收 kind==='msg' 会把这一段上下文丢掉
+ * - 截断时插显式标记，不再静默砍头
+ * - onlyTail：resume 时只发最后一轮（DSH 自己有前文，重复发会翻倍算 token）
+ */
+function composeDshPrompt(items, { systemPrompt = '', maxMessages = 24, maxChars = 48000, onlyTail = false } = {}) {
+  const all = (Array.isArray(items) ? items : [])
+    .filter((item) => item?.kind === 'msg' || item?.kind === 'card')
+    .map((item) => {
+      if (item.kind === 'card') {
+        const body = text(item.text).trim()
+        if (!body) return null
+        return { role: 'card', content: `【已采纳的稿：${text(item.file) || '正文'}】\n${body}` }
+      }
+      return { role: item.role === 'assistant' ? 'assistant' : 'user', content: text(item.content) }
+    })
+    .filter((message) => message && message.content.trim())
+
+  let picked = all
+  let dropped = 0
+  if (onlyTail) {
+    // resume 模式：DSH 自己记得前文，这里只发本轮新问的那句。
+    // 关键：绝不能在这里补「更早的对话已省略 N 条」——DSH 会照字面以为自己失忆了。
+    picked = all.slice(-1)
+  } else {
+    const budgeted = []
+    let used = 0
+    for (let index = all.length - 1; index >= 0 && budgeted.length < maxMessages; index -= 1) {
+      const message = all[index]
+      if (used + message.content.length > maxChars && budgeted.length > 0) { dropped = index + 1; break }
+      budgeted.unshift(message)
+      used += message.content.length
+    }
+    picked = budgeted
+    dropped = Math.max(dropped, all.length - budgeted.length)
   }
-  const lines = picked.map((message) => message.role === 'assistant' ? `【助手】${message.content}` : `【作者】${message.content}`)
-  return lines.join('\n\n')
+
+  const lines = picked.map((message) => {
+    if (message.role === 'card') return message.content
+    return message.role === 'assistant' ? `【助手】${message.content}` : `【作者】${message.content}`
+  })
+  const head = []
+  if (systemPrompt.trim()) {
+    head.push(systemPrompt.trim())
+    head.push('---')
+  }
+  if (dropped > 0) head.push(`【更早的对话已省略 ${dropped} 条】`)
+  return [...head, ...lines].join('\n\n')
+}
+
+/**
+ * 这个本地会话对应的 DSH 会话指纹是否还可用。
+ * 模型或 cwd 变了就作废——DSH 侧会话跟运行环境绑定，硬 resume 会报 mismatch。
+ */
+async function resolveDshResume({ sessionsDir, root, session, ephemeral, model }) {
+  if (ephemeral) return { resumeSessionId: '', notice: '' }
+  const dshSessionId = text(session?.dshSessionId)
+  if (!dshSessionId) return { resumeSessionId: '', notice: '' }
+  const prevModel = text(session?.dshModel)
+  const prevCwd = text(session?.dshCwd)
+  const modelChanged = Boolean(prevModel) && Boolean(model) && prevModel !== model
+  const cwdChanged = Boolean(prevCwd) && prevCwd !== root
+  if (modelChanged || cwdChanged) {
+    await patchSessionMeta(sessionsDir, root, session.id, { dshSessionId: '', dshModel: '', dshCwd: '' })
+    const why = modelChanged ? '模型换了' : '库路径变了'
+    return { resumeSessionId: '', notice: `${why}，DSH 会话已重开（前文仍在本条会话里）。` }
+  }
+  return { resumeSessionId: dshSessionId, notice: '' }
 }
 
 async function systemPromptFor(root, libraries, genresDirs, skillsDirs) {
@@ -1431,9 +1557,11 @@ async function resolveChatUpstream(config, context) {
   if (kit.kind === 'dsh') {
     const run = await resolveDshRun(kit, { env: context.env })
     if (!run.ok) return fallbackToPi(config, `DSH 不可用：${run.message}`)
+    // 推理深度（OS-39）：kit manifest / 本机配置里给了才发；不给＝用 DSH 自己的默认档
+    const reasoningEffort = text(kit.reasoningEffort || config.reasoningEffort).trim()
     if (run.mode === 'cli') {
       // CLI stdio（od 协议）：一 run 一进程
-      return { ok: true, execute: 'dsh-cli', dshRun: run, kit, model: kit.model, runtimeName: kit.name }
+      return { ok: true, execute: 'dsh-cli', dshRun: run, kit, model: kit.model, reasoningEffort, runtimeName: kit.name }
     }
     return { ok: true, url: run.url, headers, model: kit.model, runtimeName: kit.name }
   }
@@ -1459,11 +1587,14 @@ async function handleAgentChat(req, res, request, context, root, libraries) {
   // 否则每润一次笔就在会话列表里多一条「【润笔请求】…」，作者的真会话会被淹没。
   const ephemeral = request.ephemeral === true
 
-  // 会话：sessionId 缺省＝新建（标题取首句）；给了就必须真存在。
+  // 会话：显式给了就用它（不存在就如实报）；没给则优先「接着上次聊」，真没有才新建。
+  // newSession:true ＝作者主动点了「＋新会话」，强制开新的，不吃 lastSessionId。
   const sessionsDir = context.agentSessionsDir
-  let loaded = request.sessionId ? await readSession(sessionsDir, root, request.sessionId) : null
-  if (request.sessionId && !loaded) {
-    return sendError(res, API_ERROR_CODES.NOT_FOUND, `会话不存在：${request.sessionId}`)
+  const wantNew = request.newSession === true
+  const requestedId = text(request.sessionId)
+  let loaded = requestedId ? await readSession(sessionsDir, root, requestedId) : null
+  if (requestedId && !loaded) {
+    return sendError(res, API_ERROR_CODES.NOT_FOUND, `会话不存在：${requestedId}`)
   }
   let sessionId = ''
   let history = { items: [] }
@@ -1471,6 +1602,11 @@ async function handleAgentChat(req, res, request, context, root, libraries) {
     // 一次性调用：只带这一条，不读也不写任何会话文件
     history = { items: [{ kind: 'msg', role: 'user', content: request.content, at: new Date().toISOString() }] }
   } else {
+    if (!loaded && !wantNew) {
+      // 默认会话：接着这个库上次聊的那条（作者口径：不要每次进来都是新会话）
+      const last = await lastSessionId(sessionsDir, root)
+      if (last) loaded = await readSession(sessionsDir, root, last)
+    }
     if (!loaded) {
       const title = text(request.content).replace(/\s+/gu, ' ').trim().slice(0, 24) || '新会话'
       const created = await createSession(sessionsDir, root, title)
@@ -1498,7 +1634,8 @@ async function handleAgentChat(req, res, request, context, root, libraries) {
   })
 
   if (upstream.execute === 'dsh-cli') {
-    // DSH stdio（od 协议）：start → delta*（边收边转）→ done；会话 id 落档沿用本地会话
+    // DSH stdio（od 协议）：start → (thinking|tool|usage|delta)* → done
+    // 会话连续性：resume_session_id 换 DSH 侧真会话；续上了才有跨轮记忆、才会触发 DSH 自己的上下文压缩。
     res.writeHead(200, {
       'content-type': 'text/event-stream; charset=utf-8',
       'cache-control': 'no-cache, no-transform',
@@ -1507,26 +1644,115 @@ async function handleAgentChat(req, res, request, context, root, libraries) {
     })
     sseFrame(res, { type: 'start', sessionId, runtime: upstream.runtimeName })
     if (upstream.notice) sseFrame(res, { type: 'notice', text: upstream.notice })
-    const dshPrompt = composeDshPrompt(history.items)
-    const result = await runDshStdio({
+
+    const safeSend = (frame) => {
+      if (clientGone || res.writableEnded) return
+      try { sseFrame(res, frame) } catch { /* 连接已断，静默 */ }
+    }
+
+    const systemPrompt = await systemPromptFor(root, libraries, context.genresDirs, context.skillsDirs)
+    const dshModel = text(upstream.model).trim()
+    // resume 前置：模型/cwd 变了就作废（DSH 侧会话与运行环境绑定）
+    const stitched = await resolveDshResume({ sessionsDir, root, session: loaded?.session, ephemeral, model: dshModel })
+    const resumeSessionId = stitched.resumeSessionId
+    if (stitched.notice) safeSend({ type: 'notice', text: stitched.notice })
+
+    // resume 时 DSH 自己记得前文，只发最新一轮；冷启才发全量历史
+    const dshPrompt = resumeSessionId
+      ? composeDshPrompt(history.items, { systemPrompt, onlyTail: true })
+      : composeDshPrompt(history.items, { systemPrompt })
+
+    let collected = ''
+    let sawText = false
+    const startedAt = Date.now()
+    let result = await runDshStdio({
       dshCmd: upstream.dshRun.dshCmd,
       profile: upstream.dshRun.profile,
       cwd: root,
       prompt: dshPrompt,
-      timeoutMs: 180000,
-      onText: (piece) => sseFrame(res, { type: 'delta', text: piece })
+      resumeSessionId,
+      ...(dshModel ? { model: dshModel } : {}),
+      ...(upstream.reasoningEffort ? { reasoningEffort: upstream.reasoningEffort } : {}),
+      signal: controller.signal,
+      inactivityMs: 90000,
+      timeoutMs: 600000,
+      onText: (piece) => {
+        sawText = true
+        collected += piece
+        safeSend({ type: 'delta', text: piece })
+      },
+      onThinking: (piece) => safeSend({ type: 'thinking', text: piece }),
+      onToolCall: (call) => safeSend({ type: 'tool', phase: 'call', ...call }),
+      onToolResult: (outcome) => safeSend({ type: 'tool', phase: 'result', ...outcome }),
+      onUsage: (usage) => safeSend({ type: 'usage', ...usage })
     })
+
+    // resume 被 DSH 拒（会话过期/被清理）：清指纹，用全量历史冷重启一次
+    if (!result.ok && result.resumeRejected && !ephemeral) {
+      safeSend({ type: 'notice', text: '上轮 DSH 会话已失效，已无缝重开一段。' })
+      await patchSessionMeta(sessionsDir, root, sessionId, { dshSessionId: '', dshModel: '', dshCwd: '' })
+      const coldPrompt = composeDshPrompt(history.items, { systemPrompt })
+      collected = ''
+      sawText = false
+      result = await runDshStdio({
+        dshCmd: upstream.dshRun.dshCmd,
+        profile: upstream.dshRun.profile,
+        cwd: root,
+        prompt: coldPrompt,
+        ...(dshModel ? { model: dshModel } : {}),
+        ...(upstream.reasoningEffort ? { reasoningEffort: upstream.reasoningEffort } : {}),
+        signal: controller.signal,
+        inactivityMs: 90000,
+        timeoutMs: 600000,
+        onText: (piece) => {
+          sawText = true
+          collected += piece
+          safeSend({ type: 'delta', text: piece })
+        },
+        onThinking: (piece) => safeSend({ type: 'thinking', text: piece }),
+        onToolCall: (call) => safeSend({ type: 'tool', phase: 'call', ...call }),
+        onToolResult: (outcome) => safeSend({ type: 'tool', phase: 'result', ...outcome }),
+        onUsage: (usage) => safeSend({ type: 'usage', ...usage })
+      })
+    }
+
     if (result.ok && result.text.trim()) {
       if (!ephemeral) {
         await appendSession(sessionsDir, root, sessionId, [{
-          t: 'msg', id: newMessageId(), role: 'assistant', content: result.text, at: new Date().toISOString()
+          t: 'msg', id: newMessageId(), role: 'assistant', content: result.text,
+          at: new Date().toISOString(),
+          // 用量与截断标记一起落档：刷新后 reloadThread 才不会把它冲掉
+          ...(result.usage ? { usage: result.usage } : {}),
+          ...(result.truncated ? { truncated: true } : {})
+        }])
+        // 记住 DSH 会话指纹：下一轮靠它续上
+        if (result.sessionId) {
+          await patchSessionMeta(sessionsDir, root, sessionId, {
+            dshSessionId: result.sessionId,
+            dshModel,
+            dshCwd: root
+          })
+        }
+      }
+      safeSend({
+        type: 'done',
+        sessionId,
+        chars: result.text.length,
+        ms: Date.now() - startedAt,
+        ...(result.truncated ? { truncated: true, stopReason: result.stopReason } : {})
+      })
+    } else {
+      // 中断/失败：已收到的部分回答要落档（partial），否则 reloadThread 会把它冲掉
+      if (!ephemeral && sawText && collected.trim()) {
+        await appendSession(sessionsDir, root, sessionId, [{
+          t: 'msg', id: newMessageId(), role: 'assistant', content: collected,
+          at: new Date().toISOString(), partial: true
         }])
       }
-      sseFrame(res, { type: 'done', sessionId, chars: result.text.length })
-    } else {
-      sseFrame(res, { type: 'error', error: { code: API_ERROR_CODES.AGENT_UPSTREAM_ERROR, message: result.message ?? 'DSH 无输出' } })
+      safeSend({ type: 'error', error: { code: API_ERROR_CODES.AGENT_UPSTREAM_ERROR, message: result.message ?? 'DSH 无输出' } })
     }
-    return res.end()
+    if (!clientGone && !res.writableEnded) res.end()
+    return
   }
 
   if (upstream.execute === 'cli') {
