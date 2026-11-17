@@ -588,7 +588,6 @@ input, textarea, select { font: inherit; color: inherit; }
 /* ── wiki 双态（OS-6：网页 iframe 沙箱为主，数据卡片退役为对照）────── */
 .subtabs { display: inline-flex; gap: 6px; }
 .wiki-frame { width: 100%; height: calc(100vh - 236px); min-height: 420px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--bg); }
-.palette .opt .src { font-size: 10px; color: var(--meta); border: 1px solid var(--line); border-radius: var(--pill); padding: 0 6px; margin-left: 6px; vertical-align: 1px; }
 
 /* ── 库管理写操作（OS-7：新建/导入/修复整页流）──────────── */
 .lib-head-row { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
@@ -931,16 +930,6 @@ html[data-doc-auto-gap="off"] .doc-block { margin-bottom: 0; }
 .cand-ops { display: flex; gap: 6px; flex: 0 0 auto; }
 
 /* ── 色板（左下角浮层）──────────────────────────────────── */
-.palette-fab { position: fixed; left: 14px; bottom: 118px; width: 38px; height: 38px; border-radius: 50%; background: conic-gradient(from 210deg, #ff385c, #7a5c2e, #2c2e35, #ff385c); border: 2px solid var(--bg); box-shadow: var(--shadow); z-index: 60; }
-.palette { position: fixed; left: 14px; bottom: 164px; width: 260px; background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius-md); box-shadow: var(--shadow); padding: 12px; z-index: 60; display: none; }
-.palette.open { display: block; }
-.palette h5 { margin: 0 0 8px; font-size: 12px; color: var(--meta); font-weight: 600; }
-.palette .opt { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; border-radius: var(--radius); text-align: left; }
-.palette .opt:hover { background: var(--soft); }
-.palette .opt.on { background: var(--accent-soft); }
-.palette .sw { width: 26px; height: 26px; border-radius: 8px; border: 1px solid var(--line); display: grid; place-items: center; flex: 0 0 26px; }
-.palette .opt .nm { font-weight: 600; font-size: 13px; }
-.palette .opt .ds { font-size: 11px; color: var(--meta); }
 </style>
 </head>
 <body>
@@ -1015,13 +1004,6 @@ html[data-doc-auto-gap="off"] .doc-block { margin-bottom: 0; }
       <div class="content" id="view"><div class="loading">正在读取库清单…</div></div>
     </main>
   </div>
-</div>
-
-<!-- 色板（OS-5：选项由 /api/styles 动态注入——内置目录＋本机目录） -->
-<button class="palette-fab" title="风格" data-action="toggle-palette"></button>
-<div class="palette" id="palette">
-  <h5>风格 · 对标作品（styles/ 目录加载）</h5>
-  <div id="palette-opts"></div>
 </div>
 
 <!-- 弹层：Agent 设置 / 转待确认卡（内容由 app.js 注入） -->
