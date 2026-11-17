@@ -8,6 +8,7 @@
  */
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { existsSync } from 'node:fs'
 import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -77,7 +78,7 @@ async function makeFixture() {
 }
 
 test('契约：端点都带 method/path/request/response/errors，路径可反查', () => {
-  assert.equal(Object.keys(ENDPOINTS).length, 56)
+  assert.equal(Object.keys(ENDPOINTS).length, 57)
   for (const [id, endpoint] of Object.entries(ENDPOINTS)) {
     assert.ok(endpoint.method, `${id} 缺 method`)
     assert.ok(endpoint.path.startsWith('/api/'), `${id} 路径不是 /api/`)
@@ -359,5 +360,61 @@ test('真实夹具库（PINAX_OS_FIXTURE）：/api/entries 返回 291 条', { sk
     assert.equal(payload.entries.length, 291)
   } finally {
     await daemon.close()
+  }
+})
+
+test('daemon 端点：迁入旧目录——搬进参考、源进 .history、白名单外拒绝（OS-48）', async () => {
+  const { base, root, preferencesPath } = await makeFixture()
+  await mkdir(join(root, '大纲'), { recursive: true })
+  await mkdir(join(root, '资料'), { recursive: true })
+  await writeFile(join(root, '大纲', '001-主线.md'), '主线大纲。', 'utf-8')
+  await writeFile(join(root, '资料', '港口.md'), '港口设定。', 'utf-8')
+  const daemon = await startDaemon({ port: 0, preferencesPath, logger: { log() {} } })
+  const origin = `http://127.0.0.1:${daemon.port}`
+  const post = (body) => fetch(`${origin}/api/reference/absorb`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body)
+  })
+  try {
+    // 白名单外：世界书不在 ABSORBABLE_DIRS，整单拒绝
+    const bad = await post({ root, dirs: ['世界书'] })
+    assert.equal(bad.status, 400)
+    assert.equal((await bad.json()).error.code, 'INVALID_ENTRY')
+
+    // 正常迁移：两目录两文件
+    const done = await post({ root, dirs: ['大纲', '资料'] })
+    assert.equal(done.status, 200)
+    const payload = await done.json()
+    assert.equal(payload.ok, true)
+    assert.equal(payload.moved.length, 2)
+    assert.equal(payload.skipped.length, 0)
+    const line = payload.moved.find((item) => item.from === '大纲/001-主线.md')
+    assert.equal(line.to, '参考/大纲/001-主线.md')
+    assert.match(line.backup, /\.history\/001-主线\.md\.deleted-/u)
+
+    // 源没了、目标在、备份在
+    assert.ok(!existsSync(join(root, '大纲', '001-主线.md')))
+    assert.equal(await readFile(join(root, '参考', '大纲', '001-主线.md'), 'utf-8'), '主线大纲。')
+    const backups = await readdir(join(root, '大纲', '.history'))
+    assert.equal(backups.length, 1)
+    assert.equal(await readFile(join(root, '大纲', '.history', backups[0]), 'utf-8'), '主线大纲。')
+
+    // 迁进来的笔记立刻出现在参考索引与图谱里
+    const index = await (await fetch(`${origin}/api/reference?root=${encodeURIComponent(root)}`)).json()
+    assert.ok(index.notes.some((note) => note.path === '参考/大纲/001-主线.md'))
+    const graph = await (await fetch(`${origin}/api/reference/graph?root=${encodeURIComponent(root)}`)).json()
+    assert.ok(graph.nodes.some((node) => node.id === '参考/大纲/001-主线.md'))
+
+    // 二次迁移同目录：目标重名 → 全部 skipped 不覆盖
+    await writeFile(join(root, '大纲', '001-主线.md'), '新的大纲。', 'utf-8')
+    const again = await post({ root, dirs: ['大纲'] })
+    const againPayload = await again.json()
+    assert.equal(againPayload.moved.length, 0)
+    assert.equal(againPayload.skipped.length, 1)
+    assert.equal(await readFile(join(root, '参考', '大纲', '001-主线.md'), 'utf-8'), '主线大纲。')
+  } finally {
+    await daemon.close()
+    await rm(base, { recursive: true, force: true })
   }
 })

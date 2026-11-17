@@ -6120,10 +6120,14 @@ function setSkin(id) {
   // wiki 网页态的强调色跟包走，换皮即重载 iframe；设置页要刷新选中态。
   if (state.view === 'wiki' || state.view === 'settings') render()
   // 图谱是 canvas 绘制、配色取自 CSS 变量；换皮后重挂一次才能跟上新色板
+  // （参考页大图是 focus 模式，正文页左栏小图是 jump 模式——按当前页分流，OS-49）
   if (document.getElementById('ref-graph-canvas')) {
     graphCleanup?.()
     graphCleanup = null
-    requestAnimationFrame(() => mountRefGraph())
+    requestAnimationFrame(() => {
+      if (state.view === 'reference' && (state.reference.view || 'note') === 'graph') mountReferenceGraph()
+      else mountRefGraph()
+    })
   }
 }
 

@@ -1,10 +1,10 @@
 /**
  * 参考页（OS-44）——把 Obsidian 式笔记系统搬进 OpenStory。
  *
- * 结构（照 Obsidian 的双段反链口径）：
- *   左：标签树（可折叠、带计数、hover 看描述）
- *   中：笔记列表 / 笔记详情（Markdown 渲染，[[双链]] 可点跳转）
- *   右：反链面板（已链接 / 未链接 两段）
+ * OS-48 对齐作者 Wiki 设计（D:\Qbook\短篇选题库\wiki\*\index.html 的 renderSide）：
+ *   · 侧栏只有一个分组导航列（视图 / 标签 / 笔记），不再是「标签树＋列表」两个并排面板
+ *   · 主区视图制：笔记视图（默认）与关系图谱视图，一视图回答一个问题
+ *   · 反链保留在右侧（双段：已链接 / 未链接，照 Obsidian 口径），只在笔记视图出现
  *
  * 数据全部来自 daemon 的 /api/reference 与 /api/reference/note，
  * 本模块只负责渲染——不持有任何真相。
@@ -20,7 +20,7 @@ function text(value) {
   return String(value ?? '')
 }
 
-/** 标签按 `/` 拆层，做成可折叠的树（Obsidian 的 nested tags）。 */
+/** 标签按 `/` 拆层，做成树（Obsidian 的 nested tags）。 */
 export function buildTagTree(tags) {
   const root = { name: '', children: new Map(), count: 0, description: '', color: '' }
   for (const tag of Array.isArray(tags) ? tags : []) {
@@ -43,46 +43,77 @@ export function buildTagTree(tags) {
   return root
 }
 
-function renderTagNode(node, depth = 0) {
+function renderTagNav(node, activeTag = '', depth = 0) {
   const kids = [...node.children.values()].sort((left, right) => right.count - left.count || left.name.localeCompare(right.name, 'zh-Hans-CN'))
   const title = node.description ? ` title="${esc(node.description)}"` : ''
   const badge = node.description ? '<i class="tag-desc-dot" title="这个标签有描述"></i>' : ''
-  const row = `<button class="tag-row" data-ref-tag="${esc(node.full)}"${title}>
+  const on = activeTag && node.full === activeTag ? ' on' : ''
+  const row = `<button class="nav-row${depth > 0 ? ' sub' : ''}${on}" data-ref-tag="${esc(node.full)}"${title}>
       <span class="tag-name">${esc(node.name)}${badge}</span>
-      <span class="tag-count">${node.count}</span>
+      <span class="nav-count">${node.count}</span>
     </button>`
-  if (!kids.length) return `<div class="tag-leaf" style="--depth:${depth}">${row}</div>`
-  return `<details class="tag-branch"${depth < 2 ? ' open' : ''} style="--depth:${depth}">
-      <summary>${row}</summary>
-      ${kids.map((kid) => renderTagNode(kid, depth + 1)).join('')}
-    </details>`
+  return row + kids.map((kid) => renderTagNav(kid, activeTag, depth + 1)).join('')
 }
 
-/** 标签树面板。 */
-export function tagTreeHtml(tags, activeTag = '') {
-  const tree = buildTagTree(tags)
-  const kids = [...tree.children.values()].sort((left, right) => right.count - left.count || left.name.localeCompare(right.name, 'zh-Hans-CN'))
-  if (!kids.length) return '<div class="empty">还没有标签。<br>在笔记里写 <code>#标签</code> 就会自动出现。</div>'
-  const all = `<button class="tag-row${activeTag ? '' : ' on'}" data-ref-tag="">
-      <span class="tag-name">全部</span><span class="tag-count">${[...tree.children.values()].reduce((sum, kid) => sum + kid.count, 0)}</span>
-    </button>`
-  return `${all}${kids.map((kid) => renderTagNode(kid)).join('')}`
-}
-
-/** 笔记列表。 */
-export function noteListHtml(notes, { activePath = '', activeTag = '' } = {}) {
+/**
+ * 笔记组（侧栏第三组）：按子目录分组 + activeTag/q 双重过滤。
+ * 单独导出：搜索框逐字过滤时只换这个组，不打断输入焦点。
+ */
+export function refNotesGroupHtml({ notes, activeTag = '', activePath = '', q = '' } = {}) {
+  const needle = text(q).trim().toLowerCase()
   const list = (Array.isArray(notes) ? notes : [])
-    .filter((note) => !note.isTagNote)
     .filter((note) => !activeTag || note.tags.includes(activeTag))
-  if (!list.length) {
-    return `<div class="empty">${activeTag ? `没有标签为 #${esc(activeTag)} 的笔记。` : '还没有参考笔记。<br>点右上「新建笔记」开始。'}</div>`
+    .filter((note) => {
+      if (!needle) return true
+      const hay = [note.title, note.path, note.excerpt, ...(note.tags || [])].join(' ').toLowerCase()
+      return hay.includes(needle)
+    })
+  const groups = new Map()
+  for (const note of list) {
+    const parts = text(note.path).split('/')
+    const group = parts.length > 2 ? parts[1] : ''
+    if (!groups.has(group)) groups.set(group, [])
+    groups.get(group).push(note)
   }
-  return list.map((note) => `
-    <button class="ref-row${note.path === activePath ? ' on' : ''}" data-ref-path="${esc(note.path)}" title="${esc(note.path)}">
-      <span class="rt">${esc(note.title)}</span>
-      <span class="rm">${note.chars} 字${note.tags.length ? ` · ${note.tags.slice(0, 2).map((tag) => `#${esc(tag)}`).join(' ')}` : ''}</span>
-      ${note.excerpt ? `<span class="re">${esc(note.excerpt)}</span>` : ''}
-    </button>`).join('')
+  const rows = [...groups.entries()].map(([group, items]) => {
+    const head = group ? `<div class="nav-group-label">${esc(group)}</div>` : ''
+    const body = items.map((note) => `
+      <button class="nav-row note${note.path === activePath ? ' on' : ''}" data-ref-path="${esc(note.path)}" title="${esc(note.path)}">
+        <span class="tag-name">${esc(note.title)}</span>
+        <span class="nav-count">${note.chars}</span>
+      </button>`).join('')
+    return head + body
+  }).join('')
+  const header = `笔记${activeTag ? ` · #${esc(activeTag)}` : ''}`
+  return `<div class="nav-group grow"><div class="nav-group-label">${esc(header)}</div>${rows || '<p class="nav-empty">没有匹配的笔记。</p>'}</div>`
+}
+
+/**
+ * 侧栏导航（Wiki renderSide 口径）：一个列管完「筛选」这件事。
+ *  视图：笔记 / 关系图谱
+ *  标签：全部标签带计数（嵌套缩进），点选筛选笔记（再点同一个＝取消）
+ *  笔记：按参考子目录分组（人物/场景/…），受 activeTag + q 双重过滤
+ */
+export function refNavHtml({ tags, notes, activeTag = '', activePath = '', view = 'note', q = '' } = {}) {
+  // 视图组
+  const views = [
+    ['note', '笔记'],
+    ['graph', '关系图谱']
+  ]
+  const viewRows = views.map(([id, label]) =>
+    `<button class="nav-row view${view === id ? ' on' : ''}" data-ref-view="${esc(id)}"><span>${esc(label)}</span></button>`
+  ).join('')
+  // 标签组
+  const tree = buildTagTree(tags)
+  const tagKids = [...tree.children.values()].sort((left, right) => right.count - left.count || left.name.localeCompare(right.name, 'zh-Hans-CN'))
+  const tagRows = tagKids.length ? tagKids.map((kid) => renderTagNav(kid, activeTag)).join('') : '<p class="nav-empty">在笔记里写 <code>#标签</code> 就会自动出现。</p>'
+  const notesGroup = refNotesGroupHtml({ notes, activeTag, activePath, q })
+  return `<div class="ref-nav">
+    <input class="search" id="ref-search" type="search" placeholder="过滤笔记 / 标签…" value="${esc(q)}">
+    <div class="nav-group"><div class="nav-group-label">视图</div>${viewRows}</div>
+    <div class="nav-group"><div class="nav-group-label">标签</div>${tagRows}</div>
+    ${notesGroup}
+  </div>`
 }
 
 /** 反链面板（双段：已链接 / 未链接）。 */
@@ -101,26 +132,31 @@ export function backlinksHtml(backlinks) {
   return block('已链接', linked, 'linked') + block('未链接（提到了但没建链）', unlinked, 'unlinked')
 }
 
-/** 参考页整体骨架。 */
-export function referenceShellHtml({ notes, tags, activeTag, activePath, editorHtml, backlinks, stats }) {
-  const tagPanel = tagTreeHtml(tags, activeTag)
-  const listPanel = noteListHtml(notes, { activePath, activeTag })
+/**
+ * 参考页整体骨架（OS-48）：侧栏导航 + 主区（视图制）+ 反链（仅笔记视图）。
+ * mainHtml 由调用方按 view 给：笔记视图传 editorHtml，图谱视图传大画布块。
+ */
+export function referenceShellHtml({ notes, tags, activeTag, activePath, view = 'note', q = '', mainHtml = '', backlinks, stats, absorbable = 0 }) {
   const statsLine = stats
     ? `<span class="count">${stats.notes} 篇 · ${stats.tags} 个标签 · ${stats.links} 条链接</span>`
     : ''
+  const nav = refNavHtml({ tags, notes, activeTag, activePath, view, q })
+  const backlinksCol = view === 'graph'
+    ? ''
+    : `<aside class="ref-backlinks">${activePath ? backlinksHtml(backlinks) : '<div class="empty">选中笔记后显示反链。</div>'}</aside>`
   return `<div class="ref-page">
     <div class="ref-toolbar">
       <h1>参考</h1>
       ${statsLine}
       <span class="sp"></span>
+      ${absorbable > 0 ? `<button class="btn-ghost" data-action="ref-absorb">迁入旧目录（${absorbable} 篇）</button>` : ''}
       <button class="btn-ghost" data-action="ref-new-note">＋ 新建笔记</button>
       <button class="btn-ghost" data-action="ref-new-tag">＋ 新建标签</button>
     </div>
-    <div class="ref-grid">
-      <aside class="ref-tags">${tagPanel}</aside>
-      <div class="ref-list">${listPanel}</div>
-      <div class="ref-main">${editorHtml || '<div class="empty">左边选一篇笔记。</div>'}</div>
-      <aside class="ref-backlinks">${activePath ? backlinksHtml(backlinks) : '<div class="empty">选中笔记后显示反链。</div>'}</aside>
+    <div class="ref-grid${view === 'graph' ? ' graphing' : ''}">
+      <aside class="ref-sidenav">${nav}</aside>
+      <div class="ref-main">${mainHtml || '<div class="empty">左边选一篇笔记。</div>'}</div>
+      ${backlinksCol}
     </div>
   </div>`
 }

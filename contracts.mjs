@@ -366,6 +366,16 @@ export const ENDPOINTS = Object.freeze({
     response: { ok: 'true', note: 'object', backlinks: 'object' },
     errors: ['NO_LIBRARY', 'PATH_ESCAPE', 'INVALID_ENTRY', 'NOT_FOUND']
   },
+  referenceAbsorb: {
+    method: 'POST',
+    path: '/api/reference/absorb',
+    // 旧目录迁入参考（OS-48）：只接受 大纲/构思/资料/约束，逐文件搬进 参考/<原名>/。
+    // 显式动稿：目标已存在＝skip 不覆盖；目标原子写＋源文件挪进 .history（.deleted-<ts>，可逆）。
+    // 返回 moved（含备份路径）与 skipped（带原因），绝不自动调用——前端弹窗确认后才发。
+    request: { body: { root: 'string', dirs: 'array' } },
+    response: { ok: 'true', moved: 'array', skipped: 'array' },
+    errors: ['NO_LIBRARY', 'PATH_ESCAPE', 'INVALID_ENTRY', 'WRITE_PROTOCOL_IO_FAILED']
+  },
   dirCreate: {
     method: 'POST',
     path: '/api/dir',

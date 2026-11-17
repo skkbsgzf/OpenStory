@@ -21,6 +21,12 @@ export const REFERENCE_DIR = '参考'
 export const TAG_NOTE_DIR = '标签'
 export const REFERENCE_EXTENSIONS = Object.freeze(['.md', '.markdown', '.txt'])
 
+/**
+ * 旧目录迁入参考（OS-48）只认这四个——动稿的口子必须收窄。
+ * 世界书/日志/正文等不在迁移范围：世界书目录归 worldbook 载体，日志只读，正文是主载体。
+ */
+export const ABSORBABLE_DIRS = Object.freeze(['大纲', '构思', '资料', '约束'])
+
 /** 标签笔记的 frontmatter 标记（`kind: tag` 才算标签定义）。 */
 export const TAG_NOTE_KIND = 'tag'
 
@@ -445,4 +451,60 @@ export function backlinksOf(index, targetPath) {
     }
   }
   return { linked, unlinked }
+}
+
+/* ---------- 旧目录迁入参考（OS-48）---------- */
+
+/** 通用递归列文件（供迁移规划用；参考扫描的 walk 绑死了 参考/ 基目录）。 */
+async function walkPlain(dir, base, out, depth, fspImpl) {
+  if (depth > 4) return
+  let entries
+  try {
+    entries = await fspImpl.readdir(dir, { withFileTypes: true })
+  } catch {
+    return
+  }
+  for (const entry of entries) {
+    if (entry.name.startsWith('.')) continue
+    const abs = join(dir, entry.name)
+    if (entry.isDirectory()) {
+      await walkPlain(abs, base, out, depth + 1, fspImpl)
+      continue
+    }
+    if (!entry.isFile()) continue
+    const lower = entry.name.toLowerCase()
+    if (!REFERENCE_EXTENSIONS.some((ext) => lower.endsWith(ext))) continue
+    out.push(relative(base, abs).split(sep).join('/'))
+  }
+}
+
+/**
+ * 迁移规划（OS-48）：列出「旧目录 → 参考/<原名>/」要搬哪些文件，目标已存在则记 skipped 不覆盖。
+ * 只规划不落盘——真搬运由 daemon 路由编排（原子写目标 + 源文件进 .history），fsImpl 可注入便于单测。
+ * @returns {{ ok: boolean, moves: {fromRel,toRel}[], skipped: {path,reason}[], dirs: string[] }}
+ */
+export async function absorbLegacyDirs(root, dirs = [], fsImpl = { readdir, stat }) {
+  const wanted = [...new Set((Array.isArray(dirs) ? dirs : []).map((item) => text(item).trim()))]
+    .filter((item) => ABSORBABLE_DIRS.includes(item))
+  if (!wanted.length) {
+    return { ok: false, code: 'INVALID_ENTRY', message: `只接受这些目录：${ABSORBABLE_DIRS.join('、')}`, moves: [], skipped: [], dirs: [] }
+  }
+  const moves = []
+  const skipped = []
+  for (const dir of wanted) {
+    const rels = []
+    await walkPlain(join(root, dir), join(root, dir), rels, 0, fsImpl)
+    if (!rels.length) continue
+    for (const rel of rels.sort((left, right) => left.localeCompare(right, 'zh-Hans-CN'))) {
+      const fromRel = `${dir}/${rel}`
+      const toRel = `${REFERENCE_DIR}/${dir}/${rel}`
+      try {
+        await fsImpl.stat(join(root, ...toRel.split('/')))
+        skipped.push({ path: fromRel, reason: `目标已存在：${toRel}（不覆盖）` })
+        continue
+      } catch { /* 目标不存在，正常搬运 */ }
+      moves.push({ fromRel, toRel })
+    }
+  }
+  return { ok: true, moves, skipped, dirs: wanted }
 }
