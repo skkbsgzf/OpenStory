@@ -1389,7 +1389,13 @@ async function resolveDshResume({ sessionsDir, root, session, ephemeral, model }
   return { resumeSessionId: dshSessionId, notice: '' }
 }
 
-async function systemPromptFor(root, libraries, genresDirs, skillsDirs) {
+/**
+ * 系统提示（按运行时区分能力，别对模型说假话——DSH 看到「你读不到文件」
+ * 却手里有工具时，会花大段推理纠结「这自相矛盾」，白白烧 token）。
+ *   canReadFiles=false（Pi/纯 HTTP）：作者手动贴上下文
+ *   canReadFiles=true （DSH 原生）：可以自己读，但改正文必须走待确认卡
+ */
+async function systemPromptFor(root, libraries, genresDirs, skillsDirs, { canReadFiles = false } = {}) {
   const key = rootKey(root)
   const record = (Array.isArray(libraries) ? libraries : []).find((library) => rootKey(library.path) === key)
   const name = record?.name || basename(root) || '未命名库'
@@ -1397,7 +1403,12 @@ async function systemPromptFor(root, libraries, genresDirs, skillsDirs) {
     `你是 OpenStory 工作台的写作助手，正在协助作者创作《${name}》（本机磁盘上的一个 Pinax 库）。`,
     '- 用中文回复。',
     '- 作者可以把你的回复转成「待确认卡」并采纳写进正文文件：给出正文片段时，请给完整、可直接粘贴的文本，不要只给修改说明。',
-    '- v1 你读不到库里的文件；作者会把需要的上下文粘贴给你，不要假装读过文件。'
+    canReadFiles
+      ? '- 你可以读这个库里的文件（工作目录就是库根）。需要原文、目录结构时直接读，不要凭空猜测内容。'
+      : '- 你读不到库里的文件；作者会把需要的上下文粘贴给你，不要假装读过文件。',
+    ...(canReadFiles
+      ? ['- 但改正文必须走「待确认卡」流程：不要直接用写文件工具改 .md 正文，把改好的片段写在回复里，让作者确认。']
+      : [])
   ]
   // OS-19：项目简报（体裁/篇幅/分章）是一等约束——注入体裁策略段
   try {
@@ -1649,7 +1660,8 @@ async function handleAgentChat(req, res, request, context, root, libraries) {
       try { sseFrame(res, frame) } catch { /* 连接已断，静默 */ }
     }
 
-    const systemPrompt = await systemPromptFor(root, libraries, context.genresDirs, context.skillsDirs)
+    // DSH 带完整工具链 + cwd=库根：告诉它「你能读，但改正文要走卡」，别再说假话
+    const systemPrompt = await systemPromptFor(root, libraries, context.genresDirs, context.skillsDirs, { canReadFiles: true })
     const dshModel = text(upstream.model).trim()
     // resume 前置：模型/cwd 变了就作废（DSH 侧会话与运行环境绑定）
     const stitched = await resolveDshResume({ sessionsDir, root, session: loaded?.session, ephemeral, model: dshModel })
@@ -1663,6 +1675,51 @@ async function handleAgentChat(req, res, request, context, root, libraries) {
 
     let collected = ''
     let sawText = false
+    // 过程留痕（OS-42）：思考轨迹与工具调用单独收，跟最终答案分开落档。
+    // 不做的话刷新一次这些过程就全丢了，作者回头看不到「它当时在想什么、查了什么」。
+    let thinkingBuf = ''
+    const toolTrace = []
+    const toolStarted = new Map()
+    const traceStart = Date.now()
+    const onThinkingPiece = (piece) => {
+      thinkingBuf += piece
+      safeSend({ type: 'thinking', text: piece })
+    }
+    const onToolCallFrame = (call) => {
+      // 调用当下就记一条（有些工具 DSH 只发 tool_call、不发 tool_result——
+      // 结果直接喂给模型了，界面就再也等不到返回帧）。这样至少能保留「调了什么」。
+      const key = call.id || call.name
+      toolStarted.set(key, { at: Date.now(), name: call.name, input: call.input })
+      toolTrace.push({
+        id: call.id,
+        name: call.name || 'tool',
+        input: call.input ?? null,
+        output: '',
+        isError: false,
+        elapsedMs: 0
+      })
+      safeSend({ type: 'tool', phase: 'call', ...call })
+    }
+    const onToolResultFrame = (outcome) => {
+      const started = toolStarted.get(outcome.id || '')
+      // 回填刚才那条（有就更新，没有就补一条）
+      const existing = toolTrace.find((tool) => tool.id && tool.id === outcome.id)
+      if (existing) {
+        existing.output = outcome.output
+        existing.isError = outcome.isError === true
+        existing.elapsedMs = started ? Date.now() - started.at : 0
+      } else {
+        toolTrace.push({
+          id: outcome.id,
+          name: started?.name || outcome.name || 'tool',
+          input: started?.input ?? null,
+          output: outcome.output,
+          isError: outcome.isError === true,
+          elapsedMs: started ? Date.now() - started.at : 0
+        })
+      }
+      safeSend({ type: 'tool', phase: 'result', ...outcome })
+    }
     const startedAt = Date.now()
     let result = await runDshStdio({
       dshCmd: upstream.dshRun.dshCmd,
@@ -1680,9 +1737,9 @@ async function handleAgentChat(req, res, request, context, root, libraries) {
         collected += piece
         safeSend({ type: 'delta', text: piece })
       },
-      onThinking: (piece) => safeSend({ type: 'thinking', text: piece }),
-      onToolCall: (call) => safeSend({ type: 'tool', phase: 'call', ...call }),
-      onToolResult: (outcome) => safeSend({ type: 'tool', phase: 'result', ...outcome }),
+      onThinking: onThinkingPiece,
+      onToolCall: onToolCallFrame,
+      onToolResult: onToolResultFrame,
       onUsage: (usage) => safeSend({ type: 'usage', ...usage })
     })
 
@@ -1693,6 +1750,9 @@ async function handleAgentChat(req, res, request, context, root, libraries) {
       const coldPrompt = composeDshPrompt(history.items, { systemPrompt })
       collected = ''
       sawText = false
+      thinkingBuf = ''
+      toolTrace.length = 0
+      toolStarted.clear()
       result = await runDshStdio({
         dshCmd: upstream.dshRun.dshCmd,
         profile: upstream.dshRun.profile,
@@ -1708,15 +1768,27 @@ async function handleAgentChat(req, res, request, context, root, libraries) {
           collected += piece
           safeSend({ type: 'delta', text: piece })
         },
-        onThinking: (piece) => safeSend({ type: 'thinking', text: piece }),
-        onToolCall: (call) => safeSend({ type: 'tool', phase: 'call', ...call }),
-        onToolResult: (outcome) => safeSend({ type: 'tool', phase: 'result', ...outcome }),
+        onThinking: onThinkingPiece,
+        onToolCall: onToolCallFrame,
+        onToolResult: onToolResultFrame,
         onUsage: (usage) => safeSend({ type: 'usage', ...usage })
       })
     }
 
     if (result.ok && result.text.trim()) {
       if (!ephemeral) {
+        // 先落过程再落答案：读回来时 process 行紧挨在 assistant 之前，
+        // 前端 threadHtml 靠这个相邻关系把过程挂到对应消息上。
+        if (thinkingBuf.trim() || toolTrace.length) {
+          await appendSession(sessionsDir, root, sessionId, [{
+            t: 'process',
+            id: newMessageId(),
+            at: new Date().toISOString(),
+            thinking: thinkingBuf,
+            tools: toolTrace,
+            elapsedMs: Date.now() - traceStart
+          }])
+        }
         await appendSession(sessionsDir, root, sessionId, [{
           t: 'msg', id: newMessageId(), role: 'assistant', content: result.text,
           at: new Date().toISOString(),
@@ -1746,6 +1818,17 @@ async function handleAgentChat(req, res, request, context, root, libraries) {
         await appendSession(sessionsDir, root, sessionId, [{
           t: 'msg', id: newMessageId(), role: 'assistant', content: collected,
           at: new Date().toISOString(), partial: true
+        }])
+      }
+      // 过程也要留：即使没出正文，「它想了什么、查了什么」也是有价值的记录
+      if (!ephemeral && (thinkingBuf.trim() || toolTrace.length)) {
+        await appendSession(sessionsDir, root, sessionId, [{
+          t: 'process',
+          id: newMessageId(),
+          at: new Date().toISOString(),
+          thinking: thinkingBuf,
+          tools: toolTrace,
+          elapsedMs: Date.now() - traceStart
         }])
       }
       safeSend({ type: 'error', error: { code: API_ERROR_CODES.AGENT_UPSTREAM_ERROR, message: result.message ?? 'DSH 无输出' } })

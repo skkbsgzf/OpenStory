@@ -127,6 +127,28 @@ input, textarea, select { font: inherit; color: inherit; }
 .bub .act-dot { display: inline-block; width: 5px; height: 5px; border-radius: 50%; background: var(--accent); margin-right: 6px; vertical-align: 1px; animation: actPulse 1.1s ease-in-out infinite; }
 @keyframes actPulse { 0%,100% { opacity: .3; transform: scale(.8); } 50% { opacity: 1; transform: scale(1.15); } }
 .bub .usage-note { font-size: 10px; color: var(--meta); margin-left: auto; font-variant-numeric: tabular-nums; }
+/* 过程折叠块（OS-42，结构参考 OpenDesign）：思考轨迹＋工具调用收在这里，正文只留答案 */
+.proc-block { margin: 0 0 8px; border: 1px solid var(--hair); border-radius: var(--radius); background: var(--bg); font-size: 12px; overflow: hidden; white-space: normal; }
+.proc-block > summary { display: flex; align-items: center; gap: 8px; padding: 6px 10px; cursor: pointer; list-style: none; color: var(--muted); user-select: none; margin: 0; }
+.proc-block > summary::-webkit-details-marker { display: none; }
+.proc-block > summary::marker { content: ''; }
+.proc-label { display: inline-flex; align-items: center; gap: 6px; font-weight: 500; }
+.proc-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--meta); }
+.proc-block.live .proc-dot { background: var(--accent); animation: actPulse 1.1s ease-in-out infinite; }
+.proc-block.live > summary { color: var(--ink-2); }
+.proc-meta { margin-left: auto; font-family: var(--mono); font-size: 11px; color: var(--meta); font-variant-numeric: tabular-nums; }
+.proc-chev { color: var(--meta); font-size: 12px; transition: transform .15s ease; transform: rotate(90deg); }
+.proc-block[open] > summary .proc-chev { transform: rotate(-90deg); }
+.proc-block:hover { border-color: var(--line); }
+.proc-body { padding: 2px 10px 8px; border-top: 1px dashed var(--hair); max-height: 190px; overflow-y: auto; white-space: normal; }
+.proc-think { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--muted); font-size: 11px; line-height: 1.75; padding: 6px 0; }
+.tool-row { display: flex; align-items: baseline; gap: 6px; padding: 3px 0; font-size: 11px; color: var(--muted); border-top: 1px dashed var(--hair); }
+.tool-row:first-of-type { border-top: 0; }
+.tool-verb { color: var(--ink-2); flex: 0 0 auto; }
+.tool-target { font-family: var(--mono); font-size: 10px; color: var(--meta); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tool-took { margin-left: auto; font-family: var(--mono); font-size: 10px; color: var(--meta); font-variant-numeric: tabular-nums; flex: 0 0 auto; }
+.tool-row.fail .tool-verb { color: var(--danger); }
+.tool-fail { color: var(--danger); font-size: 10px; flex: 0 0 auto; }
 .bub-foot { display: flex; gap: 8px; margin-top: 8px; align-items: center; }
 .bub-foot .mini { font-size: 11px; color: var(--muted); border: 1px solid var(--line); border-radius: var(--pill); padding: 2px 10px; }
 .bub-foot .mini:hover { border-color: var(--ink); color: var(--ink); }
