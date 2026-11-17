@@ -65,7 +65,7 @@ const state = {
   // 参考载体（OS-44）：索引 / 当前笔记 / 反链 / 筛选标签
   reference: { loaded: false, loading: false, notes: [], tags: [], tagNotes: {}, stats: null, error: '', activePath: '', activeTag: '', note: null, backlinks: { linked: [], unlinked: [] }, draft: '', view: 'note', q: '', focus: null, absorb: {}, flash: '', tagFilter: '', from: '' },
   // 左内容栏三模块（OS-44）：章节树 / 参考图谱 / 参考摘要
-  refCol: { graph: null, graphLoading: false, graphError: '', summary: '', summaryBusy: false, summaryError: '' },
+  refCol: { graph: null, graphLoading: false, graphError: '', summary: '', summaryBusy: false, summaryError: '', pick: null },
   settings: { userDir: '', section: 'plugins', suiteId: '', open: false, prevView: '', helpOpen: false },
   kbStatus: null,
   tabHidden: {},
