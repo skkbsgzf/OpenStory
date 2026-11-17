@@ -1761,6 +1761,10 @@ function updateComposerState() {
   if (!input || !send) return
   input.disabled = !state.current || agent.streaming
   send.disabled = !state.current || !agent.configured || agent.streaming
+  // 流式时发送键换成停止键（OS-51）：之前停止按钮没有任何显隐控制，红色 ■ 一直挂在那
+  const stopBtn = document.getElementById('agent-stop')
+  if (stopBtn) stopBtn.hidden = !agent.streaming
+  if (send) send.hidden = Boolean(agent.streaming)
   const polish = agent.pendingContext?.kind === 'polish'
   const modeChip = document.getElementById('agent-mode-chip')
   if (modeChip) {
