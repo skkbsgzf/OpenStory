@@ -56,7 +56,7 @@ const state = {
   repair: null,
   libDirs: [],
   dirWork: {},
-  write: { chapters: [], listLoading: false, mode: 'read', docPrefs: null, drawerOpen: false },
+  write: { chapters: [], listLoading: false, mode: 'read', docPrefs: null },
   sel: { text: '', blockIndex: -1, rect: null, busy: false, preview: null, para: -1 },
   analyze: { open: false, result: null, busy: false, dismissed: {}, activePara: -1, expandOthers: false, fact: null, factRoot: '', factTab: 'emotion' },
   deduce: { premise: '', variables: '', question: '', sessionId: '', streaming: false, reply: '', controller: null, error: '',
@@ -508,18 +508,11 @@ async function loadWriteChapters({ force = false } = {}) {
   refreshChapterRows()
 }
 
-/** 只重画左侧章节行（不动纸面/光标）。 */
+/** 只重画左侧章节行（不动纸面/光标，也不动新建输入框的输入内容）。 */
 function refreshChapterRows() {
-  if (state.view !== 'write') return
   const host = document.querySelector('.chapter-rows')
   if (!host) return
-  const rows = state.write.chapters.map((chapter) => `
-    <button class="ch-row${chapter.file === state.chapterFile ? ' on' : ''}" data-chapter-file="${esc(chapter.file)}" title="${esc(chapter.file)}">
-      <span class="no">${chapter.no !== null ? String(chapter.no).padStart(2, '0') : '—'}</span>
-      <span class="tt">${esc(chapter.title)}</span>
-      <span class="sz">${formatBytes(chapter.chars)}</span>
-    </button>`).join('')
-  host.innerHTML = rows || '<div class="count" style="padding:8px">还没有章节——右上输入标题新建第一章。</div>'
+  host.innerHTML = chapterRowsHtml(state.write.chapters || [])
 }
 
 
@@ -1314,11 +1307,10 @@ function renderAnalyzePanel() {
   if (!panel) return
   const open = state.analyze.open && state.chapterLoaded
   panel.classList.toggle("open", open)
-  document.querySelector('.doc-workspace')?.classList.toggle('with-analyze', open)
   document.querySelector('[data-action="analyze-toggle"]')?.classList.toggle('on', open)
   if (!open) return
   const name = state.chapterFile ? state.chapterFile.split("/").pop() : ""
-  panel.innerHTML = '<div class="analyze-head"><b>分析</b><span class="count">' + esc(name) + '</span><span class="sp"></span><button class="doc-icon" data-action="analyze-close" title="关闭">×</button></div>' + analyzePanelHtml()
+  panel.innerHTML = '<div class="analyze-head"><span class="rm-title">分析</span><span class="rm-badge">' + esc(name) + '</span><span class="sp"></span><button class="rm-x" data-action="analyze-close" title="关闭" aria-label="关闭">×</button></div>' + analyzePanelHtml()
   paintDocAnnotations()
   syncAnalyzeScroll({ force: true })
 }
@@ -1576,9 +1568,7 @@ function writeHtml() {
     return match ? match[1].trim() : ''
   })()
   const docTitle = mdHeading || currentChapter?.title || state.chapterFile?.split('/').pop() || '正文'
-  // 只有真载入了章节才开分析栏（未选章时右栏留着空壳没意义）
-  const analyzeOpen = state.analyze.open && state.chapterLoaded
-  return `<div class="doc-workspace doc-workspace-sticky${analyzeOpen ? ' with-analyze' : ''}">
+  return `<div class="doc-workspace doc-workspace-sticky">
     <header class="doc-head doc-head-immersive">
       <div class="docline">
         <span class="kick">${esc(state.current.name)}</span>
@@ -1590,7 +1580,7 @@ function writeHtml() {
         <span class="count">${state.chapterMetaAt ? `改于 ${esc(formatAt(state.chapterMetaAt))}` : ''}</span>
         <span class="sp"></span>
         <span class="doc-autosave" id="doc-autosave"></span>
-        <button class="doc-drawer-btn" data-action="toggle-chapter-drawer" title="章节列表（悬浮）" aria-label="章节列表">
+        <button class="doc-drawer-btn" data-action="refcol-toggle" title="参考资料" aria-label="参考资料">
           <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><rect x="2.5" y="2.5" width="11" height="11" rx="1.6" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M2.5 6h11M2.5 10h11" stroke="currentColor" stroke-width="1.4"/></svg>
         </button>
         <button class="doc-drawer-btn" data-action="analyze-toggle" title="分析本章" aria-label="分析本章">
@@ -1612,13 +1602,6 @@ function writeHtml() {
     </header>
     <div class="chapter-grid">
       ${refColHtml()}
-      <aside class="chapter-list${state.write.drawerOpen ? ' open' : ''}">
-        <div class="chapter-new">
-          <input id="chapter-new-title" placeholder="新章标题…" value="">
-          <button class="btn-ghost" data-action="chapter-create" title="自动编号新建">＋</button>
-        </div>
-        <div class="chapter-rows">${rows || '<div class="count" style="padding:8px">还没有章节——右上输入标题新建第一章。</div>'}</div>
-      </aside>
       <div class="doc-scroll" id="doc-scroll">
         <div class="chapter-editor-col">${editor}</div>
       </div>
@@ -3210,7 +3193,16 @@ function referencePageHtml() {
 /** 章节树：按目录结构分两级（卷/章）。 */
 function chapterTreeHtml() {
   const chapters = state.write.chapters || []
-  if (!chapters.length) return '<div class="empty">还没有章节。</div>'
+  const head = `<div class="chapter-new">
+      <input id="chapter-new-title" placeholder="新章标题…" value="">
+      <button class="btn-ghost" data-action="chapter-create" title="自动编号新建">＋</button>
+    </div>`
+  return `${head}<div class="chapter-rows">${chapterRowsHtml(chapters)}</div>`
+}
+
+/** 章节行（卷/章两级）。抽出来供「只重画行、不动输入框」复用。 */
+function chapterRowsHtml(chapters) {
+  if (!chapters.length) return '<div class="empty" style="padding:6px 4px">还没有章节——上面填标题新建第一章。</div>'
   // 按 file 的目录段分组：正文/卷一/001-x.md → 卷一
   const groups = new Map()
   for (const chapter of chapters) {
@@ -3219,16 +3211,15 @@ function chapterTreeHtml() {
     if (!groups.has(group)) groups.set(group, [])
     groups.get(group).push(chapter)
   }
-  const rows = [...groups.entries()].map(([group, list]) => {
-    const head = group ? `<div class="ct-vol">${esc(group)}</div>` : ''
+  return [...groups.entries()].map(([group, list]) => {
+    const groupHead = group ? `<div class="ct-vol">${esc(group)}</div>` : ''
     const body = list.map((chapter) => `
       <button class="ct-row${chapter.file === state.chapterFile ? ' on' : ''}" data-chapter-file="${esc(chapter.file)}" title="${esc(chapter.file)}">
         <span class="no">${chapter.no !== null ? String(chapter.no).padStart(2, '0') : '—'}</span>
         <span class="tt">${esc(chapter.title)}</span>
       </button>`).join('')
-    return `${head}${body}`
+    return `${groupHead}${body}`
   }).join('')
-  return rows
 }
 
 /** 参考图谱模块（canvas 力导向，由 graph.mjs 驱动）。 */
@@ -3279,6 +3270,9 @@ const REF_MODULES = Object.freeze([
  * 注意它是「小说/参考」这类题材页自己的内部左栏（二等公民的内部结构），
  * Agent 始终在最外层最左（一等公民），两者不抢位置——所以这里返回 HTML 字符串，
  * 由各题材页自己决定往哪插，而不是去改全局 .main 布局。
+ *
+ * OS-48：左栏是浮层附庸（绝对定位，不占正文流），正文纸面永远居中不被挤压；
+ * 三张卡片共用一套头（标题＋计数＋折叠箭头＋关闭 ×），与右栏分析卡同构。
  */
 function refColHtml() {
   if (!state.current) return ''
@@ -3289,10 +3283,18 @@ function refColHtml() {
   return `<aside class="ref-col" id="ref-col">${visible.map((mod) => {
     const open = openState[mod.id] !== false
     const badge = mod.badge()
-    return `<details class="ref-mod" data-ref-mod="${esc(mod.id)}"${open ? ' open' : ''}>
-      <summary>${esc(mod.label)}${badge ? `<span class="rm-badge">${esc(badge)}</span>` : ''}<span class="rm-chev">›</span></summary>
-      <div class="ref-mod-body">${open ? mod.render() : ''}</div>
-    </details>`
+    const body = open ? mod.render() : ''
+    return `<section class="ref-mod" data-ref-mod="${esc(mod.id)}" data-open="${open ? '1' : '0'}">
+      <div class="ref-mod-head">
+        <button class="rm-toggle" data-action="refmod-toggle" data-module-id="${esc(mod.id)}" aria-expanded="${open ? 'true' : 'false'}">
+          <span class="rm-title">${esc(mod.label)}</span>
+          ${badge ? `<span class="rm-badge">${esc(badge)}</span>` : ''}
+          <span class="rm-chev">›</span>
+        </button>
+        <button class="rm-x" data-action="module-close" data-module-id="${esc(mod.id)}" title="关闭「${esc(mod.label)}」（设置里可重新打开）" aria-label="关闭">×</button>
+      </div>
+      ${body ? `<div class="ref-mod-body">${body}</div>` : ''}
+    </section>`
   }).join('')}</aside>`
 }
 
@@ -3301,7 +3303,8 @@ function afterRefColMount() {
   const host = document.getElementById('ref-col')
   if (!host) return
   const openState = state.refCol.open ?? {}
-  if (host.querySelector('[data-ref-mod="graph"]') && openState.graph !== false) {
+  const graphCard = host.querySelector('[data-ref-mod="graph"]')
+  if (graphCard && openState.graph !== false && graphCard.dataset.open === '1') {
     requestAnimationFrame(() => mountRefGraph())
   }
 }
@@ -3336,7 +3339,29 @@ function setModuleHidden(id, hidden) {
   if (!state.moduleHidden) state.moduleHidden = {}
   state.moduleHidden[root] = [...set]
   try { localStorage.setItem(MODULE_HIDE_KEY(root), JSON.stringify([...set])) } catch { /* 隐私模式 */ }
+  // 在正文/参考页上就地重排左栏（不整页重绘：正文滚动位置不该因为开关卡片被重置）；
+  // 设置页等其它页面走常规 render，才能同步勾选态。
+  const host = document.getElementById('ref-col')
+  if (host && (state.view === 'write' || state.view === 'reference')) {
+    rerenderRefCol()
+    return
+  }
   render()
+}
+
+/** 就地重建左栏（保留正文滚动位置）。全关时左栏整体消失。 */
+function rerenderRefCol() {
+  const host = document.getElementById('ref-col')
+  if (!host) return
+  const scroller = docScroller()
+  const keepTop = scroller ? scroller.scrollTop : 0
+  graphCleanup?.()
+  graphCleanup = null
+  const html = refColHtml()
+  if (html) host.outerHTML = html
+  else host.remove()
+  if (scroller) scroller.scrollTop = keepTop
+  afterRefColMount()
 }
 
 /** 挂载参考图谱（OS-44）：canvas 就位后调 graph.mjs 的 mountGraph。 */
@@ -5247,11 +5272,6 @@ document.addEventListener('click', (event) => {
   }
   if (target.dataset.chapterFile) {
     loadChapter(target.dataset.chapterFile)
-    if (state.write.drawerOpen) {
-      state.write.drawerOpen = false
-      document.querySelector('.chapter-list')?.classList.remove('open')
-      document.querySelector('[data-action="toggle-chapter-drawer"]')?.classList.remove('on')
-    }
     return
   }
   if (target.dataset.runtimeId !== undefined) {
@@ -5554,11 +5574,41 @@ document.addEventListener('click', (event) => {
     setDocPref('autoGap', next)
     // 就地改文案：面板不重绘也能保持在打开状态
     target.textContent = next ? '已开启（点按关闭）' : '已关闭（点按开启）'
-  } else if (action === 'toggle-chapter-drawer') {
-    state.write.drawerOpen = !state.write.drawerOpen
-    const list = document.querySelector('.chapter-list')
-    if (list) list.classList.toggle('open', state.write.drawerOpen)
-    target.classList.toggle('on', state.write.drawerOpen)
+  } else if (action === 'refcol-toggle') {
+    // 左栏整体显隐（浮层，不影响正文）。全关时点这里重新打开全部。
+    const hidden = hiddenModules()
+    const visible = REF_MODULES.filter((mod) => !hidden.has(mod.id))
+    if (visible.length) {
+      for (const mod of visible) setModuleHidden(mod.id, true)
+    } else {
+      for (const mod of REF_MODULES) setModuleHidden(mod.id, false)
+    }
+    render()
+  } else if (action === 'refmod-toggle') {
+    // 就地折叠：不整页重绘（否则正文滚动位置会跳回顶部）
+    const id = target.dataset.moduleId
+    const openState = state.refCol.open ?? (state.refCol.open = {})
+    const next = openState[id] === false
+    openState[id] = next
+    const card = target.closest('.ref-mod')
+    if (card) {
+      const mod = REF_MODULES.find((item) => item.id === id)
+      card.dataset.open = next ? '1' : '0'
+      target.setAttribute('aria-expanded', next ? 'true' : 'false')
+      const oldBody = card.querySelector('.ref-mod-body')
+      if (next) {
+        const body = document.createElement('div')
+        body.className = 'ref-mod-body'
+        body.innerHTML = mod ? mod.render() : ''
+        card.append(body)
+        if (id === 'graph') requestAnimationFrame(() => mountRefGraph())
+      } else {
+        oldBody?.remove()
+        if (id === 'graph') state.refCol.graphMounted = false
+      }
+    }
+  } else if (action === 'module-close') {
+    setModuleHidden(target.dataset.moduleId, true)
   } else if (action === 'sel-polish') {
     startPolishRequest()
   } else if (action === 'sel-discuss') {
