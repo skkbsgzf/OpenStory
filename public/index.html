@@ -205,6 +205,19 @@ input, textarea, select { font: inherit; color: inherit; }
 .ref-detail-backlinks { border-top: 1px solid var(--hair); padding-top: 12px; }
 .ref-detail-backlinks h4 { margin: 0 0 8px; font-size: 13px; }
 .ref-detail-backlinks .bl-row { max-width: 720px; }
+/* 参考笔记实时编辑区（OS-53）：与正文同款逐块 contenteditable， serif 排版随正文偏好 */
+.ref-doc { max-width: 860px; }
+.ref-prose { font-family: var(--serif); font-size: var(--doc-font-size, 16px); line-height: var(--doc-line-height, 1.9); color: var(--ink-2); }
+.ref-prose p { margin: 0 0 var(--doc-para-gap, 1em); text-indent: var(--doc-indent, 0); }
+.ref-prose h2, .ref-prose h3 { text-indent: 0; }
+.ref-prose ul, .ref-prose ol { margin: 0 0 var(--doc-para-gap, 1em); padding-left: 1.6em; }
+.ref-prose blockquote { margin: 0 0 var(--doc-para-gap, 1em); padding-left: 14px; border-left: 2px solid var(--line); color: var(--muted); }
+.ref-prose table { border-collapse: collapse; font-size: .92em; margin: 0 0 var(--doc-para-gap, 1em); }
+.ref-prose th, .ref-prose td { border: 1px solid var(--hair); padding: 5px 10px; text-align: left; }
+.ref-prose th { background: var(--soft); }
+.ref-line { position: relative; display: block; }
+.ref-line .doc-block { margin-bottom: var(--doc-para-gap, 1em); }
+.ref-line:last-child .doc-block { margin-bottom: 0; }
 /* 迁入旧目录弹层（动稿需显式确认） */
 .absorb-list { display: flex; flex-direction: column; gap: 6px; margin: 4px 0 8px; }
 .absorb-row { display: flex; align-items: center; gap: 8px; font-size: 13px; padding: 6px 4px; cursor: pointer; }
