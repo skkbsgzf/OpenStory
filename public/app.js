@@ -1936,35 +1936,94 @@ function closeAgentSessions() {
   document.getElementById('agent-sess-btn')?.classList.remove('on')
 }
 
-/** 活动状态行（OS-39）：思考/调工具/等首字，让作者知道它没死。 */
-function activityLine(item, streamingThis) {
-  if (!streamingThis) return ''
-  const sec = item.waiting || 0
-  if (item.activity === 'thinking') return `<span class="act"><i class="act-dot"></i>正在思考… ${sec}s</span>`
-  if (item.activity === 'tool') return `<span class="act"><i class="act-dot"></i>正在调用工具… ${sec}s</span>`
-  if (item.activity === 'after-tool') return `<span class="act"><i class="act-dot"></i>工具已返回，继续处理… ${sec}s</span>`
-  if (!item.content && sec) return `<span class="act"><i class="act-dot"></i>模型正在跑… ${sec}s（DSH 首次要拉子进程，通常几秒到半分钟）</span>`
-  return ''
+/**
+ * 过程折叠块（OS-42）：思考轨迹＋工具调用收进一个可展开的 <details>，
+ * 跟 OpenDesign 的处理一致——过程默认收起（流式时自动展开），正文只留最终答案。
+ * 折叠头永远只一句：「思考过程 · 12.3s · 2 次工具」。
+ */
+function processBlockHtml(proc, { live = false } = {}) {
+  if (!proc) return ''
+  const thinking = text(proc.thinking).trim()
+  const tools = Array.isArray(proc.tools) ? proc.tools : []
+  if (!thinking && !tools.length) return ''
+  const toolCount = tools.length
+  const sec = proc.elapsedMs ? (proc.elapsedMs / 1000).toFixed(1) : ''
+  const metaParts = [sec ? `${sec}s` : '', toolCount ? `${toolCount} 次工具` : ''].filter(Boolean)
+  const label = live ? '思考中' : '思考过程'
+  const toolRows = tools.map((tool) => {
+    const verb = toolVerb(tool.name)
+    const target = toolTarget(tool)
+    const took = tool.elapsedMs ? `${(tool.elapsedMs / 1000).toFixed(1)}s` : ''
+    const cls = tool.isError ? 'tool-row fail' : 'tool-row'
+    return `<div class="${cls}">
+      <span class="tool-verb">${esc(verb)}</span>
+      ${target ? `<code class="tool-target">${esc(target)}</code>` : ''}
+      ${took ? `<span class="tool-took">${esc(took)}</span>` : ''}
+      ${tool.isError ? '<span class="tool-fail">失败</span>' : ''}
+    </div>`
+  }).join('')
+  return `<details class="proc-block${live ? ' live' : ''}"${live ? ' open' : ''}>
+    <summary>
+      <span class="proc-label"><i class="proc-dot"></i>${esc(label)}</span>
+      ${metaParts.length ? `<span class="proc-meta">${esc(metaParts.join(' · '))}</span>` : ''}
+      <span class="proc-chev">›</span>
+    </summary>
+    <div class="proc-body">
+      ${thinking ? `<div class="proc-think">${esc(thinking)}</div>` : ''}
+      ${toolRows}
+    </div>
+  </details>`
+}
+
+/** 工具名 → 中文动词（照 OD 的词表口径）。 */
+function toolVerb(name) {
+  const raw = text(name)
+  const lower = raw.toLowerCase()
+  if (lower === 'read' || lower === 'read_file') return '读取'
+  if (lower === 'write' || lower === 'write_file' || lower === 'create_file') return '新建'
+  if (lower === 'edit' || lower === 'str_replace_edit' || lower === 'str_replace_editor') return '改写'
+  if (lower === 'grep' || lower === 'search' || lower === 'web_search') return '搜索'
+  if (lower === 'glob' || lower === 'list_files') return '列出'
+  if (lower === 'bash' || lower === 'pwsh' || lower === 'shell') return '执行'
+  if (lower === 'subagent' || lower === 'task') return '子任务'
+  if (lower === 'web_fetch' || lower === 'fetch') return '抓取'
+  if (lower === 'todo_write') return '待办'
+  return raw || '工具'
+}
+
+/** 工具调用里的「对象」：优先文件路径/命令/查询词，取不到就不显示。 */
+function toolTarget(tool) {
+  const input = tool.input
+  if (!input || typeof input !== 'object') return ''
+  const candidate = input.file_path || input.path || input.file || input.command || input.pattern || input.query || input.prompt || ''
+  const raw = text(candidate).trim()
+  if (!raw) return ''
+  return raw.length > 48 ? `…${raw.slice(-46)}` : raw
 }
 
 function msgHtml(item, index) {
   if (item.role === 'user') return `<div class="bub user">${esc(item.content)}</div>`
   const streamingThis = agent.streaming && index === agent.items.length - 1
   const cursor = streamingThis ? '<span class="cursor"></span>' : ''
-  const activity = activityLine(item, streamingThis)
+  // 过程块：流式时展开（活），结束后收起成「思考过程 · 12.3s · 2 次工具」
+  const proc = item.process
+  const processBlock = proc ? processBlockHtml(proc, { live: streamingThis && !item.content }) : ''
+  // 状态行只在「还没有任何过程、也没出正文」时显示——一句话，不刷屏
+  const sec = item.waiting || 0
+  const idleLine = streamingThis && !item.content && !processBlock && sec
+    ? `<span class="act"><i class="act-dot"></i>${item.activity === 'thinking' ? '思考中' : '准备中'}… ${sec}s</span>`
+    : ''
   const truncated = item.truncated
     ? '<span class="partial-tag">回答被模型长度上限截断——可以让我接着写完</span>'
     : ''
   const partial = item.partial
     ? '<span class="partial-tag">已停止——这段是不完整回答，以服务器落档为准</span>'
     : ''
-  const usage = !streamingThis && item.usage
-    ? `<span class="usage-note">本轮 ${item.usage.input} 入 / ${item.usage.output} 出 tokens</span>`
-    : ''
+  // 用量不进消息（OD 也不在消息里摆 token 数；要看去设置/额度）
   const foot = streamingThis || !item.content
     ? ''
-    : `<div class="bub-foot"><button class="mini" data-action="card-from" data-msg-index="${index}">转为待确认卡</button>${usage}</div>`
-  return `<div class="bub assistant">${activity}${esc(item.content)}${cursor}${truncated}${partial}${foot}</div>`
+    : `<div class="bub-foot"><button class="mini" data-action="card-from" data-msg-index="${index}">转为待确认卡</button></div>`
+  return `<div class="bub assistant">${idleLine}${processBlock}${esc(item.content)}${cursor}${truncated}${partial}${foot}</div>`
 }
 
 function cardHtml(item) {
@@ -1996,7 +2055,24 @@ function threadHtml() {
   if (agent.items.length === 0) {
     return `<div class="agent-empty"><strong>问剧情、要一段正文、改设定…</strong>回答可以转成「待确认卡」，采纳后才真正写进正文文件。</div>`
   }
-  return agent.items.map((item, index) => item.kind === 'card' ? cardHtml(item) : msgHtml(item, index)).join('')
+  // 过程行（kind==='process'）挂到相邻的 assistant 消息上——它是那一轮的过程留痕，
+  // 不要再单独摆一块，否则对话流被切成两半。落档时 process 一定在 assistant 之前，
+  // 但老数据可能反序，所以两边都认。
+  const items = []
+  for (let i = 0; i < agent.items.length; i += 1) {
+    const item = agent.items[i]
+    if (item.kind === 'process') continue
+    if (item.kind === 'card') { items.push(cardHtml(item)); continue }
+    let merged = item
+    if (item.kind === 'msg' && item.role === 'assistant') {
+      const before = agent.items[i - 1]
+      const after = agent.items[i + 1]
+      const proc = before?.kind === 'process' ? before : (after?.kind === 'process' ? after : null)
+      if (proc) merged = { ...item, process: proc }
+    }
+    items.push(msgHtml(merged, i))
+  }
+  return items.join('')
 }
 
 function renderThread() {
@@ -2152,10 +2228,18 @@ async function sendAgentMessage() {
   renderAgent()
   // 等待计时（DSH 一 run 一进程，首字要好几秒）：气泡里显示耗时，避免作者以为卡死
   const startedAt = Date.now()
+  // 过程累积（OS-42）：思考轨迹与工具调用攒在消息的 process 上，
+  // 与正文分开——正文只留最终答案，过程收在可展开的折叠块里。
+  const pendingTools = new Map()
+  const ensureProcess = (last) => {
+    if (!last.process) last.process = { thinking: '', tools: [], startedAt }
+    return last.process
+  }
   const waitingTimer = setInterval(() => {
     const last = agent.items[agent.items.length - 1]
     if (last?.kind === 'msg' && last.role === 'assistant' && !last.content) {
       last.waiting = Math.round((Date.now() - startedAt) / 1000)
+      if (last.process) last.process.elapsedMs = Date.now() - startedAt
       renderThread()
     }
   }, 1000)
@@ -2179,9 +2263,12 @@ async function sendAgentMessage() {
           renderThread()
         }
       },
-      onThinking: () => {
+      onThinking: (piece) => {
         const last = agent.items[agent.items.length - 1]
         if (last?.kind === 'msg' && last.role === 'assistant') {
+          const proc = ensureProcess(last)
+          proc.thinking += piece
+          proc.elapsedMs = Date.now() - startedAt
           last.activity = 'thinking'
           last.waiting = Math.round((Date.now() - startedAt) / 1000)
           renderThread()
@@ -2189,11 +2276,26 @@ async function sendAgentMessage() {
       },
       onTool: (payload) => {
         const last = agent.items[agent.items.length - 1]
-        if (last?.kind === 'msg' && last.role === 'assistant') {
-          last.activity = payload.phase === 'result' ? 'after-tool' : 'tool'
-          last.waiting = Math.round((Date.now() - startedAt) / 1000)
-          renderThread()
+        if (last?.kind !== 'msg' || last.role !== 'assistant') return
+        const proc = ensureProcess(last)
+        if (payload.phase === 'call') {
+          pendingTools.set(payload.id || payload.name, { ...payload, at: Date.now() })
+        } else {
+          const started = pendingTools.get(payload.id || payload.name)
+          proc.tools.push({
+            id: payload.id,
+            name: started?.name || payload.name || 'tool',
+            input: started?.input ?? null,
+            output: payload.output,
+            isError: payload.isError === true,
+            elapsedMs: started ? Date.now() - started.at : 0
+          })
+          pendingTools.delete(payload.id || payload.name)
         }
+        proc.elapsedMs = Date.now() - startedAt
+        last.activity = payload.phase === 'result' ? 'after-tool' : 'tool'
+        last.waiting = Math.round((Date.now() - startedAt) / 1000)
+        renderThread()
       },
       onUsage: (usage) => {
         agent.lastUsage = usage

@@ -153,9 +153,28 @@ function sessionFilePath(dir, id) {
   return join(dir, `${id}.jsonl`)
 }
 
-/** 行 → 对外形状（meta 行不外露；msg/card 补 kind 字段）。 */
+/** 行 → 对外形状（meta 行不外露；msg/card/process 补 kind 字段）。 */
 function itemFromLine(line) {
   if (!line || typeof line !== 'object') return null
+  if (line.t === 'process') {
+    // 过程留痕（OS-42）：思考轨迹与工具调用，跟着所属 assistant 消息走。
+    // 单独一行存，是因为它是「过程」而不是「回答」——正文消息仍然只有最终答案。
+    return {
+      kind: 'process',
+      id: text(line.id),
+      at: text(line.at),
+      thinking: text(line.thinking).trim(),
+      tools: Array.isArray(line.tools) ? line.tools.map((tool) => ({
+        id: text(tool?.id),
+        name: text(tool?.name) || 'tool',
+        input: tool?.input ?? null,
+        output: text(tool?.output),
+        isError: tool?.isError === true,
+        elapsedMs: Number(tool?.elapsedMs) || 0
+      })).filter((tool) => tool.name) : [],
+      elapsedMs: Number(line.elapsedMs) || 0
+    }
+  }
   if (line.t === 'msg') {
     return {
       kind: 'msg',
