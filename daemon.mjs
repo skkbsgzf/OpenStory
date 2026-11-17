@@ -62,7 +62,7 @@ import {
   defaultUserStylesDir,
   loadStylePacks
 } from './stylePacks.mjs'
-import { isHexColor, wikiHtmlDocument } from './wikiHtml.mjs'
+import { isHexColor } from './wikiHtml.mjs'
 import {
   createChapter,
   deleteChapter,
@@ -847,12 +847,28 @@ async function handleApi(req, res, url, context) {
     if (!set.ok) return sendError(res, set.code ?? API_ERROR_CODES.INVALID_ENTRY, set.message)
     return sendJson(res, 200, { ok: true, enabled: set.enabled })
   }
+/**
+ * 推演书缺省解析（OS-54）：显式传了 bookId 就用它；没传＝拆解目录里 mtime 最新那份。
+ * 与 factCurveGet 的选书口径一致——剔除条目页签后前端不再持有 bookId。
+ */
+async function resolveFactBookId(root, wanted) {
+  const wantedText = text(wanted).trim()
+  if (wantedText) return wantedText
+  const dir = join(root, '拆解')
+  let files = []
+  try { files = (await readdir(dir)).filter((name) => name.endsWith('.json')) } catch { files = [] }
+  const pick = files
+    .map((name) => ({ name, mtime: statSync(join(dir, name)).mtimeMs }))
+    .sort((left, right) => right.mtime - left.mtime)[0]
+  return pick ? pick.name.replace(/\.json$/u, '') : 'default'
+}
+
   if (endpointId === 'deducePresent') {
     const authorized = authorizeRoot(allowlist, request.root)
     if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
     const result = await deducePresent({
       root: authorized.root,
-      bookId: text(request.bookId || 'default'),
+      bookId: await resolveFactBookId(authorized.root, request.bookId),
       pov: text(request.pov),
       seed: Number.isSafeInteger(request.seed) ? request.seed : null,
       reset: request.reset === true
@@ -866,7 +882,7 @@ async function handleApi(req, res, url, context) {
     if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
     const result = await deduceSettle({
       root: authorized.root,
-      bookId: text(request.bookId || 'default'),
+      bookId: await resolveFactBookId(authorized.root, request.bookId),
       candidateId: text(request.candidateId),
       action: text(request.action || 'choose'),
       note: text(request.note)
@@ -1126,31 +1142,6 @@ async function handleApi(req, res, url, context) {
   const root = authorized.root
   const store = createFactFileStore({ root })
 
-  if (endpointId === 'entries') {
-    const result = store.list({
-      layer: request.layer,
-      offset: request.offset,
-      limit: request.limit
-    })
-    if (!result.ok) {
-      return sendError(res, mapReadErrorCode(result.error?.code), text(result.error?.message || '条目清单读取失败'), result.error?.details)
-    }
-    return sendJson(res, 200, {
-      ok: true,
-      entries: result.entries,
-      total: result.total,
-      warnings: [...loaded.warnings, ...(result.warnings ?? [])]
-    })
-  }
-
-  if (endpointId === 'entry') {
-    const result = store.get({ id: request.id })
-    if (!result.ok) {
-      return sendError(res, mapReadErrorCode(result.error?.code), text(result.error?.message || '条目读取失败'), result.error?.details)
-    }
-    return sendJson(res, 200, { ok: true, entry: result.entry, revision: result.revision })
-  }
-
   if (endpointId === 'chapterGet') {
     const resolved = resolveInsideRoot(root, request.file)
     if (!resolved.ok) return sendError(res, resolved.code, resolved.message, resolved.details)
@@ -1290,53 +1281,10 @@ async function handleApi(req, res, url, context) {
     return handleAgentCardReject(res, request, context, root)
   }
 
-  if (endpointId === 'wiki') {
-    const result = store.wikiGet({ bookId: request.bookId })
-    if (!result.ok) {
-      return sendError(res, mapReadErrorCode(result.error?.code), text(result.error?.message || 'wiki 读取失败'), result.error?.details)
-    }
-    return sendJson(res, 200, { ok: true, wiki: result.wiki, derivedFrom: result.derivedFrom })
-  }
-
-  if (endpointId === 'wikiHtmlGet') {
-    const result = store.wikiGet({ bookId: request.bookId })
-    if (!result.ok) {
-      return sendError(res, mapReadErrorCode(result.error?.code), text(result.error?.message || 'wiki 读取失败'), result.error?.details)
-    }
-    for (const key of ['accent', 'bg', 'ink']) {
-      if (isMissingColor(request[key])) {
-        return sendError(res, API_ERROR_CODES.INVALID_ENTRY, `${key} 只收 #rgb/#rrggbb 十六进制色`, { [key]: request[key] })
-      }
-    }
-    const html = wikiHtmlDocument(result.wiki, { accent: request.accent, bg: request.bg, ink: request.ink })
-    res.writeHead(200, {
-      'content-type': 'text/html; charset=utf-8',
-      'cache-control': 'no-store',
-      'x-content-type-options': 'nosniff',
-      'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'"
-    })
-    return res.end(html)
-  }
-
-  if (endpointId === 'wikiDerive') {
-    const result = await store.wikiDerive({ bookId: request.bookId, operationId: request.operationId })
-    if (!result.ok) {
-      const code = mapWriteErrorCode(result.error?.code)
-      return sendError(res, code, text(result.error?.message || 'wiki 派生失败'), result.error?.details)
-    }
-    return sendJson(res, 200, {
-      ok: true,
-      wiki: result.wiki,
-      derivedFrom: result.derivedFrom,
-      revision: result.revision,
-      duplicate: result.duplicate === true
-    })
-  }
-
   return sendError(res, API_ERROR_CODES.NOT_FOUND, `端点未实现：${endpointId}`)
 }
 
-const ENDPOINT_HAS_QUERY = new Set(['entries', 'entry', 'chapterGet', 'wiki', 'agentSessions', 'agentSessionGet', 'agentSessionDelete', 'wikiHtmlGet', 'libraryDiagnose', 'filesGet', 'chaptersGet', 'chapterDelete', 'artifactsGet', 'suiteStateDataGet', 'briefGet', 'skillsGet', 'skillGet', 'enrichStatus', 'enrichGraph', 'kbStatusGet', 'agentDshModelsGet', 'factCurveGet', 'referenceGet', 'referenceGraphGet', 'referenceNoteGet'])
+const ENDPOINT_HAS_QUERY = new Set(['chapterGet', 'agentSessions', 'agentSessionGet', 'agentSessionDelete', 'libraryDiagnose', 'filesGet', 'chaptersGet', 'chapterDelete', 'artifactsGet', 'suiteStateDataGet', 'briefGet', 'skillsGet', 'skillGet', 'enrichStatus', 'enrichGraph', 'kbStatusGet', 'agentDshModelsGet', 'factCurveGet', 'referenceGet', 'referenceGraphGet', 'referenceNoteGet'])
 
 /** 套件资产 MIME（page 模式自带页同源装载）。 */
 const SUITE_ASSET_MIME = Object.freeze({
