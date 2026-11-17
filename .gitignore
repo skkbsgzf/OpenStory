@@ -1,4 +1,26 @@
+# ── 依赖 ──
 node_modules/
+
+# ── 运行产物（daemon/测试自产，不入版本控制）──
 *.log
 .cache/
-node_modules/@xenova/transformers/node_modules/onnxruntime-node/
+tmp/
+*.tmp
+test/fixtures/os-e2e/
+test/fixtures/os-e2e-prefs.json
+test/fixtures/os-e2e-agent-config.json
+
+# 库内运行数据（本仓不含任何库；以下防误放）
+.openstory/
+.history/
+.pinax/
+
+# ── 本机环境 ──
+.env
+.env.*
+!.env.example
+
+# ── 系统杂项 ──
+.DS_Store
+Thumbs.db
+desktop.ini
