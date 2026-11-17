@@ -58,6 +58,16 @@ async function saveState(root, bookId, state) {
  * 呈现一拍：开局（或续用已有会话）→ 局面卡＋候选。
  * 返回 {ok, round, sceneCard, candidates, tension, fronts, budget} 或 {ok:false, code, message}
  */
+/** 缺省主视角：character 层里出场最多者；没有 character 条目返回 null（如实报 POV_NOT_FOUND）。 */
+function defaultPov(entries) {
+  const chars = (Array.isArray(entries) ? entries : [])
+    .filter((entry) => text(entry?.layer).trim().toLowerCase() === 'character')
+    .map((entry) => ({ name: text(entry?.name).trim(), appearances: Number(entry?.appearances) || 0 }))
+    .filter((item) => item.name)
+  chars.sort((left, right) => right.appearances - left.appearances)
+  return chars[0]?.name ?? null
+}
+
 export async function deducePresent({ root, bookId = 'default', pov = '', seed = null, reset = false } = {}) {
   const loaded = loadEntries(root)
   if (!loaded.ok) return { ok: false, code: 'INVALID_ENTRY', message: loaded.message }
@@ -69,7 +79,9 @@ export async function deducePresent({ root, bookId = 'default', pov = '', seed =
   if (!state) {
     let opened
     try {
-      opened = openDeduceSession({ entries, pov: pov || null, runId: `os-${Date.now().toString(36)}` })
+      // POV 缺省（OS-54）：没填就取出场最多的角色——条目页签剔除后角色名单从 present
+      // 响应的 characters 来，第一次点「呈现」就能直接开局
+      opened = openDeduceSession({ entries, pov: pov || (state ? state.pov : null) || defaultPov(entries), runId: `os-${Date.now().toString(36)}` })
     } catch (error) {
       // 引擎的前置校验（如 WORLD_EMPTY）如实透传，不伪造开局
       return { ok: false, code: text(error?.code || 'INVALID_ENTRY'), message: text(error?.message || error) }
