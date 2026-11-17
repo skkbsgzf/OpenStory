@@ -1395,19 +1395,26 @@ async function resolveDshResume({ sessionsDir, root, session, ephemeral, model }
  *   canReadFiles=false（Pi/纯 HTTP）：作者手动贴上下文
  *   canReadFiles=true （DSH 原生）：可以自己读，但改正文必须走待确认卡
  */
-async function systemPromptFor(root, libraries, genresDirs, skillsDirs, { canReadFiles = false } = {}) {
+async function systemPromptFor(root, libraries, genresDirs, skillsDirs, { canReadFiles = false, chineseReasoning = false } = {}) {
   const key = rootKey(root)
   const record = (Array.isArray(libraries) ? libraries : []).find((library) => rootKey(library.path) === key)
   const name = record?.name || basename(root) || '未命名库'
+  // 生效清单（OS-43）：这轮提示词里到底塞了哪些东西，回报给界面做标注
+  const applied = { canReadFiles, chineseReasoning, craftSkills: [], genre: '', brief: false, kb: false }
   const lines = [
     `你是 OpenStory 工作台的写作助手，正在协助作者创作《${name}》（本机磁盘上的一个 Pinax 库）。`,
     '- 用中文回复。',
     '- 作者可以把你的回复转成「待确认卡」并采纳写进正文文件：给出正文片段时，请给完整、可直接粘贴的文本，不要只给修改说明。',
+    '- 给出可采纳的正文时，请用代码块（```）把正文整段包起来，并在正文之外说明它要写进哪个文件（例如「正文/003-倒带.md」）。这样工作台才知道这段可以采纳。',
     canReadFiles
       ? '- 你可以读这个库里的文件（工作目录就是库根）。需要原文、目录结构时直接读，不要凭空猜测内容。'
       : '- 你读不到库里的文件；作者会把需要的上下文粘贴给你，不要假装读过文件。',
     ...(canReadFiles
       ? ['- 但改正文必须走「待确认卡」流程：不要直接用写文件工具改 .md 正文，把改好的片段写在回复里，让作者确认。']
+      : []),
+    // 中文推理（OS-43，默认开）：中文创作的中文讨论用中文思考更贴题，代价是可能损失部分推理性能
+    ...(chineseReasoning
+      ? ['- 请用中文思考（推理过程也用中文）。对中文写作讨论更贴切；如果遇到需要精确形式推理的环节，可以内部切换思维语言再切回。']
       : [])
   ]
   // OS-19：项目简报（体裁/篇幅/分章）是一等约束——注入体裁策略段
@@ -1423,14 +1430,25 @@ async function systemPromptFor(root, libraries, genresDirs, skillsDirs, { canRea
       const matched = skillsForGenre(loadedSkills.skills, loaded.brief.genre)
       const craft = craftInstructionBlock(matched)
       if (craft) lines.push('', craft)
+      // 生效清单（OS-43）：把「这轮用到了哪些技能」回报给界面，让作者知道 AI 手里有什么
+      applied.craftSkills = matched.map((skill) => ({
+        name: text(skill.name),
+        description: text(skill.description),
+        category: text(skill.category)
+      })).filter((skill) => skill.name)
+      applied.genre = text(genre?.name || loaded.brief.genre)
+      applied.brief = true
       // KB-ARCH P0：同题材先例检索（案例库＋套路库）——kb-config 缺失或 KB 不可用时静默降级，不阻塞对话
       const kbSection = await precedentPromptSectionForGenre(genre?.name ?? loaded.brief.genre, {
         configPath: join(process.env.LOCALAPPDATA || process.env.APPDATA || '', 'PinaxNext', 'openstory', 'kb-config.json')
       })
-      if (kbSection) lines.push('', kbSection)
+      if (kbSection) {
+        lines.push('', kbSection)
+        applied.kb = true
+      }
     }
   } catch { /* 简报读不到不影响对话 */ }
-  return lines.join('\n')
+  return { prompt: lines.join('\n'), applied }
 }
 
 function sseFrame(res, payload) {
@@ -1628,7 +1646,8 @@ async function handleAgentChat(req, res, request, context, root, libraries) {
     }])
     history = await readSession(sessionsDir, root, sessionId)
   }
-  const upstreamMessages = buildUpstreamMessages(await systemPromptFor(root, libraries, context.genresDirs, context.skillsDirs), history.items)
+  const promptBundle = await systemPromptFor(root, libraries, context.genresDirs, context.skillsDirs)
+  const upstreamMessages = buildUpstreamMessages(promptBundle.prompt, history.items)
   const model = text(request.model || upstream.model).trim()
 
   const headers = { 'content-type': 'application/json', accept: 'text/event-stream', ...upstream.headers }
@@ -1652,16 +1671,21 @@ async function handleAgentChat(req, res, request, context, root, libraries) {
       connection: 'keep-alive',
       'x-accel-buffering': 'no'
     })
-    sseFrame(res, { type: 'start', sessionId, runtime: upstream.runtimeName })
+    // DSH 带完整工具链 + cwd=库根：告诉它「你能读，但改正文要走卡」，别再说假话
+    const promptBundle = await systemPromptFor(root, libraries, context.genresDirs, context.skillsDirs, {
+      canReadFiles: true,
+      chineseReasoning: config.chineseReasoning !== false
+    })
+    const systemPrompt = promptBundle.prompt
+    const applied = promptBundle.applied
+    // start 帧带上「这轮生效了什么」（运行时/技能/体裁/KB），界面据此标注
+    sseFrame(res, { type: 'start', sessionId, runtime: upstream.runtimeName, applied })
     if (upstream.notice) sseFrame(res, { type: 'notice', text: upstream.notice })
-
+    // 断连守卫：连接已关就别再往 res 里写（否则 ERR_STREAM_WRITE_AFTER_END）
     const safeSend = (frame) => {
       if (clientGone || res.writableEnded) return
       try { sseFrame(res, frame) } catch { /* 连接已断，静默 */ }
     }
-
-    // DSH 带完整工具链 + cwd=库根：告诉它「你能读，但改正文要走卡」，别再说假话
-    const systemPrompt = await systemPromptFor(root, libraries, context.genresDirs, context.skillsDirs, { canReadFiles: true })
     const dshModel = text(upstream.model).trim()
     // resume 前置：模型/cwd 变了就作废（DSH 侧会话与运行环境绑定）
     const stitched = await resolveDshResume({ sessionsDir, root, session: loaded?.session, ephemeral, model: dshModel })
@@ -1792,9 +1816,10 @@ async function handleAgentChat(req, res, request, context, root, libraries) {
         await appendSession(sessionsDir, root, sessionId, [{
           t: 'msg', id: newMessageId(), role: 'assistant', content: result.text,
           at: new Date().toISOString(),
-          // 用量与截断标记一起落档：刷新后 reloadThread 才不会把它冲掉
+          // 用量/截断/生效清单一起落档：刷新后 reloadThread 才不会把这些冲掉
           ...(result.usage ? { usage: result.usage } : {}),
-          ...(result.truncated ? { truncated: true } : {})
+          ...(result.truncated ? { truncated: true } : {}),
+          ...(applied ? { applied } : {})
         }])
         // 记住 DSH 会话指纹：下一轮靠它续上
         if (result.sessionId) {

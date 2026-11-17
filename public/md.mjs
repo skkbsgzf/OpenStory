@@ -26,6 +26,12 @@ export function renderInline(text) {
     return `\u0000${codes.length - 1}\u0000`
   })
   work = escapeHtml(work)
+  // 图片 ![alt](src)：只放行站内相对路径 / http(s) / data:image，其余退化成 alt 文本
+  work = work.replace(/!\[([^\]]*)\]\(([^)\s]+)\)/gu, (match, alt, src) => {
+    const url = src.trim()
+    if (!/^(?:https?:\/\/|\/(?!\/)|\.\/|data:image\/)/iu.test(url)) return alt || match
+    return `<img src="${url}" alt="${alt}" loading="lazy" referrerpolicy="no-referrer">`
+  })
   // 链接 [text](url)：url 只允许 http(s)/相对/锚点
   work = work.replace(/\[([^\]]+)\]\(([^)\s]+)\)/gu, (match, label, href) => {
     const url = href.trim()
@@ -38,6 +44,55 @@ export function renderInline(text) {
   // 还原行内码
   work = work.replace(/\u0000(\d+)\u0000/gu, (_, index) => codes[Number(index)] ?? '')
   return work
+}
+
+/**
+ * 表格判定：本行含 | 且下一行是分隔行（--- / :--- / ---: / :---:，每格都对得上）。
+ * 照 OpenDesign 的聊天渲染器口径——只认 GFM 管道表，不做复杂方言。
+ * 返回 { header: string[], align: ('left'|'center'|'right')[], rows: string[][] } 或 null。
+ */
+function parseTable(lines, startIndex) {
+  const headerLine = lines[startIndex]
+  const dividerLine = lines[startIndex + 1]
+  if (!headerLine || !dividerLine) return null
+  if (!headerLine.includes('|')) return null
+  if (!/^\s*\|?[\s:-]*-[\s:|-]*\|?\s*$/u.test(dividerLine)) return null
+  const splitRow = (line) => line.trim().replace(/^\|/u, '').replace(/\|$/u, '').split('|').map((cell) => cell.trim())
+  const header = splitRow(headerLine)
+  const dividers = splitRow(dividerLine)
+  if (header.length !== dividers.length) return null
+  if (!dividers.every((cell) => /^:?-+:?$/u.test(cell))) return null
+  const align = dividers.map((cell) => {
+    const left = cell.startsWith(':')
+    const right = cell.endsWith(':')
+    if (left && right) return 'center'
+    if (right) return 'right'
+    return 'left'
+  })
+  const rows = []
+  let index = startIndex + 2
+  while (index < lines.length) {
+    const line = lines[index]
+    if (!line.trim() || !line.includes('|')) break
+    const cells = splitRow(line)
+    // 补齐/裁剪到表头列数，避免坏行把表格撑坏
+    while (cells.length < header.length) cells.push('')
+    rows.push(cells.slice(0, header.length))
+    index += 1
+  }
+  return { header, align, rows, nextIndex: index }
+}
+
+/** 表格 → HTML（外层 div 负责横向滚动，表格本身不缩）。 */
+function renderTable(table) {
+  const styleOf = (column) => (table.align[column] && table.align[column] !== 'left' ? ` style="text-align:${table.align[column]}"` : '')
+  const head = table.header
+    .map((cell, column) => `<th${styleOf(column)}>${renderInline(cell)}</th>`)
+    .join('')
+  const body = table.rows
+    .map((row) => `<tr>${row.map((cell, column) => `<td${styleOf(column)}>${renderInline(cell)}</td>`).join('')}</tr>`)
+    .join('')
+  return `<div class="md-table-wrap"><table class="md-table"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`
 }
 
 /**
@@ -79,7 +134,8 @@ export function renderMarkdown(source) {
     flushQuote()
   }
 
-  for (const line of lines) {
+  for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+    const line = lines[lineIndex]
     // 围栏代码
     const fence = line.match(/^\s*```([\w-]*)\s*$/u)
     if (fence) {
@@ -104,6 +160,16 @@ export function renderMarkdown(source) {
     if (!line.trim()) {
       flushAll()
       continue
+    }
+    // 表格（GFM 管道表）：必须在段落收集之前判定，否则会被当一个普通段落吃掉
+    if (line.includes('|')) {
+      const table = parseTable(lines, lineIndex)
+      if (table) {
+        flushAll()
+        out.push(renderTable(table))
+        lineIndex = table.nextIndex - 1
+        continue
+      }
     }
     // 分割线
     if (/^\s*(?:---|\*\*\*|___)\s*$/u.test(line)) {

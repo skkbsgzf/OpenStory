@@ -1733,6 +1733,7 @@ async function bootAgentConfig() {
     agent.apiKeyMasked = text(payload.apiKeyMasked)
     agent.runtime = text(payload.runtime)
     agent.reasoningEffort = text(payload.reasoningEffort)
+    agent.chineseReasoning = payload.chineseReasoning !== false
     agent.configPath = text(payload.configPath)
   } catch { /* 读不到就按未配置摆，不拦工作台 */ }
   updateAgentChip()
@@ -1950,18 +1951,7 @@ function processBlockHtml(proc, { live = false } = {}) {
   const sec = proc.elapsedMs ? (proc.elapsedMs / 1000).toFixed(1) : ''
   const metaParts = [sec ? `${sec}s` : '', toolCount ? `${toolCount} 次工具` : ''].filter(Boolean)
   const label = live ? '思考中' : '思考过程'
-  const toolRows = tools.map((tool) => {
-    const verb = toolVerb(tool.name)
-    const target = toolTarget(tool)
-    const took = tool.elapsedMs ? `${(tool.elapsedMs / 1000).toFixed(1)}s` : ''
-    const cls = tool.isError ? 'tool-row fail' : 'tool-row'
-    return `<div class="${cls}">
-      <span class="tool-verb">${esc(verb)}</span>
-      ${target ? `<code class="tool-target">${esc(target)}</code>` : ''}
-      ${took ? `<span class="tool-took">${esc(took)}</span>` : ''}
-      ${tool.isError ? '<span class="tool-fail">失败</span>' : ''}
-    </div>`
-  }).join('')
+  const toolRows = tools.map(toolRowHtml).join('')
   return `<details class="proc-block${live ? ' live' : ''}"${live ? ' open' : ''}>
     <summary>
       <span class="proc-label"><i class="proc-dot"></i>${esc(label)}</span>
@@ -1973,6 +1963,55 @@ function processBlockHtml(proc, { live = false } = {}) {
       ${toolRows}
     </div>
   </details>`
+}
+
+/** 工具名的图标与说明（OS-43）：让作者一眼看出「它在干什么」。 */
+const TOOL_META = Object.freeze({
+  read: { icon: '👁', note: '读文件' },
+  read_file: { icon: '👁', note: '读文件' },
+  write: { icon: '✎', note: '写文件' },
+  write_file: { icon: '✎', note: '写文件' },
+  create_file: { icon: '✎', note: '新建文件' },
+  edit: { icon: '✐', note: '改文件' },
+  str_replace_edit: { icon: '✐', note: '改文件' },
+  str_replace_editor: { icon: '✐', note: '改文件' },
+  glob: { icon: '🗂', note: '列目录' },
+  list_files: { icon: '🗂', note: '列目录' },
+  grep: { icon: '🔍', note: '搜内容' },
+  search: { icon: '🔍', note: '搜内容' },
+  web_search: { icon: '🌐', note: '联网搜索' },
+  web_fetch: { icon: '🌐', note: '抓网页' },
+  fetch: { icon: '🌐', note: '抓网页' },
+  bash: { icon: '▶', note: '跑命令' },
+  pwsh: { icon: '▶', note: '跑命令' },
+  shell: { icon: '▶', note: '跑命令' },
+  subagent: { icon: '⑂', note: '派子任务' },
+  task: { icon: '⑂', note: '派子任务' },
+  todo_write: { icon: '☑', note: '列待办' }
+})
+
+function toolMeta(name) {
+  const raw = text(name)
+  return TOOL_META[raw.toLowerCase()] || { icon: '●', note: raw || '工具' }
+}
+
+/**
+ * 工具行（OS-43）：图标＋动词＋对象＋耗时，让「它调了什么工具」有可辨识的形状。
+ * 之前只有一行灰字，看不出读/写/搜/跑的区别。
+ */
+function toolRowHtml(tool) {
+  const meta = toolMeta(tool.name)
+  const verb = toolVerb(tool.name)
+  const target = toolTarget(tool)
+  const took = tool.elapsedMs ? `${(tool.elapsedMs / 1000).toFixed(1)}s` : ''
+  const cls = tool.isError ? 'tool-row fail' : 'tool-row'
+  return `<div class="${cls}">
+    <span class="tool-icon" title="${esc(meta.note)}">${esc(meta.icon)}</span>
+    <span class="tool-verb">${esc(verb)}</span>
+    ${target ? `<code class="tool-target">${esc(target)}</code>` : ''}
+    ${took ? `<span class="tool-took">${esc(took)}</span>` : ''}
+    ${tool.isError ? '<span class="tool-fail">失败</span>' : ''}
+  </div>`
 }
 
 /** 工具名 → 中文动词（照 OD 的词表口径）。 */
@@ -2001,6 +2040,119 @@ function toolTarget(tool) {
   return raw.length > 48 ? `…${raw.slice(-46)}` : raw
 }
 
+/**
+ * 正文产出框（OS-43）：作者要的「md 框封装 + 自带复制」。
+ * 模型按系统提示用 ``` 包起可采纳的正文，但这不该渲染成灰色代码块（那是给代码看的），
+ * 而应该是一个「这是正文」的容器：正常小说排版 + 右上角复制。
+ * 判定同 proposedFiles：有文件路径 + 有够长的代码块。
+ */
+function proseOutputHtml(raw, files) {
+  if (!files.length) return null
+  const match = raw.match(/```[^\n]*\n([\s\S]*?)```/u)
+  if (!match) return null
+  const body = match[1].trim()
+  if (body.replace(/\s/gu, '').length < 80) return null
+  // 正文按小说排版渲染（不转义换行，保留段落）
+  const paragraphs = body.split(/\n{2,}/u).map((block) => block.trim()).filter(Boolean)
+  const rendered = paragraphs.length > 1
+    ? paragraphs.map((block) => `<p>${esc(block)}</p>`).join('')
+    : `<p>${esc(body)}</p>`
+  return `<div class="prose-out">
+    <div class="prose-out-head">
+      <span class="po-label">正文</span>
+      <code class="po-file">${esc(files[0])}</code>
+      <button class="po-copy" data-action="copy-text" data-copy-target="po-${esc(files[0].replace(/[^\w]/gu, '_'))}" title="复制这段正文">复制</button>
+    </div>
+    <div class="prose-out-body" id="po-${esc(files[0].replace(/[^\w]/gu, '_'))}">${rendered}</div>
+  </div>`
+}
+
+/**
+ * 助手正文（OS-43）：无框沉浸式 + Markdown 渲染。
+ * 参考 OpenDesign：助手消息没有气泡底色/边框，正文直接落在页面背景上，只有用户消息是气泡。
+ * Markdown 走自研 md.mjs（已支持标题/引用/列表/表格/代码/hr/图片/任务列表）。
+ */
+function assistantBodyHtml(item, streamingThis, files = []) {
+  const raw = text(item.content)
+  if (!raw) return ''
+  // 流式时不渲染 markdown（半截表格/代码块会闪），出完再渲染；这也是 OD 的做法
+  if (streamingThis) return `<div class="prose-block streaming">${esc(raw)}</div>`
+  // 有正文产出：把那段代码块换成「正文框」
+  const output = proseOutputHtml(raw, files)
+  if (output) {
+    // 把原代码块从 markdown 里摘掉，避免渲染两遍
+    const rest = raw.replace(/```[^\n]*\n[\s\S]*?```/u, '')
+    const restHtml = (mdReady && mdModule && rest.trim()) ? mdModule.renderMarkdown(rest.trim()) : (rest.trim() ? `<p>${esc(rest.trim())}</p>` : '')
+    return `${restHtml ? `<div class="prose-block">${restHtml}</div>` : ''}${output}`
+  }
+  if (!mdReady || !mdModule) return `<div class="prose-block">${esc(raw)}</div>`
+  try {
+    return `<div class="prose-block">${mdModule.renderMarkdown(raw)}</div>`
+  } catch {
+    return `<div class="prose-block">${esc(raw)}</div>`
+  }
+}
+
+/**
+ * 这段回复里是否真的产出了「可采纳的正文」。
+ * 只有「有东西可落」时才给采纳入口——每条都摆一个按钮是错的：
+ *  - 一句「你好」没有文件可写
+ *  - 一段「目录下有这些文件」只是提及
+ *  - 一段「统计方法是……」只是说明
+ * 判定（照 Pinax/DW 口径，宁可少给也不误给）：
+ *    ① 明确点名了正文文件路径（正文/xxx.md 或 NNN-标题.md）
+ *    ② 且回复里有**被明确界定为正文的整段文字**——下面两种形态任选：
+ *       a) 代码块（```…```）：最常见，作者可以直接整块复制
+ *       b) 引用块（> …）连续 ≥3 行：也是一种「这段是给你抄的」的写法
+ *    光有「长段落」不够：统计说明、目录清单也长，但那不是正文。
+ */
+function proposedFiles(item) {
+  const raw = text(item.content)
+  if (!raw) return []
+  const files = new Set()
+  for (const match of raw.matchAll(/(?:正文[\\/])?([0-9]{3}[-_—][^\s`'"）)]+\.md)/gu)) {
+    files.add(`正文/${match[1]}`)
+  }
+  for (const match of raw.matchAll(/(正文[\\/][^\s`'"）)]+\.md)/gu)) {
+    files.add(match[1].replaceAll('\\', '/'))
+  }
+  if (!files.size) return []
+  // a) 代码块里至少有 80 字（去掉围栏行）
+  const fences = [...raw.matchAll(/```[^\n]*\n([\s\S]*?)```/gu)].map((match) => match[1].trim())
+  if (fences.some((block) => block.replace(/\s/gu, '').length >= 80)) return [...files]
+  // b) 连续引用块 ≥3 行且合计 ≥80 字
+  const quoteLines = raw.split('\n').filter((line) => /^\s*>\s?\S/u.test(line))
+  if (quoteLines.length >= 3 && quoteLines.join('').replace(/[\s>]/gu, '').length >= 80) return [...files]
+  return []
+}
+
+/**
+ * 生效标注（OS-43）：这轮用了什么。
+ * 作者要能看出「AI 手里有什么武器」——技能、体裁策略、知识库、中文推理，各自一个图标＋一句话。
+ */
+function appliedChipsHtml(applied) {
+  if (!applied) return ''
+  const chips = []
+  const skills = Array.isArray(applied.craftSkills) ? applied.craftSkills : []
+  if (skills.length) {
+    const names = skills.map((skill) => skill.name).join('、')
+    chips.push(`<span class="ap-chip" title="${esc(skills.map((skill) => `${skill.name}：${skill.description}`).join('\n'))}"><i>✦</i>技法 ${skills.length} 项<span class="ap-more">${esc(names.slice(0, 40))}${names.length > 40 ? '…' : ''}</span></span>`)
+  }
+  if (applied.brief) {
+    chips.push(`<span class="ap-chip" title="项目简报里的体裁/篇幅/分章约束已注入提示词"><i>▤</i>体裁${applied.genre ? ` · ${esc(applied.genre)}` : ''}</span>`)
+  }
+  if (applied.kb) {
+    chips.push(`<span class="ap-chip" title="同题材先例（案例库/套路库）已检索并注入"><i>◈</i>知识库先例</span>`)
+  }
+  if (applied.canReadFiles) {
+    chips.push(`<span class="ap-chip" title="可以读这个库里的文件，但改正文要走待确认"><i>⌸</i>可读库文件</span>`)
+  }
+  if (applied.chineseReasoning) {
+    chips.push(`<span class="ap-chip" title="推理过程用中文（可在设置里关）"><i>文</i>中文推理</span>`)
+  }
+  return chips.length ? `<div class="ap-chips">${chips.join('')}</div>` : ''
+}
+
 function msgHtml(item, index) {
   if (item.role === 'user') return `<div class="bub user">${esc(item.content)}</div>`
   const streamingThis = agent.streaming && index === agent.items.length - 1
@@ -2019,29 +2171,44 @@ function msgHtml(item, index) {
   const partial = item.partial
     ? '<span class="partial-tag">已停止——这段是不完整回答，以服务器落档为准</span>'
     : ''
-  // 用量不进消息（OD 也不在消息里摆 token 数；要看去设置/额度）
-  const foot = streamingThis || !item.content
-    ? ''
-    : `<div class="bub-foot"><button class="mini" data-action="card-from" data-msg-index="${index}">转为待确认卡</button></div>`
-  return `<div class="bub assistant">${idleLine}${processBlock}${esc(item.content)}${cursor}${truncated}${partial}${foot}</div>`
+  const files = streamingThis ? [] : proposedFiles(item)
+  const body = assistantBodyHtml(item, streamingThis, files)
+  // 底部条：复制常驻；「采纳」只在真有产出时出现（OS-43，照 Pinax/DW 的口径）
+  const copyBtn = item.content
+    ? `<button class="msg-act" data-action="msg-copy" data-msg-index="${index}" title="复制这段回复">复制</button>`
+    : ''
+  const adoptBtn = files.length
+    ? `<button class="msg-act primary" data-action="card-from" data-msg-index="${index}" title="把这段写进 ${esc(files[0])}">采纳</button>`
+    : ''
+  const foot = (copyBtn || adoptBtn)
+    ? `<div class="msg-foot">${adoptBtn}${copyBtn}</div>`
+    : ''
+  const appliedChips = appliedChipsHtml(item.applied)
+  return `<div class="msg assistant">${idleLine}${processBlock}${body}${cursor}${truncated}${partial}${appliedChips}${foot}</div>`
 }
 
+/**
+ * 待确认卡（OS-43 对齐 Pinax/DW 口径）：
+ * 只有真动了文件才出现；按钮说「采纳 / 驳回」，不说「采纳写入 / 拒绝」。
+ * 采纳后原地变绿药丸「已采纳 · 写入 <文件>」，驳回变灰「已驳回」。
+ */
 function cardHtml(item) {
   const open = item.state === 'open'
   const snapshotNote = item.snapshot?.exists ? `创建时 ${item.snapshot.chars} 字` : '创建时是新文件'
   const ops = open
     ? `<div class="ops">
-        <button class="btn-primary" data-action="card-adopt" data-card-id="${esc(item.id)}">采纳写入</button>
-        <button class="btn-ghost" data-action="card-reject" data-card-id="${esc(item.id)}">拒绝</button>
+        <button class="btn-primary" data-action="card-adopt" data-card-id="${esc(item.id)}">采纳</button>
+        <button class="btn-ghost" data-action="card-reject" data-card-id="${esc(item.id)}">驳回</button>
         <span class="count">采纳＝写「${esc(item.file)}」· ${esc(snapshotNote)}</span>
       </div>`
     : `<div class="ops">
-        <span class="state-chip${item.state === 'adopted' ? ' ok' : ' dead'}">${item.state === 'adopted' ? '已写入正文' : '已拒绝'}</span>
+        <span class="state-chip${item.state === 'adopted' ? ' ok' : ' dead'}">${item.state === 'adopted' ? '已采纳' : '已驳回'}</span>
+        ${item.state === 'adopted' ? `<span class="count">写入「${esc(item.file)}」</span>` : ''}
         ${item.backup ? `<span class="count">上一版备份：${esc(item.backup)}</span>` : ''}
       </div>`
   const revError = agent.cardError?.cardId === item.id ? `<div class="rev-error">${esc(agent.cardError.message)}</div>` : ''
   return `<div class="card-block">
-    <div class="head"><b>待确认卡</b><span class="file">${esc(item.file)}</span></div>
+    <div class="head"><b>待确认</b><span class="file">${esc(item.file)}</span></div>
     <div class="body">${esc(item.text)}</div>
     ${item.note ? `<div class="note">备注：${esc(item.note)}</div>` : ''}
     ${ops}${revError}
@@ -2125,7 +2292,7 @@ function handleChatFrame(frame, handlers = {}) {
     return
   }
   if (payload?.type === 'start') {
-    handlers.onStart?.(payload.sessionId)
+    handlers.onStart?.(payload.sessionId, payload)
   } else if (payload?.type === 'delta') {
     handlers.onDelta?.(text(payload.text))
   } else if (payload?.type === 'thinking') {
@@ -2249,10 +2416,15 @@ async function sendAgentMessage() {
       sessionId: agent.sessionId || undefined,
       newSession: agent.forceNewSession === true,
       controller,
-      onStart: (sessionId) => {
+      onStart: (sessionId, payload) => {
         agent.sessionId = sessionId
         agent.forceNewSession = false
         rememberSession(sessionId) // 记住当前会话：刷新/换库回来接着聊
+        // 这轮生效了什么（技能/体裁/KB/中文推理）→ 存到消息上，气泡里显示标注
+        if (payload?.applied) {
+          const last = agent.items[agent.items.length - 1]
+          if (last?.kind === 'msg' && last.role === 'assistant') last.applied = payload.applied
+        }
       },
       onDelta: (piece) => {
         const last = agent.items[agent.items.length - 1]
@@ -2402,6 +2574,17 @@ function settingsRuntimeSectionHtml() {
       <input id="cfg-key" type="password" placeholder="${agent.apiKeyMasked ? '留空保留原 key' : 'sk-…'}">
     </div>
     ${dshDepthFieldHtml()}
+    <div class="field">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+        <input type="checkbox" id="cfg-chinese-reasoning"${agent.chineseReasoning !== false ? ' checked' : ''} style="width:auto">
+        <span>用中文推理（推荐）</span>
+      </label>
+      <span class="count" style="line-height:1.7">
+        中文写作讨论用中文思考更贴题，术语和语感不容易在翻译里走样。<br>
+        代价是可能损失一部分推理性能——复杂的形式化推理用英文通常更稳。<br>
+        关掉后模型用默认语言思考，回复本身仍然是中文。
+      </span>
+    </div>
     <div class="err" id="settings-err"></div>
     <div class="row" style="display:flex;gap:10px;align-items:center;margin-top:8px">
       <button class="btn-primary" data-action="agent-config-save">保存</button>
@@ -2904,6 +3087,8 @@ async function saveAgentSettings() {
   const key = document.getElementById('cfg-key').value
   const reasoningEl = document.getElementById('cfg-reasoning')
   const reasoningEffort = reasoningEl ? reasoningEl.value.trim() : undefined
+  const chineseEl = document.getElementById('cfg-chinese-reasoning')
+  const chineseReasoning = chineseEl ? chineseEl.checked : undefined
   try {
     const payload = await api('/api/agent/config', {
       method: 'PUT',
@@ -2911,7 +3096,8 @@ async function saveAgentSettings() {
         endpoint,
         model,
         ...(key.trim() ? { apiKey: key } : {}),
-        ...(reasoningEffort !== undefined ? { reasoningEffort } : {})
+        ...(reasoningEffort !== undefined ? { reasoningEffort } : {}),
+        ...(chineseReasoning !== undefined ? { chineseReasoning } : {})
       })
     })
     agent.configured = payload.configured === true
@@ -2920,6 +3106,7 @@ async function saveAgentSettings() {
     agent.apiKeyMasked = text(payload.apiKeyMasked)
     agent.configPath = text(payload.configPath)
     agent.reasoningEffort = text(payload.reasoningEffort)
+    agent.chineseReasoning = payload.chineseReasoning !== false
     updateAgentChip()
     updateComposerState()
     render()
@@ -4600,6 +4787,66 @@ document.addEventListener('click', (event) => {
     agent.controller?.abort()
   } else if (action === 'agent-send') {
     sendAgentMessage()
+  } else if (action === 'copy-text') {
+    // 正文框自带的复制：按元素文本复制（body.textContent 是排版后的纯文本）
+    const host = document.getElementById(target.dataset.copyTarget || '')
+    const body = text(host?.textContent).trim()
+    const btn = target
+    const mark = (label) => {
+      btn.textContent = label
+      setTimeout(() => { btn.textContent = '复制' }, 1600)
+    }
+    const fallback = () => {
+      try {
+        const area = document.createElement('textarea')
+        area.value = body
+        area.style.position = 'fixed'
+        area.style.opacity = '0'
+        document.body.appendChild(area)
+        area.select()
+        const okFlag = document.execCommand?.('copy')
+        document.body.removeChild(area)
+        mark(okFlag ? '已复制' : '复制失败')
+      } catch { mark('复制失败') }
+    }
+    if (body && navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(body).then(() => mark('已复制')).catch(fallback)
+    } else if (body) {
+      fallback()
+    }
+  } else if (action === 'msg-copy') {
+    const item = agent.items[Number(target.dataset.msgIndex)]
+    const body = text(item?.content)
+    const btn = target
+    const done = () => {
+      btn.textContent = '已复制'
+      btn.classList.add('ok')
+      setTimeout(() => { btn.textContent = '复制'; btn.classList.remove('ok') }, 1600)
+    }
+    const fail = () => {
+      btn.textContent = '复制失败'
+      setTimeout(() => { btn.textContent = '复制' }, 1600)
+    }
+    // 剪贴板 API 在 http/localhost 之外、或没有 user gesture 时会被拒；
+    // 兜底走 textarea + execCommand（老浏览器/受限环境都能用）。
+    const fallback = () => {
+      try {
+        const area = document.createElement('textarea')
+        area.value = body
+        area.style.position = 'fixed'
+        area.style.opacity = '0'
+        document.body.appendChild(area)
+        area.select()
+        const okFlag = document.execCommand?.('copy')
+        document.body.removeChild(area)
+        if (okFlag) done(); else fail()
+      } catch { fail() }
+    }
+    if (body && navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(body).then(done).catch(fallback)
+    } else if (body) {
+      fallback()
+    }
   } else if (action === 'card-from') {
     openCardModal(target.dataset.msgIndex)
   } else if (action === 'card-create') {

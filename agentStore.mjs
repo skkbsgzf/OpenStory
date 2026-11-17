@@ -70,7 +70,9 @@ export function normalizeAgentConfig(raw) {
     apiKey: text(source.apiKey).trim(),
     runtime: text(source.runtime).trim(),
     // 推理深度（OS-39）：只对 DSH 这类支持 reasoning_effort 的运行时有效；空＝用它自己的默认档
-    ...(effort ? { reasoningEffort: effort } : {})
+    ...(effort ? { reasoningEffort: effort } : {}),
+    // 中文推理（OS-43）：默认开。写作讨论用中文推理更贴题，但可能损失部分推理性能。
+    chineseReasoning: source.chineseReasoning !== false
   }
 }
 
@@ -84,6 +86,7 @@ export function configPublic(config, configPath) {
     ...(normalized.apiKey ? { apiKeyMasked: maskApiKey(normalized.apiKey) } : {}),
     ...(normalized.runtime ? { runtime: normalized.runtime } : {}),
     ...(normalized.reasoningEffort ? { reasoningEffort: normalized.reasoningEffort } : {}),
+    chineseReasoning: normalized.chineseReasoning,
     configPath: text(configPath)
   }
 }
@@ -115,13 +118,17 @@ export async function saveAgentConfig(configPath, patch = {}) {
   const effort = patch.reasoningEffort === undefined
     ? config.reasoningEffort
     : text(patch.reasoningEffort).trim()
+  const chinese = patch.chineseReasoning === undefined
+    ? config.chineseReasoning
+    : patch.chineseReasoning === true
   const next = normalizeAgentConfig({
     ...config,
     endpoint: patch.endpoint ?? config.endpoint,
     model: patch.model ?? config.model,
     apiKey: patch.apiKey === undefined ? config.apiKey : text(patch.apiKey).trim(),
     runtime: patch.runtime ?? config.runtime,
-    reasoningEffort: effort
+    reasoningEffort: effort,
+    chineseReasoning: chinese
   })
   await mkdir(join(configPath, '..'), { recursive: true })
   const tmp = `${configPath}.tmp-${randomUUID()}`
@@ -190,7 +197,9 @@ function itemFromLine(line) {
           total: Number(line.usage.total) || (Number(line.usage.input) || 0) + (Number(line.usage.output) || 0)
         }
       } : {}),
-      ...(line.truncated === true ? { truncated: true } : {})
+      ...(line.truncated === true ? { truncated: true } : {}),
+      // 生效清单（OS-43）：这轮用了哪些技能/体裁/知识库，刷新后仍要能看到
+      ...(line.applied && typeof line.applied === 'object' ? { applied: line.applied } : {})
     }
   }
   if (line.t === 'card') {
