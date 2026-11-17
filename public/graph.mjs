@@ -232,7 +232,8 @@ export function mountGraph({ canvas, graph, onPick, onBlank, mode = 'jump', focu
     draw()
   }
 
-  function tick() {
+  /** 一步物理迭代（斥力＋弹簧＋向心＋积分），与绘制解耦——供预热循环与动画帧共用。 */
+  function physicsStep() {
     const cx = width / 2
     const cy = height / 2
     const cooling = 0.9 + (1 - alpha) * 0.1
@@ -291,6 +292,10 @@ export function mountGraph({ canvas, graph, onPick, onBlank, mode = 'jump', focu
       node.y = Math.max(pad, Math.min(height - pad, node.y))
     }
     alpha *= 0.985
+  }
+
+  function tick() {
+    physicsStep()
     draw()
     if (alpha > 0.02) {
       raf = requestAnimationFrame(tick)
@@ -477,7 +482,17 @@ export function mountGraph({ canvas, graph, onPick, onBlank, mode = 'jump', focu
   observer?.observe(canvas)
 
   resize()
-  raf = requestAnimationFrame(tick)
+  /**
+   * 预热（OS-52，作者指出「每次进去节点大量晃动」）：首帧前同步把力迭代跑到位——
+   * 照作者 Wiki forceLayout 的同步迭代口径，挂载即收敛布局，不做入场动画。
+   * 迭代上限按节点数调（O(n²)），120 节点 ~30ms 量级，感知不到；
+   * 收敛后 alpha 归零不再跑 rAF，拖拽/聚焦时才唤醒（alpha>=0.35）。
+   */
+  const prewarmIters = Math.min(420, Math.max(120, nodes.length * 6))
+  for (let it = 0; it < prewarmIters && alpha > 0.02; it += 1) physicsStep()
+  if (alpha <= 0.02) alpha = 0
+  draw()
+  if (alpha > 0.02) raf = requestAnimationFrame(tick)
 
   return () => {
     if (raf) cancelAnimationFrame(raf)
