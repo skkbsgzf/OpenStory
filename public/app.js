@@ -69,6 +69,8 @@ const state = {
   settings: { userDir: '', section: 'plugins', suiteId: '', open: false, prevView: '', helpOpen: false },
   kbStatus: null,
   tabHidden: {},
+  // 产物驳回记录（OS-51）：msgHtml index → true。会话级，不落档
+  rejectedMsgs: {},
   suites: [],
   agent: {
     configured: false,
@@ -1845,9 +1847,16 @@ async function pickReferenceFile(dir) {
     const menu = document.getElementById('agent-plus-menu')
     const files = Array.isArray(payload.files) ? payload.files : []
     if (!menu) return
+    // files 端点返回的 file 字段是完整相对路径（含子目录）——之前只取 name 丢了子目录，
+    // 拼出来「参考/绰号.md」而不是「参考/标签/绰号.md」，读文件必 404（OS-51）
     menu.innerHTML = `<div class="pop-title">${esc(dir)} · 点选引用</div>` +
       (files.length
-        ? files.map((file) => `<div class="pop-item" data-action="attach-file" data-dir="${esc(dir)}" data-file="${esc(file.path || file.name || file)}"><span class="pi-ic">📄</span><b>${esc(String(file.name || file.path || file).replace(/\.md$/u, ''))}</b><i>${file.chars ? file.chars + ' 字' : ''}</i></div>`).join('')
+        ? files.map((file) => {
+            const full = text(file.file || file.path || file.name || file)
+            const label = full.replace(/\.md$/u, '').replace(new RegExp(`^${dir}/`), '')
+            const size = Number(file.size) || 0
+            return `<div class="pop-item" data-action="attach-file" data-file="${esc(full)}"><span class="pi-ic">📄</span><b>${esc(label)}</b><i>${size ? Math.round(size / 100) / 10 + ' KB' : ''}</i></div>`
+          }).join('')
         : '<div class="pop-item plain"><span class="pi-ic">◇</span><b>这个目录还没有文件</b></div>') +
       '<div class="pop-div"></div><div class="pop-item" data-action="plus-back"><span class="pi-ic">←</span><b>返回</b></div>'
   } catch (error) {
@@ -1856,16 +1865,19 @@ async function pickReferenceFile(dir) {
 }
 
 /** 引用文件落地：读内容 → 塞 pendingContext（上下文条显示）。 */
-async function attachFileToAgent(dir, file) {
-  if (!state.current || !file) return
+async function attachFileToAgent(full) {
+  if (!state.current || !full) return
   closeComposerMenus()
   try {
-    const payload = await api(`/api/chapter?root=${encodeURIComponent(state.current.path)}&file=${encodeURIComponent(`${dir}/${file}`)}`)
-    const body = text(payload.chapter?.text ?? payload.text)
+    // 正文走 chapter 通道；其它目录（参考等）走 reference/note 通道——chapter 端点只认正文/
+    const payload = full.startsWith('正文/')
+      ? await api(`/api/chapter?root=${encodeURIComponent(state.current.path)}&file=${encodeURIComponent(full)}`)
+      : await api(`/api/reference/note?root=${encodeURIComponent(state.current.path)}&path=${encodeURIComponent(full)}`)
+    const body = text(payload.chapter?.text ?? payload.note?.text ?? payload.text)
     agent.pendingContext = {
-      quote: file,
+      quote: full,
       context: body.slice(0, 2000),
-      label: `文件：${dir}/${file}（${body.replace(/\s/gu, '').length} 字）`
+      label: `文件：${full}（${body.replace(/\s/gu, '').length} 字）`
     }
     renderAgent()
     document.getElementById('agent-input')?.focus()
@@ -2093,26 +2105,61 @@ function closeAgentSessions() {
  * 跟 OpenDesign 的处理一致——过程默认收起（流式时自动展开），正文只留最终答案。
  * 折叠头永远只一句：「思考过程 · 12.3s · 2 次工具」。
  */
+/**
+ * 过程块（OS-51 重写）：思维链**渐进呈现**。
+ *   · 每一段思考是一个独立小节：写完就折叠成一行摘要（保留在原地，可展开回看，不消失）
+ *   · 最新一段直播展开；工具行插在段与段之间（按发生顺序）
+ *   · 旧落档数据没有 segments（只有拼接的 thinking）→ 走兼容单段渲染
+ * 全部收起后 summary 行仍给一句话概览（耗时 + 工具次数 + 段数）。
+ */
 function processBlockHtml(proc, { live = false } = {}) {
   if (!proc) return ''
-  const thinking = text(proc.thinking).trim()
   const tools = Array.isArray(proc.tools) ? proc.tools : []
-  if (!thinking && !tools.length) return ''
-  const toolCount = tools.length
+  const segments = Array.isArray(proc.segments) && proc.segments.length
+    ? proc.segments
+    : (text(proc.thinking).trim() ? [{ type: 'think', text: text(proc.thinking), closed: true }] : [])
+  if (!segments.length && !tools.length) return ''
   const sec = proc.elapsedMs ? (proc.elapsedMs / 1000).toFixed(1) : ''
+  const toolCount = tools.length
   const metaParts = [sec ? `${sec}s` : '', toolCount ? `${toolCount} 次工具` : ''].filter(Boolean)
   const label = live ? '思考中' : '思考过程'
-  const toolRows = tools.map(toolRowHtml).join('')
+  // 序列化段与工具行：think 段有自己的位置；tools 按记录顺序穿插（近似发生顺序）
+  const parts = []
+  let toolIdx = 0
+  const thinkSegs = segments.filter((seg) => seg.type === 'think')
+  let thinkIdx = 0
+  // 工具发生在「第几段思考之后」无法精确回放，按段数均匀插入
+  for (const seg of segments) {
+    if (seg.type === 'tool') { parts.push({ type: 'tool', tool: seg }); continue }
+    thinkIdx += 1
+    parts.push({ type: 'think', seg, index: thinkIdx })
+  }
+  // 工具行：没有段信息时统一排在思考后面
+  if (toolCount && !parts.some((part) => part.type === 'tool')) {
+    for (const tool of tools) parts.push({ type: 'tool', tool })
+  }
+  const thinkParts = parts.filter((part) => part.type === 'think')
+  const lastThinkKey = thinkParts.length ? thinkParts[thinkParts.length - 1].seg.t : -1
+  const body = parts.map((part) => {
+    if (part.type === 'tool') return toolRowHtml(part.tool)
+    const seg = part.seg
+    const isLast = seg.t === lastThinkKey
+    const open = live && isLast && !seg.closed
+    const summaryText = seg.closed
+      ? (seg.text.trim().split('\n')[0] || '思路').slice(0, 60) + (seg.text.trim().split('\n').length > 1 || seg.text.length > 60 ? '…' : '')
+      : '正在想…'
+    if (open) {
+      return `<div class="proc-seg live"><div class="proc-seg-head"><i class="proc-dot"></i><span class="proc-seg-label">正在想</span></div><div class="proc-think">${esc(seg.text)}</div></div>`
+    }
+    return `<details class="proc-seg"><summary><span class="proc-seg-label">${esc(summaryText)}</span><span class="proc-seg-n">思路 ${part.index}</span><span class="proc-chev">›</span></summary><div class="proc-think">${esc(seg.text)}</div></details>`
+  }).join('')
   return `<details class="proc-block${live ? ' live' : ''}"${live ? ' open' : ''}>
     <summary>
       <span class="proc-label"><i class="proc-dot"></i>${esc(label)}</span>
       ${metaParts.length ? `<span class="proc-meta">${esc(metaParts.join(' · '))}</span>` : ''}
       <span class="proc-chev">›</span>
     </summary>
-    <div class="proc-body">
-      ${thinking ? `<div class="proc-think">${esc(thinking)}</div>` : ''}
-      ${toolRows}
-    </div>
+    <div class="proc-body">${body}</div>
   </details>`
 }
 
@@ -2203,11 +2250,10 @@ function proseOutputHtml(raw, files) {
   if (!match) return null
   const body = match[1].trim()
   if (body.replace(/\s/gu, '').length < 80) return null
-  // 正文按小说排版渲染（不转义换行，保留段落）
-  const paragraphs = body.split(/\n{2,}/u).map((block) => block.trim()).filter(Boolean)
-  const rendered = paragraphs.length > 1
-    ? paragraphs.map((block) => `<p>${esc(block)}</p>`).join('')
-    : `<p>${esc(body)}</p>`
+  // 正文按小说排版渲染（OS-51：模型常用单换行分段，只按双换行拆会把整章挤成一段——
+  // 改为逐非空行成段）
+  const paragraphs = body.split(/\n+/u).map((block) => block.trim()).filter(Boolean)
+  const rendered = paragraphs.map((block) => `<p>${esc(block)}</p>`).join('')
   return `<div class="prose-out">
     <div class="prose-out-head">
       <span class="po-label">正文</span>
@@ -2261,10 +2307,10 @@ function proposedFiles(item) {
   const raw = text(item.content)
   if (!raw) return []
   const files = new Set()
-  for (const match of raw.matchAll(/(?:正文[\\/])?([0-9]{3}[-_—][^\s`'"）)]+\.md)/gu)) {
+  for (const match of raw.matchAll(/(?:正文[\/])?([0-9]{3}[-_—][^`'"）)\n]+?\.md)/gu)) {
     files.add(`正文/${match[1]}`)
   }
-  for (const match of raw.matchAll(/(正文[\\/][^\s`'"）)]+\.md)/gu)) {
+  for (const match of raw.matchAll(/(正文[\/][^`'"）)\n]+?\.md)/gu)) {
     files.add(match[1].replaceAll('\\', '/'))
   }
   if (!files.size) return []
@@ -2274,6 +2320,9 @@ function proposedFiles(item) {
   // b) 连续引用块 ≥3 行且合计 ≥80 字
   const quoteLines = raw.split('\n').filter((line) => /^\s*>\s?\S/u.test(line))
   if (quoteLines.length >= 3 && quoteLines.join('').replace(/[\s>]/gu, '').length >= 80) return [...files]
+  // c) 单行长引用块 ≥60 字（OS-51 放宽：润笔「拟替换 + 引用块」常只有一行长文，
+  //    之前判不出来，作者看不到采纳/复制按钮）
+  if (quoteLines.length >= 1 && quoteLines.join('').replace(/[\s>]/gu, '').length >= 60) return [...files]
   return []
 }
 
@@ -2328,11 +2377,20 @@ function msgHtml(item, index) {
   const copyBtn = item.content
     ? `<button class="msg-act" data-action="msg-copy" data-msg-index="${index}" title="复制这段回复">复制</button>`
     : ''
-  const adoptBtn = files.length
+  const rejected = agent.rejectedMsgs?.[index]
+  const adoptBtn = files.length && !rejected
     ? `<button class="msg-act primary" data-action="card-from" data-msg-index="${index}" title="把这段写进 ${esc(files[0])}">采纳</button>`
     : ''
-  const foot = (copyBtn || adoptBtn)
-    ? `<div class="msg-foot">${adoptBtn}${copyBtn}</div>`
+  // OS-51：产物形态补齐——驳回（收起这条的产物按钮）与重新修改（带文件上下文重开一轮）
+  const redoBtn = files.length && !rejected
+    ? `<button class="msg-act" data-action="msg-redo" data-msg-index="${index}" data-file="${esc(files[0])}" title="就这段产物提修改要求">重新修改</button>`
+    : ''
+  const rejectBtn = files.length && !rejected
+    ? `<button class="msg-act" data-action="msg-reject" data-msg-index="${index}" title="不采纳，收起这些按钮">驳回</button>`
+    : ''
+  const rejectedTag = rejected ? '<span class="msg-act dead">已驳回</span>' : ''
+  const foot = (adoptBtn || copyBtn || redoBtn || rejectBtn || rejectedTag)
+    ? `<div class="msg-foot">${adoptBtn}${redoBtn}${rejectBtn}${copyBtn}${rejectedTag}</div>`
     : ''
   const appliedChips = appliedChipsHtml(item.applied)
   return `<div class="msg assistant">${idleLine}${processBlock}${body}${cursor}${truncated}${partial}${appliedChips}${foot}</div>`
@@ -2549,9 +2607,35 @@ async function sendAgentMessage() {
   // 过程累积（OS-42）：思考轨迹与工具调用攒在消息的 process 上，
   // 与正文分开——正文只留最终答案，过程收在可展开的折叠块里。
   const pendingTools = new Map()
+  // 过程记录（OS-51）：segments 让思维链**渐进呈现**——每一段思考/每一次工具都是
+  // 一个独立小节，完成后折叠成一行摘要（保留可展开，不消失），最新一段展开直播。
+  // 旧字段 thinking（拼接全文）保留给落档兼容，但渲染走 segments。
   const ensureProcess = (last) => {
-    if (!last.process) last.process = { thinking: '', tools: [], startedAt }
+    if (!last.process) last.process = { thinking: '', tools: [], segments: [], startedAt, lastThinkAt: 0 }
+    if (!last.process.segments) last.process.segments = []
     return last.process
+  }
+  /**
+   * 思考分段规则：模型每写完一段思路，要么接着调工具、要么输出正文——两者都是天然段界。
+   * 另外：两次 thinking 帧间隔超过 1.2s（模型换了口气）也开新段，避免把不同主题挤进一段。
+   */
+  const pushThinking = (proc, piece) => {
+    const now = Date.now()
+    const segs = proc.segments
+    const lastSeg = segs[segs.length - 1]
+    const gapTooBig = lastSeg && lastSeg.type === 'think' && (now - proc.lastThinkAt) > 1200
+    if (!lastSeg || lastSeg.type !== 'think' || lastSeg.closed || gapTooBig) {
+      if (lastSeg && lastSeg.type === 'think' && !lastSeg.closed) lastSeg.closed = true
+      segs.push({ type: 'think', text: piece, t: now, closed: false })
+    } else {
+      lastSeg.text += piece
+    }
+    proc.lastThinkAt = now
+    proc.thinking = segs.filter((seg) => seg.type === 'think').map((seg) => seg.text).join('\n\n')
+  }
+  const closeThinking = (proc) => {
+    const lastSeg = proc.segments[proc.segments.length - 1]
+    if (lastSeg && lastSeg.type === 'think' && !lastSeg.closed) lastSeg.closed = true
   }
   const waitingTimer = setInterval(() => {
     const last = agent.items[agent.items.length - 1]
@@ -2580,6 +2664,7 @@ async function sendAgentMessage() {
       onDelta: (piece) => {
         const last = agent.items[agent.items.length - 1]
         if (last?.kind === 'msg' && last.role === 'assistant') {
+          if (piece) closeThinking(ensureProcess(last)) // 正文开始＝思维链收尾
           last.content += piece
           last.waiting = 0
           last.activity = null
@@ -2590,7 +2675,7 @@ async function sendAgentMessage() {
         const last = agent.items[agent.items.length - 1]
         if (last?.kind === 'msg' && last.role === 'assistant') {
           const proc = ensureProcess(last)
-          proc.thinking += piece
+          pushThinking(proc, piece)
           proc.elapsedMs = Date.now() - startedAt
           last.activity = 'thinking'
           last.waiting = Math.round((Date.now() - startedAt) / 1000)
@@ -2602,6 +2687,7 @@ async function sendAgentMessage() {
         if (last?.kind !== 'msg' || last.role !== 'assistant') return
         const proc = ensureProcess(last)
         if (payload.phase === 'call') {
+          closeThinking(ensureProcess(last)) // 工具调用＝段界：之前那段思路就此定稿
           pendingTools.set(payload.id || payload.name, { ...payload, at: Date.now() })
         } else {
           const started = pendingTools.get(payload.id || payload.name)
@@ -3235,6 +3321,24 @@ async function loadReferences({ force = false } = {}) {
 
 /** 打开一篇参考笔记（含反链）。 */
 /** 打开一篇参考笔记（含反链）。from='graph' 时详情页给「← 返回图谱」键。 */
+/**
+ * 按任意写法找参考笔记（OS-51）：支持 标题 / 相对路径 / 「参考/」前缀路径 / 带或不带 .md。
+ * 之前「参考/约束/写作纪律」这种全路径匹配不到（只比对 rel 与 title），点它错弹「新建笔记」。
+ */
+function findReferenceByRef(ref) {
+  const raw = text(ref).trim()
+  if (!raw) return null
+  const notes = state.reference.notes || []
+  const noMd = raw.replace(/\.(?:md|markdown|txt)$/iu, '')
+  const relNoPrefix = noMd.replace(/^参考[\/]/u, '')
+  return notes.find((note) => note.title === raw)
+    || notes.find((note) => note.path === raw || note.path === `${raw}.md`)
+    || notes.find((note) => note.rel === noMd || note.rel === `${noMd}.md`)
+    || notes.find((note) => note.rel.replace(/\.(?:md|markdown|txt)$/iu, '') === relNoPrefix)
+    || notes.find((note) => note.title === relNoPrefix.split('/').pop())
+    || null
+}
+
 async function openReference(path, { from = '' } = {}) {
   const ref = state.reference
   if (!state.current || !path) return
@@ -3377,14 +3481,14 @@ function referenceGraphHtml() {
 }
 
 /** 图谱节点信息卡：类型徽章＋标签＋一句话摘要＋「打开详情」。 */
-function refNodeCardHtml(node) {
+function refNodeCardHtml(node, variant = '') {
   const kindLabels = { reference: '参考', tag: '标签', artifact: '章节/产物', entry: '条目' }
   const degree = (state.refCol.graph?.edges || [])
     .filter((edge) => edge.a === node.id || edge.b === node.id).length
   const tags = Array.isArray(node.tags) ? node.tags : []
   const tagChips = tags.map((tag) => `<button class="pill tag-pick" data-ref-tag="${esc(tag)}">#${esc(tag)}</button>`).join('')
   const excerpt = text(node.excerpt).replace(/[*_`#>[\]()|]/gu, ' ').replace(/-{2,}/gu, ' ').replace(/\s+/gu, ' ').trim()
-  return `<div class="ref-node-card">
+  return `<div class="ref-node-card${variant ? ` ${esc(variant)}` : ''}">
     <div class="rn-head"><span class="rn-kind ${esc(node.kind)}">${esc(kindLabels[node.kind] || node.kind)}</span><b>${esc(node.label || node.id)}</b></div>
     ${tagChips ? `<div class="rn-tags">${tagChips}</div>` : ''}
     ${excerpt ? `<p class="rn-excerpt">${esc(excerpt.slice(0, 90))}</p>` : ''}
@@ -3580,9 +3684,12 @@ function graphModuleHtml() {
     ['entry', '条目（只读）', 'var(--meta)']
   ].filter(([kind]) => byKind[kind]).map(([, label, color]) =>
     `<span><i style="background:${color}"></i>${esc(label)}</span>`).join('')
+  // OS-52：点节点出信息卡（Obsidian 口径：hover 预览、点击看卡，跳转走卡片按钮）
+  const pickNode = rc.pick ? (graph.nodes || []).find((item) => item.id === rc.pick) : null
   return `<div class="graph-box" id="ref-graph-box"><canvas id="ref-graph-canvas"></canvas></div>
+    <div id="ref-graph-pick">${pickNode ? refNodeCardHtml(pickNode, 'inline') : ''}</div>
     <div class="graph-legend">${legend || '<span>没有节点</span>'}</div>
-    <div class="graph-hint">${graph.stats?.nodes ?? 0} 个节点 · ${graph.stats?.edges ?? 0} 条边 · 点节点可跳转</div>`
+    <div class="graph-hint">${graph.stats?.nodes ?? 0} 个节点 · ${graph.stats?.edges ?? 0} 条边 · 点节点看简介，卡里跳转</div>`
 }
 
 /** 参考摘要模块：AI 基于图谱知识总结当前章节的大纲。 */
@@ -3743,34 +3850,25 @@ async function mountRefGraph() {
     canvas,
     graph: state.refCol.graph,
     onPick: (node) => {
-      // 点节点跳转：参考→参考页；章节→正文；条目→条目详情
-      if (node.kind === 'reference') {
-        state.reference.activePath = node.id
-        go('reference')
-        openReference(node.id)
-        return
-      }
-      if (node.kind === 'artifact') {
-        if (node.id.startsWith('正文/')) {
-          loadChapter(node.id)
-          go('write')
-        } else {
-          const dir = node.id.split('/')[0]
-          if (state.libDirs.includes(dir)) go(`dir:${dir}`)
-        }
-        return
-      }
-      if (node.kind === 'tag') {
-        state.reference.activeTag = node.id.replace(/^tag:/u, '')
-        go('reference')
-        return
-      }
-      if (node.kind === 'entry') {
-        openEntry(node.id.replace(/^entry:/u, ''))
-        go('entries')
+      // OS-52：点节点＝出信息卡（跟参考页大图同一套口径），跳转走卡片按钮
+      state.refCol.pick = state.refCol.pick === node.id ? null : node.id
+      updateGraphPickCard()
+    },
+    onBlank: () => {
+      if (state.refCol.pick) {
+        state.refCol.pick = null
+        updateGraphPickCard()
       }
     }
   })
+}
+
+/** 只换小图下方的信息卡容器（不重挂画布，不丢布局）。 */
+function updateGraphPickCard() {
+  const host = document.getElementById('ref-graph-pick')
+  if (!host) return
+  const node = state.refCol.graph?.nodes?.find((item) => item.id === state.refCol.pick)
+  host.innerHTML = node ? refNodeCardHtml(node, 'inline') : ''
 }
 
 /** 拉图谱数据。 */
@@ -5672,7 +5770,51 @@ function go(view) {
 }
 
 document.addEventListener('click', (event) => {
+  // 消息内路径 code（OS-51）：点「参考/约束/写作纪律」＝打开这篇参考；
+  // 点「正文/001-xxx.md」＝打开这一章。之前没这个入口，点路径会误弹「新建笔记」。
+  const pathCode = event.target.closest?.('.msg.assistant code, .msg.assistant .tool-target')
+  if (pathCode) {
+    const raw = pathCode.textContent.trim()
+    const looksLikePath = /^(?:参考|正文|大纲|世界书|拆解|人物|场景|事件|约束|资料|构思|标签)[\/][^\s]+$/u.test(raw)
+      || /^[0-9]{3}[-_—][^\s]*\.md$/u.test(raw)
+    if (looksLikePath) {
+      if (raw.startsWith('正文/') || /^[0-9]{3}[-_—]/u.test(raw)) {
+        const file = raw.startsWith('正文/') ? raw : `正文/${raw}`
+        loadChapter(file)
+        go('write')
+        return
+      }
+      if (raw.startsWith('参考/')) {
+        const jumpTo = (hit) => {
+          state.reference.activePath = hit.path
+          if (state.view !== 'reference') go('reference')
+          openReference(hit.path)
+        }
+        const promptNew = () => {
+          const name = raw.split('/').pop().replace(/\.(?:md|markdown|txt)$/iu, '')
+          state.reference.pendingNew = name
+          openNewReferenceModal('note')
+          const nameInput = document.getElementById('ref-new-name')
+          if (nameInput) nameInput.value = name
+        }
+        // write 页通常还没拉参考索引——先补一次再匹配（click 委托非 async，走 Promise 链）
+        const tryJump = () => {
+          const hit = findReferenceByRef(raw)
+          if (hit) jumpTo(hit)
+          else promptNew()
+        }
+        if (state.reference.loaded) tryJump()
+        else loadReferences().then(tryJump)
+        return
+      }
+      const dir = raw.split('/')[0]
+      if (state.libDirs.includes(dir)) { go(`dir:${dir}`); return }
+    }
+  }
   const target = event.target.closest('[data-view], [data-go], [data-action], [data-skin], [data-lib-path], [data-entry-id], [data-layer], [data-kind], [data-load-more], [data-session-id], [data-session-del], [data-wiki-mode], [data-create-primary], [data-create-genre], [data-runtime-id], [data-chapter-file], [data-settings-section], [data-ref-path], [data-ref-tag], [data-ref-view], a.wl[data-ref]')
+  // 点在菜单/按钮之外：收起输入区菜单（OS-51）——注意这不 return，
+  // 后面消息内路径 code 的点击不携带任何 data-*，必须继续往下走
+  if (!event.target.closest?.('.composer-pop, .c-tool')) closeComposerMenus()
   if (!target) return
 
   if (target.dataset.createGenre !== undefined) {
@@ -5710,11 +5852,8 @@ document.addEventListener('click', (event) => {
     // 条目链接
     const entry = /^条目[:：](.+)$/u.exec(ref)
     if (entry) { openEntry(entry[1].trim()); go('entries'); return }
-    // 否则当参考笔记：先按标题找，再按路径找
-    const notes = state.reference.notes || []
-    const hit = notes.find((note) => note.title === ref)
-      || notes.find((note) => note.rel.replace(/\.(?:md|markdown|txt)$/iu, '') === ref)
-      || notes.find((note) => note.path === ref || note.path.endsWith(`/${ref}.md`))
+    // 否则当参考笔记：标题/相对路径/「参考/」前缀都能认（OS-51）
+    const hit = findReferenceByRef(ref)
     if (hit) {
       state.reference.activePath = hit.path
       if (state.view !== 'reference') go('reference')
@@ -5926,8 +6065,9 @@ document.addEventListener('click', (event) => {
   } else if (action === 'ref-absorb-run') {
     runAbsorbFromModal()
   } else if (action === 'ref-node-open') {
-    // 图谱信息卡的「打开详情」（OS-51）：跳转只走这个按钮
-    const focusNode = state.refCol.graph?.nodes?.find((node) => node.id === state.reference.focus)
+    // 图谱信息卡的「打开详情」：大图读 reference.focus，正文页小图读 refCol.pick
+    const nodeId = state.reference.focus || state.refCol.pick
+    const focusNode = state.refCol.graph?.nodes?.find((node) => node.id === nodeId)
     if (focusNode) navigateFromGraphNode(focusNode)
   } else if (action === 'ref-back-graph') {
     state.reference.view = 'graph'
@@ -5977,6 +6117,30 @@ document.addEventListener('click', (event) => {
       navigator.clipboard.writeText(body).then(done).catch(fallback)
     } else if (body) {
       fallback()
+    }
+  } else if (action === 'msg-reject') {
+    // 驳回（OS-51）：只收起这条消息的产物按钮，不动任何文件
+    const idx = Number(target.dataset.msgIndex)
+    if (Number.isInteger(idx)) {
+      if (!agent.rejectedMsgs) agent.rejectedMsgs = {}
+      agent.rejectedMsgs[idx] = true
+      renderThread()
+    }
+  } else if (action === 'msg-redo') {
+    // 重新修改（OS-51）：把产物文件塞进上下文，输入框预填，作者接着提要求
+    const file = target.dataset.file || ''
+    agent.pendingContext = {
+      quote: file,
+      context: '',
+      label: `重新修改：${file}`
+    }
+    renderAgent()
+    const input = document.getElementById('agent-input')
+    if (input) {
+      input.value = '重新修改刚才那段：'
+      input.focus()
+      const end = input.value.length
+      input.setSelectionRange?.(end, end)
     }
   } else if (action === 'card-from') {
     openCardModal(target.dataset.msgIndex)
@@ -6110,7 +6274,35 @@ document.addEventListener('click', (event) => {
     discussSelection()
   } else if (action === 'clear-agent-context') {
     state.agent.pendingContext = null
+    closeComposerMenus()
     renderAgent()
+  } else if (action === 'toggle-style-menu') {
+    toggleComposerMenu('style')
+  } else if (action === 'toggle-plus-menu') {
+    toggleComposerMenu('plus')
+  } else if (action === 'plus-back') {
+    const menu = document.getElementById('agent-plus-menu')
+    if (menu) { menu.innerHTML = plusMenuHtml(); menu.hidden = false }
+  } else if (action === 'pick-file') {
+    pickReferenceFile(target.dataset.dir)
+  } else if (action === 'attach-file') {
+    attachFileToAgent(target.dataset.file)
+  } else if (action === 'cmd-fill') {
+    closeComposerMenus()
+    const input = document.getElementById('agent-input')
+    if (input) {
+      input.value = target.dataset.cmd || ''
+      input.focus()
+      const end = input.value.length
+      input.setSelectionRange?.(end, end)
+    }
+  } else if (action === 'style-mode-plain') {
+    if (agent.pendingContext?.kind === 'polish') agent.pendingContext = null
+    closeComposerMenus()
+    renderAgent()
+  } else if (action === 'style-mode-polish') {
+    closeComposerMenus()
+    startPolishRequest()
   } else if (action === 'analyze-toggle') {
     toggleAnalyzePanel()
   } else if (action === 'analyze-expand') {
