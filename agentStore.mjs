@@ -63,11 +63,14 @@ export function maskApiKey(key) {
 /** 配置规整：endpoint/model/apiKey/runtime 四个字符串字段；configured＝endpoint 或活动 kit 非空。 */
 export function normalizeAgentConfig(raw) {
   const source = raw && typeof raw === 'object' ? raw : {}
+  const effort = text(source.reasoningEffort).trim()
   return {
     endpoint: text(source.endpoint).trim(),
     model: text(source.model).trim(),
     apiKey: text(source.apiKey).trim(),
-    runtime: text(source.runtime).trim()
+    runtime: text(source.runtime).trim(),
+    // 推理深度（OS-39）：只对 DSH 这类支持 reasoning_effort 的运行时有效；空＝用它自己的默认档
+    ...(effort ? { reasoningEffort: effort } : {})
   }
 }
 
@@ -80,6 +83,7 @@ export function configPublic(config, configPath) {
     model: normalized.model,
     ...(normalized.apiKey ? { apiKeyMasked: maskApiKey(normalized.apiKey) } : {}),
     ...(normalized.runtime ? { runtime: normalized.runtime } : {}),
+    ...(normalized.reasoningEffort ? { reasoningEffort: normalized.reasoningEffort } : {}),
     configPath: text(configPath)
   }
 }
@@ -108,12 +112,16 @@ export async function loadAgentConfig(configPath) {
  */
 export async function saveAgentConfig(configPath, patch = {}) {
   const { config } = await loadAgentConfig(configPath)
+  const effort = patch.reasoningEffort === undefined
+    ? config.reasoningEffort
+    : text(patch.reasoningEffort).trim()
   const next = normalizeAgentConfig({
     ...config,
     endpoint: patch.endpoint ?? config.endpoint,
     model: patch.model ?? config.model,
     apiKey: patch.apiKey === undefined ? config.apiKey : text(patch.apiKey).trim(),
-    runtime: patch.runtime ?? config.runtime
+    runtime: patch.runtime ?? config.runtime,
+    reasoningEffort: effort
   })
   await mkdir(join(configPath, '..'), { recursive: true })
   const tmp = `${configPath}.tmp-${randomUUID()}`
@@ -155,7 +163,15 @@ function itemFromLine(line) {
       role: line.role === 'assistant' ? 'assistant' : 'user',
       content: text(line.content),
       at: text(line.at),
-      ...(line.partial === true ? { partial: true } : {})
+      ...(line.partial === true ? { partial: true } : {}),
+      ...(line.usage && typeof line.usage === 'object' ? {
+        usage: {
+          input: Number(line.usage.input) || 0,
+          output: Number(line.usage.output) || 0,
+          total: Number(line.usage.total) || (Number(line.usage.input) || 0) + (Number(line.usage.output) || 0)
+        }
+      } : {}),
+      ...(line.truncated === true ? { truncated: true } : {})
     }
   }
   if (line.t === 'card') {
@@ -189,7 +205,11 @@ function sessionFromLines(lines) {
     title: text(meta.title) || '新会话',
     createdAt: text(meta.createdAt),
     updatedAt: text(lastAt) || text(meta.createdAt),
-    messageCount: msgs.length
+    messageCount: msgs.length,
+    // DSH 原生会话：resume 用的 id 与它当初的运行环境（模型/cwd 变了 resume 就失效）
+    ...(text(meta.dshSessionId) ? { dshSessionId: text(meta.dshSessionId) } : {}),
+    ...(text(meta.dshModel) ? { dshModel: text(meta.dshModel) } : {}),
+    ...(text(meta.dshCwd) ? { dshCwd: text(meta.dshCwd) } : {})
   }
 }
 
@@ -279,6 +299,34 @@ export async function renameSession(sessionsDir, root, id, title) {
   const next = lines.map((line) => (line?.t === 'meta' ? { ...line, title: text(title).trim() || line.title } : line))
   await writeLines(dir, id, next)
   return sessionFromLines(next)
+}
+
+/**
+ * 只改 meta 行（不动消息）——DSH 会话 id / 模型 / cwd 这类运行时指纹走这里。
+ * patch 里值为 '' 或 null ⇒ 删掉该字段（用来主动作废 resume）。
+ */
+export async function patchSessionMeta(sessionsDir, root, id, patch = {}) {
+  if (!isValidSessionId(id)) return null
+  const dir = sessionDirFor(sessionsDir, root)
+  const lines = await readLines(dir, id)
+  if (!lines || !lines.some((line) => line?.t === 'meta')) return null
+  const next = lines.map((line) => {
+    if (line?.t !== 'meta') return line
+    const merged = { ...line }
+    for (const [key, value] of Object.entries(patch)) {
+      if (value === '' || value === null || value === undefined) delete merged[key]
+      else merged[key] = value
+    }
+    return merged
+  })
+  await writeLines(dir, id, next)
+  return sessionFromLines(next)
+}
+
+/** 最近更新的一条会话 id（默认会话＝接着上次聊）。没有会话返回空串。 */
+export async function lastSessionId(sessionsDir, root) {
+  const list = await listSessions(sessionsDir, root)
+  return list.length ? text(list[0].id) : ''
 }
 
 export async function deleteSession(sessionsDir, root, id) {

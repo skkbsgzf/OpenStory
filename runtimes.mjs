@@ -96,6 +96,14 @@ export function normalizeRuntimeKit(raw, { source, dir } = {}) {
         if (u.protocol === 'http:' || u.protocol === 'https:') kit.url = u.origin
       } catch { /* 坏 url 忽略——探测兜底 */ }
     }
+    // 推理深度（OS-39）：协议字段 reasoning_effort，原样透传给 execute 帧
+    const effort = text(raw.reasoningEffort).trim()
+    if (effort) {
+      if (effort.length > 32 || !/^[A-Za-z0-9_-]+$/u.test(effort)) {
+        return bad('RUNTIME_KIT_REASONING', 'reasoningEffort 只许字母/数字/下划线/短横（≤32 字符）')
+      }
+      kit.reasoningEffort = effort
+    }
   } else {
     // kind:cli——一次性子进程嫁接：probe 必填（安装探测），cliArgs 模板里 {prompt} 占位
     const probe = raw.probe && typeof raw.probe === 'object' ? raw.probe : null
