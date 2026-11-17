@@ -412,6 +412,9 @@ input, textarea, select { font: inherit; color: inherit; }
 .composer .send:hover { background: var(--accent); }
 .composer .send:disabled { background: var(--line); cursor: not-allowed; }
 .composer .send.stop { background: var(--danger); }
+/* hidden 属性会被上面的 display:grid 覆盖（UA 的 [hidden]{display:none} 优先级更低）——
+   没有这条，红色停止按钮会永远显示（OS-51 作者指出） */
+.composer .send[hidden] { display: none; }
 .composer .send[hidden] { display: none; }
 
 /* 弹层（Agent 设置 / 待确认卡） */
