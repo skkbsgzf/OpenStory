@@ -147,16 +147,31 @@ input, textarea, select { font: inherit; color: inherit; }
 .nav-group { display: flex; flex-direction: column; gap: 1px; }
 .nav-group.grow { min-height: 120px; }
 .nav-group-label { font-size: 10.5px; color: var(--meta); letter-spacing: .05em; padding: 2px 6px 4px; }
+/* 侧栏行（OS-54 重做）：三级用「缩进 + 字重 + 字号 + 颜色」四个维度同时拉开，
+   不再只靠一个灰字——作者指出二级/三级区分度不够、加粗关系混乱 */
 .nav-row { display: flex; align-items: center; gap: 6px; width: 100%; padding: 4px 8px; border-radius: var(--radius); text-align: left; font-size: 12px; color: var(--muted); }
 .nav-row:hover { background: color-mix(in srgb, var(--ink) 5%, transparent); }
 .nav-row.on { background: var(--accent-soft); color: var(--ink); }
-.nav-row.view span { font-weight: 600; color: var(--ink-2); }
+/* 一级：视图行——最重 */
+.nav-row.view { padding: 6px 8px; }
+.nav-row.view span { font-weight: 700; font-size: 13px; color: var(--ink-2); }
 .nav-row.on.view span { color: var(--ink); }
+/* 二级：标签枝干——中重，行高更高；深层标签字重回落 */
+.nav-row.tag { padding: 5px 8px; font-weight: 600; font-size: 12.5px; color: var(--ink-2); }
+.tag-branch .tag-branch > summary .nav-row.tag,
+.tag-branch .tag-branch .nav-row.tag { font-weight: 500; font-size: 12px; color: var(--muted); }
+.nav-row.tag .tag-name::before { content: '#'; margin-right: 3px; color: var(--meta); font-weight: 400; }
+/* 三级：笔记叶——最轻，缩进最深，前置小圆点 */
+.nav-row.note { padding: 3px 8px 3px 10px; font-weight: 400; font-size: 11.5px; color: var(--muted); }
+.nav-row.note .tag-name::before { content: '·'; margin-right: 5px; color: var(--meta); font-weight: 700; }
+.nav-row.on .tag-name { font-weight: 600; }
 .nav-row .tag-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nav-count { font-size: 10px; color: var(--meta); font-variant-numeric: tabular-nums; }
+.nav-row.note .nav-count { opacity: .8; }
 .nav-empty { font-size: 11px; color: var(--meta); padding: 4px 8px; margin: 0; line-height: 1.7; }
-/* 标签筛选三级树：子级在父级下方缩进展开，每级 14px＋折叠指示（OS-51） */
-.tag-branch, .tag-leaf { margin-left: calc(var(--depth, 0) * 14px); }
+/* 标签三级树（OS-54）：每级 18px 缩进＋虚线引导，层级一眼可辨 */
+.tag-branch, .tag-leaf { margin-left: calc(var(--depth, 0) * 18px); }
+.tag-branch:not(:first-child) { border-top: 1px dashed transparent; }
 .tag-branch > summary { list-style: none; cursor: pointer; position: relative; }
 .tag-branch > summary::-webkit-details-marker { display: none; }
 .tag-branch > summary .nav-row { width: calc(100% - 20px); }
@@ -164,6 +179,9 @@ input, textarea, select { font: inherit; color: inherit; }
 .tag-branch[open] > summary .tw-chev { transform: rotate(45deg); }
 .nav-row.on .tag-name { font-weight: 600; }
 .tag-desc-dot { display: inline-block; width: 4px; height: 4px; border-radius: 50%; background: var(--accent); margin-left: 4px; vertical-align: 2px; }
+/* 笔记视图未选中态（OS-53b）：给出路而不是一句提示 */
+.ref-empty-lead { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; padding: 40px 20px; }
+.ref-empty-lead .rem { margin: 0; font-size: 13px; color: var(--muted); }
 /* 图谱视图（OS-51）：大画布＋节点信息卡＋标签筛选行 */
 .ref-graph { display: flex; flex-direction: column; gap: 8px; }
 .ref-graph-meta { font-size: 12px; color: var(--meta); }

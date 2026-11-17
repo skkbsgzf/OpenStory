@@ -138,7 +138,7 @@ export function refTreeHtml({ notes, tags = [], activeTag = '', activePath = '',
   return `${body}${untagged}`
 }
 
-export function refNavHtml({ tags = [], notes, activeTag = '', activePath = '', view = 'note', q = '' } = {}) {
+export function refNavHtml({ tags = [], notes, activeTag = '', activePath = '', view = 'graph', q = '' } = {}) {
   const views = [
     ['note', '笔记'],
     ['graph', '关系图谱']
@@ -170,11 +170,19 @@ export function backlinksHtml(backlinks) {
   return block('已链接', linked, 'linked') + block('未链接（提到了但没建链）', unlinked, 'unlinked')
 }
 
+/** 笔记视图未选中态（OS-53b）：给两条出路而不是一句提示。 */
+function refMainEmptyHtml() {
+  return `<div class="ref-empty-lead">
+    <p class="rem">在左侧目录点一篇笔记开始；或回到</p>
+    <button class="btn-primary" data-ref-view="graph">关系图谱（全库全景）</button>
+  </div>`
+}
+
 /**
  * 参考页整体骨架（OS-51）：侧栏导航 + 主区全宽（反链并入详情页底部，不再占独立列）。
  * mainHtml 由调用方按 view 给：笔记视图传详情页整块，图谱视图传大画布块。
  */
-export function referenceShellHtml({ notes, tags, activeTag, activePath, view = 'note', q = '', mainHtml = '', stats, absorbable = 0 }) {
+export function referenceShellHtml({ notes, tags, activeTag, activePath, view = 'graph', q = '', mainHtml = '', stats, absorbable = 0 }) {
   const statsLine = stats
     ? `<span class="count">${stats.notes} 篇 · ${stats.tags} 个标签 · ${stats.links} 条链接</span>`
     : ''
@@ -190,7 +198,7 @@ export function referenceShellHtml({ notes, tags, activeTag, activePath, view = 
     </div>
     <div class="ref-grid">
       <aside class="ref-sidenav">${nav}</aside>
-      <div class="ref-main">${mainHtml || '<div class="empty">左边选一篇笔记。</div>'}</div>
+      <div class="ref-main">${mainHtml || refMainEmptyHtml()}</div>
     </div>
   </div>`
 }

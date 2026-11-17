@@ -58,7 +58,7 @@ const state = {
     mode: 'engine', engine: { busy: false, data: null, pov: '', seed: '', error: '', hint: '' } },
   artifacts: { root: '', groups: [], totals: null, loading: false, error: '', previewFile: '', previewText: '', previewLoading: false },
   // 参考载体（OS-44）：索引 / 当前笔记 / 反链 / 筛选标签
-  reference: { loaded: false, loading: false, notes: [], tags: [], tagNotes: {}, stats: null, error: '', activePath: '', activeTag: '', note: null, backlinks: { linked: [], unlinked: [] }, draft: '', view: 'note', q: '', focus: null, absorb: {}, flash: '', tagFilter: '', from: '', noteText: '', fmLen: 0 },
+  reference: { loaded: false, loading: false, notes: [], tags: [], tagNotes: {}, stats: null, error: '', activePath: '', activeTag: '', note: null, backlinks: { linked: [], unlinked: [] }, draft: '', view: 'graph', q: '', focus: null, absorb: {}, flash: '', tagFilter: '', from: '', noteText: '', fmLen: 0 },
   // 左内容栏三模块（OS-44）：章节树 / 参考图谱 / 参考摘要
   refCol: { graph: null, graphLoading: false, graphError: '', summary: '', summaryBusy: false, summaryError: '', pick: null },
   settings: { userDir: '', section: 'plugins', suiteId: '', open: false, prevView: '', helpOpen: false },
@@ -189,7 +189,17 @@ function render() {
   else if (state.view === 'reference') {
     viewEl.innerHTML = referencePageHtml()
     // 图谱视图：挂大画布（focus 模式）；笔记视图：详情页右上角小图谱（本词条邻域）
-    if ((state.reference.view || 'note') === 'graph') mountReferenceGraph()
+    if ((state.reference.view || 'graph') === 'graph') {
+      // 无数据时先拉再重渲——loading 态没有 canvas，mountReferenceGraph 会早退，
+      // 之前默认进图谱视图会永远停在「正在构图…」（OS-54）
+      if (!state.refCol.graph && !state.refCol.graphLoading) {
+        // 不能在外面预设 graphLoading——loadRefGraph 的防重入 guard 会直接 return，
+        // then 里 render 又进本分支 = 无限循环（OS-54 修）
+        loadRefGraph().then(() => { if (state.view === 'reference') render() })
+      } else {
+        mountReferenceGraph()
+      }
+    }
     else if (state.reference.activePath && state.reference.note) mountDetailGraph()
   }
   else if (state.view === 'lib-create') viewEl.innerHTML = createHtml()
@@ -3403,7 +3413,8 @@ async function mountReferenceGraph() {
   if (!canvas) return
   if (!state.refCol.graph) {
     await loadRefGraph()
-    return
+    // 数据到位后回挂一次——之前直接 return，首次进入图谱视图会停在「正在构图…」
+    return mountReferenceGraph()
   }
   const mod = await import('./graph.mjs')
   graphCleanup?.()
@@ -5505,7 +5516,7 @@ document.addEventListener('click', (event) => {
   }
   if (target.dataset.refView !== undefined) {
     // 侧栏视图切换（OS-48）：笔记 / 关系图谱
-    state.reference.view = target.dataset.refView || 'note'
+    state.reference.view = target.dataset.refView || 'graph'
     state.reference.focus = null
     if (state.reference.view === 'graph' && !state.refCol.graph) loadRefGraph()
     render()
@@ -6182,7 +6193,7 @@ function setSkin(id) {
     graphCleanup?.()
     graphCleanup = null
     requestAnimationFrame(() => {
-      if (state.view === 'reference' && (state.reference.view || 'note') === 'graph') mountReferenceGraph()
+      if (state.view === 'reference' && (state.reference.view || 'graph') === 'graph') mountReferenceGraph()
       else mountRefGraph()
     })
   }
