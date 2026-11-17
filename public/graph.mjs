@@ -79,7 +79,11 @@ export function mountGraph({ canvas, graph, onPick, onBlank, mode = 'jump', focu
     if (!byKind.has(kind)) byKind.set(kind, [])
     byKind.get(kind).push(node)
   }
-  const spread = Math.min(canvas.clientWidth || 240, canvas.clientHeight || 190) * 0.46
+  // 初始化半径：优先按实际容器尺寸；拿不到（卡片尚未布局完）就用默认 190 兜底，
+  // 之后 resize() 会按真实尺寸等比重排，不会永久塌在角落。
+  const initW = canvas.clientWidth || 240
+  const initH = canvas.clientHeight || 190
+  const spread = Math.min(initW, initH) * 0.46
   const nodes = []
   for (const [kind, list] of byKind) {
     const ring = (KIND_RING[kind] ?? 0.8) * spread
@@ -118,8 +122,22 @@ export function mountGraph({ canvas, graph, onPick, onBlank, mode = 'jump', focu
   function layoutLabels() {
     const order = [...nodes].sort((left, right) => right.deg - left.deg)
     const placed = []
+    // 标签不能溢出画布（作者指出：贴边节点的标签被裁掉）。候选位先算包围盒，
+    // 出界的直接判不合格；全都不合格时退化为「钳制到框内」，宁可挤也不截断。
+    const PAD_X = 2
+    const PAD_Y = 2
+    const inBounds = (box) => box.x1 >= PAD_X && box.x2 <= width - PAD_X && box.y1 >= PAD_Y && box.y2 <= height - PAD_Y
     for (const node of order) {
-      const label = String(node.label || node.id).slice(0, 24)
+      // 窄画布里长标题会横贯整张图并互相压住：按可用宽度动态截断（最少 6 字）
+      const raw = String(node.label || node.id)
+      const maxW = width - 8
+      ctx.font = node.kind === 'reference' ? LABEL_FONT_WIDE : LABEL_FONT
+      let label = raw.slice(0, 24)
+      if (ctx.measureText(label).width > maxW) {
+        let cut = label
+        while (cut.length > 4 && ctx.measureText(`${cut}…`).width > maxW) cut = cut.slice(0, -1)
+        label = `${cut}…`
+      }
       const estW = labelWidth(node, label)
       const vx = node.x - width / 2
       const vy = node.y - height / 2
@@ -135,16 +153,34 @@ export function mountGraph({ canvas, graph, onPick, onBlank, mode = 'jump', focu
         { dx: node.r + 8, dy: 4, anchor: 'left' },
         { dx: -(node.r + 8), dy: 4, anchor: 'right' }
       ]
-      let best = candidates[0]
+      let best = null
+      let fallback = null
       for (let c = 0; c < candidates.length; c += 1) {
         const cand = candidates[c]
         const cx = node.x + cand.dx
         const cy = node.y + cand.dy
         const x1 = cand.anchor === 'center' ? cx - estW / 2 : cand.anchor === 'left' ? cx : cx - estW
         const box = { x1, x2: x1 + estW, y1: cy - 9, y2: cy + 3 }
+        if (!inBounds(box)) {
+          if (!fallback) {
+            // 记录第一个出界的候选，作为兜底（钳制后使用）
+            const clampedX1 = Math.max(PAD_X, Math.min(width - PAD_X - estW, box.x1))
+            const clampedY1 = Math.max(PAD_Y, Math.min(height - PAD_Y - 12, box.y1))
+            fallback = {
+              dx: clampedX1 - node.x,
+              dy: (clampedY1 + 9) - node.y,
+              anchor: 'left',
+              box: { x1: clampedX1, x2: clampedX1 + estW, y1: clampedY1, y2: clampedY1 + 12 }
+            }
+          }
+          continue
+        }
         const hit = placed.some((p) => !(box.x2 < p.x1 || box.x1 > p.x2 || box.y2 < p.y1 || box.y1 > p.y2))
-        if (!hit) { best = cand; placed.push(box); break }
-        if (c === candidates.length - 1) placed.push(box) // 都撞就接受最后一个
+        if (!hit) { best = { ...cand, box }; placed.push(box); break }
+      }
+      if (!best) {
+        best = fallback || { ...candidates[0], box: { x1: PAD_X, x2: PAD_X + estW, y1: PAD_Y, y2: PAD_Y + 12 } }
+        placed.push(best.box)
       }
       node._label = label
       node._labelPos = best
@@ -159,13 +195,40 @@ export function mountGraph({ canvas, graph, onPick, onBlank, mode = 'jump', focu
   let hover = null
   let dragNode = null
 
+  /**
+   * 画布尺寸变化时把节点坐标**等比重排**回新画布。
+   * 节点坐标是以画布中心为原点的（x ± ring），所以尺寸一变就必须重算：
+   *   · 挂载瞬间卡片尚未布局完，clientWidth/Height 可能拿到 0 或很小的值，
+   *     节点会按小半径铺开、卡片撑开后也不重排 → 永久塌在左上角（作者截图）。
+   *   · 窗口缩放/展开卡片同理。
+   * 做法：记住上一帧的归一化坐标（按旧短边的一半归一），换尺寸时按新短边重投影，
+   * 既不掉形变也不会把图挤到角落。
+   */
+  function reproject(prevW, prevH) {
+    if (!prevW || !prevH) return
+    const prevHalf = Math.min(prevW, prevH) / 2
+    const nextHalf = Math.min(width, height) / 2
+    if (!prevHalf || !nextHalf || (prevW === width && prevH === height)) return
+    const k = nextHalf / prevHalf
+    for (const node of nodes) {
+      node.x *= k
+      node.y *= k
+      node.vx *= k
+      node.vy *= k
+    }
+  }
+
   function resize() {
+    const prevW = width
+    const prevH = height
     dpr = Math.min(2, window.devicePixelRatio || 1)
-    width = canvas.clientWidth || 240
-    height = canvas.clientHeight || 190
+    // 拿不到尺寸时保留上次的，不要退化成 0（会让节点集中到原点）
+    width = canvas.clientWidth || prevW || 240
+    height = canvas.clientHeight || prevH || 190
     canvas.width = Math.round(width * dpr)
     canvas.height = Math.round(height * dpr)
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+    reproject(prevW, prevH)
     draw()
   }
 
@@ -236,11 +299,28 @@ export function mountGraph({ canvas, graph, onPick, onBlank, mode = 'jump', focu
     }
   }
 
-  /** 节点总数多时，标签节点默认只显圆点（照 Wiki 的密集事件口径），hover 才显形。 */
-  const hideTagLabels = nodes.length > 36
+  /**
+   * 标签可见性分级（作者指出小图里标签互相压住、看不清）。
+   * 判据是**空间密度**而不是绝对节点数：小画布（左栏 204px）装 30 个节点已经过挤。
+   *   · 密度低（每人有 ≥ 1400px²）→ 全显
+   *   · 密度中 → 只显参考/产物节点，标签只显 hover/聚焦的
+   *   · 密度高 → 只显度数最高的若干参考节点 + hover/聚焦
+   * 这样小图始终「结构可读」，细节靠 hover。
+   */
+  const area = Math.max(1, width * height)
+  const density = area / Math.max(1, nodes.length)
+  const labelTier = density >= 1400 ? 'all' : density >= 800 ? 'refs' : 'hubs'
+  const hubCutoff = (() => {
+    if (labelTier !== 'hubs') return 0
+    const degs = nodes.map((node) => node.deg).sort((a, b) => b - a)
+    return degs[Math.min(degs.length - 1, Math.max(2, Math.round(degs.length * 0.35)))] || 0
+  })()
   function labelVisible(node) {
-    if (node.kind === 'tag' && hideTagLabels && hover?.id !== node.id && focusId !== node.id) return false
-    return true
+    if (hover?.id === node.id || focusId === node.id) return true
+    if (labelTier === 'all') return true
+    if (labelTier === 'refs') return node.kind !== 'tag'
+    // hubs：只留度数高的参考/产物节点
+    return node.kind !== 'tag' && node.deg >= hubCutoff
   }
 
   function draw() {

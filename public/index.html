@@ -737,6 +737,10 @@ html[data-doc-auto-gap="off"] .doc-block { margin-bottom: 0; }
 .chart-tab.on { background: var(--accent-soft, color-mix(in srgb, var(--accent) 12%, transparent)); color: var(--accent); font-weight: 600; }
 .analyze-sec svg [data-action] { transition: fill-opacity .15s; }
 .analyze-sec svg [data-action]:hover { fill-opacity: 1; }
+/* 曲线交互（OS-50）：可见点默认小，hover 命中区时放大——让「能点、且点和正文段落对应」一眼可见 */
+.analyze-sec svg .cv-dot { transition: r .12s ease, fill-opacity .12s ease; }
+.analyze-sec svg .cv-hit:hover + .cv-dot,
+.analyze-sec svg .cv-dot.on { r: 5; fill-opacity: 1; }
 .ai-score { font-size: 15px; }
 /* 文风模块（OS-44）：句长/段长变异系数是「像不像人写」的两个硬指标 */
 .style-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; }
@@ -788,6 +792,14 @@ html[data-doc-auto-gap="off"] .doc-block { margin-bottom: 0; }
 .ic-para { margin-left: auto; font-size: 10px; color: var(--meta); font-variant-numeric: tabular-nums; }
 .ic-detail { color: var(--muted); line-height: 1.6; }
 .ic-ops { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+/* 批注空态（OS-50）：不再是一行灰字＋大片留白，改成「结论 + 全章概览 + 可跳转入口」 */
+.ann-empty { display: flex; flex-direction: column; gap: 7px; padding: 2px 0 2px; }
+.ann-empty-main { margin: 0; font-size: 12px; color: var(--ink-2); line-height: 1.6; }
+.ann-empty-sub { margin: 0; font-size: 11px; color: var(--meta); line-height: 1.6; }
+.ann-empty-ops { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 1px; }
+.ann-jump { font-size: 11px; color: var(--muted); border-radius: var(--pill); padding: 3px 10px; background: color-mix(in srgb, var(--ink) 5%, var(--bg)); }
+.ann-jump:hover { color: var(--ink); background: color-mix(in srgb, var(--ink) 9%, var(--bg)); }
+.ann-more { font-size: 10.5px; color: var(--meta); align-self: center; }
 .issue-act { font-size: 11px; border: 0; border-radius: var(--pill); padding: 2px 10px; color: var(--muted); background: color-mix(in srgb, var(--ink) 5%, var(--bg)); }
 .issue-act:hover { color: var(--ink); background: var(--hair); }
 /* 文档内标注（OS-33）：左侧可点竖条＝这一段有批注；点它跳到那段并让右栏对齐 */
