@@ -1243,6 +1243,8 @@ function analyzePanelHtml() {
     { id: 'aiSmell', html: `<section class="analyze-sec"><h4>AI 味 <b class="ai-score ${aiClass}">${result.aiSmell.score}</b></h4>${result.aiSmell.factors.map(barRow).join('')}</section>` },
     {
       id: 'annotations',
+      // 空态（OS-50）：以前只剩一行灰字 + 大片留白（作者截图指出）。现在空态也给信息与出路：
+      //   · 说清「这一段干净」还是「还没滚动」，给出全章条数与最近的批注段，可一键跳过去看
       html: '<section class="analyze-sec analyze-here" id="analyze-here">' +
         '<h4>本段批注 <span class="count">' +
         (pickPara < 0 ? '滚动正文即对齐'
@@ -1250,7 +1252,16 @@ function analyzePanelHtml() {
         '</span></h4>' +
         (hereShown.length
           ? hereShown.map(card).join('')
-          : `<p class="sub">${viewPara >= 0 ? '这一段没有批注。' : '往下滚，这里会跟着你正在看的段落走。'}</p>`) +
+          : `<div class="ann-empty">
+              <p class="ann-empty-main">${viewPara >= 0 ? `第 ${viewPara + 1} 段没有批注——这一段是干净的。` : '往下滚，这里会跟着你正在看的段落走。'}</p>
+              ${issueParas.length
+                ? `<p class="ann-empty-sub">本章 ${new Set(issueParas).size} 段有批注，共 ${located.length} 条${global.length ? `（另有 ${global.length} 条章级）` : ''}。</p>
+                   <div class="ann-empty-ops">
+                     ${issueParas.slice(0, 3).map((n) => `<button class="ann-jump" data-action="analyze-goto" data-paragraph="${n}">跳到第 ${n + 1} 段</button>`).join('')}
+                     ${issueParas.length > 3 ? `<span class="ann-more">还有 ${issueParas.length - 3} 段…</span>` : ''}
+                   </div>`
+                : '<p class="ann-empty-sub">全章暂时没有发现问题。改完再点下面「重新分析」看看。</p>'}
+            </div>`) +
         '</section>' +
         (global.length ? '<section class="analyze-sec"><h4>全章 <span class="count">' + global.length + '</span></h4>' + global.map(card).join('') + '</section>' : '') +
         (elsewhere.length
@@ -3440,9 +3451,30 @@ function afterRefColMount() {
   }
 }
 
+/**
+ * 重绘左栏。
+ * 历史坑（OS-50 修复）：这里原来是空壳、只调 afterRefColMount()（只挂图谱不建 DOM），
+ * 于是「生成摘要」的状态变化（loading/正文/报错）永远不会上屏——点了像没反应。
+ * 现在真的重建左栏 HTML，并保住正文滚动位置。
+ */
 function renderRefCol() {
-  // 兼容旧调用点：不再操作全局容器，交给各题材页自己插
-  afterRefColMount()
+  rerenderRefCol()
+}
+
+/** 只重画某一张卡的 body（不动别的卡、不重挂图谱）。 */
+function repaintRefModule(id) {
+  const card = document.querySelector(`.ref-mod[data-ref-mod="${id}"]`)
+  if (!card || card.dataset.open === '0') return
+  const mod = REF_MODULES.find((item) => item.id === id)
+  const body = card.querySelector('.ref-mod-body')
+  if (!mod || !body) return
+  body.innerHTML = mod.render()
+  const badgeEl = card.querySelector('.rm-badge')
+  const badge = mod.badge()
+  if (badgeEl) { if (badge) badgeEl.textContent = badge; else badgeEl.remove() }
+  else if (badge) {
+    card.querySelector('.rm-toggle')?.insertAdjacentHTML('beforeend', `<span class="rm-badge">${esc(badge)}</span>`)
+  }
 }
 
 /**
@@ -3566,37 +3598,83 @@ async function loadRefGraph({ force = false } = {}) {
  * 参考摘要（OS-44）：让 AI 读当前章节关联的参考，总结成本章要点。
  * 走 ephemeral——不建会话、不污染会话列表。
  */
+/**
+ * 单次 Agent 调用（OS-50 补齐）：走 ephemeral 通道——不建会话、不落档、不进会话列表。
+ * 与润笔共用 streamChat；只收文本，thinking/tool 一律丢弃。
+ * 注意：这个函数原先只有调用点、没有定义，参考摘要一点就 ReferenceError。
+ */
+async function runAgentOnce(prompt, { timeoutMs = 120000 } = {}) {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  let out = ''
+  let failure = null
+  try {
+    await streamChat({
+      content: prompt,
+      ephemeral: true,
+      controller,
+      onDelta: (chunk) => { out += chunk },
+      onError: (error) => { failure = error }
+    })
+  } finally {
+    clearTimeout(timer)
+  }
+  if (failure) throw new Error(failure.message || '模型调用失败')
+  return text(out).trim()
+}
+
 async function runRefSummary() {
   const rc = state.refCol
   if (!state.current || rc.summaryBusy) return
   if (!agent.configured) {
     rc.summaryError = '先配置模型端点（右上角设置 → Agent 运行时）'
-    renderRefCol()
+    repaintRefModule('summary')
     return
   }
   rc.summaryBusy = true
   rc.summaryError = ''
-  renderRefCol()
+  repaintRefModule('summary')
   try {
-    // 收集材料：当前章节正文开头 + 图谱里挂在该章上的参考摘要
+    // 材料口径（OS-45 单向原则）：**参考只暴露链接，不给正文/摘要**——参考内容由 Agent
+    // 自己按路径去读（它有读文件能力），否则等于把参考资料全量灌进上下文。
+    // 章节正文本身是作者要总结的对象，给开头即可。
     const chapter = text(state.chapterText).slice(0, 1200)
-    const refs = (state.reference.notes || []).slice(0, 12)
-      .map((note) => `- ${note.title}${note.tags.length ? `（${note.tags.map((tag) => `#${tag}`).join(' ')}）` : ''}：${note.excerpt}`)
+    const graph = state.refCol.graph
+    const chapterPath = text(state.chapterFile)
+    // 与当前章节直接相连的参考优先，其余按标签/度数补足
+    const linked = (graph?.edges || [])
+      .filter((edge) => edge.a === chapterPath || edge.b === chapterPath)
+      .map((edge) => (edge.a === chapterPath ? edge.b : edge.a))
+    const noteByPath = new Map((state.reference.notes || []).map((note) => [note.path, note]))
+    const picked = []
+    for (const path of linked) {
+      const note = noteByPath.get(path)
+      if (note && !note.isTagNote) picked.push(note)
+    }
+    for (const note of state.reference.notes || []) {
+      if (picked.length >= 10) break
+      if (note.isTagNote || picked.includes(note)) continue
+      picked.push(note)
+    }
+    const refLinks = picked.slice(0, 10)
+      .map((note) => `- ${note.title}　${note.path}${note.tags?.length ? `　(${note.tags.map((tag) => `#${tag}`).join(' ')})` : ''}`)
       .join('\n')
     const prompt = [
       '【参考摘要】',
-      chapter ? `当前章节开头：\n${chapter}` : '（还没选章节）',
-      refs ? `\n本库的参考资料：\n${refs}` : '',
+      chapterPath ? `当前章节：${chapterPath}` : '（还没选章节）',
+      chapter ? `\n章节开头：\n${chapter}` : '',
+      refLinks ? `\n可用参考（只有链接，需要内容请自行读取对应文件）：\n${refLinks}` : '',
       '',
-      '请基于上面的资料，给这一章写一份要点摘要（150 字以内），说明：这一章要推进什么、涉及哪些参考、有什么要注意的伏笔或设定约束。只输出摘要正文，不要标题、不要解释。'
+      '请给这一章写一份要点摘要（150 字以内）：这一章要推进什么、涉及哪些参考、有什么要注意的伏笔或设定约束。',
+      '需要参考细节时用你的读文件能力打开上面列出的路径，不要凭空猜测。只输出摘要正文，不要标题、不要解释。'
     ].filter(Boolean).join('\n')
     const result = await runAgentOnce(prompt)
-    rc.summary = result
+    rc.summary = result || '（模型没有返回内容）'
   } catch (error) {
     rc.summaryError = humanizeAgentError(error)
   }
   rc.summaryBusy = false
-  renderRefCol()
+  repaintRefModule('summary')
 }
 
 /** 保存参考笔记（走 /api/chapter 通道，复用原子写＋.history 备份）。 */
@@ -5630,7 +5708,7 @@ document.addEventListener('click', (event) => {
   } else if (action === 'ref-summary-clear') {
     state.refCol.summary = ''
     state.refCol.summaryError = ''
-    renderRefCol()
+    repaintRefModule('summary')
   } else if (action === 'ref-edit') {
     state.reference.editing = true
     state.reference.draft = text(state.reference.note?.text)

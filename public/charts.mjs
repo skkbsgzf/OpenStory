@@ -64,6 +64,8 @@ export function renderEmotionCurve(chapters, opts = {}) {
     const active = opts.activeNo === p.no
     const r = peak ? 5.5 : 3
     const ring = active ? `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="${r + 4}" fill="none" stroke="${p.color}" stroke-width="2" stroke-dasharray="3 2"/>` : ''
+    // OS-50：r=3 的小点很难点中，再叠一层 r=12 的透明命中区（cursor 提示可点）
+    svg += `<circle class="cv-hit" cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="12" fill="transparent" style="cursor:pointer" data-action="curve-chapter" data-chapter-no="${p.no}"><title>第${p.no}章「${esc(p.title)}」· ${esc(p.emotion)} · 剧情点 ${p.beats} · 点击跳到这一章</title></circle>`
     svg += `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="${r}" fill="${p.color}" fill-opacity="${peak ? 0.95 : 0.5}" stroke="#fff" stroke-width="1.2" style="cursor:pointer" data-action="curve-chapter" data-chapter-no="${p.no}"><title>第${p.no}章「${esc(p.title)}」· ${esc(p.emotion)} · 剧情点 ${p.beats} · 点击跳转</title></circle>${ring}`
     if (peak) {
       svg += `<text x="${p.x.toFixed(1)}" y="${(p.y - 11).toFixed(1)}" text-anchor="middle" font-size="10" font-weight="600" fill="${p.color}" stroke="var(--card)" stroke-width="3" paint-order="stroke" style="cursor:pointer" data-action="curve-chapter" data-chapter-no="${p.no}">${esc(p.emotion)}</text>`
@@ -97,6 +99,8 @@ export function renderEventArea(chapters, opts = {}) {
     const w = Math.max(3, bw * 0.76)
     const active = opts.activeNo === c.no
     const color = active ? 'var(--accent,#0ea5e9)' : 'color-mix(in srgb, var(--accent,#0ea5e9) 38%, transparent)'
+    // 柱本身可能只有 2px 高，补一块整列高的透明命中区（OS-50）
+    svg += `<rect class="cv-hit" x="${(pad.l + i * bw).toFixed(1)}" y="${pad.t}" width="${bw.toFixed(1)}" height="${ih}" fill="transparent" style="cursor:pointer" data-action="curve-chapter" data-chapter-no="${c.no}"><title>第${c.no}章「${esc(c.title)}」· 事件 ${c.events} · 点击跳到这一章</title></rect>`
     svg += `<rect x="${x.toFixed(1)}" y="${(pad.t + ih - h).toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" rx="2.5" fill="${color}" style="cursor:pointer" data-action="curve-chapter" data-chapter-no="${c.no}"><title>第${c.no}章「${esc(c.title)}」· 事件 ${c.events} · 点击跳转</title></rect>`
     if ((i + 1) % Math.ceil(list.length / 8) === 0 || i === list.length - 1) {
       svg += `<text x="${(x + w / 2).toFixed(1)}" y="${H - 6}" text-anchor="middle" font-size="9.5" fill="var(--muted-fg,#64748b)">${c.no}</text>`
@@ -143,19 +147,31 @@ export function renderLocalCurve(emotion, opts = {}) {
   const values = pts.map((p) => p.value)
   const bound = Math.max(1, ...values.map((v) => Math.abs(v)))
   const scale = (ih / 2) / bound
-  let svg = `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" style="display:block;width:100%;overflow:visible" role="img" aria-label="段落情绪（词典近似）">`
-  svg += `<line x1="${pad.l}" y1="${zero}" x2="${W - pad.r}" y2="${zero}" stroke="var(--border)" stroke-width="1" stroke-dasharray="2 3"/>`
+  // 可发现性（OS-50，作者反馈「点看不出能点」）：
+  //   · 每个数据点外面套一圈**透明的宽命中区**（r=11），鼠标不用对准 3px 小点
+  //   · 命中区 fill 透明但 cursor:pointer，hover 时由 CSS 放大可见圆点（.cv-hit）
+  //   · 当前段（activePara）加实心环 + 竖虚线，和正文的竖条高亮呼应
+  let svg = `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" style="display:block;width:100%;overflow:visible" role="img" aria-label="段落情绪（词典近似）· 点击任意点跳到对应段落">`
+  svg += `<line x1="${pad.l}" y1="${zero}" x2="${W - pad.r}" y2="${zero}" stroke="var(--line)" stroke-width="1" stroke-dasharray="2 3"/>`
   const line = pts.map((p, i) => `${(pad.l + i * step).toFixed(1)},${(zero - p.value * scale).toFixed(1)}`).join(' ')
-  svg += `<polyline points="${line}" fill="none" stroke="var(--accent,#0ea5e9)" stroke-width="1.5" stroke-opacity="0.65"/>`
+  svg += `<polyline points="${line}" fill="none" stroke="var(--accent,#0ea5e9)" stroke-width="1.5" stroke-opacity="0.55"/>`
   for (let i = 0; i < pts.length; i++) {
     const p = pts[i]
     const x = pad.l + i * step
     const y = zero - p.value * scale
     const active = opts.activePara === p.index
-    const color = p.value >= 0 ? '#10b981' : '#ef4444'
-    svg += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${active ? 5 : 3}" fill="${color}" fill-opacity="${active ? 1 : 0.55}" style="cursor:pointer" data-action="curve-para" data-paragraph="${p.index}"><title>第 ${p.index + 1} 段 · 强度 ${p.value}（正 ${p.pos}/负 ${p.neg}）· 点击定位</title></circle>`
+    const color = p.value >= 0 ? 'var(--ok, #10b981)' : 'var(--danger, #ef4444)'
+    const tip = `第 ${p.index + 1} 段 · 强度 ${p.value}（正 ${p.pos}/负 ${p.neg}）· 点击跳到这一段`
+    // 当前段：竖虚线（把「这一点」和「正文那一段」在视觉上挂上）
     if (active) {
-      svg += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="9" fill="none" stroke="${color}" stroke-width="1.8" stroke-dasharray="3 2" pointer-events="none"/>`
+      svg += `<line x1="${x.toFixed(1)}" y1="${pad.t}" x2="${x.toFixed(1)}" y2="${H - pad.b}" stroke="${color}" stroke-width="1" stroke-opacity="0.5" stroke-dasharray="2 3" pointer-events="none"/>`
+    }
+    // 可见点
+    svg += `<circle class="cv-dot${active ? ' on' : ''}" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${active ? 4 : 2.6}" fill="${color}" fill-opacity="${active ? 1 : 0.6}" pointer-events="none"/>`
+    // 宽命中区（透明，负责接收点击与 hover）
+    svg += `<circle class="cv-hit" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="11" fill="transparent" style="cursor:pointer" data-action="curve-para" data-paragraph="${p.index}"><title>${tip}</title></circle>`
+    if (active) {
+      svg += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="8" fill="none" stroke="${color}" stroke-width="1.6" stroke-dasharray="3 2" pointer-events="none"/>`
     }
   }
   svg += '</svg>'
