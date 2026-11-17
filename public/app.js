@@ -5017,7 +5017,6 @@ async function startDeduce() {
 }
 
 
-async 
 function deduceHtml() {
   const deduce = state.deduce
   if (!state.current) return needLibraryHtml()
@@ -5248,10 +5247,8 @@ async function openLibrary(path) {
   renderAgent()
 }
 
-async 
 
 
-async 
 async function loadChapter(file) {
   if (!state.current) return
   const target = text(file).trim()
@@ -5319,8 +5316,6 @@ async function saveChapter() {
   render()
 }
 
-async 
-async 
 /* ---------- 交互 ---------- */
 
 /**
@@ -6217,7 +6212,6 @@ async function bootStyles() {
   try { saved = text(localStorage.getItem('openstory-skin')) } catch { saved = '' }
   state.skin = saved
   applySkin(currentPack())
-  renderPalette()
 }
 
 bootStyles()
