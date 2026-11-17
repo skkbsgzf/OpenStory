@@ -3160,7 +3160,16 @@ function referenceEditorHtml() {
       </div>
     </div>`
   }
-  const body = (mdReady && mdModule) ? mdModule.renderMarkdown(text(note.text)) : `<p>${esc(note.text)}</p>`
+  // 渲染前剥掉 frontmatter——那是指标（tags/title），不是正文内容，不该出现在页面上
+  const stripFrontmatter = (raw) => {
+    const source = text(raw)
+    if (!source.startsWith('---\n')) return source
+    const end = source.indexOf('\n---', 4)
+    if (end === -1) return source
+    return source.slice(source.indexOf('\n', end + 1) + 1 || source.length)
+  }
+  const bodySource = stripFrontmatter(note.text)
+  const body = (mdReady && mdModule) ? mdModule.renderMarkdown(bodySource) : `<p>${esc(bodySource)}</p>`
   const tagChips = (Array.isArray(note.tags) ? note.tags : [])
     .map((tag) => `<button class="pill tag-pick" data-ref-tag="${esc(tag)}">#${esc(tag)}</button>`).join('')
   return `<h2>${esc(note.title || note.path)}</h2>
@@ -3191,11 +3200,9 @@ function referencePageHtml() {
     backlinks: ref.backlinks,
     stats: ref.stats
   })
-  // 参考页也带题材左栏（章节树/图谱/摘要）——但它自己的四栏是双链文档本体，不冲突
-  return `<div class="topic-workspace">
-    ${refColHtml()}
-    <div class="topic-main">${errorHtml()}${shell}</div>
-  </div>`
+  // 参考页自己就是双链文档工作面（标签树/列表/正文/反链四栏），
+  // 不再套题材左栏——那三块是给「小说」这类非双链页用的。
+  return `<div class="topic-workspace"><div class="topic-main">${errorHtml()}${shell}</div></div>`
 }
 
 /* ---------- 左内容栏（OS-44）：章节树 / 参考图谱 / 参考摘要 ---------- */
@@ -3384,7 +3391,9 @@ async function loadRefGraph({ force = false } = {}) {
   if (rc.graph && !force) return
   rc.graphLoading = true
   rc.graphError = ''
-  renderRefCol()
+  // 图谱模块在题材页内部：重画左栏要走对应页面的重绘，而不是改全局容器
+  if (state.view === 'write' || state.view === 'reference') render()
+  else renderRefCol()
   try {
     const payload = await api(`/api/reference/graph?root=${encodeURIComponent(state.current.path)}`)
     rc.graph = { nodes: payload.nodes || [], edges: payload.edges || [], stats: payload.stats || {} }
@@ -3393,7 +3402,8 @@ async function loadRefGraph({ force = false } = {}) {
     rc.graphError = `${error?.code ? `${error.code} · ` : ''}${text(error?.message || error)}`
   }
   rc.graphLoading = false
-  renderRefCol()
+  if (state.view === 'write' || state.view === 'reference') render()
+  else renderRefCol()
 }
 
 /**
@@ -5149,8 +5159,13 @@ function go(view) {
         loadChapter(state.chapterFile)
       }
     })
-    // 左栏图谱与参考索引：写小说时要能看到关联的参考（OS-44）
-    loadReferences().then(() => loadRefGraph()).catch(() => {})
+    // 左栏图谱与参考索引：写小说时要能看到关联的参考（OS-45）。
+    // 注意 loadReferences 有「已加载就短路」的分支，所以图谱要单独保证被拉一次——
+    // 否则从参考页切回正文时，索引已缓存但图谱还是空的。
+    Promise.resolve()
+      .then(() => loadReferences())
+      .then(() => loadRefGraph())
+      .catch(() => {})
     return
   }
   if (view === 'entries') ensureEntries()
@@ -5165,7 +5180,7 @@ function go(view) {
 }
 
 document.addEventListener('click', (event) => {
-  const target = event.target.closest('[data-view], [data-go], [data-action], [data-skin], [data-lib-path], [data-entry-id], [data-layer], [data-kind], [data-load-more], [data-session-id], [data-session-del], [data-wiki-mode], [data-create-primary], [data-create-genre], [data-runtime-id], [data-chapter-file], [data-settings-section], [data-ref-path], [data-ref-tag]')
+  const target = event.target.closest('[data-view], [data-go], [data-action], [data-skin], [data-lib-path], [data-entry-id], [data-layer], [data-kind], [data-load-more], [data-session-id], [data-session-del], [data-wiki-mode], [data-create-primary], [data-create-genre], [data-runtime-id], [data-chapter-file], [data-settings-section], [data-ref-path], [data-ref-tag], a.wl[data-ref]')
   if (!target) return
 
   if (target.dataset.createGenre !== undefined) {
