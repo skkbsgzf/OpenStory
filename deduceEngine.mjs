@@ -102,7 +102,13 @@ export async function deducePresent({ root, bookId = 'default', pov = '', seed =
     })),
     tension: turn.tension ?? null,
     fronts: summarizeFronts(state.fronts),
-    budget: { used: state.aiSpent ?? 0, max: state.budgetMax ?? 8 }
+    budget: { used: state.aiSpent ?? 0, max: state.budgetMax ?? 8 },
+    // POV 候选（OS-54）：条目页签剔除后，角色名单由 present 响应直接带——
+    // 前端 datalist 不再依赖 /api/entries 侧通道
+    characters: entries
+      .filter((entry) => text(entry?.layer).trim().toLowerCase() === 'character')
+      .map((entry) => text(entry?.name).trim())
+      .filter(Boolean)
   }
 }
 

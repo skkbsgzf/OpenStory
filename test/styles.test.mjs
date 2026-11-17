@@ -1,5 +1,5 @@
 /**
- * OpenStory OS-5/6 用例（node:test，零依赖）——风格包目录加载＋wiki 派生 HTML。
+ * OpenStory OS-5/6 用例（node:test，零依赖）——风格包目录加载。（OS-54：wiki 工作面已剔除）
  *
  * 跑法：
  *   node --test openstory/test/styles.test.mjs
@@ -16,7 +16,7 @@ import {
   loadStylePacks,
   normalizeStylePack
 } from '../stylePacks.mjs'
-import { isHexColor, wikiHtmlDocument } from '../wikiHtml.mjs'
+import { isHexColor } from '../stylePacks.mjs'
 import { startDaemon } from '../daemon.mjs'
 
 async function makeFixture() {
@@ -114,58 +114,17 @@ test('风格包路径：内置随仓，本机跟 LOCALAPPDATA', () => {
   assert.equal(defaultUserStylesDir({}), '')
 })
 
-/* ---------- wiki HTML 渲染 ---------- */
-
-test('色参校验：#rgb/#rrggbb 收，其他全拒', () => {
-  assert.equal(isHexColor('#ff385c'), true)
-  assert.equal(isHexColor('#F38'), true)
-  assert.equal(isHexColor(' #ff385c '), true)
-  assert.equal(isHexColor('red'), false)
-  assert.equal(isHexColor('#ff385'), false)
-  assert.equal(isHexColor(''), false)
-  assert.equal(isHexColor('#ff385c; background:url(x)'), false)
-})
-
-test('wiki HTML：全节渲染＋全文逃逸＋空 wiki 诚实空态', () => {
-  const doc = wikiHtmlDocument({
-    book: { title: '夹具书<脚本试炼>', author: '林某', group: '雾港组' },
-    characters: [{ name: '林砚<script>', identity: '摆渡人', appearances: 7 }, { name: '余欢' }],
-    chapters: [{ no: 1, title: '雨停之后', summary: '雨到傍晚才停。' }, { no: 2 }],
-    terms: [{ name: '青浦渡口', definition: '故事发生地。' }]
-  }, { accent: '#3a9188', bg: '#f2f7f5', ink: '#223330' })
-  assert.ok(doc.includes('<title>夹具书&lt;脚本试炼&gt; · wiki</title>'), '标题逃逸')
-  assert.ok(doc.includes('林砚&lt;script&gt;'), '人名逃逸')
-  assert.ok(!doc.includes('<script>'), '文档里不允许出现活的 script 标签')
-  assert.ok(doc.includes('出现 7 次'))
-  assert.ok(doc.includes('雨停之后'))
-  assert.ok(doc.includes('第 2 章'), '无题章节补默认题')
-  assert.ok(doc.includes('人物 · 2'))
-  assert.ok(doc.includes('--accent: #3a9188'), '色参进 CSS')
-  assert.ok(doc.includes("default-src 'none'"), 'CSP 在文档里')
-
-  const empty = wikiHtmlDocument(null)
-  assert.ok(empty.includes('还没有派生 wiki'))
-  assert.ok(empty.includes('--accent: #ff385c'), '空 wiki 用默认色')
-
-  const sneaky = wikiHtmlDocument({ book: { title: 'x' } }, { accent: 'javascript:alert(1)', bg: '#fff", --x: 1; }' })
-  assert.ok(!sneaky.includes('javascript:'), '坏色参回落默认')
-  assert.ok(!sneaky.includes('--x: 1'), '坏色参不能注入 token')
-})
-
 /* ---------- 契约 ---------- */
 
 test('契约：stylesGet/wikiHtmlGet 形状', () => {
   assert.equal(validateRequest('stylesGet', {}).ok, true)
-  assert.equal(validateRequest('wikiHtmlGet', { root: 'r', bookId: 'b' }).ok, true)
-  assert.equal(validateRequest('wikiHtmlGet', { root: 'r', bookId: 'b', accent: '#f38', bg: '#ffffff', ink: '#222222' }).ok, true)
-  assert.equal(validateRequest('wikiHtmlGet', { root: 'r' }).ok, false, 'bookId 必填')
   assert.equal(validateResponse('stylesGet', { ok: true, styles: [], warnings: [] }).ok, true)
   assert.equal(validateResponse('stylesGet', { ok: true, warnings: [] }).ok, false)
 })
 
 /* ---------- daemon 端到端 ---------- */
 
-test('daemon 端到端：/api/styles 四包＋坏档 warning；/api/wiki/html 沙箱文档；坏色参 400', async () => {
+test('daemon 端到端：/api/styles 四包＋坏档 warning', async () => {
   const fixture = await makeFixture()
   try {
     await mkdir(fixture.builtinDir, { recursive: true })
@@ -190,22 +149,6 @@ test('daemon 端到端：/api/styles 四包＋坏档 warning；/api/wiki/html �
       assert.equal(styles.styles[3].source, '本机')
       assert.ok(styles.warnings.some((warning) => warning.code === 'STYLE_PACK_ID'), '缺 id 的包记 warning')
 
-      const htmlRes = await fetch(`${origin}/api/wiki/html?root=${encodeURIComponent(fixture.root)}&bookId=book-1&accent=%233a9188&bg=%23f2f7f5&ink=%23223330`)
-      assert.equal(htmlRes.status, 200)
-      assert.match(htmlRes.headers.get('content-type'), /text\/html/u)
-      assert.match(htmlRes.headers.get('content-security-policy') || '', /default-src 'none'/u)
-      const html = await htmlRes.text()
-      assert.ok(html.includes('夹具书&lt;脚本试炼&gt;'), '书名逃逸')
-      assert.ok(html.includes('--accent: #3a9188'))
-      assert.ok(html.includes('人物 · 2'))
-
-      const bad = await fetch(`${origin}/api/wiki/html?root=${encodeURIComponent(fixture.root)}&bookId=book-1&accent=red`)
-      assert.equal(bad.status, 400)
-      assert.equal((await bad.json()).error.code, 'INVALID_ENTRY')
-
-      const missing = await fetch(`${origin}/api/wiki/html?root=${encodeURIComponent(fixture.root)}&bookId=no-such-book`)
-      assert.equal(missing.status, 200, '未派生的书与 /api/wiki 同口径：ok＋空 wiki')
-      assert.ok((await missing.text()).includes('还没有派生 wiki'))
     } finally {
       await daemon.close()
     }

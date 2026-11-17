@@ -466,14 +466,6 @@ input, textarea, select { font: inherit; color: inherit; }
 .prose p { margin: 0 0 1.2em; }
 
 /* 条目页（wiki） */
-.entry-grid { display: grid; grid-template-columns: minmax(0,1fr) 300px; gap: 30px; max-width: 1080px; }
-.entry-grid .e-title { font-family: var(--serif); font-size: 34px; font-weight: 800; margin: 0 0 6px; }
-.entry-grid .e-sum { font-family: var(--serif); font-size: 17px; color: var(--ink-2); margin: 0 0 12px; }
-.e-meta { font-size: 12px; color: var(--muted); display: flex; gap: 8px; align-items: center; margin-bottom: 16px; flex-wrap: wrap; }
-.e-meta .t { border: 1px solid var(--line); border-radius: var(--pill); padding: 1px 10px; }
-.e-sec h3 { font-size: 16px; margin: 22px 0 8px; }
-.e-sec p { font-family: var(--serif); line-height: 1.9; margin: 0 0 1em; white-space: pre-wrap; }
-.e-side { border-left: 1px solid var(--hair); padding-left: 22px; font-size: 13px; min-width: 0; }
 .e-side h4 { font-size: 12px; color: var(--meta); font-weight: 600; margin: 14px 0 8px; }
 .e-side .kv { display: flex; gap: 10px; margin: 4px 0; }
 .e-side .kv .k { width: 54px; color: var(--meta); flex: 0 0 54px; }
@@ -552,13 +544,6 @@ input, textarea, select { font: inherit; color: inherit; }
 .chip.on { background: var(--ink); color: var(--bg); border-color: var(--ink); }
 .chip:hover { border-color: var(--ink); }
 .count { font-size: 12px; color: var(--meta); }
-.entry-list { display: flex; flex-direction: column; border-top: 1px solid var(--hair); max-width: 1000px; }
-.entry-row { display: grid; grid-template-columns: minmax(0, 210px) minmax(0,1fr) 110px; gap: 14px; padding: 12px 6px; border-bottom: 1px solid var(--hair); text-align: left; align-items: baseline; }
-.entry-row:hover { background: var(--soft); }
-.entry-row .nm { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.entry-row .sm { color: var(--muted); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.entry-row .ly { color: var(--meta); font-size: 12px; text-align: right; }
-.entry-row .empty { color: var(--meta); }
 .pager { display: flex; gap: 10px; align-items: center; margin-top: 16px; font-size: 12px; color: var(--muted); }
 .btn-primary { background: var(--accent); color: #fff; border-radius: var(--pill); padding: 7px 18px; font-weight: 600; }
 .btn-primary:hover { background: var(--accent-hover); }
@@ -571,23 +556,6 @@ input, textarea, select { font: inherit; color: inherit; }
 .editor { width: 100%; min-height: 58vh; border: 1px solid var(--line); border-radius: var(--radius-md); padding: 20px 24px; background: var(--bg); font-family: var(--serif); font-size: 16px; line-height: 1.9; resize: vertical; outline: none; color: var(--ink-2); }
 .editor:focus { border-color: var(--ink); }
 .saved-chip { font-size: 12px; color: var(--ok); border: 1px solid var(--ok); border-radius: var(--pill); padding: 1px 10px; }
-.wiki-wrap { max-width: 1080px; }
-.wiki-head { border-bottom: 1px solid var(--hair); padding-bottom: 14px; margin-bottom: 18px; }
-.wiki-head h2 { font-family: var(--serif); font-size: 28px; margin: 0 0 6px; }
-.wiki-head .meta { font-size: 12px; color: var(--muted); display: flex; gap: 12px; flex-wrap: wrap; }
-.wiki-section { margin-bottom: 26px; }
-.wiki-section h3 { font-size: 15px; margin: 0 0 10px; }
-.wiki-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
-.wiki-card { border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 12px; font-size: 13px; }
-.wiki-card b { display: block; margin-bottom: 4px; }
-.wiki-card .sub { color: var(--muted); font-size: 12px; line-height: 1.6; }
-.wiki-line { display: grid; grid-template-columns: 64px minmax(0,1fr); gap: 10px; padding: 7px 0; border-bottom: 1px dashed var(--hair); font-size: 13px; }
-.wiki-line .no { color: var(--meta); font-family: var(--mono); font-size: 12px; }
-.wiki-line .tt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
-/* ── wiki 双态（OS-6：网页 iframe 沙箱为主，数据卡片退役为对照）────── */
-.subtabs { display: inline-flex; gap: 6px; }
-.wiki-frame { width: 100%; height: calc(100vh - 236px); min-height: 420px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--bg); }
 
 /* ── 库管理写操作（OS-7：新建/导入/修复整页流）──────────── */
 .lib-head-row { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }

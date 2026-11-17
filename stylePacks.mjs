@@ -12,6 +12,12 @@
  * 坏档/坏名不拖垮清单：跳过＋warning，工作台摆人话。
  */
 import { dirname, join } from 'node:path'
+
+
+/** 六位/三位 hex 色参校验（OS-54 自 wikiHtml.mjs 迁入——wiki 工作面剔除后由风格包与设置侧继续使用）。 */
+export function isHexColor(value) {
+  return /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/iu.test(String(value ?? '').trim())
+}
 import { fileURLToPath } from 'node:url'
 import { readdir, readFile } from 'node:fs/promises'
 
