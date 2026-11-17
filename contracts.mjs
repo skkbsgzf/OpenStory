@@ -128,7 +128,8 @@ export const ENDPOINTS = Object.freeze({
     path: '/api/agent/config',
     // 字段缺省＝保留原值；空串＝清除（endpoint 清空即回到未配置）。
     // reasoningEffort：DSH 的 reasoning_effort（low/medium/high…），空＝用 DSH 自己的默认档。
-    request: { body: { endpoint: 'string?', model: 'string?', apiKey: 'string?', runtime: 'string?', reasoningEffort: 'string?' } },
+    // chineseReasoning：让模型用中文推理（默认 true）——中文写作讨论更贴题，代价是可能损失部分推理性能。
+    request: { body: { endpoint: 'string?', model: 'string?', apiKey: 'string?', runtime: 'string?', reasoningEffort: 'string?', chineseReasoning: 'boolean?' } },
     response: {
       ok: 'true',
       configured: 'boolean',
@@ -137,6 +138,7 @@ export const ENDPOINTS = Object.freeze({
       apiKeyMasked: 'string?',
       runtime: 'string?',
       reasoningEffort: 'string?',
+      chineseReasoning: 'boolean',
       configPath: 'string'
     },
     errors: ['INVALID_ENTRY']
