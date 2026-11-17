@@ -121,7 +121,7 @@ import {
   setPrimaryCarrier
 } from './libraryManage.mjs'
 import { createFactFileStore } from './core/pinax/next/kernel/factFileStore.mjs'
-import { backlinksOf, buildReferenceGraph, REFERENCE_DIR, scanReferences } from './referenceStore.mjs'
+import { absorbLegacyDirs, backlinksOf, buildReferenceGraph, REFERENCE_DIR, scanReferences } from './referenceStore.mjs'
 import { deducePresent, deduceSettle } from './deduceEngine.mjs'
 import { factHealth } from './factGuard.mjs'
 import { enrichBook, enrichGraph } from './enrichEngine.mjs'
@@ -968,6 +968,43 @@ async function handleApi(req, res, url, context) {
       note: { ...(note || { path: requested, title: requested.split('/').pop() }), text: raw },
       backlinks
     })
+  }
+
+  if (endpointId === 'referenceAbsorb') {
+    const authorized = authorizeRoot(allowlist, request.root)
+    if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
+    // OS-48：旧目录迁入参考。规划（哪些搬、哪些目标冲突）在 referenceStore，真搬运走
+    // writeChapterWithBackup（原子写目标）+ deleteChapter（源进 .history，可逆）这两条既有通道。
+    const planned = await absorbLegacyDirs(authorized.root, Array.isArray(request.dirs) ? request.dirs : [])
+    if (!planned.ok) return sendError(res, API_ERROR_CODES.INVALID_ENTRY, planned.message)
+    const moved = []
+    const skipped = [...planned.skipped]
+    for (const item of planned.moves) {
+      let content
+      try {
+        const src = resolveInsideRoot(authorized.root, item.fromRel, { allowMetadata: false })
+        if (!src.ok) {
+          skipped.push({ path: item.fromRel, reason: src.message })
+          continue
+        }
+        content = await readFile(src.path, 'utf-8')
+      } catch (error) {
+        skipped.push({ path: item.fromRel, reason: `读不到：${text(error?.message || error)}` })
+        continue
+      }
+      const written = await writeChapterWithBackup(authorized.root, item.toRel, content)
+      if (!written.ok) {
+        skipped.push({ path: item.fromRel, reason: written.message })
+        continue
+      }
+      const removed = await deleteChapter(authorized.root, item.fromRel)
+      if (!removed.ok) {
+        skipped.push({ path: item.fromRel, reason: `目标已写入，但删源失败（旧文件保留原位）：${removed.message}` })
+        continue
+      }
+      moved.push({ from: item.fromRel, to: item.toRel, backup: removed.backup })
+    }
+    return sendJson(res, 200, { ok: true, moved, skipped })
   }
 
   if (endpointId === 'dirCreate') {

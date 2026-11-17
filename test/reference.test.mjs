@@ -10,6 +10,7 @@ import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
+  absorbLegacyDirs,
   backlinksOf,
   buildReferenceGraph,
   extractInlineTags,
@@ -253,6 +254,49 @@ test('系统提示：参考只暴露路径/标题/标签，正文一个字都不
     assert.match(prompt, /不要一次读一堆参考/u)
     // ④ 只读约束
     assert.match(prompt, /只能读/u)
+  } finally {
+    await rm(base, { recursive: true, force: true })
+  }
+})
+
+/* ---------- 旧目录迁入参考（OS-48）：规划层单测，真搬运由 daemon 编排 ---------- */
+
+test('迁移规划：列文件算目标路径，子目录递归，目标冲突跳过', async () => {
+  const base = await mkdtemp(join(tmpdir(), 'openstory-absorb-'))
+  const root = join(base, '库')
+  await mkdir(join(root, '大纲'), { recursive: true })
+  await mkdir(join(root, '资料', '世界书辅助'), { recursive: true })
+  await mkdir(join(root, '参考', '大纲'), { recursive: true })
+  await writeFile(join(root, '大纲', '001-主线.md'), '主线\n', 'utf-8')
+  await writeFile(join(root, '大纲', '草稿.txt'), 'txt 也算\n', 'utf-8')
+  await writeFile(join(root, '资料', '世界书辅助', '港口.md'), '港口设定\n', 'utf-8')
+  await writeFile(join(root, '参考', '大纲', '001-主线.md'), '已有内容\n', 'utf-8')
+  try {
+    const planned = await absorbLegacyDirs(root, ['大纲', '资料'])
+    assert.equal(planned.ok, true)
+    // 大纲/001-主线.md 与参考冲突 → skip；其余照搬（txt 在参考扩展名白名单内）
+    assert.equal(planned.moves.length, 2)
+    const port = planned.moves.find((item) => item.fromRel === '资料/世界书辅助/港口.md')
+    assert.ok(port, '子目录文件也要搬')
+    assert.equal(port.toRel, '参考/资料/世界书辅助/港口.md')
+    assert.ok(planned.moves.some((item) => item.fromRel === '大纲/草稿.txt'))
+    assert.equal(planned.skipped.length, 1)
+    assert.equal(planned.skipped[0].path, '大纲/001-主线.md')
+    assert.match(planned.skipped[0].reason, /目标已存在/u)
+  } finally {
+    await rm(base, { recursive: true, force: true })
+  }
+})
+
+test('迁移规划：白名单外的目录一律拒绝（动稿口子收窄）', async () => {
+  const base = await mkdtemp(join(tmpdir(), 'openstory-absorb-'))
+  try {
+    const bad = await absorbLegacyDirs(join(base, '库'), ['世界书', '正文', '日志'])
+    assert.equal(bad.ok, false)
+    assert.match(bad.message, /只接受/u)
+    assert.equal(bad.moves.length, 0)
+    const none = await absorbLegacyDirs(join(base, '库'), [])
+    assert.equal(none.ok, false)
   } finally {
     await rm(base, { recursive: true, force: true })
   }

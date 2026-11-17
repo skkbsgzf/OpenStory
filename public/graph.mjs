@@ -4,11 +4,14 @@
  * 为什么自研而不引 d3/pixi：本仓零 npm 依赖（VENDORED 口径），参考图谱规模在
  * 几百节点以内，canvas 2D + 一个 O(n²) 斥力 + 边弹簧就够用，没必要引入 200KB 库。
  *
- * 力模型（照 d3-force 的直觉，参数手调）：
- *   · 斥力：节点两两相斥，随距离平方衰减
- *   · 引力：有边的节点互相靠拢
- *   · 向心：整体往画布中心收，防飘散
- *   · 阻尼：每步 0.85，收敛后自动停（避免吃满 CPU）
+ * OS-49 对齐作者 Wiki 设计（D:\Qbook\短篇选题库\wiki\*\index.html 的 forceLayout）：
+ *   · 初始位置按 kind 分环（参考内环 → 产物中环 → 标签/条目外环）
+ *   · 斥力按度数缩放：枢纽（关联多的节点）留在中心
+ *   · 边弹簧按来源分刚度：双链边短而紧，标签边长而松
+ *   · 标签避让：径向朝外候选位 + 度数高者优先占位（照 Wiki 的 labelPos 算法）
+ *   · 聚焦模式（mode:'focus'）：点节点看邻域，再点进详情，点空白复位——由调用方
+ *     过滤子图后重挂，本模块只负责把 focusId 节点画上深色描边
+ *   · hover halo 光圈（0.10 → 0.26），密集时标签默认只显圆点
  */
 
 const KIND_COLOR = {
@@ -17,6 +20,24 @@ const KIND_COLOR = {
   artifact: '#008a05',
   entry: '#9a9a9a'
 }
+
+/** 初始环半径比例（相对画布短边）：越「核心」的 kind 越靠内。 */
+const KIND_RING = {
+  reference: 0.34,
+  artifact: 0.62,
+  tag: 0.92,
+  entry: 0.92
+}
+
+/** 边弹簧参数按来源分：link=双链（结构边），tag=标签共现，mention=提及。 */
+const EDGE_SPRING = {
+  link: { rest: 84, stiffness: 0.05 },
+  mention: { rest: 110, stiffness: 0.028 },
+  tag: { rest: 132, stiffness: 0.012 }
+}
+
+const LABEL_FONT = '10.5px system-ui, sans-serif'
+const LABEL_FONT_WIDE = '600 11px system-ui, sans-serif'
 
 function radiusOf(node) {
   if (node.kind === 'tag') return 5
@@ -29,30 +50,106 @@ function radiusOf(node) {
 
 /**
  * 挂载/重绘图谱。幂等：同一 canvas 上重复调用会重置。
+ * @param {object} opts
+ * @param {'jump'|'focus'} opts.mode jump=点节点直接 onPick（正文页左栏小图）；focus=调用方管聚焦（参考页大图）
+ * @param {string|null} opts.focusId 聚焦节点 id（focus 模式下画深色描边环）
+ * @param {(node) => void} opts.onPick 点节点（位移 <4px）
+ * @param {() => void} opts.onBlank 点空白（focus 模式复位用）
  * @returns {() => void} 清理函数（卸载动画与监听）
  */
-export function mountGraph({ canvas, graph, onPick }) {
+export function mountGraph({ canvas, graph, onPick, onBlank, mode = 'jump', focusId = null }) {
   if (!canvas || !graph) return () => {}
   const ctx = canvas.getContext('2d')
   if (!ctx) return () => {}
 
-  // 节点初始化：圆环铺开（比随机好看，收敛也快）
-  const nodes = (graph.nodes || []).map((node, index, all) => {
-    const angle = (index / Math.max(1, all.length)) * Math.PI * 2
-    const spread = Math.min(canvas.clientWidth, canvas.clientHeight) * 0.32
-    return {
-      ...node,
-      r: radiusOf(node),
-      x: Math.cos(angle) * spread,
-      y: Math.sin(angle) * spread,
-      vx: 0,
-      vy: 0
-    }
-  })
+  const rawNodes = graph.nodes || []
+  const rawEdges = graph.edges || []
+
+  // 度数表：决定斥力缩放与标签优先级（枢纽留中心、标签先占位）
+  const degree = new Map()
+  for (const edge of rawEdges) {
+    degree.set(edge.a, (degree.get(edge.a) || 0) + 1)
+    degree.set(edge.b, (degree.get(edge.b) || 0) + 1)
+  }
+
+  // 节点初始化：按 kind 分环铺开（比单一圆环好看，也符合「枢纽在内、外围装饰」的阅读顺序）
+  const byKind = new Map()
+  for (const node of rawNodes) {
+    const kind = node.kind || 'reference'
+    if (!byKind.has(kind)) byKind.set(kind, [])
+    byKind.get(kind).push(node)
+  }
+  const spread = Math.min(canvas.clientWidth || 240, canvas.clientHeight || 190) * 0.46
+  const nodes = []
+  for (const [kind, list] of byKind) {
+    const ring = (KIND_RING[kind] ?? 0.8) * spread
+    list.forEach((node, index) => {
+      const angle = (index / list.length) * Math.PI * 2 + (kind === 'artifact' ? 0.35 : kind === 'tag' ? 0.7 : 0)
+      nodes.push({
+        ...node,
+        r: radiusOf(node),
+        deg: degree.get(node.id) || 0,
+        x: Math.cos(angle) * ring,
+        y: Math.sin(angle) * ring * 0.82,
+        vx: 0,
+        vy: 0
+      })
+    })
+  }
   const byId = new Map(nodes.map((node) => [node.id, node]))
-  const edges = (graph.edges || [])
-    .map((edge) => ({ ...edge, from: byId.get(edge.a), to: byId.get(edge.b) }))
+  const edges = rawEdges
+    .map((edge) => ({
+      ...edge,
+      from: byId.get(edge.a),
+      to: byId.get(edge.b),
+      spring: EDGE_SPRING[(edge.sources && edge.sources[0]) || 'tag'] || EDGE_SPRING.tag
+    }))
     .filter((edge) => edge.from && edge.to)
+
+  // 标签避让：度数高者优先占位；候选位优先「径向朝外」（照 Wiki labelPos）
+  const labelWidthCache = new Map()
+  function labelWidth(node, label) {
+    if (!labelWidthCache.has(label)) {
+      ctx.font = node.kind === 'reference' ? LABEL_FONT_WIDE : LABEL_FONT
+      labelWidthCache.set(label, ctx.measureText(label).width)
+    }
+    return labelWidthCache.get(label)
+  }
+  function layoutLabels() {
+    const order = [...nodes].sort((left, right) => right.deg - left.deg)
+    const placed = []
+    for (const node of order) {
+      const label = String(node.label || node.id).slice(0, 24)
+      const estW = labelWidth(node, label)
+      const vx = node.x - width / 2
+      const vy = node.y - height / 2
+      const vlen = Math.sqrt(vx * vx + vy * vy) || 1
+      const off = node.r + 9
+      const rdx = (vx / vlen) * off
+      const rdy = (vy / vlen) * off + 4
+      const radialAnchor = Math.abs(vx) < vlen * 0.35 ? 'center' : (vx > 0 ? 'left' : 'right')
+      const candidates = [
+        { dx: rdx, dy: rdy, anchor: radialAnchor },
+        { dx: 0, dy: -(node.r + 8), anchor: 'center' },
+        { dx: 0, dy: node.r + 15, anchor: 'center' },
+        { dx: node.r + 8, dy: 4, anchor: 'left' },
+        { dx: -(node.r + 8), dy: 4, anchor: 'right' }
+      ]
+      let best = candidates[0]
+      for (let c = 0; c < candidates.length; c += 1) {
+        const cand = candidates[c]
+        const cx = node.x + cand.dx
+        const cy = node.y + cand.dy
+        const x1 = cand.anchor === 'center' ? cx - estW / 2 : cand.anchor === 'left' ? cx : cx - estW
+        const box = { x1, x2: x1 + estW, y1: cy - 9, y2: cy + 3 }
+        const hit = placed.some((p) => !(box.x2 < p.x1 || box.x1 > p.x2 || box.y2 < p.y1 || box.y1 > p.y2))
+        if (!hit) { best = cand; placed.push(box); break }
+        if (c === candidates.length - 1) placed.push(box) // 都撞就接受最后一个
+      }
+      node._label = label
+      node._labelPos = best
+    }
+  }
 
   let width = 0
   let height = 0
@@ -75,7 +172,9 @@ export function mountGraph({ canvas, graph, onPick }) {
   function tick() {
     const cx = width / 2
     const cy = height / 2
-    // 斥力
+    const cooling = 0.9 + (1 - alpha) * 0.1
+    // 斥力：度数越高斥力越弱（枢纽留在中心）——照 Wiki forceLayout 的度数缩放
+    const repulseBase = (nodes.length > 150 ? 2400 : 1700) * cooling * (Math.min(width, height) / 480 + 0.55)
     for (let i = 0; i < nodes.length; i += 1) {
       const a = nodes[i]
       for (let j = i + 1; j < nodes.length; j += 1) {
@@ -90,7 +189,9 @@ export function mountGraph({ canvas, graph, onPick }) {
           dist2 = 0.5
         }
         const dist = Math.sqrt(dist2)
-        const force = 900 / dist2
+        const da = 1 + a.deg * 0.35
+        const db = 1 + b.deg * 0.35
+        const force = repulseBase / (dist2 * Math.max(1, Math.min(da, db) * 0.55))
         const fx = (dx / dist) * force
         const fy = (dy / dist) * force
         a.vx += fx
@@ -99,13 +200,12 @@ export function mountGraph({ canvas, graph, onPick }) {
         b.vy -= fy
       }
     }
-    // 引力（边弹簧）
+    // 引力（边弹簧）：来源决定 rest/stiffness——双链边短而紧，标签边长而松
     for (const edge of edges) {
       const dx = edge.to.x - edge.from.x
       const dy = edge.to.y - edge.from.y
       const dist = Math.max(1, Math.sqrt(dx * dx + dy * dy))
-      const stiffness = 0.015 + Math.min(0.02, (Number(edge.weight) || 1) / 200)
-      const force = (dist - 60) * stiffness
+      const force = (dist - edge.spring.rest) * edge.spring.stiffness
       const fx = (dx / dist) * force
       const fy = (dy / dist) * force
       edge.from.vx += fx
@@ -136,49 +236,95 @@ export function mountGraph({ canvas, graph, onPick }) {
     }
   }
 
+  /** 节点总数多时，标签节点默认只显圆点（照 Wiki 的密集事件口径），hover 才显形。 */
+  const hideTagLabels = nodes.length > 36
+  function labelVisible(node) {
+    if (node.kind === 'tag' && hideTagLabels && hover?.id !== node.id && focusId !== node.id) return false
+    return true
+  }
+
   function draw() {
     ctx.clearRect(0, 0, width, height)
-    // 边
-    const focusId = hover?.id || dragNode?.id || null
+    // 边：来源定宽（双链粗），hover/聚焦邻域高亮
+    const focusRing = hover?.id || dragNode?.id || focusId || null
     for (const edge of edges) {
-      const active = focusId && (edge.from.id === focusId || edge.to.id === focusId)
-      ctx.strokeStyle = active ? 'rgba(255,56,92,0.55)' : 'rgba(150,150,150,0.28)'
-      ctx.lineWidth = Math.min(2.2, 0.7 + (Number(edge.weight) || 1) * 0.22)
+      const active = focusRing && (edge.from.id === focusRing || edge.to.id === focusRing)
+      const isLink = (edge.sources || []).includes('link')
+      ctx.strokeStyle = active ? 'rgba(255,56,92,0.55)' : isLink ? 'rgba(150,150,150,0.34)' : 'rgba(150,150,150,0.22)'
+      ctx.lineWidth = Math.min(2.4, 0.8 + Math.min(2.2, (Number(edge.weight) || 1) * 0.28))
       ctx.beginPath()
       ctx.moveTo(edge.from.x, edge.from.y)
       ctx.lineTo(edge.to.x, edge.to.y)
       ctx.stroke()
     }
-    // 节点
+    // 节点：halo 光圈 + 本体 + 白描边 + 聚焦深环（照 Wiki 的径向渐变观感，canvas 用两层圆近似）
     for (const node of nodes) {
       const color = KIND_COLOR[node.kind] || '#888'
-      const isFocus = focusId === node.id
+      const isHover = hover?.id === node.id
+      const isFocusNode = focusId === node.id
+      // halo
       ctx.beginPath()
-      ctx.arc(node.x, node.y, node.r + (isFocus ? 2 : 0), 0, Math.PI * 2)
-      ctx.fillStyle = node.kind === 'entry' ? 'rgba(154,154,154,0.55)' : color
-      ctx.globalAlpha = node.kind === 'entry' ? 0.8 : 1
+      ctx.arc(node.x, node.y, node.r + 5, 0, Math.PI * 2)
+      ctx.fillStyle = color
+      ctx.globalAlpha = isHover ? 0.26 : 0.1
       ctx.fill()
       ctx.globalAlpha = 1
-      if (isFocus) {
-        ctx.strokeStyle = color
-        ctx.lineWidth = 2
+      // 本体
+      ctx.beginPath()
+      ctx.arc(node.x, node.y, node.r + (isHover ? 1.8 : 0), 0, Math.PI * 2)
+      ctx.fillStyle = node.kind === 'entry' ? 'rgba(154,154,154,0.55)' : color
+      ctx.fill()
+      ctx.strokeStyle = '#fff'
+      ctx.lineWidth = 1.6
+      ctx.stroke()
+      if (isHover || isFocusNode) {
+        ctx.strokeStyle = isFocusNode ? '#222' : color
+        ctx.lineWidth = isFocusNode ? 2.4 : 2
+        ctx.beginPath()
+        ctx.arc(node.x, node.y, node.r + 3.2, 0, Math.PI * 2)
         ctx.stroke()
       }
     }
-    // 焦点节点的名字
+    // 标签（避让后统一画，白描边保证压线上可读）
+    layoutLabels()
+    ctx.lineJoin = 'round'
+    for (const node of nodes) {
+      if (!labelVisible(node)) continue
+      const pos = node._labelPos
+      if (!pos) continue
+      const lx = node.x + pos.dx
+      const ly = node.y + pos.dy
+      ctx.font = node.kind === 'reference' ? LABEL_FONT_WIDE : LABEL_FONT
+      ctx.textAlign = pos.anchor === 'center' ? 'center' : pos.anchor === 'left' ? 'left' : 'right'
+      ctx.textBaseline = 'middle'
+      ctx.strokeStyle = 'rgba(255,255,255,0.9)'
+      ctx.lineWidth = 3
+      ctx.strokeText(node._label, lx, ly)
+      ctx.fillStyle = node.kind === 'tag' ? '#a06a00' : '#3d3a36'
+      ctx.fillText(node._label, lx, ly)
+    }
+    ctx.textAlign = 'left'
+    // hover 摘要胶囊（有 excerpt 时显示第二行信息）
     if (hover) {
-      ctx.font = '11px system-ui, sans-serif'
-      ctx.fillStyle = 'rgba(0,0,0,0.72)'
-      const label = String(hover.label || hover.id).slice(0, 22)
-      const pad = 4
-      const w = ctx.measureText(label).width + pad * 2
-      const bx = Math.min(width - w - 2, Math.max(2, hover.x - w / 2))
-      const by = Math.max(14, hover.y - hover.r - 10)
-      ctx.globalAlpha = 0.92
-      ctx.fillRect(bx, by - 12, w, 15)
-      ctx.globalAlpha = 1
-      ctx.fillStyle = '#fff'
-      ctx.fillText(label, bx + pad, by - 1)
+      const excerpt = String(hover.excerpt || '').trim()
+      if (excerpt) {
+        const label = excerpt.slice(0, 30)
+        ctx.font = '10.5px system-ui, sans-serif'
+        const pad = 5
+        const w = ctx.measureText(label).width + pad * 2
+        const bx = Math.min(width - w - 2, Math.max(2, hover.x - w / 2))
+        const by = Math.min(height - 22, Math.max(16, hover.y + hover.r + 14))
+        ctx.globalAlpha = 0.94
+        ctx.fillStyle = 'rgba(34,34,34,0.82)'
+        ctx.beginPath()
+        if (typeof ctx.roundRect === 'function') ctx.roundRect(bx, by - 12, w, 17, 4)
+        else ctx.rect(bx, by - 12, w, 17)
+        ctx.fill()
+        ctx.globalAlpha = 1
+        ctx.fillStyle = '#fff'
+        ctx.textAlign = 'left'
+        ctx.fillText(label, bx + pad, by - 3)
+      }
     }
   }
 
@@ -217,7 +363,17 @@ export function mountGraph({ canvas, graph, onPick }) {
   }
   const onDown = (event) => {
     const node = pick(event)
-    if (!node) return
+    if (!node) {
+      // 空白处：干净点击（位移 <4px）→ onBlank（focus 模式复位全景）
+      const startX = event.clientX
+      const startY = event.clientY
+      const onUpBlank = (upEvent) => {
+        canvas.removeEventListener('pointerup', onUpBlank)
+        if (Math.hypot(upEvent.clientX - startX, upEvent.clientY - startY) < 4 && typeof onBlank === 'function') onBlank()
+      }
+      canvas.addEventListener('pointerup', onUpBlank)
+      return
+    }
     dragNode = node
     canvas.classList.add('dragging')
     // 拖完若几乎没动，算一次点击
