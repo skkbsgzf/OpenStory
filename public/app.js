@@ -63,7 +63,7 @@ const state = {
     mode: 'engine', engine: { busy: false, data: null, pov: '', seed: '', error: '', hint: '' } },
   artifacts: { root: '', groups: [], totals: null, loading: false, error: '', previewFile: '', previewText: '', previewLoading: false },
   // 参考载体（OS-44）：索引 / 当前笔记 / 反链 / 筛选标签
-  reference: { loaded: false, loading: false, notes: [], tags: [], tagNotes: {}, stats: null, error: '', activePath: '', activeTag: '', note: null, backlinks: { linked: [], unlinked: [] }, draft: '' },
+  reference: { loaded: false, loading: false, notes: [], tags: [], tagNotes: {}, stats: null, error: '', activePath: '', activeTag: '', note: null, backlinks: { linked: [], unlinked: [] }, draft: '', view: 'note', q: '', focus: null, absorb: {}, flash: '' },
   // 左内容栏三模块（OS-44）：章节树 / 参考图谱 / 参考摘要
   refCol: { graph: null, graphLoading: false, graphError: '', summary: '', summaryBusy: false, summaryError: '' },
   settings: { userDir: '', section: 'plugins', suiteId: '', open: false, prevView: '', helpOpen: false },
@@ -242,7 +242,8 @@ function render() {
   }
   else if (state.view === 'reference') {
     viewEl.innerHTML = referencePageHtml()
-    afterRefColMount()
+    // 图谱视图：DOM 就位后挂大画布（聚焦模式）；笔记视图无需画布
+    if ((state.reference.view || 'note') === 'graph') mountReferenceGraph()
   }
   else if (state.view === 'wiki') viewEl.innerHTML = wikiHtml()
   else if (state.view === 'lib-create') viewEl.innerHTML = createHtml()
@@ -3103,6 +3104,14 @@ async function loadReferences({ force = false } = {}) {
     ref.tagNotes = payload.tagNotes && typeof payload.tagNotes === 'object' ? payload.tagNotes : {}
     ref.stats = payload.stats ?? null
     ref.loaded = true
+    // OS-48：顺手探旧目录有没有可迁入的内容（迁入按钮按需显示；目录不存在＝0）
+    ref.absorb = {}
+    await Promise.all(['大纲', '构思', '资料', '约束'].map(async (dir) => {
+      try {
+        const listed = await api(`/api/files?root=${encodeURIComponent(state.current.path)}&dir=${encodeURIComponent(dir)}`)
+        ref.absorb[dir] = Array.isArray(listed.files) ? listed.files.length : 0
+      } catch { ref.absorb[dir] = 0 }
+    }))
   } catch (error) {
     ref.error = `${error?.code ? `${error.code} · ` : ''}${text(error?.message || error)}`
   }
@@ -3167,25 +3176,147 @@ function referenceEditorHtml() {
     <div class="prose-block">${body}</div>`
 }
 
-/** 参考页整体。 */
+/** 参考页整体（OS-48：侧栏导航 + 视图制主区）。 */
 function referencePageHtml() {
   const ref = state.reference
   if (!state.current) return needLibraryHtml()
   if (ref.loading && !ref.loaded) return '<div class="loading">正在读取参考…</div>'
   if (!refModule) return '<div class="loading">参考模块载入中…</div>'
-  const editor = referenceEditorHtml()
+  const mainHtml = (ref.view || 'note') === 'graph' ? referenceGraphHtml() : referenceEditorHtml()
+  const absorbTotal = Object.values(ref.absorb || {}).reduce((sum, count) => sum + (Number(count) || 0), 0)
   const shell = refModule.referenceShellHtml({
     notes: ref.notes,
     tags: ref.tags,
     activeTag: ref.activeTag,
     activePath: ref.activePath,
-    editorHtml: editor,
+    view: ref.view || 'note',
+    q: ref.q || '',
+    mainHtml,
     backlinks: ref.backlinks,
-    stats: ref.stats
+    stats: ref.stats,
+    absorbable: absorbTotal
   })
-  // 参考页自己就是双链文档工作面（标签树/列表/正文/反链四栏），
+  // 参考页自己就是双链文档工作面（侧栏导航/正文/反链），
   // 不再套题材左栏——那三块是给「小说」这类非双链页用的。
-  return `<div class="topic-workspace"><div class="topic-main">${errorHtml()}${shell}</div></div>`
+  return `<div class="topic-workspace"><div class="topic-main">${errorHtml()}${ref.flash ? `<div class="ok-note">${esc(ref.flash)}</div>` : ''}${shell}</div></div>`
+}
+
+/** 参考页·关系图谱视图（OS-48）：大画布 + 聚焦交互，对齐作者 Wiki 的图谱口径。 */
+function referenceGraphHtml() {
+  const rc = state.refCol
+  if (rc.graphError) return `<div class="error-box">${esc(rc.graphError)}</div>`
+  if (!rc.graph) return '<div class="loading">正在构图…</div>'
+  const stats = rc.graph.stats || {}
+  const byKind = stats.byKind || {}
+  const legend = [
+    ['reference', '参考', 'var(--accent)'],
+    ['tag', '标签', '#c48a00'],
+    ['artifact', '章节/产物', 'var(--ok)'],
+    ['entry', '条目（只读）', 'var(--meta)']
+  ].filter(([kind]) => byKind[kind]).map(([, label, color]) =>
+    `<span><i style="background:${color}"></i>${esc(label)}</span>`).join('')
+  const focusNode = state.reference.focus
+    ? rc.graph.nodes.find((node) => node.id === state.reference.focus)
+    : null
+  const hint = focusNode
+    ? `聚焦「${focusNode.label || focusNode.id}」的邻域——再点它进详情，点空白复位`
+    : '点节点聚焦邻域，再点进详情，点空白复位'
+  return `<div class="ref-graph">
+    <div class="ref-graph-meta">${stats.nodes ?? 0} 个节点 · ${stats.edges ?? 0} 条边 · ${esc(hint)}</div>
+    <div class="graph-box big" id="ref-graph-box"><canvas id="ref-graph-canvas"></canvas></div>
+    <div class="graph-legend">${legend || '<span>没有节点</span>'}</div>
+  </div>`
+}
+
+/** 图谱画布的数据视图：聚焦时取邻域子图，全景只画有连接的节点（孤立节点在侧栏里看），上限 120。 */
+function graphFocusView() {
+  const graph = state.refCol.graph
+  if (!graph) return { nodes: [], edges: [], stats: {} }
+  const focus = state.reference.focus
+  if (!focus) {
+    const degree = new Map()
+    for (const edge of graph.edges) {
+      degree.set(edge.a, (degree.get(edge.a) || 0) + 1)
+      degree.set(edge.b, (degree.get(edge.b) || 0) + 1)
+    }
+    const nodes = graph.nodes
+      .filter((node) => degree.get(node.id))
+      .sort((left, right) => (degree.get(right.id) || 0) - (degree.get(left.id) || 0))
+      .slice(0, 120)
+    const keep = new Set(nodes.map((node) => node.id))
+    return { nodes, edges: graph.edges.filter((edge) => keep.has(edge.a) && keep.has(edge.b)), stats: graph.stats }
+  }
+  const keep = new Set([focus])
+  for (const edge of graph.edges) {
+    if (edge.a === focus) keep.add(edge.b)
+    if (edge.b === focus) keep.add(edge.a)
+  }
+  return {
+    nodes: graph.nodes.filter((node) => keep.has(node.id)),
+    edges: graph.edges.filter((edge) => keep.has(edge.a) && keep.has(edge.b)),
+    stats: graph.stats
+  }
+}
+
+/** 图谱节点跳详情（聚焦模式：再点同节点）。 */
+function navigateFromGraphNode(node) {
+  state.reference.focus = null
+  if (node.kind === 'reference') {
+    state.reference.view = 'note'
+    openReference(node.id)
+    return
+  }
+  if (node.kind === 'artifact') {
+    if (node.id.startsWith('正文/')) {
+      loadChapter(node.id)
+      go('write')
+    } else {
+      const dir = node.id.split('/')[0]
+      if (state.libDirs.includes(dir)) go(`dir:${dir}`)
+    }
+    return
+  }
+  if (node.kind === 'tag') {
+    state.reference.view = 'note'
+    state.reference.activeTag = node.id.replace(/^tag:/u, '')
+    render()
+    return
+  }
+  if (node.kind === 'entry') {
+    openEntry(node.id.replace(/^entry:/u, ''))
+    go('entries')
+  }
+}
+
+/** 参考页大图谱挂载（OS-48）：focus 模式——点节点聚焦邻域，再点进详情，点空白复位。 */
+async function mountReferenceGraph() {
+  const canvas = document.getElementById('ref-graph-canvas')
+  if (!canvas) return
+  if (!state.refCol.graph) {
+    await loadRefGraph()
+    return
+  }
+  const mod = await import('./graph.mjs')
+  graphCleanup?.()
+  graphCleanup = mod.mountGraph({
+    canvas,
+    graph: graphFocusView(),
+    mode: 'focus',
+    focusId: state.reference.focus,
+    onPick: (node) => {
+      if (state.reference.focus === node.id) navigateFromGraphNode(node)
+      else {
+        state.reference.focus = node.id
+        render()
+      }
+    },
+    onBlank: () => {
+      if (state.reference.focus) {
+        state.reference.focus = null
+        render()
+      }
+    }
+  })
 }
 
 /* ---------- 左内容栏（OS-44）：章节树 / 参考图谱 / 参考摘要 ---------- */
@@ -3561,6 +3692,51 @@ async function createReferenceFromModal() {
       state.reference.activePath = file
       await openReference(file)
     }
+  } catch (error) {
+    if (errEl) errEl.textContent = `${error?.code ? `${error.code} · ` : ''}${text(error?.message || error)}`
+  }
+}
+
+/** 迁入旧目录弹层（OS-48）：显式动稿——确认后才搬，原稿进 .history 可逆。 */
+function openAbsorbModal() {
+  const absorb = state.reference.absorb || {}
+  const rows = ['大纲', '构思', '资料', '约束'].map((dir) => {
+    const count = Number(absorb[dir]) || 0
+    if (!count) return ''
+    return `<label class="absorb-row"><input type="checkbox" checked data-absorb-dir="${esc(dir)}">
+      <span><b>${esc(dir)}/</b> ${count} 篇 → <span class="hint">参考/${esc(dir)}/</span></span></label>`
+  }).join('')
+  if (!rows) return
+  openModal(`
+    <h3>迁入旧目录</h3>
+    <p class="sub">这些旧目录的内容会搬进「参考」，并入图谱与双链体系。搬运是显式动作：
+      目标重名不覆盖；原稿挪进 <span class="hint">.history</span> 备份，随时可捞回。</p>
+    <div class="absorb-list">${rows}</div>
+    <div class="err" id="ref-absorb-err"></div>
+    <div class="ops">
+      <button class="btn-ghost" data-action="modal-close">取消</button>
+      <button class="btn-primary" data-action="ref-absorb-run">迁入</button>
+    </div>
+  `)
+}
+
+/** 执行迁入：POST /api/reference/absorb → 刷新参考索引与图谱缓存。 */
+async function runAbsorbFromModal() {
+  const errEl = document.getElementById('ref-absorb-err')
+  const dirs = [...document.querySelectorAll('[data-absorb-dir]')]
+    .filter((input) => input.checked)
+    .map((input) => input.dataset.absorbDir)
+  if (!dirs.length) { if (errEl) errEl.textContent = '至少勾一个目录'; return }
+  try {
+    const payload = await api('/api/reference/absorb', {
+      method: 'POST',
+      body: JSON.stringify({ root: state.current.path, dirs })
+    })
+    closeModal()
+    state.refCol.graph = null // 迁移后图谱要重建
+    state.reference.flash = `已迁入 ${payload.moved?.length ?? 0} 篇${payload.skipped?.length ? `，跳过 ${payload.skipped.length} 篇（${payload.skipped[0]?.reason || '目标重名'}）` : ''}`
+    await loadReferences({ force: true })
+    render()
   } catch (error) {
     if (errEl) errEl.textContent = `${error?.code ? `${error.code} · ` : ''}${text(error?.message || error)}`
   }
@@ -4222,14 +4398,25 @@ const PAGE_TO_DIR_LOCAL = Object.freeze({ write: '正文', entries: '世界书',
  */
 const TAB_HIDE_KEY = (root) => `openstory-tab-hidden::${root || ''}`
 
+/**
+ * 默认收起种子（OS-48）：大纲/构思/资料/约束的定位已被「参考」覆盖，
+ * 作者没表过态（localStorage 键不存在）时默认不出这四个页签。
+ * 只作种子不落盘——作者一旦在「＋」里勾回或再收起，以作者的选择为准。
+ */
+const DEFAULT_HIDDEN_TABS = Object.freeze(['dir:大纲', 'dir:构思', 'dir:资料', 'dir:约束'])
+
 /** 关掉的页签集合（按库分键）。dirsPage 记的是页签名（write/entries/dir:xxx/artifacts/wiki/deduce）。 */
 function hiddenTabs() {
   const root = state.current?.path || ''
   if (!state.tabHidden) state.tabHidden = {}
   if (!state.tabHidden[root]) {
-    let saved = []
-    try { saved = JSON.parse(localStorage.getItem(TAB_HIDE_KEY(root)) || '[]') } catch { saved = [] }
-    state.tabHidden[root] = Array.isArray(saved) ? saved : []
+    let saved = null
+    try {
+      const raw = localStorage.getItem(TAB_HIDE_KEY(root))
+      if (raw !== null) saved = JSON.parse(raw)
+    } catch { saved = [] }
+    // 键不存在＝作者从未表态 → 用默认种子（不写回，尊重作者后续选择）
+    state.tabHidden[root] = Array.isArray(saved) ? saved : [...DEFAULT_HIDDEN_TABS]
   }
   return new Set(state.tabHidden[root])
 }
@@ -4263,7 +4450,7 @@ function openTabAdd() {
   const builtins = [
     { view: 'artifacts', label: '产物', need: null },
     { view: 'write', label: '正文', need: '正文' },
-    { view: 'entries', label: '世界书', need: '世界书' },
+    { view: 'entries', label: '条目', need: '世界书' },
     { view: 'wiki', label: 'Wiki', need: null },
     { view: 'deduce', label: '推演', need: null }
   ]
@@ -4345,7 +4532,8 @@ function renderTabs() {
     const hasDir = (name) => libDirs.includes(name)
     const excluded = new Set((state.briefGenre?.excludedPages ?? []).map((page) => PAGE_TO_DIR_LOCAL[page] ?? page))
     if (!state.brief || hasDir('正文')) defs.push({ view: 'write', label: '正文', ic: '章', closable: true })
-    if (!state.brief || hasDir('世界书')) defs.push({ view: 'entries', label: '世界书', ic: '条', closable: true })
+    // OS-48：这个页签暴露的其实是 fact 拆解条目（真源 拆解/*.json），改名「条目」消除与世界书目录/参考的定位混淆
+    if (!state.brief || hasDir('世界书')) defs.push({ view: 'entries', label: '条目', ic: '条', closable: true })
     const extra = libDirs
       // 作者要求页签可自选：库里任何顶层目录都能出页签（不再只认 DIR_LABELS 里的名单）
       .filter((dir) => dir !== '正文' && dir !== '世界书' && !excluded.has(dir))
@@ -5205,7 +5393,7 @@ function go(view) {
 }
 
 document.addEventListener('click', (event) => {
-  const target = event.target.closest('[data-view], [data-go], [data-action], [data-skin], [data-lib-path], [data-entry-id], [data-layer], [data-kind], [data-load-more], [data-session-id], [data-session-del], [data-wiki-mode], [data-create-primary], [data-create-genre], [data-runtime-id], [data-chapter-file], [data-settings-section], [data-ref-path], [data-ref-tag], a.wl[data-ref]')
+  const target = event.target.closest('[data-view], [data-go], [data-action], [data-skin], [data-lib-path], [data-entry-id], [data-layer], [data-kind], [data-load-more], [data-session-id], [data-session-del], [data-wiki-mode], [data-create-primary], [data-create-genre], [data-runtime-id], [data-chapter-file], [data-settings-section], [data-ref-path], [data-ref-tag], [data-ref-view], a.wl[data-ref]')
   if (!target) return
 
   if (target.dataset.createGenre !== undefined) {
@@ -5266,7 +5454,17 @@ document.addEventListener('click', (event) => {
     return
   }
   if (target.dataset.refTag !== undefined) {
-    state.reference.activeTag = target.dataset.refTag
+    // 再点同一个标签＝取消筛选（OS-48 侧栏口径）
+    const tag = target.dataset.refTag
+    state.reference.activeTag = state.reference.activeTag === tag ? '' : tag
+    render()
+    return
+  }
+  if (target.dataset.refView !== undefined) {
+    // 侧栏视图切换（OS-48）：笔记 / 关系图谱
+    state.reference.view = target.dataset.refView || 'note'
+    state.reference.focus = null
+    if (state.reference.view === 'graph' && !state.refCol.graph) loadRefGraph()
     render()
     return
   }
@@ -5444,6 +5642,10 @@ document.addEventListener('click', (event) => {
     saveReferenceNote()
   } else if (action === 'ref-to-agent') {
     sendReferenceToAgent()
+  } else if (action === 'ref-absorb') {
+    openAbsorbModal()
+  } else if (action === 'ref-absorb-run') {
+    runAbsorbFromModal()
   } else if (action === 'ref-new-note') {
     openNewReferenceModal('note')
   } else if (action === 'ref-new-tag') {
@@ -5730,6 +5932,20 @@ document.addEventListener('input', (event) => {
     if (preview) preview.textContent = parent && name ? `将创建：${joinDir(parent, name)}` : ''
     return
   }
+  if (target.id === 'ref-search') {
+    // 参考侧栏搜索（OS-48）：只换笔记组，不打断输入焦点
+    state.reference.q = target.value
+    const group = document.querySelector('.ref-nav .nav-group.grow')
+    if (group && refModule) {
+      group.outerHTML = refModule.refNotesGroupHtml({
+        notes: state.reference.notes,
+        activeTag: state.reference.activeTag,
+        activePath: state.reference.activePath,
+        q: state.reference.q
+      })
+    }
+    return
+  }
   if (target.id === 'entry-search') {
     state.search = target.value
     const list = document.querySelector('.entry-list')
@@ -5903,6 +6119,12 @@ function setSkin(id) {
   try { localStorage.setItem('openstory-skin', id) } catch { /* 隐私模式存不了就本次有效 */ }
   // wiki 网页态的强调色跟包走，换皮即重载 iframe；设置页要刷新选中态。
   if (state.view === 'wiki' || state.view === 'settings') render()
+  // 图谱是 canvas 绘制、配色取自 CSS 变量；换皮后重挂一次才能跟上新色板
+  if (document.getElementById('ref-graph-canvas')) {
+    graphCleanup?.()
+    graphCleanup = null
+    requestAnimationFrame(() => mountRefGraph())
+  }
 }
 
 async function loadStyles() {
