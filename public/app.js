@@ -63,7 +63,7 @@ const state = {
     mode: 'engine', engine: { busy: false, data: null, pov: '', seed: '', error: '', hint: '' } },
   artifacts: { root: '', groups: [], totals: null, loading: false, error: '', previewFile: '', previewText: '', previewLoading: false },
   // 参考载体（OS-44）：索引 / 当前笔记 / 反链 / 筛选标签
-  reference: { loaded: false, loading: false, notes: [], tags: [], tagNotes: {}, stats: null, error: '', activePath: '', activeTag: '', note: null, backlinks: { linked: [], unlinked: [] }, draft: '', view: 'note', q: '', focus: null, absorb: {}, flash: '', tagFilter: '', from: '' },
+  reference: { loaded: false, loading: false, notes: [], tags: [], tagNotes: {}, stats: null, error: '', activePath: '', activeTag: '', note: null, backlinks: { linked: [], unlinked: [] }, draft: '', view: 'note', q: '', focus: null, absorb: {}, flash: '', tagFilter: '', from: '', noteText: '', fmLen: 0 },
   // 左内容栏三模块（OS-44）：章节树 / 参考图谱 / 参考摘要
   refCol: { graph: null, graphLoading: false, graphError: '', summary: '', summaryBusy: false, summaryError: '', pick: null },
   settings: { userDir: '', section: 'plugins', suiteId: '', open: false, prevView: '', helpOpen: false },
@@ -541,6 +541,9 @@ let docSaveTimer = null
 function setAutosaveChip(text) {
   const chip = document.getElementById('doc-autosave')
   if (chip) chip.textContent = text
+  // 参考详情页自己的保存提示（OS-53 实时编辑）
+  const refChip = document.getElementById('ref-autosave')
+  if (refChip) refChip.textContent = text
 }
 
 /** 块内 HTML → 该块的 Markdown 源码（最小可逆：p→段落、br→换行、strong/em/code 回标记）。 */
@@ -3370,29 +3373,82 @@ async function openReference(path, { from = '' } = {}) {
  *   最下＝关联说明（已链接 / 未链接 反链两段）。
  * 标签是笔记的附加数据属性——它出现在简介卡上，不再是标题下方的游离块。
  */
+/** 剥 frontmatter，返回 { body, fmLen }（fmLen＝被剥掉的前缀长度，块偏移写回要用）。 */
+function stripFrontmatterOf(raw) {
+  const source = text(raw)
+  if (!source.startsWith('---\n')) return { body: source, fmLen: 0 }
+  const end = source.indexOf('\n---', 4)
+  if (end === -1) return { body: source, fmLen: 0 }
+  const bodyStart = source.indexOf('\n', end + 1) + 1 || source.length
+  return { body: source.slice(bodyStart), fmLen: bodyStart }
+}
+
+/**
+ * 参考笔记逐块实时渲染（OS-53，作者裁定「直接用实时渲染的词条编辑」）：
+ * 与正文页 renderDocBody 同一套组件口径——contenteditable 逐块、失焦写回自动保存。
+ * 差异：参考笔记有 frontmatter（不可编辑），块偏移统一加上 fmLen 才是对全文的偏移；
+ * 首个 H1 跳过（标题在详情头显示）；没有批注竖条。
+ */
+function renderRefDocBody(bodySource) {
+  if (!mdReady || !mdModule) return `<div class="ref-prose prose"><p>${esc(bodySource)}</p></div>`
+  const blocks = mdModule.splitBlocks(bodySource).filter((block) => !/^\s*#\s+/u.test(block.text))
+  const ref = state.reference
+  const fmLen = ref.fmLen || 0
+  const parts = blocks.map((block, index) => {
+    const html = mdModule.renderMarkdown(block.text)
+    return `<div class="ref-line" data-line="${index}">
+      <div class="doc-block" contenteditable="true" spellcheck="false" data-block="${index}" data-start="${block.start + fmLen}" data-end="${block.end + fmLen}" data-raw="${esc(block.text)}">${html}</div>
+    </div>`
+  })
+  return `<div class="ref-prose prose" id="ref-reader">${parts.join('')}</div>`
+}
+
+/** 参考笔记块失焦写回：按全文偏移拼回 noteText → PUT /api/chapter 自动保存。 */
+async function commitRefBlock(blockEl) {
+  const ref = state.reference
+  if (!state.current || !ref.note || !ref.noteText) return
+  const start = Number(blockEl.dataset.start)
+  const end = Number(blockEl.dataset.end)
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return
+  const nextBlock = blockHtmlToMd(blockEl)
+  const currentRaw = blockEl.dataset.raw ?? ''
+  if (nextBlock === currentRaw) return
+  const notePath = ref.note.path
+  const nextText = ref.noteText.slice(0, start) + nextBlock + ref.noteText.slice(end)
+  ref.noteText = nextText
+  blockEl.dataset.raw = nextBlock
+  setAutosaveChip('保存中…')
+  try {
+    const payload = await api('/api/chapter', {
+      method: 'PUT',
+      body: JSON.stringify({ root: state.current.path, file: notePath, text: nextText })
+    })
+    setAutosaveChip('已保存 · 刚刚')
+    // 标签可能被编辑动了（frontmatter/行内 #tag）：延迟重扫索引，不重开笔记（不打断编辑）
+    clearTimeout(refRescanTimer)
+    refRescanTimer = setTimeout(() => {
+      loadReferences({ force: true }).then(() => {
+        if (state.view === 'reference') render()
+      }).catch(() => {})
+    }, 1600)
+    void payload
+  } catch (error) {
+    setAutosaveChip('保存失败')
+    state.error = `${error?.code ? `${error.code} · ` : ''}${text(error?.message || error)}`
+  }
+}
+
+let refRescanTimer = null
+
 function referenceEditorHtml() {
   const ref = state.reference
   const note = ref.note
   if (!note) return ''
-  if (ref.editing) {
-    return `<div class="rf-edit">
-      <textarea class="editor" id="ref-editor" spellcheck="false">${esc(ref.draft ?? note.text)}</textarea>
-      <div class="row" style="display:flex;gap:8px;margin-top:8px">
-        <button class="btn-primary" data-action="ref-save">保存</button>
-        <button class="btn-ghost" data-action="ref-cancel-edit">取消</button>
-      </div>
-    </div>`
-  }
-  // 渲染前剥掉 frontmatter——那是指标（tags/title），不是正文内容，不该出现在页面上
-  const stripFrontmatter = (raw) => {
-    const source = text(raw)
-    if (!source.startsWith('---\n')) return source
-    const end = source.indexOf('\n---', 4)
-    if (end === -1) return source
-    return source.slice(source.indexOf('\n', end + 1) + 1 || source.length)
-  }
-  const bodySource = stripFrontmatter(note.text)
-  const body = (mdReady && mdModule) ? mdModule.renderMarkdown(bodySource) : `<p>${esc(bodySource)}</p>`
+  // OS-53：实时渲染逐块编辑——textarea「编辑/保存/取消」退役，点进去直接改
+  const { body: bodySource, fmLen } = stripFrontmatterOf(note.text)
+  ref.noteText = text(note.text)
+  ref.fmLen = fmLen
+  const body = renderRefDocBody(bodySource)
   const tagChips = (Array.isArray(note.tags) ? note.tags : [])
     .map((tag) => `<button class="pill tag-pick" data-ref-tag="${esc(tag)}" title="按这个标签筛选">#${esc(tag)}</button>`).join('')
   const mdPlain = (source) => text(source).replace(/[*_`#>[\]()|]/gu, ' ').replace(/-{2,}/gu, ' ').replace(/\s+/gu, ' ').trim()
@@ -3404,7 +3460,8 @@ function referenceEditorHtml() {
       <h2>${esc(note.title || note.path)}</h2>
       <span class="ref-detail-path">${esc(note.path)}${note.chars !== undefined ? ` · ${note.chars} 字` : ''}</span>
       <span class="sp"></span>
-      <button class="btn-ghost" data-action="ref-edit">编辑</button>
+      <span class="doc-autosave" id="ref-autosave"></span>
+      <span class="count">点正文直接改，失焦自动保存</span>
       <button class="btn-ghost" data-action="ref-to-agent">发给 Agent</button>
     </div>
     <div class="ref-detail-top">
@@ -3417,7 +3474,7 @@ function referenceEditorHtml() {
         <div class="graph-box detail"><canvas id="ref-detail-canvas"></canvas></div>
       </div>
     </div>
-    <div class="prose-block">${body}</div>
+    <div class="ref-doc">${body}</div>
     <div class="ref-detail-backlinks">
       <h4>关联说明</h4>
       ${backlinks}
@@ -3984,26 +4041,7 @@ async function runRefSummary() {
 }
 
 /** 保存参考笔记（走 /api/chapter 通道，复用原子写＋.history 备份）。 */
-async function saveReferenceNote() {
-  const ref = state.reference
-  const note = ref.note
-  if (!state.current || !note) return
-  const draft = text(document.getElementById('ref-editor')?.value ?? ref.draft)
-  try {
-    await api('/api/chapter', {
-      method: 'PUT',
-      body: JSON.stringify({ root: state.current.path, file: note.path, text: draft })
-    })
-    ref.editing = false
-    ref.draft = draft
-    // 重扫索引（标签/链接可能变了）
-    await loadReferences({ force: true })
-    await openReference(note.path)
-  } catch (error) {
-    ref.error = `${error?.code ? `${error.code} · ` : ''}${text(error?.message || error)}`
-    render()
-  }
-}
+/* OS-53：textarea 版 saveReferenceNote 已退役——实时逐块编辑由 commitRefBlock 接管。 */
 
 /** 把当前参考塞进 Agent 上下文（复用 OS-24 的 chip 机制）。 */
 function sendReferenceToAgent() {
@@ -5737,7 +5775,7 @@ function go(view) {
   }
   if (view === 'reference') {
     // 参考页：拉索引，并预挂载模块
-    loadReferences().then(() => { if (state.view === 'reference') render() }).catch(() => {})
+    loadReferences().then(() => { if (state.view === 'reference') render() }).catch((e) => console.error('[ref-render]', e))
     loadRefModule().then(() => { if (state.view === 'reference') render() }).catch(() => {})
     return
   }
@@ -6056,15 +6094,6 @@ document.addEventListener('click', (event) => {
     state.refCol.summary = ''
     state.refCol.summaryError = ''
     repaintRefModule('summary')
-  } else if (action === 'ref-edit') {
-    state.reference.editing = true
-    state.reference.draft = text(state.reference.note?.text)
-    render()
-  } else if (action === 'ref-cancel-edit') {
-    state.reference.editing = false
-    render()
-  } else if (action === 'ref-save') {
-    saveReferenceNote()
   } else if (action === 'ref-to-agent') {
     sendReferenceToAgent()
   } else if (action === 'ref-absorb') {
@@ -6425,12 +6454,13 @@ document.addEventListener('input', (event) => {
     return
   }
   if (target.id === 'ref-search') {
-    // 参考侧栏搜索（OS-48）：只换笔记组，不打断输入焦点
+    // 参考侧栏搜索（OS-53）：只重渲目录树容器，不打断输入焦点
     state.reference.q = target.value
-    const group = document.querySelector('.ref-nav .nav-group.grow')
-    if (group && refModule) {
-      group.outerHTML = refModule.refNotesGroupHtml({
+    const tree = document.getElementById('ref-tree')
+    if (tree && refModule) {
+      tree.innerHTML = refModule.refTreeHtml({
         notes: state.reference.notes,
+        tags: state.reference.tags,
         activeTag: state.reference.activeTag,
         activePath: state.reference.activePath,
         q: state.reference.q
@@ -6511,7 +6541,10 @@ document.addEventListener('dblclick', (event) => {
 // 逐块实时编辑：失焦即写回并自动保存（不需要「编辑/保存」按钮）
 document.addEventListener('focusout', (event) => {
   const blockEl = event.target?.closest?.('.doc-block[data-block]')
-  if (blockEl && state.view === 'write') commitDocBlock(blockEl)
+  if (!blockEl) return
+  // 正文页与参考详情页共用同一套逐块实时编辑（OS-53）；按所在容器分流写回
+  if (blockEl.closest('#ref-reader')) commitRefBlock(blockEl)
+  else if (state.view === 'write') commitDocBlock(blockEl)
 })
 
 // 文档内拖选文字 → 上方浮窗（润笔 / 与 Agent 讨论）

@@ -46,66 +46,99 @@ export function buildTagTree(tags) {
 }
 
 /**
- * 标签筛选树：真正的三级折叠目录——子级在父级下方缩进展开，不是平铺到别处。
- * 点名字＝选中筛选（再点同一个＝取消）；有子级时行前有 ▸/▾ 折叠指示。
+ * 统一目录树（OS-53，作者裁定）：一棵树管完「标签→笔记」的层级浏览——
+ *   标签做枝干（按 / 拆层），笔记做叶子，挂在它**最深的一个标签**下；
+ *   点击任何节点，子词条就在**正下方原地展开**，绝不滚到别的区域。
+ *   点标签行＝展开子树＋定位（activeTag 高亮，祖先自动展开）；点笔记行＝打开详情。
  */
-function renderTagBranch(node, activeTag = '', depth = 0) {
+export function buildRefTree(notes) {
+  const root = { name: '', full: '', children: new Map(), notes: [], count: 0 }
+  const nodeAt = (tagPath) => {
+    let node = root
+    let prefix = ''
+    for (const part of tagPath.split('/').filter(Boolean)) {
+      prefix = prefix ? `${prefix}/${part}` : part
+      if (!node.children.has(part)) node.children.set(part, { name: part, full: prefix, children: new Map(), notes: [], count: 0 })
+      node = node.children.get(part)
+      node.count += 1
+    }
+    return node
+  }
+  for (const note of Array.isArray(notes) ? notes : []) {
+    if (note.isTagNote) continue // 标签定义笔记是「标签的描述」，不是词条，不进目录
+    const tags = [...new Set(Array.isArray(note.tags) ? note.tags : [])]
+    if (!tags.length) {
+      root.notes.push(note)
+      continue
+    }
+    // 多点挂载（Obsidian 标签面板口径）：笔记出现在它每个标签的路径末端——
+    // 打 #人物/梁山 的笔记同时是「人物」与「人物/梁山」的成员，一个维度都不丢
+    const ends = new Set()
+    for (const tag of tags) {
+      const end = nodeAt(tag)
+      if (!ends.has(end)) { end.notes.push(note); ends.add(end) }
+    }
+  }
+  return root
+}
+
+/** 搜索过滤：笔记匹配 title/path/摘要/标签；标签节点保留「子树里有匹配」的。 */
+function filterTree(node, needle) {
+  const hitNotes = node.notes.filter((note) => {
+    const hay = [note.title, note.path, note.excerpt, ...(note.tags || [])].join(' ').toLowerCase()
+    return hay.includes(needle)
+  })
+  const kids = [...node.children.values()]
+    .map((kid) => filterTree(kid, needle))
+    .filter((kid) => kid.notes.length || kid.children.size)
+  return { name: node.name, full: node.full, children: new Map(kids.map((kid) => [kid.name, kid])), notes: hitNotes, count: hitNotes.length + kids.reduce((sum, kid) => sum + kid.count, 0) }
+}
+
+function treeNoteRow(note, activePath) {
+  return `<button class="nav-row note${note.path === activePath ? ' on' : ''}" data-ref-path="${esc(note.path)}" title="${esc(note.path)}">
+      <span class="tag-name">${esc(note.title)}</span>
+      <span class="nav-count">${note.chars}</span>
+    </button>`
+}
+
+function renderTreeBranch(node, { activeTag = '', activePath = '', q = '' } = {}, depth = 0) {
   const kids = [...node.children.values()].sort((left, right) => right.count - left.count || left.name.localeCompare(right.name, 'zh-Hans-CN'))
-  const title = node.description ? ` title="${esc(node.description)}"` : ''
-  const badge = node.description ? '<i class="tag-desc-dot" title="这个标签有描述"></i>' : ''
   const on = activeTag && node.full === activeTag ? ' on' : ''
-  const row = `<button class="nav-row${on}" data-ref-tag="${esc(node.full)}"${title}>
-      <span class="tag-name">${esc(node.name)}${badge}</span>
+  const row = `<button class="nav-row tag${on}" data-ref-tag="${esc(node.full)}">
+      <span class="tag-name">${esc(node.name)}</span>
       <span class="nav-count">${node.count}</span>
     </button>`
-  if (!kids.length) return `<div class="tag-leaf" style="--depth:${depth}">${row}</div>`
-  return `<details class="tag-branch"${depth < 1 ? ' open' : ''} style="--depth:${depth}">
-      <summary>${row}<span class="tw-chev" aria-hidden="true"></span></summary>
-      ${kids.map((kid) => renderTagBranch(kid, activeTag, depth + 1)).join('')}
-    </details>`
-}
-
-/**
- * 笔记组（侧栏主体）：按子目录分组 + activeTag/q 双重过滤。
- * 单独导出：搜索框逐字过滤时只换这个组，不打断输入焦点。
- */
-export function refNotesGroupHtml({ notes, activeTag = '', activePath = '', q = '' } = {}) {
-  const needle = text(q).trim().toLowerCase()
-  const list = (Array.isArray(notes) ? notes : [])
-    .filter((note) => !activeTag || note.tags.includes(activeTag))
-    .filter((note) => {
-      if (!needle) return true
-      const hay = [note.title, note.path, note.excerpt, ...(note.tags || [])].join(' ').toLowerCase()
-      return hay.includes(needle)
-    })
-  const groups = new Map()
-  for (const note of list) {
-    const parts = text(note.path).split('/')
-    const group = parts.length > 2 ? parts[1] : ''
-    if (!groups.has(group)) groups.set(group, [])
-    groups.get(group).push(note)
+  const noteRows = node.notes.map((note) => treeNoteRow(note, activePath)).join('')
+  if (!kids.length) {
+    if (!noteRows) return `<div class="tag-leaf" style="--depth:${depth}">${row}</div>`
+    // 叶子标签挂着笔记：可折叠，点开就在正下方（OS-53）
+    const open = (activeTag && activeTag.startsWith(node.full)) || q ? ' open' : ''
+    return `<details class="tag-branch"${open} style="--depth:${depth}"><summary>${row}<span class="tw-chev" aria-hidden="true"></span></summary>${noteRows}</details>`
   }
-  const rows = [...groups.entries()].map(([group, items]) => {
-    const head = group ? `<div class="nav-group-label">${esc(group)}</div>` : ''
-    const body = items.map((note) => `
-      <button class="nav-row note${note.path === activePath ? ' on' : ''}" data-ref-path="${esc(note.path)}" title="${esc(note.path)}">
-        <span class="tag-name">${esc(note.title)}</span>
-        <span class="nav-count">${note.chars}</span>
-      </button>`).join('')
-    return head + body
-  }).join('')
-  const header = `笔记${activeTag ? ` · #${esc(activeTag)}` : ''}`
-  return `<div class="nav-group grow"><div class="nav-group-label">${esc(header)}</div>${rows || '<p class="nav-empty">没有匹配的笔记。</p>'}</div>`
+  // 展开推导：activeTag 在本子树内 → 祖先链自动展开；搜索态全展开；顶层默认展开
+  const open = (activeTag && activeTag.startsWith(node.full)) || q ? ' open' : ''
+  return `<details class="tag-branch"${open} style="--depth:${depth}"><summary>${row}<span class="tw-chev" aria-hidden="true"></span></summary>${kids.map((kid) => renderTreeBranch(kid, { activeTag, activePath, q }, depth + 1)).join('')}${noteRows}</details>`
 }
 
-/**
- * 侧栏导航（OS-51 修正语义）：
- *   视图：笔记 / 关系图谱（页面级切换）
- *   按标签筛选：标签是笔记的属性——这里只是筛选器，三级折叠树
- *   笔记：主体，按子目录分组，受标签 + 搜索词双重过滤
- */
-export function refNavHtml({ tags, notes, activeTag = '', activePath = '', view = 'note', q = '' } = {}) {
-  // 视图组
+/** 目录树整块（搜索时只重渲这个容器，输入框不丢焦点）。 */
+export function refTreeHtml({ notes, tags = [], activeTag = '', activePath = '', q = '' } = {}) {
+  const needle = text(q).trim().toLowerCase()
+  let tree = buildRefTree(notes)
+  if (needle) tree = filterTree(tree, needle)
+  const branches = [...tree.children.values()].sort((left, right) => right.count - left.count || left.name.localeCompare(right.name, 'zh-Hans-CN'))
+  const body = branches.map((kid) => renderTreeBranch(kid, { activeTag, activePath, q })).join('')
+  const untagged = !needle && tree.notes.length
+    ? `<div class="nav-group-label">未打标签</div>${tree.notes.map((note) => treeNoteRow(note, activePath)).join('')}`
+    : ''
+  if (!body && !untagged) {
+    return needle
+      ? '<p class="nav-empty">没有匹配的笔记或标签。</p>'
+      : '<p class="nav-empty">还没有参考笔记。<br>点右上「新建笔记」开始。</p>'
+  }
+  return `${body}${untagged}`
+}
+
+export function refNavHtml({ tags = [], notes, activeTag = '', activePath = '', view = 'note', q = '' } = {}) {
   const views = [
     ['note', '笔记'],
     ['graph', '关系图谱']
@@ -113,18 +146,11 @@ export function refNavHtml({ tags, notes, activeTag = '', activePath = '', view 
   const viewRows = views.map(([id, label]) =>
     `<button class="nav-row view${view === id ? ' on' : ''}" data-ref-view="${esc(id)}"><span>${esc(label)}</span></button>`
   ).join('')
-  // 标签筛选组（三级折叠树）
-  const tree = buildTagTree(tags)
-  const tagKids = [...tree.children.values()].sort((left, right) => right.count - left.count || left.name.localeCompare(right.name, 'zh-Hans-CN'))
-  const tagRows = tagKids.length
-    ? tagKids.map((kid) => renderTagBranch(kid, activeTag)).join('')
-    : '<p class="nav-empty">在笔记里写 <code>#标签</code> 就会自动出现。</p>'
-  const notesGroup = refNotesGroupHtml({ notes, activeTag, activePath, q })
+  const tree = refTreeHtml({ notes, tags, activeTag, activePath, q })
   return `<div class="ref-nav">
-    <input class="search" id="ref-search" type="search" placeholder="过滤笔记 / 标签…" value="${esc(q)}">
+    <input class="search" id="ref-search" type="search" placeholder="过滤目录…" value="${esc(q)}">
     <div class="nav-group"><div class="nav-group-label">视图</div>${viewRows}</div>
-    <div class="nav-group"><div class="nav-group-label">按标签筛选</div>${tagRows}</div>
-    ${notesGroup}
+    <div class="nav-group grow"><div class="nav-group-label">目录</div><div id="ref-tree">${tree}</div></div>
   </div>`
 }
 
