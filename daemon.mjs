@@ -1444,6 +1444,9 @@ async function resolveDshResume({ sessionsDir, root, session, ephemeral, model }
  *   canReadFiles=false（Pi/纯 HTTP）：作者手动贴上下文
  *   canReadFiles=true （DSH 原生）：可以自己读，但改正文必须走待确认卡
  */
+/** 测试钩子（OS-45）：把 systemPromptFor 暴露给单测，验「参考只给链接不给全文」。 */
+export const __test = { systemPromptFor }
+
 async function systemPromptFor(root, libraries, genresDirs, skillsDirs, { canReadFiles = false, chineseReasoning = false } = {}) {
   const key = rootKey(root)
   const record = (Array.isArray(libraries) ? libraries : []).find((library) => rootKey(library.path) === key)
@@ -1497,6 +1500,64 @@ async function systemPromptFor(root, libraries, genresDirs, skillsDirs, { canRea
       }
     }
   } catch { /* 简报读不到不影响对话 */ }
+
+  // 参考索引（OS-45）：**只暴露链接清单，不塞全文**。
+  // 作者口径：把参考全量丢进上下文会污染判断——模型会在几十篇笔记里迷路。
+  // 正确做法是给它一份「目录 + 它自己能读的路径」，需要时用文件工具按需取。
+  if (canReadFiles) {
+    try {
+      const index = await scanReferences(root)
+      const notes = (Array.isArray(index.notes) ? index.notes : []).filter((note) => !note.isTagNote)
+      if (notes.length) {
+        // 图谱：把「参考 ↔ 章节」的关系也算出来，好告诉 Agent 当前这一章挂着哪些参考
+        let entries = []
+        try {
+          const store = createFactFileStore({ root })
+          const listed = store.list({ offset: 0, limit: 500 })
+          entries = Array.isArray(listed?.entries) ? listed.entries : []
+        } catch { /* 没拆解就只有参考节点 */ }
+        const graph = buildReferenceGraph(index, { entries })
+        // 反向索引：章节路径 → 关联的参考笔记路径
+        const refsByArtifact = new Map()
+        for (const edge of graph.edges) {
+          const a = graph.nodes.find((node) => node.id === edge.a)
+          const b = graph.nodes.find((node) => node.id === edge.b)
+          if (!a || !b) continue
+          const ref = a.kind === 'reference' ? a : (b.kind === 'reference' ? b : null)
+          const artifact = a.kind === 'artifact' ? a : (b.kind === 'artifact' ? b : null)
+          if (!ref || !artifact) continue
+          if (!refsByArtifact.has(artifact.id)) refsByArtifact.set(artifact.id, [])
+          refsByArtifact.get(artifact.id).push(ref.id)
+        }
+        applied.referenceGraph = {
+          pairs: [...refsByArtifact.entries()].slice(0, 40).map(([artifact, refs]) => ({ artifact, refs: refs.slice(0, 12) }))
+        }
+        // 严格口径（OS-45）：**只给路径 + 标题 + 标签**，一个字的正文都不给。
+        // 摘要看着无害，实际上会把「判断依据」提前塞进上下文——模型会拿摘要当结论，
+        // 而不是真去读原文。要读就让它读。
+        const lines2 = notes.slice(0, 60).map((note) => {
+          const tags = note.tags.length ? `（${note.tags.map((tag) => `#${tag}`).join(' ')}）` : ''
+          return `- ${note.path} ｜「${note.title}」${tags}`
+        })
+        const linked = [...refsByArtifact.entries()].slice(0, 20)
+          .map(([artifact, refs]) => `- ${artifact} ← ${refs.join('、')}`)
+        lines.push(
+          '',
+          '【参考资料索引】',
+          '这个库有一套参考资料（作者的设定、素材、想法）。下面是**索引，不是全文**：',
+          ...lines2,
+          notes.length > 60 ? `（还有 ${notes.length - 60} 篇没列出）` : '',
+          ...(linked.length ? ['', '【参考与章节的关联】', ...linked] : []),
+          '',
+          '规矩：',
+          '- 需要某篇的具体内容时，**用你的文件读取工具按上面的路径去读**（都在 cwd 下），不要凭空猜。',
+          '- 不要一次读一堆参考；先按标题、标签和上面的关联关系判断哪些相关，再读那几篇。',
+          '- 参考是作者的私有笔记，只能读，不要改（改正文要走待确认卡，参考也不在你的写权限里）。'
+        )
+        applied.referenceCount = notes.length
+      }
+    } catch { /* 没有参考目录就不注入（不打扰） */ }
+  }
   return { prompt: lines.join('\n'), applied }
 }
 

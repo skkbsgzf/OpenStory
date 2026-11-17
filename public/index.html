@@ -71,9 +71,11 @@ input, textarea, select { font: inherit; color: inherit; }
 .main { flex: 1; display: flex; min-height: 0; }
 
 /* Agent 左列（OS-4：会话 JSONL＋流式对话＋待确认卡） */
-.agent-col { width: 320px; flex: 0 0 320px; border-left: 1px solid var(--hair); display: flex; flex-direction: column; min-width: 0; background: var(--bg); }
-/* 左内容栏（OS-44）：章节树 / 参考图谱 / 参考摘要——三个可折叠模块 */
-.ref-col { width: 260px; flex: 0 0 260px; border-right: 1px solid var(--hair); display: flex; flex-direction: column; min-width: 0; background: var(--bg); overflow-y: auto; }
+.agent-col { width: 320px; flex: 0 0 320px; border-right: 1px solid var(--hair); display: flex; flex-direction: column; min-width: 0; background: var(--bg); }
+/* 题材工作面内部左栏（OS-45）：章节树 / 参考图谱 / 参考摘要。
+   它属于「小说/参考」这类题材页自己的布局，属于二等公民的内部结构；
+   Agent 始终在最外层最左，不参与题材页的布局。 */
+.ref-col { width: 240px; flex: 0 0 240px; border-right: 1px solid var(--hair); display: flex; flex-direction: column; min-width: 0; background: var(--bg); overflow-y: auto; }
 .ref-col:empty { display: none; }
 .ref-col.collapsed-all { display: none; }
 .ref-mod { border-bottom: 1px solid var(--hair); flex: 0 0 auto; }
@@ -618,6 +620,9 @@ html[data-doc-auto-gap="off"] .doc-paper p { margin-bottom: 0; }
 .doc-workspace-sticky .doc-head-immersive .doc-actions { margin: 0; flex: 0 0 auto; }
 .doc-workspace-sticky .doc-head-immersive .doc-mini-meta { max-width: var(--doc-max); margin: 4px auto 0; }
 .doc-workspace-sticky .chapter-grid { flex: 1; min-height: 0; display: flex; position: relative; }
+/* 题材页通用布局（OS-45）：左栏（章节树/图谱/摘要）＋ 题材主区 */
+.topic-workspace { flex: 1; min-height: 0; display: flex; }
+.topic-main { flex: 1; min-width: 0; overflow-y: auto; padding: 22px var(--content-px, 34px) 60px; }
 .doc-workspace-sticky .doc-scroll { flex: 1; min-width: 0; overflow-y: auto; padding: 22px calc(var(--content-px, 34px) + 4px) 60px; }
 .doc-workspace-sticky.with-analyze .doc-scroll { padding-right: 300px; }
 .doc-block { outline: none; border-radius: 4px; margin: 0 0 var(--doc-para-gap); padding: 2px 4px; margin-left: -4px; margin-right: -4px; }
@@ -820,16 +825,8 @@ html[data-doc-auto-gap="off"] .doc-block { margin-bottom: 0; }
   </header>
 
   <div class="main">
-    <!-- 左内容栏（OS-44）：章节树 / 参考图谱 / 参考摘要——三个可折叠模块，皆可在设置里关闭 -->
-    <aside class="ref-col" id="ref-col"></aside>
-
-    <!-- 中栏 -->
-    <main class="center" id="center">
-      <div class="tabs" id="tabs"></div>
-      <div class="content" id="view"><div class="loading">正在读取库清单…</div></div>
-    </main>
-
-    <!-- Agent 列（OS-44 移到最右）：会话 JSONL 在 daemon 侧，凭据只存本机配置 -->
+    <!-- Agent 列（一等公民，OS-45 归位最左）：会话 JSONL 在 daemon 侧，凭据只存本机配置。
+         小说/参考这些题材是右侧工作台里的模块，不占 Agent 的位置。 -->
     <aside class="agent-col">
       <div class="agent-head">
         <span class="agent-avatar">P</span><span class="agent-name">Pi-Agent</span>
@@ -862,6 +859,12 @@ html[data-doc-auto-gap="off"] .doc-block { margin-bottom: 0; }
         </div>
       </div>
     </aside>
+
+    <!-- 中栏：题材工作台（正文/参考/产物…都放这里） -->
+    <main class="center" id="center">
+      <div class="tabs" id="tabs"></div>
+      <div class="content" id="view"><div class="loading">正在读取库清单…</div></div>
+    </main>
   </div>
 </div>
 
