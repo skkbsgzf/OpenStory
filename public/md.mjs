@@ -26,6 +26,25 @@ export function renderInline(text) {
     return `\u0000${codes.length - 1}\u0000`
   })
   work = escapeHtml(work)
+  // 双链 [[目标]] / [[目标|显示]] / [[目标#锚点]] / ![[嵌入]]（OS-44）
+  // 用占位符保护——里面的 | 和 # 不能被后续的链接/强调规则再解析一遍
+  const links = []
+  work = work.replace(/(!?)\[\[([^\]\n]+)\]\]/gu, (match, bang, inner) => {
+    const pipe = inner.indexOf('|')
+    const targetPart = pipe === -1 ? inner : inner.slice(0, pipe)
+    const display = pipe === -1 ? '' : inner.slice(pipe + 1)
+    const hash = targetPart.indexOf('#')
+    const target = (hash === -1 ? targetPart : targetPart.slice(0, hash)).trim()
+    const anchor = hash === -1 ? '' : targetPart.slice(hash + 1).trim()
+    if (!target && !anchor) return match
+    const label = display || (anchor ? `${target || '本文'} › ${anchor}` : target)
+    const embed = bang === '!'
+    links.push(
+      `<a class="wl${embed ? ' embed' : ''}" data-ref="${target}"${anchor ? ` data-anchor="${anchor}"` : ''}` +
+      ` title="${embed ? '嵌入' : '参考'}：${target || anchor}">${label}</a>`
+    )
+    return `\u0001${links.length - 1}\u0001`
+  })
   // 图片 ![alt](src)：只放行站内相对路径 / http(s) / data:image，其余退化成 alt 文本
   work = work.replace(/!\[([^\]]*)\]\(([^)\s]+)\)/gu, (match, alt, src) => {
     const url = src.trim()
@@ -43,6 +62,8 @@ export function renderInline(text) {
   work = work.replace(/__([^_]+)__/gu, '<strong>$1</strong>')
   // 还原行内码
   work = work.replace(/\u0000(\d+)\u0000/gu, (_, index) => codes[Number(index)] ?? '')
+  // 还原双链
+  work = work.replace(/\u0001(\d+)\u0001/gu, (_, index) => links[Number(index)] ?? '')
   return work
 }
 

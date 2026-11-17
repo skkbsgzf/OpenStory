@@ -62,6 +62,10 @@ const state = {
   deduce: { premise: '', variables: '', question: '', sessionId: '', streaming: false, reply: '', controller: null, error: '',
     mode: 'engine', engine: { busy: false, data: null, pov: '', seed: '', error: '', hint: '' } },
   artifacts: { root: '', groups: [], totals: null, loading: false, error: '', previewFile: '', previewText: '', previewLoading: false },
+  // 参考载体（OS-44）：索引 / 当前笔记 / 反链 / 筛选标签
+  reference: { loaded: false, loading: false, notes: [], tags: [], tagNotes: {}, stats: null, error: '', activePath: '', activeTag: '', note: null, backlinks: { linked: [], unlinked: [] }, draft: '' },
+  // 左内容栏三模块（OS-44）：章节树 / 参考图谱 / 参考摘要
+  refCol: { graph: null, graphLoading: false, graphError: '', summary: '', summaryBusy: false, summaryError: '' },
   settings: { userDir: '', section: 'plugins', suiteId: '', open: false, prevView: '', helpOpen: false },
   kbStatus: null,
   tabHidden: {},
@@ -225,6 +229,7 @@ function render() {
   if (switchName) switchName.textContent = current ? current.name : (state.libraries.length ? '选择库' : '还没有库')
   renderLibSwitchPanel()
   renderTabs()
+  renderRefCol() // 左内容栏（OS-44）：章节树/参考图谱/参考摘要
   // 正文页自己管滚动（页头吸顶＋纸面/右栏各自滚），外层不再滚动
   viewEl.classList.toggle('content-locked', state.view === 'write')
   if (state.view === 'libraries') viewEl.innerHTML = libraryHtml()
@@ -235,6 +240,7 @@ function render() {
     renderAnalyzePanel()
     paintDocAnnotations()
   }
+  else if (state.view === 'reference') viewEl.innerHTML = referencePageHtml()
   else if (state.view === 'wiki') viewEl.innerHTML = wikiHtml()
   else if (state.view === 'lib-create') viewEl.innerHTML = createHtml()
   else if (state.view === 'lib-import') viewEl.innerHTML = importHtml()
@@ -1232,30 +1238,72 @@ function analyzePanelHtml() {
       charts.renderLocalCurve(result.emotion, { activePara: viewPara }) +
       '<p class="sub">本库还没有拆解 fact——曲线只是词典近似。跑一次「拆解 → enrich」后，这里会换成语义级剧情曲线：峰值标情绪、可点击跳章。</p></section>'
   }
+  // OS-44：面板改为模块化装配——每个分析是一个独立卡片，可在设置里插拔
+  const modules = [
+    { id: 'plotCurve', html: curveSection },
+    { id: 'style', html: `<section class="analyze-sec"><h4>文风</h4>${styleSectionHtml(result)}</section>` },
+    { id: 'rhythm', html: `<section class="analyze-sec"><h4>节奏（逐段字数）</h4>${sparkline(rhythmValues, { color: 'var(--ok)' })}</section>` },
+    { id: 'aiSmell', html: `<section class="analyze-sec"><h4>AI 味 <b class="ai-score ${aiClass}">${result.aiSmell.score}</b></h4>${result.aiSmell.factors.map(barRow).join('')}</section>` },
+    {
+      id: 'annotations',
+      html: '<section class="analyze-sec analyze-here" id="analyze-here">' +
+        '<h4>本段批注 <span class="count">' +
+        (pickPara < 0 ? '滚动正文即对齐'
+          : `第 ${pickPara + 1} 段${atView ? '' : '（最近）'} · ${hereShown.length} 条`) +
+        '</span></h4>' +
+        (hereShown.length
+          ? hereShown.map(card).join('')
+          : `<p class="sub">${viewPara >= 0 ? '这一段没有批注。' : '往下滚，这里会跟着你正在看的段落走。'}</p>`) +
+        '</section>' +
+        (global.length ? '<section class="analyze-sec"><h4>全章 <span class="count">' + global.length + '</span></h4>' + global.map(card).join('') + '</section>' : '') +
+        (elsewhere.length
+          ? `<section class="analyze-sec"><h4><button class="sec-toggle" data-action="analyze-expand">其它段落 ${elsewhere.length} 条<span class="caret">${expandOpen ? '▾' : '▸'}</span></button></h4>${expandOpen ? elsewhere.map(card).join('') : ''}</section>`
+          : '')
+    }
+  ]
+  const hiddenMods = hiddenModules()
+  const live = modules.filter((mod) => !hiddenMods.has(mod.id) && mod.html)
   return '<div class="analyze-body">' +
     '<div class="analyze-kpis"><span><b>' + stats.chars + "</b> 字</span><span><b>" + stats.paragraphs +
     "</b> 段</span><span><b>" + stats.avgSentenceLen + "</b> 字/句</span><span><b>" + stats.dialogueRatio +
     "%</b> 对白</span></div>" +
     (result.confidence === "low" ? '<div class="warn-box">本章偏短，指标仅供参考。</div>' : "") +
-    curveSection +
-    '<section class="analyze-sec"><h4>节奏（逐段字数）</h4>' + sparkline(rhythmValues, { color: "var(--ok)" }) + '</section>' +
-    '<section class="analyze-sec"><h4>AI 味 <b class="ai-score ' + aiClass + '">' + result.aiSmell.score + "</b></h4>" +
-    result.aiSmell.factors.map(barRow).join("") + '</section>' +
-    // ↓ 这一段是「吸顶」的主体：永远对应你正在看的那一段（没批注就退到最近有批注的段）
-    '<section class="analyze-sec analyze-here" id="analyze-here">' +
-    '<h4>本段批注 <span class="count">' +
-    (pickPara < 0 ? '滚动正文即对齐'
-      : `第 ${pickPara + 1} 段${atView ? '' : '（最近）'} · ${hereShown.length} 条`) +
-    '</span></h4>' +
-    (hereShown.length
-      ? hereShown.map(card).join('')
-      : `<p class="sub">${viewPara >= 0 ? '这一段没有批注。' : '往下滚，这里会跟着你正在看的段落走。'}</p>`) +
-    '</section>' +
-    (global.length ? '<section class="analyze-sec"><h4>全章 <span class="count">' + global.length + '</span></h4>' + global.map(card).join('') + '</section>' : '') +
-    (elsewhere.length
-      ? `<section class="analyze-sec"><h4><button class="sec-toggle" data-action="analyze-expand">其它段落 ${elsewhere.length} 条<span class="caret">${expandOpen ? '▾' : '▸'}</span></button></h4>${expandOpen ? elsewhere.map(card).join('') : ''}</section>`
-      : '') +
+    live.map((mod) => mod.html).join('') +
     '<div class="ops"><button class="btn-ghost" data-action="analyze-run">重新分析</button></div></div>'
+}
+
+/**
+ * 文风模块（OS-44）——analysis.mjs 一直算出 style 但从未渲染，这批用起来。
+ * 句子长度变异系数（sentenceCv）与段落变异系数（paraCv）是「是否像人写」的两个硬指标：
+ * 人写的句子长短参差，模板文则异常整齐。
+ */
+function styleSectionHtml(result) {
+  const style = result?.style
+  if (!style) return '<p class="sub">这一章还没有文风数据。</p>'
+  const cv = (value) => (Number.isFinite(value) ? value.toFixed(2) : '—')
+  const verdict = (value, good, mid) => {
+    const num = Number(value)
+    if (!Number.isFinite(num)) return ['—', '']
+    if (num >= good) return ['参差自然', 'good']
+    if (num >= mid) return ['偏整齐', 'mid']
+    return ['过于均匀', 'bad']
+  }
+  const [sentVerdict, sentClass] = verdict(style.sentenceCv, 0.55, 0.35)
+  const [paraVerdict, paraClass] = verdict(style.paraCv, 0.5, 0.3)
+  const cliches = Array.isArray(style.cliches) ? style.cliches : []
+  const connectives = Array.isArray(style.connectives) ? style.connectives : []
+  const chip = (item, kind) => `<span class="style-chip ${kind}" title="${esc(item.word)} 出现 ${item.count} 次">${esc(item.word)}<b>${item.count}</b></span>`
+  return `<div class="style-grid">
+      <div class="style-kpi"><span class="sk-label">句长变异</span><b class="sk-val ${sentClass}">${cv(style.sentenceCv)}</b><span class="sk-note">${sentVerdict}</span></div>
+      <div class="style-kpi"><span class="sk-label">段长变异</span><b class="sk-val ${paraClass}">${cv(style.paraCv)}</b><span class="sk-note">${paraVerdict}</span></div>
+    </div>
+    ${cliches.length ? `<div class="style-block"><h5>套话 <span class="count">${cliches.length}</span></h5><div class="style-chips">${cliches.slice(0, 10).map((item) => chip(item, 'cliche')).join('')}</div></div>` : ''}
+    ${connectives.length ? `<div class="style-block"><h5>连接词 <span class="count">${connectiveCount(connectives)}</span></h5><div class="style-chips">${connectives.slice(0, 10).map((item) => chip(item, 'connective')).join('')}</div></div>` : ''}
+    ${!cliches.length && !connectives.length ? '<p class="sub">没检出套话与连接词堆砌——文风干净。</p>' : ''}`
+}
+
+function connectiveCount(list) {
+  return (Array.isArray(list) ? list : []).reduce((sum, item) => sum + (Number(item.count) || 0), 0)
 }
 
 function renderAnalyzePanel() {
@@ -2513,11 +2561,50 @@ function closeModal() {
 
 const SETTINGS_SECTIONS = Object.freeze([
   { id: 'plugins', label: '插件', hint: '套件与 Agent 运行时' },
+  { id: 'modules', label: '工作台模块', hint: '左栏与右栏的分析模块插拔' },
   { id: 'discover', label: '发现与导入', hint: '货架路径与导入稿件' },
   { id: 'data', label: '数据与目录', hint: '库清单与配置位置' },
   { id: 'kb', label: '知识库', hint: 'WeKnora 连接与健康' },
   { id: 'about', label: '关于', hint: '这台工作台是什么' }
 ])
+
+/**
+ * 工作台模块清单（OS-44）：左栏三个 + 右栏分析模块。
+ * 作者口径：所有模块都可以在设置里插拔开关自定义。
+ */
+const WORKBENCH_MODULES = Object.freeze([
+  { id: 'chapters', label: '章节树', slot: '左栏', hint: '卷/章两级，写小说时随手切章' },
+  { id: 'graph', label: '参考图谱', slot: '左栏', hint: '参考与章节/条目的关系图' },
+  { id: 'summary', label: '参考摘要', slot: '左栏', hint: 'AI 基于图谱总结本章要点' },
+  { id: 'plotCurve', label: '剧情曲线', slot: '右栏', hint: '情绪曲线 / 事件密度（需拆解 fact）' },
+  { id: 'style', label: '文风分析', slot: '右栏', hint: '句长/段长变异系数 + 套话与连接词' },
+  { id: 'rhythm', label: '节奏', slot: '右栏', hint: '逐段字数起伏' },
+  { id: 'aiSmell', label: 'AI 味', slot: '右栏', hint: '四因子加权评分' },
+  { id: 'annotations', label: '本段批注', slot: '右栏', hint: '跟着正文滚动对齐的问题卡' }
+])
+
+/** 工作台模块插拔（设置页）。 */
+function settingsModulesSectionHtml() {
+  const hidden = hiddenModules()
+  const groups = ['左栏', '右栏']
+  const rows = groups.map((slot) => {
+    const items = WORKBENCH_MODULES.filter((mod) => mod.slot === slot)
+    if (!items.length) return ''
+    return `<div class="step"><h3>${esc(slot)}</h3>
+      <div class="mod-list">${items.map((mod) => {
+        const on = !hidden.has(mod.id)
+        return `<div class="mod-row">
+          <label class="mod-main">
+            <input type="checkbox" data-action="module-toggle" data-module-id="${esc(mod.id)}"${on ? ' checked' : ''}>
+            <span><b>${esc(mod.label)}</b><i>${esc(mod.hint)}</i></span>
+          </label>
+        </div>`
+      }).join('')}</div>
+      <p class="sub">${slot === '左栏' ? '三个都关掉，左栏整体收起来，正文更宽。' : '关掉的模块不再出现在分析面板里，其余照常。'}</p>
+    </div>`
+  }).join('')
+  return `${rows}<div class="step"><h3>当前库</h3><p class="sub">${state.current ? esc(state.current.name) : '还没选库'}——模块开关按库分别记，换库不串。</p></div>`
+}
 
 /**
  * 每个分节的一段自然语言说明——只说「这对你意味着什么」，不写实现细节。
@@ -2719,6 +2806,7 @@ function settingsKbSectionHtml() {
 function settingsHtml() {
   const sectionRenderers = {
     plugins: settingsPluginsSectionHtml,
+    modules: settingsModulesSectionHtml,
     suites: suitesSectionHtml,
     suite: () => suiteDetailHtml(state.settings.suiteId),
     suiteSettings: () => suiteDetailHtml(state.settings.suiteId),
@@ -3003,6 +3091,432 @@ function editArtifact(file) {
 function groupLabel(dir) {
   if (!dir) return '根目录文件'
   return DIR_LABELS[dir] || dir
+}
+
+/* ---------- 参考载体（OS-44）：Obsidian 式笔记系统 ---------- */
+
+let refModule = null
+async function loadRefModule() {
+  if (!refModule) refModule = await import('./reference.mjs')
+  return refModule
+}
+
+/** 拉参考索引（供参考页与左栏图谱共用）。 */
+async function loadReferences({ force = false } = {}) {
+  const ref = state.reference
+  if (!state.current) return
+  if (ref.loading) return
+  if (ref.loaded && !force) return
+  ref.loading = true
+  ref.error = ''
+  try {
+    const payload = await api(`/api/reference?root=${encodeURIComponent(state.current.path)}`)
+    ref.notes = Array.isArray(payload.notes) ? payload.notes : []
+    ref.tags = Array.isArray(payload.tags) ? payload.tags : []
+    ref.tagNotes = payload.tagNotes && typeof payload.tagNotes === 'object' ? payload.tagNotes : {}
+    ref.stats = payload.stats ?? null
+    ref.loaded = true
+  } catch (error) {
+    ref.error = `${error?.code ? `${error.code} · ` : ''}${text(error?.message || error)}`
+  }
+  ref.loading = false
+}
+
+/** 打开一篇参考笔记（含反链）。 */
+async function openReference(path) {
+  const ref = state.reference
+  if (!state.current || !path) return
+  ref.activePath = path
+  ref.error = ''
+  render()
+  try {
+    const query = new URLSearchParams({ root: state.current.path, path })
+    const payload = await api(`/api/reference/note?${query.toString()}`)
+    ref.note = payload.note ?? null
+    ref.backlinks = payload.backlinks ?? { linked: [], unlinked: [] }
+    ref.draft = text(payload.note?.text)
+  } catch (error) {
+    ref.note = null
+    ref.error = `${error?.code ? `${error.code} · ` : ''}${text(error?.message || error)}`
+  }
+  render()
+}
+
+/** 参考页正文区（Markdown 渲染 + 编辑切换）。 */
+function referenceEditorHtml() {
+  const ref = state.reference
+  const note = ref.note
+  if (!note) return ''
+  if (ref.editing) {
+    return `<div class="rf-edit">
+      <textarea class="editor" id="ref-editor" spellcheck="false">${esc(ref.draft ?? note.text)}</textarea>
+      <div class="row" style="display:flex;gap:8px;margin-top:8px">
+        <button class="btn-primary" data-action="ref-save">保存</button>
+        <button class="btn-ghost" data-action="ref-cancel-edit">取消</button>
+      </div>
+    </div>`
+  }
+  const body = (mdReady && mdModule) ? mdModule.renderMarkdown(text(note.text)) : `<p>${esc(note.text)}</p>`
+  const tagChips = (Array.isArray(note.tags) ? note.tags : [])
+    .map((tag) => `<button class="pill tag-pick" data-ref-tag="${esc(tag)}">#${esc(tag)}</button>`).join('')
+  return `<h2>${esc(note.title || note.path)}</h2>
+    <div class="rf-meta">
+      <span>${esc(note.path)}</span>
+      ${note.chars !== undefined ? `<span>${note.chars} 字</span>` : ''}
+      ${tagChips}
+      <span class="sp" style="flex:1"></span>
+      <button class="btn-ghost" data-action="ref-edit">编辑</button>
+      <button class="btn-ghost" data-action="ref-to-agent">发给 Agent</button>
+    </div>
+    <div class="prose-block">${body}</div>`
+}
+
+/** 参考页整体。 */
+function referencePageHtml() {
+  const ref = state.reference
+  if (!state.current) return needLibraryHtml()
+  if (ref.loading && !ref.loaded) return '<div class="loading">正在读取参考…</div>'
+  if (!refModule) return '<div class="loading">参考模块载入中…</div>'
+  const editor = referenceEditorHtml()
+  const shell = refModule.referenceShellHtml({
+    notes: ref.notes,
+    tags: ref.tags,
+    activeTag: ref.activeTag,
+    activePath: ref.activePath,
+    editorHtml: editor,
+    backlinks: ref.backlinks,
+    stats: ref.stats
+  })
+  return `${errorHtml()}${shell}`
+}
+
+/* ---------- 左内容栏（OS-44）：章节树 / 参考图谱 / 参考摘要 ---------- */
+
+/** 章节树：按目录结构分两级（卷/章）。 */
+function chapterTreeHtml() {
+  const chapters = state.write.chapters || []
+  if (!chapters.length) return '<div class="empty">还没有章节。</div>'
+  // 按 file 的目录段分组：正文/卷一/001-x.md → 卷一
+  const groups = new Map()
+  for (const chapter of chapters) {
+    const parts = text(chapter.file).split('/')
+    const group = parts.length > 2 ? parts[parts.length - 2] : ''
+    if (!groups.has(group)) groups.set(group, [])
+    groups.get(group).push(chapter)
+  }
+  const rows = [...groups.entries()].map(([group, list]) => {
+    const head = group ? `<div class="ct-vol">${esc(group)}</div>` : ''
+    const body = list.map((chapter) => `
+      <button class="ct-row${chapter.file === state.chapterFile ? ' on' : ''}" data-chapter-file="${esc(chapter.file)}" title="${esc(chapter.file)}">
+        <span class="no">${chapter.no !== null ? String(chapter.no).padStart(2, '0') : '—'}</span>
+        <span class="tt">${esc(chapter.title)}</span>
+      </button>`).join('')
+    return `${head}${body}`
+  }).join('')
+  return rows
+}
+
+/** 参考图谱模块（canvas 力导向，由 graph.mjs 驱动）。 */
+function graphModuleHtml() {
+  const rc = state.refCol
+  if (rc.graphError) return `<div class="error-box">${esc(rc.graphError)}</div>`
+  if (rc.graphLoading) return '<div class="loading">正在构图…</div>'
+  const graph = rc.graph
+  if (!graph) return '<div class="empty">点「重新构图」生成参考图谱。</div>'
+  const byKind = graph.stats?.byKind || {}
+  const legend = [
+    ['reference', '参考', 'var(--accent)'],
+    ['tag', '标签', '#c48a00'],
+    ['artifact', '章节/产物', 'var(--ok)'],
+    ['entry', '条目（只读）', 'var(--meta)']
+  ].filter(([kind]) => byKind[kind]).map(([, label, color]) =>
+    `<span><i style="background:${color}"></i>${esc(label)}</span>`).join('')
+  return `<div class="graph-box" id="ref-graph-box"><canvas id="ref-graph-canvas"></canvas></div>
+    <div class="graph-legend">${legend || '<span>没有节点</span>'}</div>
+    <div class="graph-hint">${graph.stats?.nodes ?? 0} 个节点 · ${graph.stats?.edges ?? 0} 条边 · 点节点可跳转</div>`
+}
+
+/** 参考摘要模块：AI 基于图谱知识总结当前章节的大纲。 */
+function refSummaryHtml() {
+  const rc = state.refCol
+  if (rc.summaryBusy) return '<div class="loading">正在生成摘要…</div>'
+  const body = text(rc.summary)
+  return `<div class="ref-summary">${body ? esc(body) : '<span class="empty">还没有摘要。点下面生成——AI 会读当前章节关联的参考，总结成本章要点。</span>'}</div>
+    ${rc.summaryError ? `<div class="error-box">${esc(rc.summaryError)}</div>` : ''}
+    <div class="ref-summary-ops">
+      <button data-action="ref-summary-run">${body ? '重新生成' : '生成摘要'}</button>
+      ${body ? '<button data-action="ref-summary-clear">清空</button>' : ''}
+    </div>`
+}
+
+/**
+ * 左栏三个模块（OS-44）。
+ * 每个模块可单独关闭（设置里插拔），全关则整栏隐藏。
+ */
+const REF_MODULES = Object.freeze([
+  { id: 'chapters', label: '章节', hint: '卷/章两级', render: () => chapterTreeHtml(), badge: () => String((state.write.chapters || []).length) },
+  { id: 'graph', label: '参考图谱', hint: '参考与产物的关系', render: () => graphModuleHtml(), badge: () => String(state.refCol.graph?.stats?.nodes ?? 0) },
+  { id: 'summary', label: '参考摘要', hint: 'AI 基于图谱总结本章', render: () => refSummaryHtml(), badge: () => '' }
+])
+
+function renderRefCol() {
+  const host = document.getElementById('ref-col')
+  if (!host) return
+  // 只在有库、且是内容页时显示（设置/库清单这类全屏页不需要）
+  const contentViews = new Set(['write', 'reference', 'entries', 'wiki', 'deduce', 'artifacts'])
+  if (!state.current || !(contentViews.has(state.view) || state.view?.startsWith('dir:'))) {
+    host.innerHTML = ''
+    host.classList.add('collapsed-all')
+    return
+  }
+  const hidden = hiddenModules()
+  const visible = REF_MODULES.filter((mod) => !hidden.has(mod.id))
+  if (!visible.length) {
+    host.innerHTML = ''
+    host.classList.add('collapsed-all')
+    return
+  }
+  host.classList.remove('collapsed-all')
+  const openState = state.refCol.open ?? (state.refCol.open = {})
+  host.innerHTML = visible.map((mod) => {
+    const open = openState[mod.id] !== false
+    const badge = mod.badge()
+    return `<details class="ref-mod" data-ref-mod="${esc(mod.id)}"${open ? ' open' : ''}>
+      <summary>${esc(mod.label)}${badge ? `<span class="rm-badge">${esc(badge)}</span>` : ''}<span class="rm-chev">›</span></summary>
+      <div class="ref-mod-body">${open ? mod.render() : ''}</div>
+    </details>`
+  }).join('')
+  // 图谱必须在 DOM 就位后挂载
+  if (visible.some((mod) => mod.id === 'graph') && openState.graph !== false) {
+    requestAnimationFrame(() => mountRefGraph())
+  }
+}
+
+/**
+ * 模块插拔（OS-44）：per-library localStorage，照 hiddenTabs 的模式。
+ * 可在设置里关掉任意模块；全关则左栏整体消失。
+ */
+const MODULE_HIDE_KEY = (root) => `openstory-modules-hidden::${root || ''}`
+
+function hiddenModules() {
+  const root = state.current?.path || ''
+  if (!state.moduleHidden) state.moduleHidden = {}
+  if (!state.moduleHidden[root]) {
+    let saved = []
+    try { saved = JSON.parse(localStorage.getItem(MODULE_HIDE_KEY(root)) || '[]') } catch { saved = [] }
+    state.moduleHidden[root] = Array.isArray(saved) ? saved : []
+  }
+  return new Set(state.moduleHidden[root])
+}
+
+function setModuleHidden(id, hidden) {
+  const root = state.current?.path || ''
+  const set = hiddenModules()
+  if (hidden) set.add(id)
+  else set.delete(id)
+  if (!state.moduleHidden) state.moduleHidden = {}
+  state.moduleHidden[root] = [...set]
+  try { localStorage.setItem(MODULE_HIDE_KEY(root), JSON.stringify([...set])) } catch { /* 隐私模式 */ }
+  render()
+}
+
+/** 挂载参考图谱（OS-44）：canvas 就位后调 graph.mjs 的 mountGraph。 */
+let graphCleanup = null
+async function mountRefGraph() {
+  const canvas = document.getElementById('ref-graph-canvas')
+  if (!canvas) return
+  if (!state.refCol.graph) {
+    await loadRefGraph()
+    return
+  }
+  const mod = await import('./graph.mjs')
+  graphCleanup?.()
+  graphCleanup = mod.mountGraph({
+    canvas,
+    graph: state.refCol.graph,
+    onPick: (node) => {
+      // 点节点跳转：参考→参考页；章节→正文；条目→条目详情
+      if (node.kind === 'reference') {
+        state.reference.activePath = node.id
+        go('reference')
+        openReference(node.id)
+        return
+      }
+      if (node.kind === 'artifact') {
+        if (node.id.startsWith('正文/')) {
+          loadChapter(node.id)
+          go('write')
+        } else {
+          const dir = node.id.split('/')[0]
+          if (state.libDirs.includes(dir)) go(`dir:${dir}`)
+        }
+        return
+      }
+      if (node.kind === 'tag') {
+        state.reference.activeTag = node.id.replace(/^tag:/u, '')
+        go('reference')
+        return
+      }
+      if (node.kind === 'entry') {
+        openEntry(node.id.replace(/^entry:/u, ''))
+        go('entries')
+      }
+    }
+  })
+}
+
+/** 拉图谱数据。 */
+async function loadRefGraph({ force = false } = {}) {
+  const rc = state.refCol
+  if (!state.current || rc.graphLoading) return
+  if (rc.graph && !force) return
+  rc.graphLoading = true
+  rc.graphError = ''
+  renderRefCol()
+  try {
+    const payload = await api(`/api/reference/graph?root=${encodeURIComponent(state.current.path)}`)
+    rc.graph = { nodes: payload.nodes || [], edges: payload.edges || [], stats: payload.stats || {} }
+  } catch (error) {
+    rc.graph = null
+    rc.graphError = `${error?.code ? `${error.code} · ` : ''}${text(error?.message || error)}`
+  }
+  rc.graphLoading = false
+  renderRefCol()
+}
+
+/**
+ * 参考摘要（OS-44）：让 AI 读当前章节关联的参考，总结成本章要点。
+ * 走 ephemeral——不建会话、不污染会话列表。
+ */
+async function runRefSummary() {
+  const rc = state.refCol
+  if (!state.current || rc.summaryBusy) return
+  if (!agent.configured) {
+    rc.summaryError = '先配置模型端点（右上角设置 → Agent 运行时）'
+    renderRefCol()
+    return
+  }
+  rc.summaryBusy = true
+  rc.summaryError = ''
+  renderRefCol()
+  try {
+    // 收集材料：当前章节正文开头 + 图谱里挂在该章上的参考摘要
+    const chapter = text(state.chapterText).slice(0, 1200)
+    const refs = (state.reference.notes || []).slice(0, 12)
+      .map((note) => `- ${note.title}${note.tags.length ? `（${note.tags.map((tag) => `#${tag}`).join(' ')}）` : ''}：${note.excerpt}`)
+      .join('\n')
+    const prompt = [
+      '【参考摘要】',
+      chapter ? `当前章节开头：\n${chapter}` : '（还没选章节）',
+      refs ? `\n本库的参考资料：\n${refs}` : '',
+      '',
+      '请基于上面的资料，给这一章写一份要点摘要（150 字以内），说明：这一章要推进什么、涉及哪些参考、有什么要注意的伏笔或设定约束。只输出摘要正文，不要标题、不要解释。'
+    ].filter(Boolean).join('\n')
+    const result = await runAgentOnce(prompt)
+    rc.summary = result
+  } catch (error) {
+    rc.summaryError = humanizeAgentError(error)
+  }
+  rc.summaryBusy = false
+  renderRefCol()
+}
+
+/** 保存参考笔记（走 /api/chapter 通道，复用原子写＋.history 备份）。 */
+async function saveReferenceNote() {
+  const ref = state.reference
+  const note = ref.note
+  if (!state.current || !note) return
+  const draft = text(document.getElementById('ref-editor')?.value ?? ref.draft)
+  try {
+    await api('/api/chapter', {
+      method: 'PUT',
+      body: JSON.stringify({ root: state.current.path, file: note.path, text: draft })
+    })
+    ref.editing = false
+    ref.draft = draft
+    // 重扫索引（标签/链接可能变了）
+    await loadReferences({ force: true })
+    await openReference(note.path)
+  } catch (error) {
+    ref.error = `${error?.code ? `${error.code} · ` : ''}${text(error?.message || error)}`
+    render()
+  }
+}
+
+/** 把当前参考塞进 Agent 上下文（复用 OS-24 的 chip 机制）。 */
+function sendReferenceToAgent() {
+  const note = state.reference.note
+  if (!note) return
+  agent.pendingContext = {
+    quote: note.title,
+    context: text(note.text).slice(0, 2000),
+    label: `参考：${note.title}（${text(note.text).replace(/\s/gu, '').length} 字）`
+  }
+  renderAgent()
+  const input = document.getElementById('agent-input')
+  input?.focus()
+}
+
+/** 新建笔记/标签的弹层。 */
+function openNewReferenceModal(kind) {
+  const isTag = kind === 'tag'
+  openModal(`
+    <h3>${isTag ? '新建标签' : '新建参考笔记'}</h3>
+    <p class="sub">${isTag
+      ? '标签是人话的分类——给每个标签写一句描述，用的时候一眼知道它什么意思。'
+      : '参考笔记写你查到的、想到的、要记住的。写作时左栏图谱会把它和章节连起来。'}</p>
+    <div class="field"><label>${isTag ? '标签名（不含 #）' : '标题'}</label>
+      <input id="ref-new-name" placeholder="${isTag ? '例如：伏笔' : '例如：渡口钟声'}">
+    </div>
+    ${isTag ? `
+    <div class="field"><label>描述（这个标签是什么意思）</label>
+      <input id="ref-new-desc" placeholder="例如：埋下但尚未回收的线索">
+    </div>` : `
+    <div class="field"><label>放在哪个子目录（可留空）</label>
+      <input id="ref-new-dir" placeholder="例如：人物 / 设定">
+    </div>`}
+    <div class="err" id="ref-new-err"></div>
+    <div class="ops">
+      <button class="btn-ghost" data-action="modal-close">取消</button>
+      <button class="btn-primary" data-action="ref-create" data-kind="${esc(kind)}">创建</button>
+    </div>
+  `)
+  document.getElementById('ref-new-name')?.focus()
+}
+
+/** 从弹层创建参考笔记 / 标签笔记。 */
+async function createReferenceFromModal() {
+  const errEl = document.getElementById('ref-new-err')
+  const name = text(document.getElementById('ref-new-name')?.value).trim()
+  if (!name) { if (errEl) errEl.textContent = '名字不能为空'; return }
+  const descEl = document.getElementById('ref-new-desc')
+  const isTag = Boolean(descEl) // 弹层里有描述框＝在新建标签
+  const dirInput = text(document.getElementById('ref-new-dir')?.value).trim().replace(/^[\\/]+/u, '')
+  const safe = name.replace(/[\\/:*?"<>|]/gu, '_')
+  // 标签笔记固定进 参考/标签/；普通笔记按作者指定的子目录
+  const file = isTag
+    ? `参考/标签/${safe}.md`
+    : (dirInput ? `参考/${dirInput}/${safe}.md` : `参考/${safe}.md`)
+  const body = isTag
+    ? `---\nkind: tag\ntag: ${name}\ndescription: ${text(descEl.value).trim()}\n---\n\n`
+    : `---\ntags: []\n---\n\n# ${name}\n\n`
+  try {
+    await api('/api/chapter', {
+      method: 'PUT',
+      body: JSON.stringify({ root: state.current.path, file, text: body })
+    })
+    closeModal()
+    await loadReferences({ force: true })
+    if (isTag) {
+      state.reference.activeTag = name
+      render()
+    } else {
+      state.reference.activePath = file
+      await openReference(file)
+    }
+  } catch (error) {
+    if (errEl) errEl.textContent = `${error?.code ? `${error.code} · ` : ''}${text(error?.message || error)}`
+  }
 }
 
 function artifactsHtml() {
@@ -3794,9 +4308,10 @@ function renderTabs() {
         return (li === -1 ? 99 : li) - (ri === -1 ? 99 : ri)
       })
       .map((dir) => ({
-        view: `dir:${dir}`,
-        label: DIR_LABELS[dir] || dir,
-        ic: (DIR_LABELS[dir] || dir).slice(0, 1),
+        // 参考目录（OS-44）走专门的笔记系统页，不是通用文本页
+        view: dir === '参考' ? 'reference' : `dir:${dir}`,
+        label: dir === '参考' ? '参考' : (DIR_LABELS[dir] || dir),
+        ic: dir === '参考' ? '参' : (DIR_LABELS[dir] || dir).slice(0, 1),
         readonly: READONLY_DIRS.has(dir),
         closable: true
       }))
@@ -4601,6 +5116,12 @@ function go(view) {
       .catch(() => render())
     return
   }
+  if (view === 'reference') {
+    // 参考页：拉索引，并预挂载模块
+    loadReferences().then(() => { if (state.view === 'reference') render() }).catch(() => {})
+    loadRefModule().then(() => { if (state.view === 'reference') render() }).catch(() => {})
+    return
+  }
   if (view === 'deduce') {
     ensureEntriesForDeduce() // POV 候选：有拆解就补上角色名
     return
@@ -4616,6 +5137,8 @@ function go(view) {
         loadChapter(state.chapterFile)
       }
     })
+    // 左栏图谱与参考索引：写小说时要能看到关联的参考（OS-44）
+    loadReferences().then(() => loadRefGraph()).catch(() => {})
     return
   }
   if (view === 'entries') ensureEntries()
@@ -4630,7 +5153,7 @@ function go(view) {
 }
 
 document.addEventListener('click', (event) => {
-  const target = event.target.closest('[data-view], [data-go], [data-action], [data-skin], [data-lib-path], [data-entry-id], [data-layer], [data-kind], [data-load-more], [data-session-id], [data-session-del], [data-wiki-mode], [data-create-primary], [data-create-genre], [data-runtime-id], [data-chapter-file], [data-settings-section]')
+  const target = event.target.closest('[data-view], [data-go], [data-action], [data-skin], [data-lib-path], [data-entry-id], [data-layer], [data-kind], [data-load-more], [data-session-id], [data-session-del], [data-wiki-mode], [data-create-primary], [data-create-genre], [data-runtime-id], [data-chapter-file], [data-settings-section], [data-ref-path], [data-ref-tag]')
   if (!target) return
 
   if (target.dataset.createGenre !== undefined) {
@@ -4652,6 +5175,49 @@ document.addEventListener('click', (event) => {
     return
   }
 
+  // 双链点击（OS-44）：[[某参考]] 在正文或参考页里都能点开
+  const wl = event.target.closest?.('a.wl[data-ref]')
+  if (wl) {
+    event.preventDefault()
+    const ref = text(wl.dataset.ref).trim()
+    if (!ref) return
+    // 目录型目标（正文/剧本/…）→ 跳对应工作面
+    if (/^(?:正文|剧本|人物|场景|大纲|素材|漫画|视频|体验|联机|资料|约束|构思)[\\/]/u.test(ref)) {
+      if (ref.startsWith('正文/')) { loadChapter(ref); go('write'); return }
+      const dir = ref.split('/')[0]
+      if (state.libDirs.includes(dir)) { go(`dir:${dir}`); return }
+      return
+    }
+    // 条目链接
+    const entry = /^条目[:：](.+)$/u.exec(ref)
+    if (entry) { openEntry(entry[1].trim()); go('entries'); return }
+    // 否则当参考笔记：先按标题找，再按路径找
+    const notes = state.reference.notes || []
+    const hit = notes.find((note) => note.title === ref)
+      || notes.find((note) => note.rel.replace(/\.(?:md|markdown|txt)$/iu, '') === ref)
+      || notes.find((note) => note.path === ref || note.path.endsWith(`/${ref}.md`))
+    if (hit) {
+      state.reference.activePath = hit.path
+      if (state.view !== 'reference') go('reference')
+      openReference(hit.path)
+      return
+    }
+    // 找不到＝还没建这篇：直接给建（Obsidian 的「点击创建」）
+    state.reference.pendingNew = ref
+    openNewReferenceModal('note')
+    const nameInput = document.getElementById('ref-new-name')
+    if (nameInput) nameInput.value = ref
+    return
+  }
+  if (target.dataset.refPath) {
+    openReference(target.dataset.refPath)
+    return
+  }
+  if (target.dataset.refTag !== undefined) {
+    state.reference.activeTag = target.dataset.refTag
+    render()
+    return
+  }
   if (target.dataset.chapterFile) {
     loadChapter(target.dataset.chapterFile)
     if (state.write.drawerOpen) {
@@ -4814,6 +5380,29 @@ document.addEventListener('click', (event) => {
     } else if (body) {
       fallback()
     }
+  } else if (action === 'ref-summary-run') {
+    runRefSummary()
+  } else if (action === 'ref-summary-clear') {
+    state.refCol.summary = ''
+    state.refCol.summaryError = ''
+    renderRefCol()
+  } else if (action === 'ref-edit') {
+    state.reference.editing = true
+    state.reference.draft = text(state.reference.note?.text)
+    render()
+  } else if (action === 'ref-cancel-edit') {
+    state.reference.editing = false
+    render()
+  } else if (action === 'ref-save') {
+    saveReferenceNote()
+  } else if (action === 'ref-to-agent') {
+    sendReferenceToAgent()
+  } else if (action === 'ref-new-note') {
+    openNewReferenceModal('note')
+  } else if (action === 'ref-new-tag') {
+    openNewReferenceModal('tag')
+  } else if (action === 'ref-create') {
+    createReferenceFromModal()
   } else if (action === 'msg-copy') {
     const item = agent.items[Number(target.dataset.msgIndex)]
     const body = text(item?.content)
@@ -5018,6 +5607,11 @@ document.addEventListener('click', (event) => {
 
 document.addEventListener('change', (event) => {
   const target = event.target
+  // 工作台模块插拔（OS-44）：勾选＝显示，取消＝隐藏
+  if (target.dataset?.action === 'module-toggle' && target.dataset.moduleId) {
+    setModuleHidden(target.dataset.moduleId, target.checked !== true)
+    return
+  }
   if (target.id === 'import-root') {
     state.impo.root = target.value
     return

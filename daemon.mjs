@@ -121,6 +121,7 @@ import {
   setPrimaryCarrier
 } from './libraryManage.mjs'
 import { createFactFileStore } from './core/pinax/next/kernel/factFileStore.mjs'
+import { backlinksOf, buildReferenceGraph, REFERENCE_DIR, scanReferences } from './referenceStore.mjs'
 import { deducePresent, deduceSettle } from './deduceEngine.mjs'
 import { factHealth } from './factGuard.mjs'
 import { enrichBook, enrichGraph } from './enrichEngine.mjs'
@@ -921,6 +922,54 @@ async function handleApi(req, res, url, context) {
     return sendJson(res, 200, payload)
   }
 
+  if (endpointId === 'referenceGet') {
+    const authorized = authorizeRoot(allowlist, request.root)
+    if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
+    const index = await scanReferences(authorized.root)
+    return sendJson(res, 200, { ok: true, ...index })
+  }
+
+  if (endpointId === 'referenceGraphGet') {
+    const authorized = authorizeRoot(allowlist, request.root)
+    if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
+    const index = await scanReferences(authorized.root)
+    // 条目作为只读节点参与图谱（不搬进参考，只被链接）
+    let entries = []
+    try {
+      const store = createFactFileStore({ root: authorized.root })
+      const listed = store.list({ offset: 0, limit: 500 })
+      entries = Array.isArray(listed?.entries) ? listed.entries : []
+    } catch { /* 没拆解目录就只有参考节点 */ }
+    const graph = buildReferenceGraph(index, { entries })
+    return sendJson(res, 200, { ok: true, ...graph })
+  }
+
+  if (endpointId === 'referenceNoteGet') {
+    const authorized = authorizeRoot(allowlist, request.root)
+    if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
+    const requested = text(request.path).trim().replaceAll('\\', '/')
+    if (!requested.startsWith(`${REFERENCE_DIR}/`)) {
+      return sendError(res, API_ERROR_CODES.INVALID_ENTRY, `只读参考目录下的笔记：${requested}`)
+    }
+    let raw
+    try {
+      const resolved = resolveInsideRoot(authorized.root, requested, { allowMetadata: false })
+      if (!resolved.ok) return sendError(res, resolved.code ?? API_ERROR_CODES.PATH_ESCAPE, resolved.message)
+      raw = await readFile(resolved.path, 'utf-8')
+    } catch (error) {
+      if (error?.code === 'ENOENT') return sendError(res, API_ERROR_CODES.NOT_FOUND, `笔记不存在：${requested}`)
+      return sendError(res, API_ERROR_CODES.WRITE_PROTOCOL_IO_FAILED, `读笔记失败：${text(error?.message || error)}`)
+    }
+    const index = await scanReferences(authorized.root)
+    const note = index.notes.find((item) => item.path === requested) ?? null
+    const backlinks = backlinksOf(index, requested)
+    return sendJson(res, 200, {
+      ok: true,
+      note: { ...(note || { path: requested, title: requested.split('/').pop() }), text: raw },
+      backlinks
+    })
+  }
+
   if (endpointId === 'dirCreate') {
     const authorized = authorizeRoot(allowlist, request.root)
     if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
@@ -1250,7 +1299,7 @@ async function handleApi(req, res, url, context) {
   return sendError(res, API_ERROR_CODES.NOT_FOUND, `端点未实现：${endpointId}`)
 }
 
-const ENDPOINT_HAS_QUERY = new Set(['entries', 'entry', 'chapterGet', 'wiki', 'agentSessions', 'agentSessionGet', 'agentSessionDelete', 'wikiHtmlGet', 'libraryDiagnose', 'filesGet', 'chaptersGet', 'chapterDelete', 'artifactsGet', 'suiteStateDataGet', 'briefGet', 'skillsGet', 'skillGet', 'enrichStatus', 'enrichGraph', 'kbStatusGet', 'agentDshModelsGet', 'factCurveGet'])
+const ENDPOINT_HAS_QUERY = new Set(['entries', 'entry', 'chapterGet', 'wiki', 'agentSessions', 'agentSessionGet', 'agentSessionDelete', 'wikiHtmlGet', 'libraryDiagnose', 'filesGet', 'chaptersGet', 'chapterDelete', 'artifactsGet', 'suiteStateDataGet', 'briefGet', 'skillsGet', 'skillGet', 'enrichStatus', 'enrichGraph', 'kbStatusGet', 'agentDshModelsGet', 'factCurveGet', 'referenceGet', 'referenceGraphGet', 'referenceNoteGet'])
 
 /** 套件资产 MIME（page 模式自带页同源装载）。 */
 const SUITE_ASSET_MIME = Object.freeze({

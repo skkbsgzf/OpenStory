@@ -340,6 +340,32 @@ export const ENDPOINTS = Object.freeze({
     response: { ok: 'true', dirs: 'array?', files: 'array', warnings: 'array?' },
     errors: ['NO_LIBRARY', 'PATH_ESCAPE', 'INVALID_ENTRY', 'NOT_FOUND']
   },
+  referenceGet: {
+    method: 'GET',
+    path: '/api/reference',
+    // 参考载体索引（OS-44）：扫描 参考/ 目录，解析每篇的 frontmatter／标签／双链。
+    // 不落盘（每次重建，避免两份真相）。标签清单一并返回（带计数与描述）。
+    request: { query: { root: 'string' } },
+    response: { ok: 'true', notes: 'array', tags: 'array', tagNotes: 'object', stats: 'object' },
+    errors: ['NO_LIBRARY', 'PATH_ESCAPE']
+  },
+  referenceGraphGet: {
+    method: 'GET',
+    path: '/api/reference/graph',
+    // 参考图谱：节点=参考/标签/章节产物/条目(只读)，边权 link=2 / mention=min(n,3) / tag=1。
+    // 单向原则：边只从参考出发指向产物，正文不反向进入参考的上下文。
+    request: { query: { root: 'string' } },
+    response: { ok: 'true', nodes: 'array', edges: 'array', tags: 'array', stats: 'object' },
+    errors: ['NO_LIBRARY', 'PATH_ESCAPE']
+  },
+  referenceNoteGet: {
+    method: 'GET',
+    path: '/api/reference/note',
+    // 单篇参考：返回原文＋解析后的 frontmatter／标签／双链＋双段反链（linked / unlinked）。
+    request: { query: { root: 'string', path: 'string' } },
+    response: { ok: 'true', note: 'object', backlinks: 'object' },
+    errors: ['NO_LIBRARY', 'PATH_ESCAPE', 'INVALID_ENTRY', 'NOT_FOUND']
+  },
   dirCreate: {
     method: 'POST',
     path: '/api/dir',
