@@ -71,7 +71,76 @@ input, textarea, select { font: inherit; color: inherit; }
 .main { flex: 1; display: flex; min-height: 0; }
 
 /* Agent 左列（OS-4：会话 JSONL＋流式对话＋待确认卡） */
-.agent-col { width: 320px; flex: 0 0 320px; border-right: 1px solid var(--hair); display: flex; flex-direction: column; min-width: 0; background: var(--bg); }
+.agent-col { width: 320px; flex: 0 0 320px; border-left: 1px solid var(--hair); display: flex; flex-direction: column; min-width: 0; background: var(--bg); }
+/* 左内容栏（OS-44）：章节树 / 参考图谱 / 参考摘要——三个可折叠模块 */
+.ref-col { width: 260px; flex: 0 0 260px; border-right: 1px solid var(--hair); display: flex; flex-direction: column; min-width: 0; background: var(--bg); overflow-y: auto; }
+.ref-col:empty { display: none; }
+.ref-col.collapsed-all { display: none; }
+.ref-mod { border-bottom: 1px solid var(--hair); flex: 0 0 auto; }
+.ref-mod > summary { display: flex; align-items: center; gap: 6px; padding: 9px 12px; cursor: pointer; list-style: none; font-size: 12px; font-weight: 600; color: var(--ink-2); user-select: none; }
+.ref-mod > summary::-webkit-details-marker { display: none; }
+.ref-mod > summary::marker { content: ''; }
+.ref-mod > summary:hover { background: var(--soft); }
+.ref-mod .rm-chev { margin-left: auto; color: var(--meta); font-size: 11px; transition: transform .14s ease; transform: rotate(-90deg); }
+.ref-mod[open] .rm-chev { transform: rotate(90deg); }
+.ref-mod .rm-badge { font-size: 10px; font-weight: 400; color: var(--meta); border: 1px solid var(--hair); border-radius: var(--pill); padding: 0 6px; }
+.ref-mod-body { padding: 0 8px 10px; font-size: 12px; color: var(--muted); }
+/* 章节树（两级：卷/章） */
+.ct-vol { font-size: 11px; color: var(--meta); padding: 6px 4px 2px; letter-spacing: .04em; }
+.ct-row { display: grid; grid-template-columns: 28px minmax(0,1fr); gap: 6px; width: 100%; padding: 4px 6px; border-radius: var(--radius); text-align: left; align-items: baseline; }
+.ct-row:hover { background: var(--soft); }
+.ct-row.on { background: var(--accent-soft); color: var(--ink); }
+.ct-row .no { font-family: var(--mono); font-size: 10px; color: var(--meta); }
+.ct-row .tt { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 参考图谱画布 */
+.graph-box { position: relative; width: 100%; height: 190px; border-radius: var(--radius); background: var(--soft); overflow: hidden; }
+.graph-box canvas { display: block; width: 100%; height: 100%; cursor: grab; }
+.graph-box.dragging canvas { cursor: grabbing; }
+.graph-legend { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; font-size: 10px; color: var(--meta); }
+.graph-legend i { display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 3px; vertical-align: 1px; }
+.graph-hint { margin-top: 4px; font-size: 10px; color: var(--meta); }
+/* 参考摘要 */
+.ref-summary { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.7; font-size: 12px; color: var(--ink-2); max-height: 260px; overflow-y: auto; }
+.ref-summary-ops { display: flex; gap: 6px; margin-top: 6px; }
+.ref-summary-ops button { font-size: 11px; color: var(--muted); border: 1px solid var(--line); border-radius: var(--pill); padding: 1px 10px; }
+.ref-summary-ops button:hover { border-color: var(--ink); color: var(--ink); }
+/* 参考页（全页）：标签树 / 笔记列表 / 正文 / 反链 */
+.ref-page { display: flex; flex-direction: column; gap: 12px; }
+.ref-toolbar { display: flex; align-items: center; gap: 10px; }
+.ref-toolbar h1 { margin: 0; font-size: 22px; }
+.ref-toolbar .sp { flex: 1; }
+.ref-grid { display: grid; grid-template-columns: 180px 220px minmax(0,1fr) 200px; gap: 12px; align-items: start; }
+@media (max-width: 1280px) { .ref-grid { grid-template-columns: 170px minmax(0,1fr) 190px; } .ref-list { display: none; } }
+.ref-tags, .ref-list, .ref-backlinks { border: 1px solid var(--hair); border-radius: var(--radius); background: var(--bg); padding: 6px; max-height: calc(100vh - 220px); overflow-y: auto; }
+.tag-row { display: flex; align-items: center; gap: 6px; width: 100%; padding: 4px 6px; border-radius: var(--radius); text-align: left; font-size: 12px; color: var(--muted); }
+.tag-row:hover { background: var(--soft); }
+.tag-row.on { background: var(--accent-soft); color: var(--ink); }
+.tag-branch { margin-left: calc(var(--depth, 0) * 8px); }
+.tag-branch > summary { list-style: none; cursor: pointer; }
+.tag-branch > summary::-webkit-details-marker { display: none; }
+.tag-leaf { margin-left: calc(var(--depth, 0) * 8px); }
+.tag-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tag-count { font-size: 10px; color: var(--meta); font-variant-numeric: tabular-nums; }
+.tag-desc-dot { display: inline-block; width: 4px; height: 4px; border-radius: 50%; background: var(--accent); margin-left: 4px; vertical-align: 2px; }
+.ref-row { display: flex; flex-direction: column; gap: 2px; width: 100%; padding: 6px 8px; border-radius: var(--radius); text-align: left; }
+.ref-row:hover { background: var(--soft); }
+.ref-row.on { background: var(--accent-soft); }
+.ref-row .rt { font-size: 12px; font-weight: 600; color: var(--ink-2); }
+.ref-row .rm { font-size: 10px; color: var(--meta); }
+.ref-row .re { font-size: 10px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ref-main { border: 1px solid var(--hair); border-radius: var(--radius); background: var(--bg); padding: 14px 16px; min-height: 300px; }
+.ref-main h2 { margin: 0 0 10px; font-size: 18px; }
+.ref-main .rf-meta { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; font-size: 11px; color: var(--meta); }
+.bl-sec h5 { margin: 0 0 6px; font-size: 11px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+.bl-row { display: flex; flex-direction: column; gap: 2px; width: 100%; padding: 5px 6px; border-radius: var(--radius); text-align: left; }
+.bl-row:hover { background: var(--soft); }
+.bl-row b { font-size: 11.5px; color: var(--ink-2); }
+.bl-row span { font-size: 10px; color: var(--meta); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bl-sec.unlinked { margin-top: 12px; }
+/* 双链样式（正文与参考共用） */
+.wl { color: var(--accent); text-decoration: none; border-bottom: 1px dashed color-mix(in srgb, var(--accent) 50%, transparent); cursor: pointer; }
+.wl:hover { border-bottom-style: solid; }
+.wl.embed { border-bottom-style: dotted; }
 .agent-head { padding: 12px 14px 8px; display: flex; align-items: center; gap: 8px; }
 .agent-avatar { width: 22px; height: 22px; border-radius: 6px; background: var(--accent); color: #fff; display: grid; place-items: center; font-size: 11px; font-weight: 800; }
 .agent-name { font-weight: 700; }
@@ -629,6 +698,31 @@ html[data-doc-auto-gap="off"] .doc-block { margin-bottom: 0; }
 .analyze-sec svg [data-action] { transition: fill-opacity .15s; }
 .analyze-sec svg [data-action]:hover { fill-opacity: 1; }
 .ai-score { font-size: 15px; }
+/* 文风模块（OS-44）：句长/段长变异系数是「像不像人写」的两个硬指标 */
+.style-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; }
+.style-kpi { display: flex; flex-direction: column; gap: 1px; border: 1px solid var(--hair); border-radius: var(--radius); padding: 7px 9px; background: var(--bg); }
+.style-kpi .sk-label { font-size: 10px; color: var(--meta); }
+.style-kpi .sk-val { font-size: 16px; font-variant-numeric: tabular-nums; }
+.style-kpi .sk-val.good { color: var(--ok); }
+.style-kpi .sk-val.mid { color: #c48a00; }
+.style-kpi .sk-val.bad { color: var(--danger); }
+.style-kpi .sk-note { font-size: 10px; color: var(--muted); }
+.style-block { margin-top: 8px; }
+.style-block h5 { margin: 0 0 5px; font-size: 11px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+.style-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.style-chip { display: inline-flex; align-items: center; gap: 3px; font-size: 10px; color: var(--muted); border: 1px solid var(--hair); border-radius: var(--pill); padding: 1px 7px; cursor: help; }
+.style-chip b { font-size: 9px; color: var(--meta); font-variant-numeric: tabular-nums; }
+.style-chip.cliche { border-color: color-mix(in srgb, var(--danger) 30%, var(--hair)); }
+.style-chip.connective { border-color: color-mix(in srgb, #c48a00 30%, var(--hair)); }
+/* 工作台模块插拔（OS-44）：设置页勾选列表 */
+.mod-list { display: flex; flex-direction: column; gap: 2px; }
+.mod-row { border-bottom: 1px dashed var(--hair); }
+.mod-row:last-child { border-bottom: 0; }
+.mod-main { display: flex; align-items: flex-start; gap: 10px; padding: 9px 4px; cursor: pointer; }
+.mod-main input { margin-top: 2px; }
+.mod-main span { display: flex; flex-direction: column; gap: 1px; }
+.mod-main b { font-size: 13px; font-weight: 600; }
+.mod-main i { font-style: normal; font-size: 11px; color: var(--meta); }
 .ai-score.good { color: var(--ok); }
 .ai-score.mid { color: #c48a00; }
 .ai-score.bad { color: var(--danger); }
@@ -726,7 +820,16 @@ html[data-doc-auto-gap="off"] .doc-block { margin-bottom: 0; }
   </header>
 
   <div class="main">
-    <!-- Agent 左列（OS-4）：会话 JSONL 在 daemon 侧，凭据只存本机配置 -->
+    <!-- 左内容栏（OS-44）：章节树 / 参考图谱 / 参考摘要——三个可折叠模块，皆可在设置里关闭 -->
+    <aside class="ref-col" id="ref-col"></aside>
+
+    <!-- 中栏 -->
+    <main class="center" id="center">
+      <div class="tabs" id="tabs"></div>
+      <div class="content" id="view"><div class="loading">正在读取库清单…</div></div>
+    </main>
+
+    <!-- Agent 列（OS-44 移到最右）：会话 JSONL 在 daemon 侧，凭据只存本机配置 -->
     <aside class="agent-col">
       <div class="agent-head">
         <span class="agent-avatar">P</span><span class="agent-name">Pi-Agent</span>
@@ -759,12 +862,6 @@ html[data-doc-auto-gap="off"] .doc-block { margin-bottom: 0; }
         </div>
       </div>
     </aside>
-
-    <!-- 中栏 -->
-    <main class="center" id="center">
-      <div class="tabs" id="tabs"></div>
-      <div class="content" id="view"><div class="loading">正在读取库清单…</div></div>
-    </main>
   </div>
 </div>
 
