@@ -2757,6 +2757,7 @@ function closeModal() {
 
 const SETTINGS_SECTIONS = Object.freeze([
   { id: 'plugins', label: '插件', hint: '套件与 Agent 运行时' },
+  { id: 'appearance', label: '风格', hint: '皮肤包切换' },
   { id: 'modules', label: '工作台模块', hint: '左栏与右栏的分析模块插拔' },
   { id: 'discover', label: '发现与导入', hint: '货架路径与导入稿件' },
   { id: 'data', label: '数据与目录', hint: '库清单与配置位置' },
@@ -6040,8 +6041,6 @@ document.addEventListener('click', (event) => {
   } else if (action === 'settings-help-toggle') {
     state.settings.helpOpen = !state.settings.helpOpen
     render()
-  } else if (action === 'toggle-palette') {
-    document.getElementById('palette').classList.toggle('open')
   } else if (action === 'back-entries') {
     state.entry = null
     render()
@@ -6632,9 +6631,6 @@ function applySkin(pack) {
   // 注入 :root（后置覆盖静态兜底）；token 名/值已在 daemon 侧按 --kebab/禁注入字符校验过。
   styleEl.textContent = `:root {\n${Object.entries(pack.tokens || {}).map(([key, value]) => `  ${key}: ${value};`).join('\n')}\n}`
   document.documentElement.dataset.skin = pack.id
-  for (const option of document.querySelectorAll('.palette .opt')) {
-    option.classList.toggle('on', option.dataset.skin === pack.id)
-  }
 }
 
 function setSkin(id) {
@@ -6672,19 +6668,6 @@ async function loadKbStatus() {
   } catch {
     state.kbStatus = null
   }
-}
-
-function renderPalette() {
-  const opts = document.getElementById('palette-opts')
-  if (!opts) return
-  if (state.styles.length === 0) {
-    opts.innerHTML = '<div class="count" style="padding:6px 2px">风格包清单读不到，先用内置珊瑚兜底。</div>'
-    return
-  }
-  opts.innerHTML = state.styles.map((pack) => `<button class="opt${pack.id === state.skin ? ' on' : ''}" data-skin="${esc(pack.id)}" title="${esc(pack.source)} · ${esc(pack.id)}">
-    <span class="sw" style="background:${esc(pack.tokens['--bg'] || '#fff')}"><span style="width:12px;height:12px;border-radius:50%;background:${esc(pack.tokens['--accent'] || '#333')}"></span></span>
-    <span><span class="nm">${esc(pack.name)}<span class="src">${esc(pack.source)}</span></span><br><span class="ds">${esc(pack.description || '')}</span></span>
-  </button>`).join('')
 }
 
 async function bootStyles() {
