@@ -72,12 +72,12 @@ test('MCP：initialize 握手（serverInfo/instructions/tools 能力）', async 
   } finally { mcp.close() }
 })
 
-test('MCP：tools/list 19 个工具、四模块分组、schema 带 required', async () => {
+test('MCP：tools/list 20 个工具、五模块分组、schema 带 required', async () => {
   const mcp = startMcp()
   try {
     const reply = await mcp.request('tools/list')
     const tools = reply.result.tools
-    assert.equal(tools.length, 19)
+    assert.equal(tools.length, 20)
     const names = tools.map((tool) => tool.name)
     for (const name of ['openstory_libraries', 'openstory_novel_write_chapter', 'openstory_reference_graph', 'openstory_deduce_present', 'openstory_analysis_chapter', 'openstory_habits_read']) {
       assert.ok(names.includes(name), `缺工具 ${name}`)

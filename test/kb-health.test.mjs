@@ -8,6 +8,7 @@ import { mkdtemp, writeFile, mkdir, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { collectKbStatus, probeServices } from '../kbHealth.mjs'
+import { resolveCollections } from '../kbRouter.mjs'
 import { startDaemon } from '../daemon.mjs'
 import { validateResponse } from '../contracts.mjs'
 
@@ -25,7 +26,8 @@ test('聚合：kb-config 缺失 → configured=false，六库空表，形状恒�
     configPath: 'Z:/nope/kb-config.json',
     weknoraUrl: DEAD_URL,
     embedUrl: DEAD_URL,
-    timeoutMs: 800
+    timeoutMs: 800,
+    resolveCollections
   })
   assert.equal(status.ok, true)
   assert.equal(status.configured, false)
@@ -51,6 +53,7 @@ test('聚合：配置在但 WeKnora 拒连 → 六库降级 docs=null，不抛',
       weknoraUrl: DEAD_URL,
       embedUrl: DEAD_URL,
       timeoutMs: 800,
+      resolveCollections,
       // 注入固定服务快照，避免真实探活的不确定性
       services: {
         weknora: { up: false, version: '', edition: '' },

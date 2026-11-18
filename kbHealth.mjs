@@ -12,8 +12,6 @@
 import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
-import { resolveCollections } from './kbRouter.mjs'
-import { defaultKbConfigPath } from './kbAdapter.mjs'
 
 const WATCH_INTERVAL_MS = 60_000
 const PROBE_TIMEOUT_MS = 3_000
@@ -62,10 +60,12 @@ export async function probeServices({ weknoraUrl = 'http://127.0.0.1:8080', embe
   return kbServiceState
 }
 
-/** embedding 不可达时自动拉起（仅 backend=weknora 才管），至多等 readyMs。返回是否已就绪。 */
-export async function ensureEmbedding({ repoRoot, embedUrl = 'http://127.0.0.1:8808', configPath, readyMs = 30_000, logger = () => {} } = {}) {
+/** embedding 不可达时自动拉起（仅 backend=weknora 才管），至多等 readyMs。返回是否已就绪。
+ * 依赖注入（OS-67 可插拔）：resolveCollections 由调用方（daemon）传入，本模块不直接 import kbRouter。 */
+export async function ensureEmbedding({ repoRoot, embedUrl = 'http://127.0.0.1:8808', configPath, readyMs = 30_000, logger = () => {}, resolveCollections } = {}) {
   const first = await fetchJson(`${embedUrl}/health`, PROBE_TIMEOUT_MS)
   if (first && first.ok) return true
+  if (typeof resolveCollections !== 'function') return false
   const cfg = resolveCollections(configPath)
   if (!cfg.ok) return false // 没接知识库就不越权拉服务
   const script = join(repoRoot, 'embedding-server.mjs')
@@ -116,17 +116,19 @@ export function watchServices(opts = {}) {
   }
 }
 
-/** daemon 启动引导：kb-config 存在才自愈 embedding＋开循环探活；无配置返回 null（KB 功能未启用）。 */
-export function bootstrapKbHealth({ env = process.env, repoRoot, logger = console } = {}) {
+/** daemon 启动引导：kb-config 存在才自愈 embedding＋开循环探活；无配置返回 null（KB 功能未启用）。
+ * 依赖注入（OS-67 可插拔）：defaultKbConfigPath / resolveCollections 由调用方传入。 */
+export function bootstrapKbHealth({ env = process.env, repoRoot, logger = console, defaultKbConfigPath, resolveCollections } = {}) {
+  if (typeof defaultKbConfigPath !== 'function' || typeof resolveCollections !== 'function') return null
   const configPath = defaultKbConfigPath(env)
   const cfg = resolveCollections(configPath)
   if (!cfg.ok) return null
   const log = (msg) => logger.log?.(msg) ?? logger(msg)
   // 自愈不阻塞启动：异步拉起，探活循环随后接管状态
-  ensureEmbedding({ repoRoot, configPath, logger: log }).catch(() => {})
+  ensureEmbedding({ repoRoot, configPath, logger: log, resolveCollections }).catch(() => {})
   const watchOpts = {
     weknoraApiKey: cfg.apiKey,
-    onEmbeddingDown: () => ensureEmbedding({ repoRoot, configPath, logger: log }).catch(() => {})
+    onEmbeddingDown: () => ensureEmbedding({ repoRoot, configPath, logger: log, resolveCollections }).catch(() => {})
   }
   return watchServices(watchOpts)
 }
@@ -146,7 +148,10 @@ async function collectCollection(baseUrl, apiKey, kbId, timeoutMs) {
  * 设置面板聚合：服务健康＋六库文档数/解析状态＋配置路径。
  * 一切失败降级为 null/false，返回形状恒定（契约见 contracts.mjs kbStatusGet）。
  */
-export async function collectKbStatus({ configPath, weknoraUrl = 'http://127.0.0.1:8080', embedUrl = 'http://127.0.0.1:8808', timeoutMs = 5_000, services = null } = {}) {
+export async function collectKbStatus({ configPath, weknoraUrl = 'http://127.0.0.1:8080', embedUrl = 'http://127.0.0.1:8808', timeoutMs = 5_000, services = null, resolveCollections } = {}) {
+  if (typeof resolveCollections !== 'function') {
+    return { ok: true, configured: false, backend: '', configPath: String(configPath ?? ''), configError: '', services: { weknora: { up: false, version: '', edition: '' }, embedding: { up: false, model: '', dim: 0, autoStarted: false } }, lastCheck: kbServiceState.lastCheck, collections: [] }
+  }
   const cfg = resolveCollections(configPath)
   const svc = services ?? await probeServices({ weknoraUrl, embedUrl, timeoutMs, weknoraApiKey: cfg.ok ? cfg.apiKey : '' })
   const out = {

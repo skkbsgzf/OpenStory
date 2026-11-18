@@ -322,6 +322,26 @@ const tools = [
       return await daemon('/api/habits', { query: { root } })
     }
   },
+  {
+    name: 'openstory_habits_put',
+    title: '写习惯表',
+    description: '写本库作者自定义的写作习惯表（整表覆盖，daemon 侧自动 .history 备份）。只在作者明确要求调整习惯表时使用；改完回读确认。写正文时若产出命中禁用词/句式，优先改产出而不是删规矩。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        root: { type: 'string' },
+        habits: { type: 'object', description: '完整习惯表对象（结构同 openstory_habits_read 返回的 habits 字段）' }
+      },
+      required: ['root', 'habits'],
+      additionalProperties: false
+    },
+    async run(args) {
+      const root = requireRoot(args)
+      if (!args.habits || typeof args.habits !== 'object' || Array.isArray(args.habits)) throw invalidArgs('habits 必须是习惯表对象')
+      const payload = await daemon('/api/habits', { method: 'PUT', body: { root, habits: args.habits } })
+      return payload
+    }
+  },
 
   /* ===== deduce + enrich + fact ===== */
   {
