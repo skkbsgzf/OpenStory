@@ -6,6 +6,7 @@
   "private": true,
   "scripts": {
     "start": "node daemon.mjs",
+    "mcp": "node mcp.mjs",
     "test": "node --test \"test/*.test.mjs\""
   },
   "dependencies": {
