@@ -5111,6 +5111,9 @@ async function createDirFile(dir) {
 async function loadFactViewData() {
   if (!state.current) return
   const fv = state.factView || (state.factView = { bookId: '', loaded: false, loading: false, curve: null, graph: null })
+  // 两道闸都要有：loaded 挡重复加载，loading 挡「加载中 render 又触发自己」的递归
+  // （OS-66 补：漏了 loading 闸会无限 render 循环，页面卡死）
+  if (fv.loading) return
   if (fv.loaded && fv.bookId === (state.factBookId || '')) return
   fv.loading = true
   fv.error = ''
@@ -5126,6 +5129,19 @@ async function loadFactViewData() {
   }
   fv.loading = false
   if (state.view.startsWith('dir:')) render()
+}
+
+/** 嵌套槽位值拍平成人话（OS-66 补）：structure={main:...,subplot:...} 这类对象逐键展开。 */
+function fvFlatten(value, depth = 0) {
+  if (value === null || value === undefined || value === '') return ''
+  if (Array.isArray(value)) return value.map((item) => fvFlatten(item, depth + 1)).filter(Boolean).join('；')
+  if (typeof value === 'object') {
+    return Object.entries(value)
+      .map(([k, v]) => `${k}：${fvFlatten(v, depth + 1)}`)
+      .filter((line) => line.trim().length > 2)
+      .join('；')
+  }
+  return text(value)
 }
 
 function factViewHtml() {
@@ -5162,7 +5178,15 @@ function factViewHtml() {
   const slotRows = Object.entries(slots).map(([key, slot]) => {
     const label = { gimmick: '噱头', plotDesign: '剧情设计', intro: '开篇', style: '文风九维' }[key] || key
     const rows = Object.entries(slot || {})
-      .map(([k, v]) => `<div class="fv-slot-row"><span class="fv-slot-k">${esc(k)}</span><span class="fv-slot-v">${esc(Array.isArray(v) ? v.join('、') : String(v))}</span></div>`)
+      .map(([k, v]) => {
+        // 结构类字段（structure/stages/turningPoints）是嵌套对象——拍平成可读文本，别 [object Object]
+        const render = (value) => {
+          if (Array.isArray(value)) return value.map((item) => (typeof item === 'object' && item ? fvFlatten(item) : text(item))).filter(Boolean).join('；')
+          if (value && typeof value === 'object') return fvFlatten(value)
+          return text(value)
+        }
+        return `<div class="fv-slot-row"><span class="fv-slot-k">${esc(k)}</span><span class="fv-slot-v">${esc(render(v))}</span></div>`
+      })
       .join('')
     return rows ? `<div class="fv-slot"><h4>${esc(label)}</h4>${rows}</div>` : ''
   }).join('')
