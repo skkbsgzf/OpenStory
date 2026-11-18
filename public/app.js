@@ -1681,23 +1681,66 @@ function toggleComposerMenu(which) {
   const willOpen = menu.hidden
   closeComposerMenus()
   if (!willOpen) return
-  menu.innerHTML = which === 'style' ? styleMenuHtml() : plusMenuHtml()
+  menu.innerHTML = which === 'style' ? genreMenuHtml() : plusMenuHtml()
+  if (which === 'style' && !(state.genres || []).length) loadGenres().then(() => { const menu = document.getElementById('agent-style-menu'); if (menu && !menu.hidden) menu.innerHTML = genreMenuHtml() })
   menu.hidden = false
   if (which === 'plus') refreshAgentSkillsMenu()
   document.getElementById(which === 'style' ? 'agent-style-btn' : 'agent-plus-btn')?.classList.add('on')
 }
 
-/** 风格菜单：当前模式 + 库 + 清除上下文（原那排显眼 chip 的职能收进这里）。 */
-function styleMenuHtml() {
+/** 灯泡菜单＝题材风格（OS-69 作者裁定，对齐 OpenDesign 的风格位）：
+ * 这里选中的体裁写进库的 brief.json，之后**所有**成文与分析都按该体裁的提示词（agentPolicy）
+ * 生成——全局生效，与加号里一次性注入的技能/工具分工。 */
+function genreMenuHtml() {
   const polish = agent.pendingContext?.kind === 'polish'
   const rows = []
-  rows.push(`<div class="pop-item" data-action="style-mode-plain"><span class="pi-ic">💬</span><b>对话模式</b><i>问剧情、查设定、要产物</i></div>`)
-  rows.push(`<div class="pop-item" data-action="style-mode-polish"><span class="pi-ic">✎</span><b>润笔模式</b><i>选中一段正文后改写</i></div>`)
+  const cur = state.briefGenre
+  const head = cur
+    ? `<div class="pop-foot">当前生效：${esc(cur.name)}——成文与分析都按它的提示词走</div>`
+    : '<div class="pop-foot">未声明体裁——下面任选一个即全局生效</div>'
+  const genres = Array.isArray(state.genres) ? state.genres : []
+  if (!genres.length) {
+    rows.push('<div class="pop-item plain"><span class="pi-ic">◇</span><b>体裁货架读不到</b><i>稍后再开</i></div>')
+  } else {
+    for (const genre of genres) {
+      const on = cur?.id === genre.id
+      rows.push(`<div class="pop-item" data-action="genre-pick" data-genre-id="${esc(genre.id)}"><span class="pi-ic">${on ? '✓' : genre.tier === 'primary' ? '✦' : '◇'}</span><b>${esc(genre.name)}</b><i>${esc((genre.summary || '').slice(0, 34))}${on ? ' · 生效中' : ''}</i></div>`)
+    }
+  }
   if (polish) rows.push(`<div class="pop-item" data-action="clear-agent-context"><span class="pi-ic">✕</span><b>清除当前上下文</b><i>${esc((agent.pendingContext?.label || '').slice(0, 24))}</i></div>`)
   // 状态脚注（OS-68c）：Agent 会话绑定的库与端点——纯读数不可点，样式与按钮行彻底分层
   const status = `${esc(state.current?.name || '未选库')} · ${esc(agent.model || (agent.configured ? '已配置' : '未配置端点'))}`
   rows.push(`<div class="pop-foot">会话绑定：${status}</div>`)
-  return `<div class="pop-title">模式</div>${rows.join('')}`
+  return `${head}<div class="pop-div"></div>${rows.join('')}`
+}
+
+/** 点选体裁：写 brief.json（体裁策略从此每轮注入 system prompt＋裁剪技法技能与页签）。
+ * libDirs 要按新体裁重建——换库时它是被旧体裁 excludedPages 物理滤过的，直接复用会丢目录。 */
+async function pickGenre(id) {
+  if (!state.current) return
+  try {
+    const payload = await api('/api/brief', { method: 'PUT', body: JSON.stringify({ root: state.current.path, genre: id }) })
+    state.brief = payload.brief ?? null
+    state.briefGenre = payload.genre ?? null
+    // 磁盘全目录重新拉 → 按新体裁 excludedPages 重滤页签
+    try {
+      const topPayload = await api(`/api/files?root=${encodeURIComponent(state.current.path)}`)
+      const rawDirs = Array.isArray(topPayload.dirs) ? topPayload.dirs : []
+      const excluded = new Set((state.briefGenre?.excludedPages ?? []).map((page) => PAGE_TO_DIR_LOCAL[page] ?? page))
+      state.libDirs = rawDirs.filter((dir) => !excluded.has(dir))
+    } catch { /* 目录拉不到就不动 libDirs，页签保持现状 */ }
+    // 当前页签若被新体裁裁掉 → 落回正文
+    if (state.view.startsWith('dir:')) {
+      const dir = state.view.slice(4)
+      if (!(state.libDirs || []).includes(dir)) state.view = 'write'
+    }
+    closeComposerMenus()
+    render()
+  } catch (error) {
+    rememberAgentError(`体裁切换失败：${text(error?.message || error)}`)
+    closeComposerMenus()
+    renderAgent()
+  }
 }
 
 /** ＋菜单：引用文件 / 指令 / 技能（对齐其它 Agent 的 ＋ 键）。 */
@@ -4857,7 +4900,7 @@ const DIR_LABELS = {
 }
 const DIR_ORDER = ['正文', '世界书', '大纲', '构思', '资料', '约束', '剧本', '人物', '场景', '素材', '漫画', '视频', '体验', '联机', '日志', '文档']
 const READONLY_DIRS = new Set(['日志'])
-const PAGE_TO_DIR_LOCAL = Object.freeze({ write: '正文', entries: '世界书', worldbook: '世界书', outline: '大纲', notes: '构思', material: '资料', dossier: '资料', script: '剧本', comic: '漫画', wiki: 'Wiki' })
+const PAGE_TO_DIR_LOCAL = Object.freeze({ write: '正文', entries: '世界书', worldbook: '世界书', outline: '大纲', notes: '构思', material: '资料', dossier: '资料', script: '剧本', comic: '漫画', wiki: '世界书' })
 
 /**
  * 页签栏（OS-36）。
@@ -7015,6 +7058,8 @@ document.addEventListener('click', (event) => {
       const end = input.value.length
       input.setSelectionRange?.(end, end)
     }
+  } else if (action === 'genre-pick') {
+    pickGenre(target.dataset.genreId || '')
   } else if (action === 'style-mode-plain') {
     if (agent.pendingContext?.kind === 'polish') agent.pendingContext = null
     closeComposerMenus()
