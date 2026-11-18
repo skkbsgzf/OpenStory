@@ -269,7 +269,7 @@ export function deliverableLabel(deliverable) {
 const PAGE_TO_DIR = Object.freeze({
   write: '正文', entries: '世界书', worldbook: '世界书', outline: '大纲', notes: '构思',
   material: '资料', dossier: '资料', constraint: '约束', script: '剧本', comic: '漫画',
-  video: '视频', experience: '体验', online: '联机', wiki: 'Wiki'
+  video: '视频', experience: '体验', online: '联机', wiki: '世界书', wikiHtml: '世界书'
 })
 
 /** excludedPages（页签/人话名）→ 实际目录名集合 */
