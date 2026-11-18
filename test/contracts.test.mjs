@@ -78,7 +78,7 @@ async function makeFixture() {
 }
 
 test('契约：端点都带 method/path/request/response/errors，路径可反查', () => {
-  assert.equal(Object.keys(ENDPOINTS).length, 54)
+  assert.equal(Object.keys(ENDPOINTS).length, 61)
   for (const [id, endpoint] of Object.entries(ENDPOINTS)) {
     assert.ok(endpoint.method, `${id} 缺 method`)
     assert.ok(endpoint.path.startsWith('/api/'), `${id} 路径不是 /api/`)
@@ -106,6 +106,13 @@ test('契约：端点都带 method/path/request/response/errors，路径可反�
   assert.equal(endpointFor('POST', '/api/agent/runtime/setup'), 'agentRuntimeSetup')
   assert.equal(endpointFor('POST', '/api/deduce/present'), 'deducePresent')
   assert.equal(endpointFor('POST', '/api/deduce/settle'), 'deduceSettle')
+  assert.equal(endpointFor('GET', '/api/deduce/session'), 'deduceSessionGet')
+  assert.equal(endpointFor('PUT', '/api/deduce/session'), 'deduceSessionPut')
+  assert.equal(endpointFor('POST', '/api/deduce/archive'), 'deduceArchive')
+  assert.equal(endpointFor('POST', '/api/deduce/turn'), 'deduceTurn')
+  assert.equal(endpointFor('POST', '/api/deduce/branch'), 'deduceBranch')
+  assert.equal(endpointFor('GET', '/api/deduce/assets'), 'deduceAssets')
+  assert.equal(endpointFor('GET', '/api/deduce/asset'), 'deduceAssetFile')
   assert.equal(endpointFor('POST', '/api/nope'), null)
 })
 
@@ -383,6 +390,89 @@ test('daemon 端点：迁入旧目录——搬进参考、源进 .history、白�
     assert.equal(againPayload.moved.length, 0)
     assert.equal(againPayload.skipped.length, 1)
     assert.equal(await readFile(join(root, '参考', '大纲', '001-主线.md'), 'utf-8'), '主线大纲。')
+  } finally {
+    await daemon.close()
+    await rm(base, { recursive: true, force: true })
+  }
+})
+
+test('契约校验：deduceBranch 请求/响应形状（OS-61 P3）', () => {
+  assert.equal(validateRequest('deduceBranch', { root: '/tmp/x', fromNodeId: 'n1' }).ok, true)
+  assert.equal(validateRequest('deduceBranch', { root: '/tmp/x', bookId: 'b', fromNodeId: 'n1' }).ok, true)
+  assert.equal(validateRequest('deduceBranch', { root: '/tmp/x' }).ok, false, 'fromNodeId 必填')
+  assert.equal(validateRequest('deduceBranch', { root: '/tmp/x', fromNodeId: 42 }).ok, false, 'fromNodeId 必须是字符串')
+  assert.equal(validateResponse('deduceBranch', { ok: true, session: {} }).ok, true)
+  assert.equal(validateResponse('deduceBranch', { ok: true }).ok, false, 'session 必填')
+})
+
+test('契约校验：deduceAssets/deduceAssetFile 请求/响应形状（OS-61 P4）', () => {
+  assert.equal(validateRequest('deduceAssets', { root: '/tmp/x' }).ok, true)
+  assert.equal(validateRequest('deduceAssets', { root: '/tmp/x', bookId: 'b1' }).ok, true)
+  assert.equal(validateRequest('deduceAssets', {}).ok, false, 'root 必填')
+  assert.equal(validateResponse('deduceAssets', { ok: true, bookId: 'b1', characters: [], scenes: [], bgm: [] }).ok, true)
+  assert.equal(validateResponse('deduceAssets', { ok: true, bookId: 'b1', characters: [] }).ok, false, 'scenes/bgm 必填')
+  assert.equal(validateRequest('deduceAssetFile', { root: '/tmp/x', path: '角色/林砚.png' }).ok, true)
+  assert.equal(validateRequest('deduceAssetFile', { root: '/tmp/x' }).ok, false, 'path 必填')
+})
+
+test('daemon 端点：推演分支——从某拍开新分支，cursor 定位＋分叉溯源＋备份（OS-61 P3）', async () => {
+  const { base, root, preferencesPath } = await makeFixture()
+  const daemon = await startDaemon({ port: 0, preferencesPath, logger: { log() {} } })
+  const origin = `http://127.0.0.1:${daemon.port}`
+  const post = (path, body) => fetch(origin + path, {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body)
+  })
+  try {
+    // 没会话＝404，不伪造分支
+    const none = await post('/api/deduce/branch', { root, bookId: 'book-1', fromNodeId: 'n1' })
+    assert.equal(none.status, 404)
+    assert.equal((await none.json()).error.code, 'NOT_FOUND')
+
+    // 整存一个三拍主线会话
+    const session = {
+      schema: 'openstory.deduce-session/v1', branchId: 'main', cursor: 3,
+      nodes: [
+        { id: 'n1', round: 1, branchId: 'main', parentId: '', prose: '雾起了。' },
+        { id: 'n2', round: 2, branchId: 'main', parentId: 'n1', prose: '船到江心。' },
+        { id: 'n3', round: 3, branchId: 'main', parentId: 'n2', prose: '有人喊他。' }
+      ]
+    }
+    const put = await fetch(`${origin}/api/deduce/session`, {
+      method: 'PUT', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ root, bookId: 'book-1', session })
+    })
+    assert.equal((await put.json()).ok, true)
+
+    // 缺 fromNodeId＝400；不存在的拍＝404
+    const missing = await post('/api/deduce/branch', { root, bookId: 'book-1' })
+    assert.equal(missing.status, 400)
+    assert.equal((await missing.json()).error.code, 'INVALID_ENTRY')
+    const ghost = await post('/api/deduce/branch', { root, bookId: 'book-1', fromNodeId: '没有这拍' })
+    assert.equal(ghost.status, 404)
+    assert.equal((await ghost.json()).error.code, 'NOT_FOUND')
+
+    // 从第 2 拍开分支：新 branchId、cursor 落到该拍、nodes 全量保留、分叉溯源
+    const done = await post('/api/deduce/branch', { root, bookId: 'book-1', fromNodeId: 'n2' })
+    assert.equal(done.status, 200)
+    const payload = await done.json()
+    assert.equal(payload.ok, true)
+    assert.equal(payload.session.branchId, 'branch-2')
+    assert.equal(payload.session.cursor, 2)
+    assert.equal(payload.session.nodes.length, 3)
+    const fork = payload.session.nodes.find((node) => node.id === 'n2')
+    assert.deepEqual(fork.forkBranchIds, ['branch-2'])
+    assert.equal(validateResponse('deduceBranch', payload).ok, true)
+    // 落盘＋.history 备份
+    const onDisk = JSON.parse(await readFile(join(root, '推演', 'book-1', 'session.json'), 'utf-8'))
+    assert.equal(onDisk.branchId, 'branch-2')
+    const history = await readdir(join(root, '推演', 'book-1', '.history'))
+    assert.ok(history.length >= 1, '写前备份在 .history')
+
+    // 同拍再开一条：branchId 不复用，溯源累加
+    const again = await (await post('/api/deduce/branch', { root, bookId: 'book-1', fromNodeId: 'n2' })).json()
+    assert.equal(again.ok, true)
+    assert.equal(again.session.branchId, 'branch-3')
+    assert.deepEqual(again.session.nodes.find((node) => node.id === 'n2').forkBranchIds, ['branch-2', 'branch-3'])
   } finally {
     await daemon.close()
     await rm(base, { recursive: true, force: true })
