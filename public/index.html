@@ -797,8 +797,10 @@ html[data-doc-auto-gap="off"] .doc-block { margin-bottom: 0; }
 .sel-bar button:hover { background: var(--accent-soft); color: var(--accent); }
 .agent-context:empty { display: none; }
 .agent-context { padding: 0 14px 6px; }
-.ctx-chip { display: flex; align-items: center; gap: 8px; border: 1px dashed var(--accent); border-radius: var(--radius); padding: 6px 10px; font-size: 11px; background: var(--accent-soft); }
-.ctx-chip .ctx-label { color: var(--accent); font-weight: 600; flex: 0 0 auto; }
+/* 上下文条（OS-67 作者口径）：提示类信息用浅绿（--ok 系），红色留给错误——
+   之前用 --accent 红虚线，读起来像报错 */
+.ctx-chip { display: flex; align-items: center; gap: 8px; border: 1px dashed color-mix(in srgb, var(--ok) 55%, transparent); border-radius: var(--radius); padding: 6px 10px; font-size: 11px; background: color-mix(in srgb, var(--ok) 7%, transparent); }
+.ctx-chip .ctx-label { color: color-mix(in srgb, var(--ok) 80%, var(--ink)); font-weight: 600; flex: 0 0 auto; }
 .ctx-chip .ctx-text { color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
 .ctx-chip .ctx-x { color: var(--meta); font-size: 14px; line-height: 1; }
 .ctx-chip .ctx-x:hover { color: var(--danger); }
