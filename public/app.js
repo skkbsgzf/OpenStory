@@ -3487,7 +3487,7 @@ function referenceGraphHtml() {
   const byKind = stats.byKind || {}
   const legend = [
     ['reference', '参考', 'var(--accent)'],
-    ['tag', '标签', '#c48a00'],
+    ['tag', '标签', 'var(--warn)'],
     ['artifact', '章节/产物', 'var(--ok)'],
     ['entry', '条目（只读）', 'var(--meta)']
   ].filter(([kind]) => byKind[kind]).map(([, label, color]) =>
@@ -3716,7 +3716,7 @@ function graphModuleHtml() {
   const byKind = graph.stats?.byKind || {}
   const legend = [
     ['reference', '参考', 'var(--accent)'],
-    ['tag', '标签', '#c48a00'],
+    ['tag', '标签', 'var(--warn)'],
     ['artifact', '章节/产物', 'var(--ok)'],
     ['entry', '条目（只读）', 'var(--meta)']
   ].filter(([kind]) => byKind[kind]).map(([, label, color]) =>
@@ -5103,8 +5103,121 @@ async function createDirFile(dir) {
   }
 }
 
+/** ---------- 拆解视图（OS-66）：fact 数据的知识化呈现 ----------
+ * 数据源：/api/fact/curve（章级摘要/功能/情绪/beats/事件/伏笔）
+ *        ＋ /api/enrich/graph（六槽位/因果图/台账/需求层级）
+ * 都只读——fact 的写入端在 enrich 与抽取管线，不在这里。 */
+
+async function loadFactViewData() {
+  if (!state.current) return
+  const fv = state.factView || (state.factView = { bookId: '', loaded: false, loading: false, curve: null, graph: null })
+  if (fv.loaded && fv.bookId === (state.factBookId || '')) return
+  fv.loading = true
+  fv.error = ''
+  render()
+  try {
+    const q = `root=${encodeURIComponent(state.current.path)}`
+    fv.curve = await api(`/api/fact/curve?${q}&bookId=${encodeURIComponent(state.factBookId || '')}`).catch(() => null)
+    fv.bookId = fv.curve?.bookId || state.factBookId || ''
+    fv.graph = await api(`/api/enrich/graph?${q}&bookId=${encodeURIComponent(fv.bookId)}`).catch(() => null)
+    fv.loaded = true
+  } catch (error) {
+    fv.error = text(error?.message || error)
+  }
+  fv.loading = false
+  if (state.view.startsWith('dir:')) render()
+}
+
+function factViewHtml() {
+  const fv = state.factView
+  if (!state.current) return needLibraryHtml()
+  if (!fv) return '<div class="loading">…</div>'
+  const head = `<div class="doc-head">
+      <div class="kick">${esc(state.current.name)} / 拆解</div>
+      <h1>拆解数据</h1>
+      <div class="doc-meta"><span class="b">fact 链</span><span>拆解/推演/富化的底座——这里只读，写入走 enrich 与抽取</span></div>
+    </div>`
+  if (fv.error) return head + flowError(fv.error)
+  const curve = fv.curve
+  if (!curve?.bookId) {
+    return head + `<div class="empty-state"><h2>还没有拆解数据</h2>
+      <p>拆解/ 目录下没有可读的 fact 文件。先在「条目」页或通过抽取管线产出条目（worldview/角色/剧情），再跑 enrich。</p></div>`
+  }
+  const chapters = curve.chapters || []
+  const graph = fv.graph || {}
+
+  // —— 章级序列：功能/情绪/beats/事件/伏笔，一格一章 ——
+  const chapterRows = chapters.map((c) => `<div class="fv-ch">
+      <div class="fv-ch-head">
+        <span class="fv-ch-no">第 ${c.no} ${c.no && c.title ? '· ' : ''}${esc(c.title || '')}</span>
+        ${c.function ? `<span class="fv-tag">${esc(c.function)}</span>` : ''}
+        ${c.emotion ? `<span class="fv-tag emo">${esc(c.emotion)}</span>` : ''}
+        <span class="fv-ch-n">${c.beats || 0} 拍 · ${c.events || 0} 事件 · ${c.foreshadows || 0} 伏笔</span>
+      </div>
+      ${c.summary ? `<p class="fv-ch-summary">${esc(c.summary)}</p>` : '<p class="fv-ch-summary empty">（这一章还没有摘要——跑 enrich 会补）</p>'}
+    </div>`).join('') || '<p class="empty">还没有章级摘要——跑 enrich 后出现。</p>'
+
+  // —— 六槽位（gimmick/plotDesign/intro/style）——
+  const slots = graph.slots || {}
+  const slotRows = Object.entries(slots).map(([key, slot]) => {
+    const label = { gimmick: '噱头', plotDesign: '剧情设计', intro: '开篇', style: '文风九维' }[key] || key
+    const rows = Object.entries(slot || {})
+      .map(([k, v]) => `<div class="fv-slot-row"><span class="fv-slot-k">${esc(k)}</span><span class="fv-slot-v">${esc(Array.isArray(v) ? v.join('、') : String(v))}</span></div>`)
+      .join('')
+    return rows ? `<div class="fv-slot"><h4>${esc(label)}</h4>${rows}</div>` : ''
+  }).join('')
+
+  // —— 因果图：节点/边 ——
+  const cg = graph.causalGraph || {}
+  const causalNodes = cg.nodes || []
+  const causalEdges = cg.edges || []
+  const causalHtml = causalNodes.length
+    ? `<div class="fv-causal">
+        <div class="fv-causal-nodes">${causalNodes.map((node) => `<span class="fv-node">${esc(node.name || node.id)}</span>`).join('')}</div>
+        ${causalEdges.length ? `<div class="fv-causal-edges">${causalEdges.map((edge) => {
+          const from = causalNodes.find((node) => node.id === (edge.from ?? edge.source))
+          const to = causalNodes.find((node) => node.id === (edge.to ?? edge.target))
+          return `<span class="fv-edge">${esc(from?.name || from?.id || edge.from)} → <i>${esc(edge.type || '因果')}</i> ${esc(to?.name || to?.id || edge.to)}</span>`
+        }).join('')}</div>` : ''}
+      </div>`
+    : '<p class="empty">因果图还没有数据（一章以内撑不起跨章因果——多写几章再跑 enrich）。</p>'
+
+  // —— 台账：知情/状态 ——
+  const ledger = graph.ledger || {}
+  const knowRows = (ledger.knowledgeLedger || []).map((row) => `<div class="fv-led-row"><b>${esc(row.character)}</b><span>${esc(row.knows)}${row.chapter ? `（第${row.chapter}拍）` : ''}</span></div>`).join('')
+  const stateRows = (ledger.stateLedger || []).map((row) => `<div class="fv-led-row"><b>${esc(row.character)}</b><span>${esc(row.state)}</span></div>`).join('')
+
+  return `${head}
+    <div class="fv-wrap">
+      <section class="fv-card">
+        <div class="fv-card-head"><h3>章级序列 <span class="count">${chapters.length} 章</span></h3>
+          <span class="sub">fact/curve · 功能/情绪/拍数/事件/伏笔</span></div>
+        ${chapterRows}
+      </section>
+      ${slotRows ? `<section class="fv-card"><div class="fv-card-head"><h3>六槽位</h3><span class="sub">enrich 产出的结构化设计信息</span></div>${slotRows}</section>` : ''}
+      <section class="fv-card">
+        <div class="fv-card-head"><h3>因果图 <span class="count">${causalNodes.length} 节点 ${causalEdges.length} 边</span></h3>
+          <span class="sub">跨章因果链（多章才有结构）</span></div>
+        ${causalHtml}
+      </section>
+      ${knowRows || stateRows ? `<section class="fv-card"><div class="fv-card-head"><h3>状态台账</h3><span class="sub">谁在什么时候知道什么、处在什么状态</span></div>
+        ${knowRows ? `<div class="fv-led-block"><h5>知情</h5>${knowRows}</div>` : ''}
+        ${stateRows ? `<div class="fv-led-block"><h5>状态</h5>${stateRows}</div>` : ''}
+      </section>` : ''}
+      ${graph.failures?.length ? `<section class="fv-card"><div class="fv-card-head"><h3>富化缺口</h3></div>
+        ${graph.failures.map((f) => `<div class="fv-led-row"><b>${esc(f.stage || f)}</b><span>${esc(f.reason || '')}</span></div>`).join('')}
+      </section>` : ''}
+    </div>`
+}
+
 function dirViewHtml(dir) {
   if (!state.current) return needLibraryHtml()
+  // 拆解目录走专属视图（OS-66）：enrich 产出的六槽位/因果图/台账/章纲是人类可读的
+  // 结构化知识，用裸 textarea 呈现等于把知识当文本埋掉。
+  if (dir === '拆解') {
+    loadFactViewData()
+    return factViewHtml()
+  }
   const work = dirWork(dir)
   const readonly = READONLY_DIRS.has(dir)
   const label = DIR_LABELS[dir] || dir
@@ -5862,25 +5975,67 @@ function deduceEngineHtml() {
     </details>`
 }
 
-/** 生图流程（OS-63 转正）：问场景名与画面描述 → 调 /api/deduce/image → 刷新舞台。 */
-async function deduceImageFlow() {
-  const name = globalThis.prompt?.('场景名（生成的立绘会绑定这个名字，如：龙虎山）', '') || ''
-  if (!name.trim()) return
-  const prompt = globalThis.prompt?.('画面描述（给生图模型的提示词）', '') || ''
-  if (!prompt.trim()) return
-  const engine = state.deduce.engine
-  engine.turnBusy = true
-  render()
-  try {
-    await api('/api/deduce/image', {
-      method: 'POST',
-      body: JSON.stringify({ root: state.current.path, name: name.trim(), prompt: prompt.trim() })
-    })
-    engine.archiveNote = `立绘已生成：素材/场景/${name.trim()}.png（回到当前局面即可见）`
-  } catch (error) {
-    engine.error = (error && error.code ? error.code + ' · ' : '') + text(error?.message || error)
+/**
+ * 生图流程（OS-66 适配）：正规弹窗替代原生 prompt()——场景名＋画面描述＋尺寸，
+ * 生成中按钮禁用，完成/失败都在弹窗内反馈，成功后关弹窗回舞台。
+ */
+function deduceImageFlow() {
+  openModal(`<h3>生成场景立绘</h3>
+    <p class="sub">调生图端点按画面描述生成一张场景图，落 推演/&lt;bookId&gt;/素材/场景/ 后自动挂为舞台背景。</p>
+    <div class="field"><label>场景名（立绘绑定用，如：龙虎山）</label>
+      <input id="deduce-image-name" placeholder="例如：龙虎山">
+    </div>
+    <div class="field"><label>画面描述（给生图模型的提示词）</label>
+      <textarea id="deduce-image-prompt" rows="3" placeholder="例如：云雾缭绕的山道石阶，晨雾，青苔石栏，古松"></textarea>
+    </div>
+    <div class="field"><label>尺寸</label>
+      <select id="deduce-image-size">
+        <option value="1024x1024">方图 1024×1024</option>
+        <option value="1344x768" selected>横图 1344×768</option>
+        <option value="768x1344">竖图 768×1344</option>
+      </select>
+    </div>
+    <div class="ded-image-ops">
+      <button class="btn-ghost" data-action="close-modal">取消</button>
+      <button class="btn-primary" id="deduce-image-go">生成</button>
+    </div>`)
+  document.getElementById('deduce-image-name')?.focus()
+}
+
+async function deduceImageRun() {
+  const name = text(document.getElementById('deduce-image-name')?.value).trim()
+  const prompt = text(document.getElementById('deduce-image-prompt')?.value).trim()
+  const size = text(document.getElementById('deduce-image-size')?.value).trim() || '1344x768'
+  if (!name || !prompt) {
+    engineSetError('场景名与画面描述都要填。')
+    return
   }
-  engine.turnBusy = false
+  const go = document.getElementById('deduce-image-go')
+  if (go) { go.disabled = true; go.textContent = '生成中…（可能要一两分钟）' }
+  try {
+    const payload = await api('/api/deduce/image', {
+      method: 'POST',
+      body: JSON.stringify({ root: state.current.path, name, prompt, size })
+    })
+    closeModal()
+    const engine = state.deduce.engine
+    engine.archiveNote = `立绘已生成：${payload.path}（回到当前局面即可见）`
+    render()
+  } catch (error) {
+    const box = document.querySelector('.ded-image-ops')
+    if (box) {
+      const err = document.createElement('div')
+      err.className = 'warn-box'
+      err.textContent = `${error.code ? error.code + ' · ' : ''}${text(error?.message || error)}`
+      box.before(err)
+    } else {
+      engineSetError(text(error?.message || error))
+    }
+  }
+}
+
+function engineSetError(message) {
+  state.deduce.engine.error = text(message)
   render()
 }
 
@@ -5996,6 +6151,7 @@ async function openLibrary(path) {
   // （实测：水浒的人物图谱出现在大梦的推演页）。画布动画也要停。
   graphCleanup?.()
   graphCleanup = null
+  import('./graph.mjs').then((m) => m.resetGraphColors?.()).catch(() => {})
   state.refCol = { graph: null, graphLoading: false, graphError: '', summary: '', summaryBusy: false, summaryError: '' }
   state.reference = { loaded: false, loading: false, notes: [], tags: [], tagNotes: {}, stats: null, error: '', activePath: '', activeTag: '', note: null, backlinks: { linked: [], unlinked: [] }, draft: '', view: 'graph', q: '', focus: null, absorb: {}, flash: '', tagFilter: '', from: '', noteText: '', fmLen: 0 }
   state.habits = null
@@ -6656,6 +6812,8 @@ document.addEventListener('click', (event) => {
     dedTypewriterSkip()
   } else if (action === 'deduce-image') {
     deduceImageFlow()
+  } else if (action === 'deduce-image-go') {
+    deduceImageRun()
   } else if (action === 'deduce-bgm-toggle') {
     deduceBgmToggle()
   } else if (action === 'deduce-mode-engine') {

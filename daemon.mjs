@@ -86,7 +86,7 @@ import {
   skillSummary,
   skillsForGenre
 } from './skills.mjs'
-import { precedentPromptSectionForGenre } from './kbRouter.mjs'
+import { precedentPromptSectionForGenre, resolveCollections } from './kbRouter.mjs'
 import { bootstrapKbHealth, collectKbStatus, kbServiceState } from './kbHealth.mjs'
 import { defaultKbConfigPath } from './kbAdapter.mjs'
 import {
@@ -827,7 +827,8 @@ async function handleApi(req, res, url, context) {
   if (endpointId === 'kbStatusGet') {
     const status = await collectKbStatus({
       configPath: defaultKbConfigPath(context.env ?? process.env),
-      services: kbServiceState.lastCheck ? kbServiceState : null
+      services: kbServiceState.lastCheck ? kbServiceState : null,
+      resolveCollections
     })
     return sendJson(res, 200, status)
   }
@@ -2837,7 +2838,7 @@ export function startDaemon({
       // KB-ARCH P1：知识库服务自愈探活——kb-config 存在才管（测试临时环境无配置＝不启动），close 时停表不留悬挂定时器
       let kbHealthStop = null
       try {
-        const health = bootstrapKbHealth({ env, repoRoot: HERE, logger })
+        const health = bootstrapKbHealth({ env, repoRoot: HERE, logger, defaultKbConfigPath, resolveCollections })
         if (health) kbHealthStop = health
       } catch { /* 不阻塞启动 */ }
       resolvePromise({
