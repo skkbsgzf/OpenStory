@@ -226,7 +226,23 @@ function render() {
   else if (state.view === 'lib-create') viewEl.innerHTML = createHtml()
   else if (state.view === 'lib-import') viewEl.innerHTML = importHtml()
   else if (state.view === 'repair') viewEl.innerHTML = repairHtml()
-  else if (state.view === 'deduce') viewEl.innerHTML = deduceHtml()
+  else if (state.view === 'deduce') {
+    viewEl.innerHTML = deduceHtml()
+    // 进入推演页自动续上已有局面（OS-60）：以前进来永远是空态，库里推过的拍看不到，
+    // 得手动点「开始推演」——但那会额外推一拍，语义是错的。
+    const engine = state.deduce.engine
+    if (!engine.data && !engine.busy && !engine.error) {
+      engine.busy = true
+      api('/api/deduce/present', { method: 'POST', body: JSON.stringify({ root: state.current.path, peek: true }) })
+        .then((payload) => {
+          if (payload?.ok === false && payload.code === 'NO_DEDUCE_SESSION') return
+          engine.data = payload
+          if (Array.isArray(payload.characters)) state.deduce.characters = payload.characters
+        })
+        .catch(() => { /* 没有会话就当空态，不报错 */ })
+        .finally(() => { engine.busy = false; if (state.view === 'deduce') render() })
+    }
+  }
   else if (state.view === 'settings') viewEl.innerHTML = settingsHtml()
   else if (state.view === 'artifacts') viewEl.innerHTML = artifactsHtml()
   else if (state.view?.startsWith('dir:')) viewEl.innerHTML = dirViewHtml(state.view.slice(4))
@@ -5200,71 +5216,163 @@ function deduceHtml() {
   return head + deduceEngineHtml()
 }
 
-/** 引擎模式：局面卡＋候选列表＋张力/前线。 */
+/**
+ * 事实包健康度（OS-60）：推演质量的根在拆解条目。
+ * 只有命运骰候选＝事实包太薄（没有足够角色/地点/伏笔支撑必然与戏剧候选），
+ * 这里如实告诉作者缺什么、补了会怎样——而不是让他对着两张检定单发呆。
+ */
+function dedPackHtml() {
+  const data = state.deduce.engine.data || {}
+  const who = Array.isArray(data.sceneCard?.who) ? data.sceneCard.who.filter(Boolean).length : 0
+  const where = data.sceneCard?.where && data.sceneCard.where !== '未标记地点'
+  const hook = data.sceneCard?.hook && data.sceneCard.hook !== '……'
+  const fronts = Array.isArray(data.fronts) ? data.fronts.length : 0
+  const sources = new Set((data.candidates || []).map((candidate) => candidate.source))
+  const rich = sources.has('必然') || sources.has('戏剧')
+  const items = [
+    { ok: who >= 2, label: '在场角色', hint: who >= 2 ? `${who} 人` : '太少——补 character 条目' },
+    { ok: Boolean(where), label: '地点', hint: where ? '已标' : '世界书里还没有他知道的地点' },
+    { ok: Boolean(hook), label: '挂起伏笔', hint: hook ? '有' : '没有悬着的伏笔，推演张力会平' },
+    { ok: fronts > 0, label: '前线时钟', hint: fronts ? `${fronts} 条在走` : '没有前线——威胁不会被推着走' },
+    { ok: rich, label: '候选来源', hint: rich ? [...sources].join('／') : '只有命运骰——补条目才会出「必然」' }
+  ]
+  return `<section class="ded-card ded-pack">
+      <div class="ded-card-head"><h3>事实包</h3><span class="sub">推演质量取决于拆解条目</span></div>
+      ${items.map((item) => `<div class="ded-pack-row ${item.ok ? 'ok' : 'gap'}">
+        <span class="ded-pack-ic">${item.ok ? '✓' : '○'}</span>
+        <span class="ded-pack-label">${esc(item.label)}</span>
+        <span class="ded-pack-hint">${esc(item.hint)}</span>
+      </div>`).join('')}
+    </section>`
+}
+
+/** 引擎模式（OS-60 打磨）：局面卡＋人话候选＋张力读数＋推演历史。 */
 function deduceEngineHtml() {
   const engine = state.deduce.engine
   const data = engine.data
-  const controls = `<div class="toolbar">
-      <input class="file-input" id="deduce-pov" list="deduce-pov-list" placeholder="POV 角色（可选）" value="${esc(engine.pov)}">
+  const controls = `<div class="ded-tools">
+      <input class="file-input" id="deduce-pov" list="deduce-pov-list" placeholder="以谁的眼睛看（可选）" value="${esc(engine.pov)}">
       <datalist id="deduce-pov-list">${(state.deduce.characters || []).map((name) => `<option value="${esc(name)}"></option>`).join('')}</datalist>
-      <input class="file-input" id="deduce-seed" placeholder="种子（留空＝随机，可复现）" value="${esc(engine.seed)}">
-      <button class="btn-primary" data-action="deduce-engine-present"${engine.busy ? ' disabled' : ''}>${engine.busy ? '推演中…' : data ? '再推一拍' : '开始推演'}</button>
-      ${data ? '<button class="btn-ghost" data-action="deduce-engine-reset">重新开局</button>' : ''}
+      <input class="file-input" id="deduce-seed" placeholder="种子（留空＝随机）" value="${esc(engine.seed)}" title="同一种子＋同一份事实＝同一拍，可复现">
+      <button class="btn-primary" data-action="deduce-engine-present"${engine.busy ? ' disabled' : ''}>${engine.busy ? '推演中…' : data ? '推下一拍' : '开始推演'}</button>
+      ${data ? '<button class="btn-ghost" data-action="deduce-engine-reset" title="清空会话从第一拍重来">重新开局</button>' : ''}
     </div>`
   if (!data) {
     return `${controls}
       ${flowError(engine.error || '')}
       ${engine.hint ? `<div class="warn-box">${esc(engine.hint)}</div>` : ''}
-      <div class="empty-state">
+      <div class="ded-empty">
         <h2>事实推演引擎</h2>
-        <p>读本库的拆解条目（worldview/角色/剧情）作为事实包，推出一拍局面与三层候选：<br>
-        <b>必然</b>（世界事实推导）· <b>命运</b>（种子化 2d6 检定）· <b>戏剧</b>（需模型，可选）。</p>
-        <p class="sub">引擎是确定性的：同一个种子＋同一份事实包＝同一拍。</p>
+        <p>读本库的拆解条目（世界观／角色／剧情）作为事实包，推出一拍局面与候选。</p>
+        <div class="ded-empty-types">
+          <div class="ded-type"><b>必然</b><span>世界事实推导出的走向</span></div>
+          <div class="ded-type"><b>命运</b><span>种子化 2d6 检定</span></div>
+          <div class="ded-type"><b>戏剧</b><span>需要模型，可选</span></div>
+        </div>
+        <p class="sub">引擎是确定性的：同一个种子＋同一份事实包＝同一拍。它是「如果世界」的推演，不是替你写正文。</p>
       </div>`
   }
+
   const card = data.sceneCard ?? {}
   const tension = data.tension ?? {}
   const candidates = Array.isArray(data.candidates) ? data.candidates : []
   const fronts = Array.isArray(data.fronts) ? data.fronts : []
-  const sourceBadge = { 必然: 'certain', 命运: 'fate', 戏剧: 'drama' }
-  const rows = candidates.map((candidate) => {
-    const kind = sourceBadge[candidate.source] || 'other'
-    const trace = candidate.trace && candidate.trace.sum !== undefined
-      ? `2d6=${candidate.trace.a}+${candidate.trace.b}=${candidate.trace.sum}（${candidate.trace.success ? '顺遂' : '受阻'}）`
-      : ''
-    return `<div class="cand-row src-${kind}">
-      <div class="cand-main">
-        <span class="cand-badge">${esc(candidate.source || '候选')}</span>
-        <span class="cand-text">${esc(candidate.text)}</span>
-        ${trace ? `<span class="cand-trace">${esc(trace)}</span>` : ''}
-        ${candidate.refs && candidate.refs.length ? `<span class="count">引用：${esc(candidate.refs.join('、'))}</span>` : ''}
+  const budget = data.budget || {}
+  const who = Array.isArray(card.who) ? card.who.filter(Boolean) : []
+  const heatLevel = text(tension.level)
+  const heatLabel = { low: '平静', medium: '升温', high: '紧迫', critical: '一触即发' }[heatLevel] || ''
+  const heatClass = { low: 'h-low', medium: 'h-mid', high: 'h-high', critical: 'h-crit' }[heatLevel] || 'h-low'
+
+  /* —— 局面卡：四字段 + 张力仪表 + 本拍元信息 —— */
+  const sceneHtml = `<section class="ded-card ded-scene">
+      <div class="ded-card-head">
+        <h3>第 ${Number(data.round) || 0} 拍</h3>
+        ${heatLabel ? `<span class="ded-heat ${heatClass}" title="前线时钟读数：张力从平静到一触即发">${esc(heatLabel)}</span>` : ''}
       </div>
-      <div class="cand-ops">
-        <button class="btn-ghost" data-action="deduce-engine-choose" data-candidate-id="${esc(candidate.id)}">选这条</button>
-        <button class="issue-act" data-action="deduce-engine-veto" data-candidate-id="${esc(candidate.id)}">否决</button>
+      <dl class="ded-fields">
+        <div><dt>在场</dt><dd>${who.length ? esc(who.join('、')) : '<i class="ded-none">无人</i>'}</dd></div>
+        <div><dt>地点</dt><dd>${card.where && card.where !== '未标记地点' ? esc(card.where) : '<i class="ded-none">未标记（世界书里还没有这个角色知道的地点）</i>'}</dd></div>
+        <div><dt>张力</dt><dd>${esc(card.tension || '—')}</dd></div>
+        <div><dt>钩子</dt><dd>${card.hook && card.hook !== '……' ? esc(card.hook) : '<i class="ded-none">这一拍没有挂起的伏笔</i>'}</dd></div>
+      </dl>
+      <div class="ded-meta">
+        ${data.seed !== null && data.seed !== undefined ? `<span title="同种子可复现">种子 ${esc(data.seed)}</span>` : ''}
+        ${Number.isFinite(Number(tension.active)) ? `<span>活跃前线 ${tension.active}</span>` : ''}
+        ${budget.max ? `<span>AI 预算 ${budget.used || 0}/${budget.max}</span>` : ''}
       </div>
-    </div>`
+    </section>`
+
+  /* —— 候选：把「2d6=6+2=8：顺遂」翻译成作者看得懂的话 —— */
+  const sourceText = { 必然: '必然', 命运: '命运', 戏剧: '戏剧' }
+  const sourceNote = {
+    必然: '从世界事实推出来的',
+    命运: '这一骰决定走向',
+    戏剧: '模型提的另一种可能'
+  }
+  const describeCandidate = (candidate) => {
+    const trace = candidate.trace
+    if (candidate.source === '命运' && trace && Number.isFinite(trace.sum)) {
+      const outcome = trace.success ? '顺遂' : '受阻'
+      const flavor = trace.success
+        ? '事情按预想推进——这一拍没人拦住'
+        : '被什么挡了一下——要处理代价或换路'
+      return { title: `命运检定：${trace.a}+${trace.b}=${trace.sum} ${outcome}`, sub: flavor, roll: `${trace.a}＋${trace.b}＝${trace.sum}` }
+    }
+    return { title: candidate.text || '（空候选）', sub: '', roll: '' }
+  }
+  const candRows = candidates.map((candidate) => {
+    const kind = { 必然: 'certain', 命运: 'fate', 戏剧: 'drama' }[candidate.source] || 'other'
+    const info = describeCandidate(candidate)
+    return `<article class="ded-cand src-${kind}">
+      <div class="ded-cand-head">
+        <span class="ded-badge">${esc(sourceText[candidate.source] || candidate.source || '候选')}</span>
+        <span class="ded-cand-note">${esc(sourceNote[candidate.source] || '')}</span>
+      </div>
+      <p class="ded-cand-title">${esc(info.title)}</p>
+      ${info.sub ? `<p class="ded-cand-sub">${esc(info.sub)}</p>` : ''}
+      ${candidate.refs && candidate.refs.length ? `<p class="ded-cand-refs">引用：${esc(candidate.refs.join('、'))}</p>` : ''}
+      <div class="ded-cand-ops">
+        <button class="btn-primary" data-action="deduce-engine-choose" data-candidate-id="${esc(candidate.id)}">走这条</button>
+        <button class="btn-ghost" data-action="deduce-engine-veto" data-candidate-id="${esc(candidate.id)}" title="只记账，不落库">否决</button>
+      </div>
+    </article>`
   }).join('')
+
+  const candPanel = `<section class="ded-card ded-cands">
+      <div class="ded-card-head">
+        <h3>候选 <span class="count">${candidates.length}</span></h3>
+        <span class="sub">选一条结算成事件条目（不自动写库）</span>
+      </div>
+      ${candRows || '<p class="sub" style="padding:4px 0">这一拍没有候选——事实包不够（世界观／角色／剧情条目太少）或预算用尽。</p>'}
+      <div class="ded-howto">
+        <b>怎么用这一拍</b>
+        <span>「走这条」＝把它结算成一条事件条目（进拆解，不写正文）；「否决」＝只记账不落库。想更丰富的候选，先补拆解条目（世界观／角色／剧情）再推。</span>
+      </div>
+    </section>`
+
+  /* —— 前线：有才显示 —— */
+  const frontsHtml = fronts.length ? `<section class="ded-card ded-fronts">
+      <div class="ded-card-head"><h3>前线 <span class="count">${fronts.length}</span></h3><span class="sub">挂机推进的威胁时钟，满格＝世界动手</span></div>
+      ${fronts.map((front) => {
+        const filled = Number(front.filled) || 0
+        const max = Number(front.max) || 0
+        const pct = max ? Math.round((filled / max) * 100) : 0
+        return `<div class="ded-front">
+          <div class="ded-front-row"><span>${esc(front.name || front.id || '前线')}</span><span class="ded-front-n">${filled}/${max}</span></div>
+          <div class="ded-clock"><i style="width:${pct}%"></i></div>
+        </div>`
+      }).join('')}
+    </section>` : ''
+
+  /* —— 历史：本会话已结算的拍（从 lastTurn 之前的 log 拿不到，就用 hint 兜） —— */
+  const historyHtml = engine.hint ? `<div class="ded-hint">${esc(engine.hint)}</div>` : ''
+
   return `${controls}
     ${flowError(engine.error || '')}
-    ${engine.hint ? `<div class="warn-box">${esc(engine.hint)}</div>` : ''}
-    <div class="deduce-engine-grid">
-      <div class="step">
-        <h3>第 ${esc(data.round)} 拍 · 局面卡</h3>
-        <div class="scene-card">
-          <div><span class="k">在场</span><span class="v">${esc((card.who || []).join('、') || '—')}</span></div>
-          <div><span class="k">地点</span><span class="v">${esc(card.where || '—')}</span></div>
-          <div><span class="k">张力</span><span class="v">${esc(card.tension || '—')}</span></div>
-          <div><span class="k">钩子</span><span class="v">${esc(card.hook || '—')}</span></div>
-        </div>
-        <div class="count" style="margin-top:8px">种子 ${esc(data.seed)} · 张力档 ${esc(tension.level ?? '—')} · AI 预算 ${esc((data.budget && data.budget.used) ?? 0)}/${esc((data.budget && data.budget.max) ?? 8)}</div>
-        ${fronts.length ? `<h4 style="margin:14px 0 6px;font-size:12px;color:var(--meta)">前线（world 压力）</h4>${fronts.map((front) => `<div class="front-row"><span>${esc(front.name)}</span><span class="front-bar"><span style="width:${Math.min(100, Math.round((front.value / Math.max(1, front.max)) * 100))}%"></span></span><span class="count">${front.value}/${front.max}</span></div>`).join('')}` : ''}
-      </div>
-      <div class="step">
-        <h3>候选 <span class="count">${candidates.length}</span></h3>
-        ${rows || '<p class="sub">这一拍没有候选：检查事实包是否够（worldview/角色/剧情）。</p>'}
-        <p class="sub" style="margin-top:10px">选择会结算成事件条目（不自动写库）；「否决」只记账不落库。</p>
-      </div>
+    ${historyHtml}
+    <div class="ded-grid">
+      <div class="ded-col-left">${sceneHtml}${frontsHtml}${dedPackHtml()}</div>
+      <div class="ded-col-right">${candPanel}</div>
     </div>`
 }
 
