@@ -269,3 +269,70 @@ test('daemon 端到端：货架→存值→停用→新建空标题被拦→启�
     await rm(fixture.base, { recursive: true, force: true })
   }
 })
+
+/* ---------- OS-68：套件捆绑技能 ---------- */
+
+test('daemon 端到端：套件捆绑技能——启用上货架＋详情页可见＋停用撤下', async () => {
+  const fixture = await makeFixture()
+  const suiteDir = join(fixture.userSuites, 'bundling')
+  await mkdir(join(suiteDir, 'skills', 'suite-only'), { recursive: true })
+  await writeFile(join(suiteDir, 'manifest.json'), JSON.stringify({
+    schemaVersion: 'openstory-suite@1',
+    id: 'bundling',
+    name: '捆绑测试套件',
+    version: '0.1.0',
+    vendor: 'Test',
+    description: '验证捆绑技能随启停生效',
+    domains: ['测试'],
+    settings: []
+  }), 'utf-8')
+  await writeFile(join(suiteDir, 'skills', 'suite-only', 'SKILL.md'), `---
+name: suite-only
+description: 套件专属技能
+version: 0.1.0
+vendor: Test
+category: review
+---
+
+# 套件专属
+
+- 只随套件启停出现的技能
+`, 'utf-8')
+  const daemon = await startDaemon({
+    port: 0,
+    preferencesPath: fixture.preferencesPath,
+    agentConfigPath: fixture.configPath,
+    agentSessionsDir: fixture.sessionsDir,
+    env: { ...process.env, LOCALAPPDATA: fixture.base },
+    logger: { log() {} }
+  })
+  const origin = `http://127.0.0.1:${daemon.port}`
+  const put = (path, body) => fetch(`${origin}${path}`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
+  try {
+    // 1) 货架可见捆绑技能清单（详情页数据）
+    const shelves = await (await fetch(`${origin}/api/suites`)).json()
+    const suite = shelves.suites.find((item) => item.id === 'bundling')
+    assert.ok(suite, '用户套件应上架')
+    assert.deepEqual(suite.bundledSkills.map((skill) => skill.name), ['suite-only'])
+    assert.equal(suite.bundledSkills[0].category, 'review')
+
+    // 2) 技能货架包含套件技能，来源＝套件名
+    const skills = await (await fetch(`${origin}/api/skills`)).json()
+    const bundled = skills.skills.find((skill) => skill.name === 'suite-only')
+    assert.ok(bundled, '启用套件的技能应上货架')
+    assert.equal(bundled.source, '套件·捆绑测试套件')
+
+    // 3) 停用套件 → 技能撤下货架（套件本体还在，bundledSkills 仍可展示）
+    await put('/api/suite/state', { id: 'bundling', enabled: false })
+    const after = await (await fetch(`${origin}/api/skills`)).json()
+    assert.ok(!after.skills.some((skill) => skill.name === 'suite-only'), '停用后技能应下架')
+
+    // 4) 再启用 → 回来
+    await put('/api/suite/state', { id: 'bundling', enabled: true })
+    const back = await (await fetch(`${origin}/api/skills`)).json()
+    assert.ok(back.skills.some((skill) => skill.name === 'suite-only'), '重新启用后技能应回到货架')
+  } finally {
+    await daemon.close()
+    await rm(fixture.base, { recursive: true, force: true })
+  }
+})

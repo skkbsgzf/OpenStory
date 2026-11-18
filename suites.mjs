@@ -12,6 +12,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { readFile, rename, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { loadSkills } from './skills.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 
@@ -241,6 +242,13 @@ async function writeFileAtomic(path, content) {
 export function suitePublic(suite, suiteState) {
   const entry = suiteState?.suites?.[suite.id] ?? {}
   const enabled = entry.enabled !== false
+  // 捆绑技能清单（OS-68）：套件 skills/ 下的手艺配方，随套件启停生效——详情页展示用
+  let bundledSkills = []
+  try {
+    const skillsDir = join(text(suite.dir), 'skills')
+    if (existsSync(skillsDir)) bundledSkills = loadSkills([{ dir: skillsDir, source: suite.name }]).skills
+      .map((skill) => ({ name: skill.name, category: skill.category, summary: skill.summary }))
+  } catch { bundledSkills = [] }
   const settingsMode = suite.capabilities.settings.mode
   let values = {}
   let settingsSchema
@@ -266,6 +274,7 @@ export function suitePublic(suite, suiteState) {
     values,
     capabilities: suite.capabilities,
     ...(settingsSchema ? { settingsSchema } : {}),
+    bundledSkills,
     source: suite.source
   }
 }

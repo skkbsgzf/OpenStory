@@ -83,6 +83,7 @@ import {
   craftInstructionBlock,
   defaultUserSkillsDir,
   loadSkills,
+  suiteSkillDirs,
   skillSummary,
   skillsForGenre
 } from './skills.mjs'
@@ -909,7 +910,7 @@ async function handleApi(req, res, url, context) {
   }
 
   if (endpointId === 'skillsGet') {
-    const loaded = loadSkills(context.skillsDirs)
+    const loaded = loadSkills(effectiveSkillsDirs(context))
     const filtered = request.genre ? skillsForGenre(loaded.skills, request.genre) : loaded.skills
     return sendJson(res, 200, {
       ok: true,
@@ -919,7 +920,7 @@ async function handleApi(req, res, url, context) {
   }
 
   if (endpointId === 'skillGet') {
-    const loaded = loadSkills(context.skillsDirs)
+    const loaded = loadSkills(effectiveSkillsDirs(context))
     const skill = loaded.skills.find((item) => item.name === request.name)
     if (!skill) return sendError(res, API_ERROR_CODES.NOT_FOUND, `货架上没有这个技能：${request.name}`)
     return sendJson(res, 200, {
@@ -1875,7 +1876,12 @@ async function resolveDshResume({ sessionsDir, root, session, ephemeral, model }
 /** 测试钩子（OS-45）：把 systemPromptFor 暴露给单测，验「参考只给链接不给全文」。 */
 export const __test = { systemPromptFor }
 
-async function systemPromptFor(root, libraries, genresDirs, skillsDirs, { canReadFiles = false, chineseReasoning = false } = {}) {
+/** 生效技能目录（OS-68）：内置＋本机之外，再叠加启用中套件捆绑的 skills/。 */
+function effectiveSkillsDirs({ skillsDirs, suitesDirs, suiteStatePath, env }) {
+  return [...(skillsDirs || []), ...suiteSkillDirs(suitesDirs || [], suiteStatePath || '', env)]
+}
+
+async function systemPromptFor(root, libraries, genresDirs, skillsDirs, { canReadFiles = false, chineseReasoning = false, suitesDirs = null, suiteStatePath = '', env = process.env } = {}) {
   const key = rootKey(root)
   const record = (Array.isArray(libraries) ? libraries : []).find((library) => rootKey(library.path) === key)
   const name = record?.name || basename(root) || '未命名库'
@@ -1921,7 +1927,7 @@ async function systemPromptFor(root, libraries, genresDirs, skillsDirs, { canRea
       const section = briefPromptSection(loaded.brief, genre)
       if (section) lines.push('', section)
       // OS-22：按体裁选 craft 类技能（技法规则）注入——只取 craft，review/transform/extract 不注入
-      const loadedSkills = loadSkills(skillsDirs)
+      const loadedSkills = loadSkills(effectiveSkillsDirs({ skillsDirs, suitesDirs, suiteStatePath, env }))
       const matched = skillsForGenre(loadedSkills.skills, loaded.brief.genre)
       const craft = craftInstructionBlock(matched)
       if (craft) lines.push('', craft)
@@ -2320,7 +2326,7 @@ async function handleAgentChat(req, res, request, context, root, libraries) {
     }])
     history = await readSession(sessionsDir, root, sessionId)
   }
-  const promptBundle = await systemPromptFor(root, libraries, context.genresDirs, context.skillsDirs)
+  const promptBundle = await systemPromptFor(root, libraries, context.genresDirs, context.skillsDirs, { suitesDirs: context.suitesDirs, suiteStatePath: context.suiteStatePath, env: context.env })
   const upstreamMessages = buildUpstreamMessages(promptBundle.prompt, history.items)
   const model = text(request.model || upstream.model).trim()
 
@@ -2348,7 +2354,10 @@ async function handleAgentChat(req, res, request, context, root, libraries) {
     // DSH 带完整工具链 + cwd=库根：告诉它「你能读，但改正文要走卡」，别再说假话
     const promptBundle = await systemPromptFor(root, libraries, context.genresDirs, context.skillsDirs, {
       canReadFiles: true,
-      chineseReasoning: config.chineseReasoning !== false
+      chineseReasoning: config.chineseReasoning !== false,
+      suitesDirs: context.suitesDirs,
+      suiteStatePath: context.suiteStatePath,
+      env: context.env
     })
     const systemPrompt = promptBundle.prompt
     const applied = promptBundle.applied
