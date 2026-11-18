@@ -1716,7 +1716,8 @@ function plusMenuHtml() {
 function plusSkillsHtml() {
   const kits = state.suites.filter((kit) => kit.enabled !== false)
   if (!kits.length) return '<div class="pop-item plain"><span class="pi-ic">◇</span><b>还没有启用的套件</b><i>设置 · 套件货架里开</i></div>'
-  return kits.map((kit) => `<div class="pop-item" data-action="cmd-fill" data-cmd="请按《${esc(kit.name)}》套件的默认规范处理。"><span class="pi-ic">✦</span><b>${esc(kit.name)}</b><i>${esc((kit.description || '').slice(0, 26))}</i></div>`).join('')
+  // 技能（OS-66 作者口径）：选中＝chip 显示在对话框上方；说明文字不进输入框
+  return kits.map((kit) => `<div class="pop-item" data-action="skill-attach" data-kit-name="${esc(kit.name)}" data-kit-desc="${esc((kit.description || '').slice(0, 80))}"><span class="pi-ic">✦</span><b>${esc(kit.name)}</b><i>${esc((kit.description || '').slice(0, 26))}</i></div>`).join('')
 }
 
 /** 引用文件：列该目录下的文件，点选喂给 Agent（内容截 2000 字，与参考 chip 同口径）。 */
@@ -2473,7 +2474,7 @@ async function sendAgentMessage() {
   // 润笔类（kind=polish）用「润笔请求/作者要求」的措辞，让 Agent 明确知道这是改写任务
   const ctx = agent.pendingContext
   const polish = ctx?.kind === 'polish'
-  const head = polish ? '【润笔请求】' : '【选中段落】'
+  const head = polish ? '【润笔请求】' : ctx?.kind === 'skill' ? '【技能规范】' : '【选中段落】'
   const askTag = polish ? '【作者要求】' : '【我的问题】'
   const content = ctx
     ? `${head}\n${ctx.quote}\n\n【所在段落上下文】\n${ctx.context}${typed ? `\n\n${askTag}\n${typed}` : ''}`
@@ -6930,6 +6931,20 @@ document.addEventListener('click', (event) => {
     pickReferenceFile(target.dataset.dir)
   } else if (action === 'attach-file') {
     attachFileToAgent(target.dataset.file)
+  } else if (action === 'skill-attach') {
+    // 技能（OS-66 作者口径）：选中＝提示 chip 显示在对话框上方；输入框不放说明文字。
+    // 发送时 pendingContext 自动拼进消息（【技能规范】段），Agent 成文即按套件规范。
+    const name = target.dataset.kitName || ''
+    const desc = target.dataset.kitDesc || ''
+    agent.pendingContext = {
+      kind: 'skill',
+      quote: name,
+      context: `按《${name}》套件的默认规范处理。${desc ? `（${desc}）` : ''}`,
+      label: `技能：${name}`
+    }
+    closeComposerMenus()
+    renderAgent()
+    document.getElementById('agent-input')?.focus()
   } else if (action === 'cmd-fill') {
     closeComposerMenus()
     const input = document.getElementById('agent-input')
