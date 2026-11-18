@@ -5745,6 +5745,7 @@ function deduceEngineHtml() {
       <span class="ded-stage-progress">第 ${Number(data.round) || 0} 拍<span class="ded-bar-sep">·</span>本章 ${bufferCount} 拍 ${buffer?.words || 0} 字</span>
       <span class="ded-bar-right">
         ${heatLabel ? `<span class="ded-heat ${heatClass}">${esc(heatLabel)}</span>` : ''}
+        <button class="ded-bgm" data-action="deduce-image" title="按本拍局面生成一张场景立绘（需在设置里配生图端点）" ${engine.turnBusy ? ' disabled' : ''}>✦ 生图</button>
         ${bgmBtn}
       </span>
     </div>`
@@ -5853,6 +5854,28 @@ function deduceEngineHtml() {
         <div class="ded-col-right">${draft ? draftPanel : howtoPanel}</div>
       </div>
     </details>`
+}
+
+/** 生图流程（OS-63 转正）：问场景名与画面描述 → 调 /api/deduce/image → 刷新舞台。 */
+async function deduceImageFlow() {
+  const name = globalThis.prompt?.('场景名（生成的立绘会绑定这个名字，如：龙虎山）', '') || ''
+  if (!name.trim()) return
+  const prompt = globalThis.prompt?.('画面描述（给生图模型的提示词）', '') || ''
+  if (!prompt.trim()) return
+  const engine = state.deduce.engine
+  engine.turnBusy = true
+  render()
+  try {
+    await api('/api/deduce/image', {
+      method: 'POST',
+      body: JSON.stringify({ root: state.current.path, name: name.trim(), prompt: prompt.trim() })
+    })
+    engine.archiveNote = `立绘已生成：素材/场景/${name.trim()}.png（回到当前局面即可见）`
+  } catch (error) {
+    engine.error = (error && error.code ? error.code + ' · ' : '') + text(error?.message || error)
+  }
+  engine.turnBusy = false
+  render()
 }
 
 /** Agent 模式（原三栏表单，保留）。 */
@@ -6614,6 +6637,8 @@ document.addEventListener('click', (event) => {
     deduceEngineSettle(target.dataset.candidateId, 'veto')
   } else if (action === 'deduce-tw-skip') {
     dedTypewriterSkip()
+  } else if (action === 'deduce-image') {
+    deduceImageFlow()
   } else if (action === 'deduce-bgm-toggle') {
     deduceBgmToggle()
   } else if (action === 'deduce-mode-engine') {
