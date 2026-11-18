@@ -245,3 +245,43 @@ test('会话：归一校验与三端点契约形状', async () => {
     await rm(base, { recursive: true, force: true })
   }
 })
+test('桥接：旧引擎状态 → 新会话层首节点（OS-62）', async () => {
+  const { importLegacyDeduce } = await import('../deduceSession.mjs')
+  const legacy = {
+    round: 5,
+    lastTurn: {
+      sceneCard: { who: ['洪信', '范仲淹'], where: '龙虎山', tension: '命运骰 8（顺遂）', hook: '……' },
+      candidates: [{ id: 'fate-5-0', source: '命运', text: '剧情检定 6+2=8' }],
+      tension: { level: 'low' }
+    }
+  }
+  const result = importLegacyDeduce({ legacyState: legacy, session: null, bookId: 'b1' })
+  assert.equal(result.ok, true)
+  assert.equal(result.imported, true)
+  const session = result.session
+  assert.equal(session.nodes.length, 1)
+  const node = session.nodes[0]
+  assert.equal(node.round, 5)
+  assert.equal(node.importedFrom, 'legacy-deduce-state')
+  assert.deepEqual(node.scene.who, ['洪信', '范仲淹'])
+  assert.equal(node.scene.where, '龙虎山')
+  assert.equal(node.candidates.length, 1)
+  assert.equal(node.prose, '')
+})
+
+test('桥接幂等：同一 round 不重复导入', async () => {
+  const { importLegacyDeduce } = await import('../deduceSession.mjs')
+  const legacy = { round: 5, lastTurn: { sceneCard: {}, candidates: [] } }
+  const first = importLegacyDeduce({ legacyState: legacy, session: null, bookId: 'b1' })
+  const second = importLegacyDeduce({ legacyState: legacy, session: first.session, bookId: 'b1' })
+  assert.equal(second.imported, false)
+  assert.equal(second.added, 0)
+  assert.equal(second.reason, 'already-imported')
+  assert.equal(second.session.nodes.length, 1)
+})
+
+test('桥接：无旧状态/无 round 明确报错不抛', async () => {
+  const { importLegacyDeduce } = await import('../deduceSession.mjs')
+  assert.equal(importLegacyDeduce({ legacyState: null }).code, 'NO_LEGACY_STATE')
+  assert.equal(importLegacyDeduce({ legacyState: { round: 0 } }).code, 'NO_LEGACY_ROUND')
+})
