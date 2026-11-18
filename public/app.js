@@ -87,7 +87,9 @@ const state = {
     cardError: null,
     lastError: null,
     skills: null,
-    skillsError: ''
+    skillsError: '',
+    picks: null,
+    picksExplicit: false
   }
 }
 
@@ -1683,42 +1685,122 @@ function toggleComposerMenu(which) {
   if (!willOpen) return
   menu.innerHTML = which === 'style' ? genreMenuHtml() : plusMenuHtml()
   if (which === 'style' && !(state.genres || []).length) loadGenres().then(() => { const menu = document.getElementById('agent-style-menu'); if (menu && !menu.hidden) menu.innerHTML = genreMenuHtml() })
+  if (which === 'style') refreshAgentSkillsMenu()
   menu.hidden = false
   if (which === 'plus') refreshAgentSkillsMenu()
   document.getElementById(which === 'style' ? 'agent-style-btn' : 'agent-plus-btn')?.classList.add('on')
 }
 
-/** 灯泡菜单＝题材风格（OS-69 作者裁定，对齐 OpenDesign 的风格位）：
- * 这里选中的体裁写进库的 brief.json，之后**所有**成文与分析都按该体裁的提示词（agentPolicy）
- * 生成——全局生效，与加号里一次性注入的技能/工具分工。
- * 层级（OS-69b）：生效说明 → 主打体裁组 → 扩展体裁组（名一行、描述整段换行）→ 会话绑定脚注。 */
+/** 灯泡菜单＝知识库选择链（OS-70 作者模型）：题材 → 风格词条 → 方法论，选完全局生效并裁剪注入。
+ * 层级：生效说明 → 知识库标注卡（体裁 agentPolicy 原生标注，每轮注入 prompt 的就是这些）→
+ * 题材（单选，写 brief.json）→ 风格词条（style-* 单选，写作只认一种主导文风）→ 方法论（多选）。
+ * 与「＋」菜单分工：这里选的是持久知识层，＋ 里是一次性任务工具。 */
 function genreMenuHtml() {
   const polish = agent.pendingContext?.kind === 'polish'
   const cur = state.briefGenre
-  const head = cur
-    ? `<div class="pop-note">当前生效 <b>${esc(cur.name)}</b>——之后所有成文与分析都按它的提示词走（改选项＝切换全局风格）</div>`
-    : '<div class="pop-note">这个库还没声明体裁——下面任选一个，之后所有成文与分析都按它走</div>'
+  const picks = state.agent.picks
+  const explicit = state.agent.picksExplicit === true
+  const skills = Array.isArray(state.agent.skills) ? state.agent.skills : []
+  const craft = skills.filter((skill) => skill.category === 'craft')
+  const styleSkills = craft.filter((skill) => String(skill.name).startsWith('style-'))
+  const methodSkills = craft.filter((skill) => !String(skill.name).startsWith('style-'))
+  const autoMethods = methodSkills.filter((skill) => !state.briefGenre || !Array.isArray(skill.genres) || skill.genres.includes('*') || skill.genres.includes(state.briefGenre.id)).map((skill) => skill.name)
+  const activeMethods = explicit && picks ? picks.methods : autoMethods
+  const activeStyle = explicit && picks ? (picks.style || '') : ''
+
+  // —— 知识库标注卡：当前体裁的原生标注（零自编文案，全部来自 genres/*.json）——
+  let kbCard = ''
+  if (cur) {
+    const pol = cur.agentPolicy || {}
+    const kbRow = (k, v) => v ? `<div class="kb-row"><span class="kb-k">${esc(k)}</span><span class="kb-v">${esc(v)}</span></div>` : ''
+    const unit = cur.length?.unit === 'episodes' ? '集' : cur.length?.unit === 'minutes' ? '分钟' : '字'
+    const div = cur.length?.divideBy === 'chapter' ? '章' : cur.length?.divideBy === 'episode' ? '集' : cur.length?.divideBy === 'scene' ? '场' : ''
+    const lenParts = []
+    if (cur.length?.total?.target) lenParts.push(`总约 ${cur.length.total.target} ${unit}（${cur.length.total.min ?? '–'}–${cur.length.total.max ?? '–'}）`)
+    if (div && cur.length?.perUnit?.target) lenParts.push(`每${div}约 ${cur.length.perUnit.target} ${unit}`)
+    kbCard = `<div class="kb-card"><div class="kb-head">知识库 · ${esc(cur.name)}<span class="kb-sub">以下标注每轮注入 Agent</span></div>
+      ${kbRow('节奏', pol.pacing)}
+      ${kbRow('开篇', pol.openHook)}
+      ${kbRow('审阅重点', (pol.reviewFocus || []).join('；'))}
+      ${kbRow('禁忌', (pol.forbidden || []).join('；'))}
+      ${kbRow('篇幅', lenParts.join('；'))}
+      ${(cur.knowledgePacks || []).length ? `<div class="kb-row"><span class="kb-k">知识包</span><span class="kb-v">${cur.knowledgePacks.map((t) => `<span class="kb-tag">${esc(t)}</span>`).join('')}</span></div>` : ''}
+    </div>`
+  }
+
+  // —— 级1 题材 ——
   const genres = Array.isArray(state.genres) ? state.genres : []
-  const groups = []
-  if (!genres.length) {
-    groups.push('<div class="pop-item plain"><span class="pi-ic">◇</span><b>体裁货架读不到</b><i>稍后再开</i></div>')
-  } else {
-    for (const [tier, label, hint] of [['primary', '主打体裁', '常见的三种：选一个即全局生效'], ['extended', '扩展体裁', '影视/文学等形制，按需启用']]) {
-      const list = genres.filter((genre) => (genre.tier || 'primary') === tier)
-      if (!list.length) continue
-      groups.push(`<div class="pop-title">${esc(label)}<span class="pop-hint">${esc(hint)}</span></div>`)
-      for (const genre of list) {
-        const on = cur?.id === genre.id
-        groups.push(`<div class="pop-item genre-item" data-action="genre-pick" data-genre-id="${esc(genre.id)}"><span class="pi-ic">${on ? '✓' : tier === 'primary' ? '✦' : '◇'}</span><span class="genre-main"><b>${esc(genre.name)}${on ? '<i class="on-tag">生效中</i>' : ''}</b><i class="genre-desc">${esc(genre.summary || '')}</i></span></div>`)
-      }
+  const genreGroups = []
+  for (const [tier, label] of [['primary', '主打体裁'], ['extended', '扩展体裁']]) {
+    const list = genres.filter((genre) => (genre.tier || 'primary') === tier)
+    if (!list.length) continue
+    genreGroups.push(`<div class="pop-title">${esc(label)}<span class="pop-hint">单选 · 写进库的简报</span></div>`)
+    for (const genre of list) {
+      const on = cur?.id === genre.id
+      genreGroups.push(`<div class="pop-item genre-item" data-action="genre-pick" data-genre-id="${esc(genre.id)}"><span class="pi-ic">${on ? '✓' : tier === 'primary' ? '✦' : '◇'}</span><span class="genre-main"><b>${esc(genre.name)}${on ? '<i class="on-tag">生效中</i>' : ''}</b><i class="genre-desc">${esc(genre.summary || '')}</i></span></div>`)
     }
   }
+
+  // —— 级2 风格词条（style-* 单选）——
+  const styleRows = [`<div class="pop-item genre-item" data-action="pick-style" data-skill-name=""><span class="pi-ic">${activeStyle ? '○' : '✓'}</span><span class="genre-main"><b>不指定</b><i class="genre-desc">中性文风——只按体裁策略写</i></span></div>`]
+  for (const skill of styleSkills) {
+    const on = activeStyle === skill.name
+    styleRows.push(`<div class="pop-item genre-item" data-action="pick-style" data-skill-name="${esc(skill.name)}"><span class="pi-ic">${on ? '✓' : '○'}</span><span class="genre-main"><b>${esc(skill.name)}${on ? '<i class="on-tag">主导文风</i>' : ''}</b><i class="genre-desc">${esc(skill.description || '')}</i></span></div>`)
+  }
+
+  // —— 级3 方法论（多选）——
+  const methodRows = methodSkills.map((skill) => {
+    const on = activeMethods.includes(skill.name)
+    return `<div class="pop-item genre-item" data-action="toggle-method" data-skill-name="${esc(skill.name)}"><span class="pi-ic">${on ? '☑' : '☐'}</span><span class="genre-main"><b>${esc(skill.name)}</b><i class="genre-desc">${esc(skill.description || '')}</i></span></div>`
+  }).join('')
+
   const foot = []
   if (polish) foot.push(`<div class="pop-item" data-action="clear-agent-context"><span class="pi-ic">✕</span><b>清除当前上下文</b><i>${esc((agent.pendingContext?.label || '').slice(0, 24))}</i></div>`)
-  // 状态脚注（OS-68c）：Agent 会话绑定的库与端点——纯读数不可点，样式与按钮行彻底分层
   const status = `${esc(state.current?.name || '未选库')} · ${esc(agent.model || (agent.configured ? '已配置' : '未配置端点'))}`
   foot.push(`<div class="pop-foot">会话绑定：${status}</div>`)
-  return `${head}<div class="pop-div"></div>${groups.join('')}<div class="pop-div"></div>${foot.join('')}`
+
+  const head = cur
+    ? `<div class="pop-note">当前生效 <b>${esc(cur.name)}</b>${activeStyle ? `＋文风 <b>${esc(activeStyle.replace(/^style-/, ''))}</b>` : ''}——之后所有成文与分析按这条链走</div>`
+    : '<div class="pop-note">这个库还没声明体裁——从题材选起，往下两级会跟着裁剪</div>'
+  return `${head}${kbCard}<div class="pop-div"></div>
+    ${genreGroups.join('')}
+    <div class="pop-div"></div>
+    <div class="pop-title">风格词条<span class="pop-hint">文风复刻包 · 单选主导文风</span></div>
+    ${styleSkills.length ? styleRows.join('') : '<div class="pop-item plain"><span class="pi-ic">◇</span><b>还没有风格词条</b><i>openstory/skills/style-* 即上新</i></div>'}
+    <div class="pop-div"></div>
+    <div class="pop-title">方法论<span class="pop-hint">${explicit ? '已自定义' : '未自定义——按体裁自动匹配'}</span></div>
+    ${methodRows}
+    <div class="pop-div"></div>
+    ${foot.join('')}`
+}
+
+/** 写选择链（风格词条/方法论）：单点 PUT，回来更新本地缓存。 */
+async function putAgentPicks(patch) {
+  if (!state.current) return
+  const cur = state.agent.picksExplicit && state.agent.picks ? state.agent.picks : { style: '', methods: [] }
+  const body = { root: state.current.path, style: patch.style !== undefined ? patch.style : cur.style, methods: patch.methods !== undefined ? patch.methods : cur.methods }
+  try {
+    const payload = await api('/api/agent-picks', { method: 'PUT', body: JSON.stringify(body) })
+    state.agent.picks = { style: payload.picks.style || '', methods: payload.picks.methods || [] }
+    state.agent.picksExplicit = true
+  } catch (error) {
+    rememberAgentError(`选择链写入失败：${text(error?.message || error)}`)
+  }
+  closeComposerMenus()
+  renderAgent()
+}
+
+/** 风格词条单选（空串＝不指定）。 */
+async function pickStyle(name) { await putAgentPicks({ style: name }) }
+
+/** 方法论勾选：未自定义时先以体裁自动匹配集为底，再增删这一项（进入显式模式）。 */
+async function toggleMethod(name) {
+  const skills = Array.isArray(state.agent.skills) ? state.agent.skills : []
+  const methodSkills = skills.filter((skill) => skill.category === 'craft' && !String(skill.name).startsWith('style-'))
+  const autoMethods = methodSkills.filter((skill) => !state.briefGenre || !Array.isArray(skill.genres) || skill.genres.includes('*') || skill.genres.includes(state.briefGenre.id)).map((skill) => skill.name)
+  const base = state.agent.picksExplicit && state.agent.picks ? [...state.agent.picks.methods] : autoMethods
+  const methods = base.includes(name) ? base.filter((item) => item !== name) : [...base, name]
+  await putAgentPicks({ methods })
 }
 
 /** 点选体裁：写 brief.json（体裁策略从此每轮注入 system prompt＋裁剪技法技能与页签）。
@@ -5476,6 +5558,7 @@ async function deduceEngineTurn(opts) {
     })
     engine.session = payload.session
     engine.sessionLoaded = true
+    engine.draftEdit = false
     engine.draft = {
       nodeId: payload.node.id,
       round: payload.node.round,
@@ -5927,12 +6010,9 @@ function deduceEngineHtml() {
   const heatLabel = { low: '平静', medium: '升温', high: '紧迫', critical: '一触即发' }[heatLevel] || ''
   const heatClass = { low: 'h-low', medium: 'h-mid', high: 'h-high', critical: 'h-crit' }[heatLevel] || 'h-low'
 
-  /* —— 局面卡：四字段 + 张力仪表 + 本拍元信息 —— */
+  /* —— 局面卡（OS-70：并进舞台左侧浮层，heat 徽标已在顶栏，卡片只留字段） —— */
   const sceneHtml = `<section class="ded-card ded-scene">
-      <div class="ded-card-head">
-        <h3>第 ${Number(data.round) || 0} 拍</h3>
-        ${heatLabel ? `<span class="ded-heat ${heatClass}" title="前线时钟读数：张力从平静到一触即发">${esc(heatLabel)}</span>` : ''}
-      </div>
+      <div class="ded-card-head"><h3>局面</h3><span class="sub">第 ${Number(data.round) || 0} 拍</span></div>
       <dl class="ded-fields">
         <div><dt>在场</dt><dd>${who.length ? esc(who.join('、')) : '<i class="ded-none">无人</i>'}</dd></div>
         <div><dt>地点</dt><dd>${card.where && card.where !== '未标记地点' ? esc(card.where) : '<i class="ded-none">未标记（世界书里还没有这个角色知道的地点）</i>'}</dd></div>
@@ -5973,7 +6053,7 @@ function deduceEngineHtml() {
   // 这样对话框与选项能浮在场景上，才是 galgame 的观感。
   const sceneVisual = `<div class="ded-scene-visual"${sceneAsset ? ` style="background-image:url('${dedAssetUrl(sceneAsset)}')"` : ''}>
       ${sceneAsset ? '' : '<div class="ded-scene-grain"></div>'}
-      <span class="ded-scene-badge">${esc(sceneName || '未知场景')}</span>
+      <span class="ded-scene-badge"${sceneAsset ? '' : ' data-action="deduce-image" title="还没有这张场景的立绘——点这里生成一张（需配生图端点）"'}>${esc(sceneName || '未知场景 · 点此生图')}</span>
     </div>`
 
   const avatarsHtml = who.map((name) => {
@@ -5991,23 +6071,40 @@ function deduceEngineHtml() {
   const bgmBtn = `<button class="ded-bgm${engine.bgmOn ? ' on' : ''}" data-action="deduce-bgm-toggle"${bgmAsset ? '' : ' disabled'}
       title="${bgmAsset ? `播放：${esc(bgmAsset.name)}（循环）` : '未配置 BGM——放 推演/…/素材/bgm/<场景或情绪>.mp3 即可启用'}">♪ ${bgmAsset ? (engine.bgmOn ? 'BGM 开' : 'BGM 关') : '未配置 BGM'}</button>`
 
-  // 顶部条（OS-63）：左＝进度，右＝张力＋BGM。分两簇，避免挤成一团。
+  // 顶部条（OS-70）：左＝进度；右＝张力 + 局面开关 + 设置开关 + 生图 + BGM。
   const stageTop = `<div class="ded-stage-bar">
       <span class="ded-stage-progress">第 ${Number(data.round) || 0} 拍<span class="ded-bar-sep">·</span>本章 ${bufferCount} 拍 ${buffer?.words || 0} 字</span>
       <span class="ded-bar-right">
-        ${heatLabel ? `<span class="ded-heat ${heatClass}">${esc(heatLabel)}</span>` : ''}
+        ${heatLabel ? `<span class="ded-heat ${heatClass}" title="前线时钟读数：张力从平静到一触即发">${esc(heatLabel)}</span>` : ''}
+        <button class="ded-bgm${engine.infoOpen === false ? '' : ' on'}" data-action="deduce-info-toggle" title="显示/隐藏左侧的局面卡、前线与事实包">局面</button>
+        <button class="ded-bgm${engine.setOpen ? ' on' : ''}" data-action="deduce-tools-toggle" title="推演设置：POV / 种子 / 推进 / 重新开局">⚙ 设置</button>
         <button class="ded-bgm" data-action="deduce-image" title="按本拍局面生成一张场景立绘（需在设置里配生图端点）" ${engine.turnBusy ? ' disabled' : ''}>✦ 生图</button>
         ${bgmBtn}
       </span>
     </div>`
 
   const draft = engine.draft
+  const draftEditing = !!draft && engine.draftEdit === true
   const stageText = draft
-    ? (text(draft.prose).trim() ? text(draft.prose) : '（这一拍还没有正文——展开下方「草稿编辑」自己写，或配好模型后点「重写」。）')
+    ? (text(draft.prose).trim() ? text(draft.prose) : '（这一拍还没有正文——点「✎ 编辑」自己写，或点「↻ 重写」让模型出稿。）')
     : (card.hook && card.hook !== '……' ? text(card.hook) : `${sceneName ? `${sceneName}。` : ''}${text(card.tension) || '局面已摆好——选一条走向。'}`)
-  const dialogHtml = `<div class="ded-dialog" data-action="deduce-tw-skip" title="点一下立即全显">
-      <div class="ded-dialog-head">第 ${Number(data.round) || 0} 拍${draft ? ' · 正文草稿' : ' · 局面'}<span class="ded-dialog-tip">点击全文立显</span></div>
-      ${draft?.proseError ? `<div class="warn-box">${esc(draft.proseError)}——可以在下方草稿区自己写，或配好模型后点「重写」。</div>` : ''}
+  // 对话框（OS-70）：草稿唯一面——展示态打字机，编辑态就地 textarea；动作行内嵌右上，
+  // 不再在舞台外重复渲染第二份草稿/重写/下一拍。
+  const draftActions = draft ? `<span class="ded-dialog-actions">
+      <button class="ded-bgm${draftEditing ? ' on' : ''}" data-action="deduce-draft-edit" title="${draftEditing ? '收起编辑器，回到展示' : '就地编辑这一拍的正文草稿'}">${draftEditing ? '✓ 收起' : '✎ 编辑'}</button>
+      <button class="ded-bgm" data-action="deduce-engine-regen"${engine.turnBusy ? ' disabled' : ''} title="让模型重写这一拍的正文（覆盖草稿）">${engine.turnBusy ? '成文中…' : '↻ 重写'}</button>
+      <button class="ded-next" data-action="deduce-engine-next"${engine.turnBusy || engine.busy ? ' disabled' : ''} title="收下这一拍进本章缓冲，推新的局面">下一拍 →</button>
+    </span>` : ''
+  const dialogHtml = draftEditing
+    ? `<div class="ded-dialog editing">
+      <div class="ded-dialog-head">第 ${Number(draft.round) || 0} 拍 · 正文草稿<span class="ded-dialog-tip">失焦自动保存，不直接落正文文件</span>${draftActions}</div>
+      ${draft.proseError ? `<div class="warn-box">${esc(draft.proseError)}——可以直接改，或点「↻ 重写」。</div>` : ''}
+      <textarea class="ded-dialog-input" id="deduce-draft" placeholder="这一拍的正文草稿（200–400 字）">${esc(draft.prose)}</textarea>
+      <div class="ded-dialog-foot"><span id="deduce-draft-chars">${text(draft.prose).length} 字</span><span class="ded-dialog-foot-sub">进本章缓冲 · 「下一拍」后可继续写</span></div>
+    </div>`
+    : `<div class="ded-dialog"${draft ? '' : ' data-action="deduce-tw-skip" title="点一下立即全显"'}>
+      <div class="ded-dialog-head">第 ${Number(data.round) || 0} 拍${draft ? ' · 正文草稿' : ' · 局面'}${draft ? `<span class="ded-dialog-tip" id="deduce-draft-chars">${text(draft.prose).length} 字</span>` : '<span class="ded-dialog-tip">点击全文立显</span>'}${draftActions}</div>
+      ${draft?.proseError ? `<div class="warn-box">${esc(draft.proseError)}——点「✎ 编辑」自己写，或点「↻ 重写」。</div>` : ''}
       <div class="ded-dialog-body"><span class="ded-dialog-text" id="deduce-dialog-text" data-stage-text="${esc(stageText)}"></span><span class="ded-dialog-caret" id="deduce-dialog-caret">▍</span></div>
     </div>`
 
@@ -6029,29 +6126,7 @@ function deduceEngineHtml() {
       <textarea class="ded-custom-input" id="deduce-custom" placeholder="自己写：这一拍发生什么，你说了算">${esc(engine.customText)}</textarea>
       <button class="btn-primary" data-action="deduce-engine-custom"${engine.busy || engine.turnBusy ? ' disabled' : ''}>按我写的走</button>
     </div>`
-  const optionsHtml = draft
-    ? `<div class="ded-stage-options">
-        <div class="ded-opt-row"><button class="ded-opt ded-opt-main" data-action="deduce-engine-next"${engine.turnBusy || engine.busy ? ' disabled' : ''}><span class="ded-opt-title">下一拍</span><span class="ded-opt-sub">收下这一拍，推新的局面</span></button>
-        <button class="ded-opt-veto" data-action="deduce-engine-regen"${engine.turnBusy ? ' disabled' : ''} title="让模型重写这一拍的正文（覆盖草稿）">${engine.turnBusy ? '成文中…' : '重写'}</button></div>
-      </div>`
-    : `<div class="ded-stage-options">
-        ${optRows || '<p class="sub" style="padding:4px 0">这一拍没有候选——事实包不够（世界观／角色／剧情条目太少）或预算用尽。</p>'}
-        ${customRow}
-      </div>`
-
-  // 舞台（OS-63）：一张铺满的「画面」，对话框浮在底部、选项浮在对话框上、头像浮右侧。
-  // 工具控件（POV/种子/推下一拍/重新开局）收进顶部细线，不再占据画面中央。
-  const stageHtml = `<div class="ded-stage">
-      ${sceneVisual}
-      ${stageTop}
-      <div class="ded-stage-side">${avatarsHtml}</div>
-      <div class="ded-stage-bottom">
-        ${optionsHtml}
-        ${dialogHtml}
-      </div>
-    </div>`
-
-  /* —— 前线：有才显示 —— */
+  /* —— 前线：有才显示（OS-70：并进舞台左侧浮层） —— */
   const frontsHtml = fronts.length ? `<section class="ded-card ded-fronts">
       <div class="ded-card-head"><h3>前线 <span class="count">${fronts.length}</span></h3><span class="sub">挂机推进的威胁时钟，满格＝世界动手</span></div>
       ${fronts.map((front) => {
@@ -6065,46 +6140,43 @@ function deduceEngineHtml() {
       }).join('')}
     </section>` : ''
 
+  const optionsHtml = draft
+    ? '' /* 草稿态：动作已内嵌对话框（OS-70），不再渲染宽条 */
+    : `<div class="ded-stage-options">
+        ${optRows || '<p class="sub" style="padding:4px 0">这一拍没有候选——事实包不够（世界观／角色／剧情条目太少）或预算用尽。</p>'}
+        ${customRow}
+      </div>`
+
+  // 舞台（OS-70）：唯一主面——场景铺满、左侧局面/前线/事实包浮层卡、右侧头像、
+  // 底部对话框（草稿唯一面）、右上设置弹层。舞台之下不再有任何割裂的详情区。
+  const infoPanel = `<div class="ded-stage-info"${engine.infoOpen === false ? ' hidden' : ''}>
+      ${sceneHtml}
+      ${frontsHtml}
+      ${dedPackHtml()}
+    </div>`
+  const setPanel = `<div class="ded-set-panel"${engine.setOpen ? '' : ' hidden'}>
+      <div class="ded-set-head">推演设置<span class="sub">POV / 种子 / 推进</span></div>
+      ${controls}
+    </div>`
+  const stageHtml = `<div class="ded-stage ded-stage-tall">
+      ${sceneVisual}
+      ${stageTop}
+      <div class="ded-stage-side">${avatarsHtml}</div>
+      ${infoPanel}
+      ${setPanel}
+      <div class="ded-stage-bottom">
+        ${optionsHtml}
+        ${dialogHtml}
+      </div>
+    </div>`
+
   /* —— 历史：本会话已结算的拍（从 lastTurn 之前的 log 拿不到，就用 hint 兜） —— */
   const historyHtml = engine.hint ? `<div class="ded-hint">${esc(engine.hint)}</div>` : ''
-
-  /* —— 正文草稿（OS-61 P2）：可编辑、可重写、可下一拍（编辑区收在详情里，功能不减） —— */
-  const draftPanel = draft ? `<section class="ded-card ded-draft">
-      <div class="ded-card-head">
-        <h3>第 ${Number(draft.round) || 0} 拍 · 正文草稿</h3>
-        <span class="sub">进缓存区，不直接落正文文件</span>
-      </div>
-      ${draft.proseError ? `<div class="warn-box">${esc(draft.proseError)}——可以直接在草稿区自己写，或配好模型后点「重写」。</div>` : ''}
-      <textarea class="ded-draft-input" id="deduce-draft" placeholder="这一拍的正文草稿（200–400 字），可编辑，失焦自动保存">${esc(draft.prose)}</textarea>
-      <div class="ded-draft-meta"><span id="deduce-draft-chars">${text(draft.prose).length} 字</span></div>
-      <div class="ded-cand-ops">
-        <button class="btn-ghost" data-action="deduce-engine-regen"${engine.turnBusy ? ' disabled' : ''} title="让模型重写这一拍的正文（覆盖草稿）">${engine.turnBusy ? '成文中…' : '重写'}</button>
-        <button class="btn-primary" data-action="deduce-engine-next"${engine.turnBusy || engine.busy ? ' disabled' : ''}>下一拍</button>
-      </div>
-    </section>` : ''
-
-  const howtoPanel = `<section class="ded-card">
-      <div class="ded-card-head"><h3>怎么用这一拍</h3></div>
-      <div class="ded-howto" style="margin-top:0;padding-top:0;border-top:0">
-        <span>「走这条」＝结算这一拍并生成正文草稿（进缓存区，不写正文文件）；「否决」＝只记账不落库；「按我写的走」＝用你自己的话结算。想更丰富的候选，先补拆解条目（世界观／角色／剧情）再推。</span>
-      </div>
-    </section>`
 
   return `${bufferHtml}
     ${flowError(engine.error || '')}
     ${historyHtml}
-    ${stageHtml}
-    <details class="ded-toolbox">
-      <summary>推演设置 · POV / 种子 / 推进</summary>
-      ${controls}
-    </details>
-    <details class="ded-details"${draft ? ' open' : ''}>
-      <summary>局面详情 · 前线 · 事实包${draft ? ' · 草稿编辑' : ''}</summary>
-      <div class="ded-grid">
-        <div class="ded-col-left">${sceneHtml}${frontsHtml}${dedPackHtml()}</div>
-        <div class="ded-col-right">${draft ? draftPanel : howtoPanel}</div>
-      </div>
-    </details>`
+    ${stageHtml}`
 }
 
 /**
@@ -6302,6 +6374,14 @@ async function openLibrary(path) {
       const briefPayload = await api(`/api/brief?root=${encodeURIComponent(path)}`)
       state.brief = briefPayload.brief ?? null
       state.briefGenre = briefPayload.genre ?? null
+      try {
+        const picksPayload = await api(`/api/agent-picks?root=${encodeURIComponent(path)}`)
+        state.agent.picks = picksPayload.picks ?? null
+        state.agent.picksExplicit = picksPayload.explicit === true
+      } catch {
+        state.agent.picks = null
+        state.agent.picksExplicit = false
+      }
       if (state.brief && state.briefGenre) {
         // 页签名 → 目录名（worldbook→世界书 等）
         const excluded = new Set((state.briefGenre.excludedPages ?? []).map((page) => PAGE_TO_DIR_LOCAL[page] ?? page))
@@ -6933,6 +7013,7 @@ document.addEventListener('click', (event) => {
       deduceEngineTurn({ customText: customValue })
     }
   } else if (action === 'deduce-engine-regen') {
+    state.deduce.engine.draftEdit = false
     deduceEngineTurn({ regenerate: true })
   } else if (action === 'deduce-engine-next') {
     deduceEngineNext()
@@ -6944,6 +7025,22 @@ document.addEventListener('click', (event) => {
     dedTypewriterSkip()
   } else if (action === 'deduce-image') {
     deduceImageFlow()
+  } else if (action === 'deduce-info-toggle') {
+    const engine = state.deduce.engine
+    engine.infoOpen = engine.infoOpen === false
+    render()
+  } else if (action === 'deduce-tools-toggle') {
+    const engine = state.deduce.engine
+    engine.setOpen = !engine.setOpen
+    render()
+  } else if (action === 'deduce-draft-edit') {
+    const engine = state.deduce.engine
+    engine.draftEdit = !engine.draftEdit
+    render()
+    if (engine.draftEdit) {
+      const box = document.getElementById('deduce-draft')
+      if (box) { box.focus(); box.setSelectionRange(box.value.length, box.value.length) }
+    }
   } else if (action === 'deduce-image-go') {
     deduceImageRun()
   } else if (action === 'deduce-bgm-toggle') {
@@ -7067,6 +7164,10 @@ document.addEventListener('click', (event) => {
     }
   } else if (action === 'genre-pick') {
     pickGenre(target.dataset.genreId || '')
+  } else if (action === 'pick-style') {
+    pickStyle(target.dataset.skillName || '')
+  } else if (action === 'toggle-method') {
+    toggleMethod(target.dataset.skillName || '')
   } else if (action === 'style-mode-plain') {
     if (agent.pendingContext?.kind === 'polish') agent.pendingContext = null
     closeComposerMenus()
