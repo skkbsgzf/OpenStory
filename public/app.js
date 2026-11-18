@@ -3081,9 +3081,17 @@ function suiteDetailHtml(id) {
   } else {
     body = '<p class="sub">这套件没有设置项。</p>'
   }
+  // 捆绑技能（OS-68）：这套件自带的手艺配方——启用就上货架，停用就撤下
+  const bundled = Array.isArray(suite.bundledSkills) ? suite.bundledSkills : []
+  const catLabel = { craft: '技法', review: '审阅', transform: '改写', extract: '抽取' }
+  const bundledHtml = bundled.length ? `<div class="bundled-skills">
+      <div class="sub" style="margin-top:14px">捆绑技能（${bundled.length}）——启用即进 Agent 技能货架</div>
+      ${bundled.map((skill) => `<div class="bskill-row"><b>${esc(skill.name)}</b><span class="pill sm">${esc(catLabel[skill.category] || skill.category || '技能')}</span><span class="sub">${esc(skill.summary || '')}</span></div>`).join('')}
+    </div>` : ''
   return `<div class="step">
     ${head}
     ${body}
+    ${bundledHtml}
     <div class="row" style="display:flex;gap:10px;align-items:center;margin-top:14px">
       <button class="btn-ghost" data-action="suite-toggle" data-id="${esc(suite.id)}" data-enabled="${suite.enabled ? 'true' : 'false'}">${suite.enabled ? '停用' : '启用'}</button>
       <button class="btn-ghost" data-settings-section="plugins">← 回插件</button>

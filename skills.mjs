@@ -162,10 +162,47 @@ export function loadSkills(dirs = []) {
   const warnings = []
   const byName = new Map()
   dirs.forEach((dir, index) => {
-    const source = index === 0 ? '内置' : '本机'
-    for (const skill of scanSkillDir(dir, source, warnings)) byName.set(skill.name, skill)
+    // 目录项可以是 { dir, source }（套件捆绑：source＝套件名）或纯字符串（内置/本机）
+    const source = typeof dir === 'object' && dir !== null ? text(dir.source) || `套件${index}` : (index === 0 ? '内置' : '本机')
+    const real = typeof dir === 'object' && dir !== null ? text(dir.dir) : dir
+    for (const skill of scanSkillDir(real, source, warnings)) byName.set(skill.name, skill)
   })
   return { skills: [...byName.values()], warnings }
+}
+
+/** 启用中套件的捆绑技能目录（OS-68）：套件目录下的 skills/ 子目录随套件启停生效。
+ * 启停状态在 suite-state.json（不在 manifest）——loadSuites 拿货架，state 只判 enabled。 */
+export function suiteSkillDirs(suitesDirs = [], suiteStatePath = '', env = process.env) {
+  const out = []
+  // state 缺失/读不了＝还没有停用记录，契约是 enabled 缺省 true——全部视为启用
+  let enabledMap = {}
+  if (text(suiteStatePath).trim() && existsSync(suiteStatePath)) {
+    try {
+      const state = JSON.parse(readFileSync(suiteStatePath, 'utf-8'))
+      if (state && typeof state === 'object' && state.suites && typeof state.suites === 'object') enabledMap = state.suites
+    } catch { enabledMap = {} }
+  }
+  // 本机货架（第一个出现的用户目录）按 id 覆盖内置——与 loadSuites 同口径
+  const shelves = (suitesDirs || []).filter((dir) => typeof dir === 'string' && text(dir).trim() && existsSync(dir))
+  const byId = new Map()
+  for (const shelf of shelves) {
+    let ids = []
+    try { ids = readdirSync(shelf, { withFileTypes: true }).filter((item) => item.isDirectory() && !item.name.startsWith('.')).map((item) => item.name) } catch { continue }
+    for (const id of ids) {
+      const manifestPath = join(shelf, id, 'manifest.json')
+      if (!existsSync(manifestPath)) continue
+      let manifest = null
+      try { manifest = JSON.parse(readFileSync(manifestPath, 'utf-8')) } catch { continue }
+      if (manifest && typeof manifest === 'object') byId.set(text(manifest.id).trim() || id, { shelf, id, manifest })
+    }
+  }
+  for (const [id, { shelf, manifest }] of byId) {
+    const entry = enabledMap[id]
+    if (entry && typeof entry === 'object' && entry.enabled === false) continue
+    const dir = join(shelf, id, 'skills')
+    if (existsSync(dir)) out.push({ dir, source: `套件·${text(manifest.name).trim() || id}` })
+  }
+  return out
 }
 
 /** 按体裁过滤（genres 含 "*" 或命中即兼容）。 */
