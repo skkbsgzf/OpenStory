@@ -186,6 +186,9 @@ function render() {
     paintDocAnnotations()
     afterRefColMount()
   }
+  else if (state.view === 'habits') {
+    viewEl.innerHTML = habitsViewHtml()
+  }
   else if (state.view === 'reference') {
     viewEl.innerHTML = referencePageHtml()
     // 图谱视图：挂大画布（focus 模式）；笔记视图：详情页右上角小图谱（本词条邻域）
@@ -867,7 +870,8 @@ async function runAnalysis() {
   renderAnalyzePanel()
   try {
     const paragraphs = analysisParagraphs()
-    state.analyze.result = analysisModule.analyzeChapter(state.chapterText, { paragraphs })
+    await loadHabits()
+    state.analyze.result = analysisModule.analyzeChapter(state.chapterText, { paragraphs, habits: state.habits })
   } catch (error) {
     state.analyze.result = null
     rememberAgentError(error)
@@ -1162,6 +1166,7 @@ function analyzePanelHtml() {
       return '<div class="ed-line warn"><span class="ed-ic">⚠</span><span class="ed-text"><b>' + esc(item.verdict) + '</b>' +
         (item.action ? '<i class="ed-action">改法：' + esc(item.action) + '</i>' : '') +
         (item.detail ? '<i class="ed-why">' + esc(item.detail) + '</i>' : '') +
+        (item.source ? '<i class="ed-source">依据：' + esc(item.source) + '</i>' : '') +
         '</span><span class="ed-ops">' + goto + jump + '</span></div>'
     }).join('') + '</div>' : '') +
     '</section>'
@@ -3289,6 +3294,72 @@ function referenceEditorHtml() {
 }
 
 /** 参考页整体（OS-48：侧栏导航 + 视图制主区）。 */
+/* ---------- 习惯（OS-57）：描述性自定义表单——正向＋负向词条，Agent 成文前必读 ---------- */
+
+async function loadHabits({ force = false } = {}) {
+  if (!state.current) return
+  if (state.habits && !force) return
+  try {
+    const payload = await api(`/api/habits?root=${encodeURIComponent(state.current.path)}`)
+    state.habits = payload.habits || null
+  } catch (error) {
+    state.habitsError = text(error.message)
+  }
+}
+
+const HABIT_FIELDS = [
+  { key: 'bannedWords', label: '禁用词', hint: '出现即改的词（一行一个）', ph: '例如：心理活动\n压力\n效率' },
+  { key: 'preferredWords', label: '惯用词', hint: '希望多用的词（一行一个）', ph: '例如：恁地\n那厮' },
+  { key: 'bannedPatterns', label: '禁用句式', hint: '句式模板（… 表示中间可隔字）', ph: '例如：不是…而是…' },
+  { key: 'bannedRhetoric', label: '禁用修辞', hint: '不想看到的修辞（一行一个）', ph: '例如：排比三连\n通篇比喻' },
+  { key: 'formulas', label: '喜好的描述公式', hint: '惯用的写法公式（一行一个）', ph: '例如：动作+后果，不写血腥细节' }
+]
+
+function habitsViewHtml() {
+  const h = state.habits
+  if (!state.current) return needLibraryHtml()
+  if (!h) return '<div class="loading">正在读取习惯表…</div>'
+  const fields = HABIT_FIELDS.map((field) => `<div class="field">
+      <label>${esc(field.label)}<span class="count">　${esc(field.hint)}</span></label>
+      <textarea class="habit-list" data-habit-key="${esc(field.key)}" rows="4" placeholder="${esc(field.ph)}">${esc((h[field.key] || []).join('\n'))}</textarea>
+    </div>`).join('')
+  return `<div class="doc-head"><div class="kick">${esc(state.current.name)} / 习惯</div><h1>习惯</h1>
+      <div class="doc-meta"><span class="b">你的写作习惯表</span><span>Agent 成文前会逐条遵循；分析引擎按它扫问题</span></div></div>
+    ${errorHtml()}
+    <div class="habits-form">
+      <div class="field"><label>口吻（分析结论的说话方式）</label>
+        <select class="select" id="habit-tone">
+          <option value="direct"${h.tone !== 'gentle' ? ' selected' : ''}>直言——编辑体，问题直接说</option>
+          <option value="gentle"${h.tone === 'gentle' ? ' selected' : ''}>温和——先扬后抑，问题说成「可以先动的」</option>
+        </select>
+      </div>
+      <div class="field"><label>文风（一句自述，Agent 成文与总评都以它为基调）</label>
+        <input class="text" id="habit-style" value="${esc(h.style || '')}" placeholder="例如：宋明白话为骨，白描，少形容词">
+      </div>
+      ${fields}
+      <div class="ops"><button class="btn-primary" data-action="habits-save">保存习惯表</button>
+        <span class="count">保存后立即生效：Agent 成文注入＋分析扫描</span></div>
+    </div>`
+}
+
+async function saveHabits() {
+  if (!state.current) return
+  const form = { tone: document.getElementById('habit-tone')?.value || 'direct', style: document.getElementById('habit-style')?.value || '' }
+  for (const field of HABIT_FIELDS) {
+    form[field.key] = (document.querySelector(`[data-habit-key="${field.key}"]`)?.value || '').split('\n').map((line) => line.trim()).filter(Boolean)
+  }
+  try {
+    const payload = await api('/api/habits', { method: 'PUT', body: JSON.stringify({ root: state.current.path, habits: form }) })
+    state.habits = payload.habits
+    state.error = ''
+    state.flash = state.flash // flash 通道留给通用提示
+    render()
+  } catch (error) {
+    state.error = `${error?.code ? `${error.code} · ` : ''}${text(error?.message || error)}`
+    render()
+  }
+}
+
 function referencePageHtml() {
   const ref = state.reference
   if (!state.current) return needLibraryHtml()
@@ -3582,8 +3653,8 @@ function refSummaryHtml() {
  */
 const REF_MODULES = Object.freeze([
   { id: 'chapters', label: '章节', hint: '卷/章两级', render: () => chapterTreeHtml(), badge: () => String((state.write.chapters || []).length) },
-  { id: 'graph', label: '参考图谱', hint: '参考与产物的关系', render: () => graphModuleHtml(), badge: () => String(state.refCol.graph?.stats?.nodes ?? 0) },
-  { id: 'summary', label: '参考摘要', hint: 'AI 基于图谱总结本章', render: () => refSummaryHtml(), badge: () => '' }
+  { id: 'graph', label: '世界书图谱', hint: '世界书与产物的关系', render: () => graphModuleHtml(), badge: () => String(state.refCol.graph?.stats?.nodes ?? 0) },
+  { id: 'summary', label: '世界书摘要', hint: 'AI 基于图谱总结本章', render: () => refSummaryHtml(), badge: () => '' }
 ])
 
 /**
@@ -4770,9 +4841,9 @@ function renderTabs() {
       })
       .map((dir) => ({
         // 参考目录（OS-44）走专门的笔记系统页，不是通用文本页
-        view: dir === '参考' ? 'reference' : `dir:${dir}`,
-        label: dir === '参考' ? '参考' : (DIR_LABELS[dir] || dir),
-        ic: dir === '参考' ? '参' : (DIR_LABELS[dir] || dir).slice(0, 1),
+        view: dir === '参考' ? 'reference' : (dir === '习惯' ? 'habits' : `dir:${dir}`),
+        label: dir === '参考' ? '世界书' : (DIR_LABELS[dir] || dir),
+        ic: dir === '参考' ? '世' : (DIR_LABELS[dir] || dir).slice(0, 1),
         readonly: READONLY_DIRS.has(dir),
         closable: true
       }))
@@ -5396,6 +5467,7 @@ function closeSettingsTab() {
 }
 
 function go(view) {
+  if (view === 'habits') loadHabits().then(() => { if (state.view === 'habits') render() })
   state.error = ''
   if (view.startsWith('dir:')) {
     openDirWork(view.slice(4))
@@ -5963,6 +6035,8 @@ document.addEventListener('click', (event) => {
     renderAnalyzePanel()
     const card = document.querySelector(`.analyze-sec[data-mod-card="${id}"]`)
     card?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  } else if (action === 'habits-save') {
+    saveHabits()
   } else if (action === 'analyze-expand') {
     state.analyze.expandOthers = !state.analyze.expandOthers
     renderAnalyzePanel()

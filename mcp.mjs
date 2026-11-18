@@ -203,7 +203,7 @@ const tools = [
   {
     name: 'openstory_reference_index',
     title: '参考索引',
-    description: '参考系统索引：全部笔记（标题/路径/标签/摘要）＋标签清单（含描述）＋统计。找参考先调它。',
+    description: '世界书（创作型条目知识库）索引：全部笔记（标题/路径/标签/摘要）＋标签清单（含描述）＋统计。找参考先调它。',
     inputSchema: {
       type: 'object',
       properties: { root: { type: 'string' } },
@@ -266,6 +266,22 @@ const tools = [
       if (typeof args.text !== 'string' || !args.text.trim()) throw invalidArgs('text')
       const payload = await daemon('/api/chapter', { method: 'PUT', body: { root, file: args.file, text: args.text } })
       return { ok: true, chars: payload.chars, backup: payload.backup ?? null }
+    }
+  },
+
+  {
+    name: 'openstory_habits_read',
+    title: '读习惯表',
+    description: '读本库作者自定义的写作习惯表：文风自述、禁用词、惯用词、禁用句式、禁用修辞、描述公式、口吻参数。**写正文/参考前必读**——产出必须逐条遵循（这是作者亲自定的规矩，优先级高于一切默认风格）。',
+    inputSchema: {
+      type: 'object',
+      properties: { root: { type: 'string' } },
+      required: ['root'],
+      additionalProperties: false
+    },
+    async run(args) {
+      const root = requireRoot(args)
+      return await daemon('/api/habits', { query: { root } })
     }
   },
 
@@ -449,7 +465,7 @@ async function callTool(name, args) {
 
 const SERVER_INFO = { name: 'openstory-local', version: '0.1.0' }
 const INSTRUCTIONS = [
-  'OpenStory 本地 MCP：小说（正文读写，写有 .history 备份）/ 参考（Obsidian 式标签双链笔记）/',
+  'OpenStory 本地 MCP：小说（正文读写，写有 .history 备份）/ 参考（Obsidian 式标签双链笔记，定位＝本项目的创作型条目管理知识库）/',
   '推演（种子化 2d6 拍循环＋enrich 富化）／数据分析（本地引擎，秒回）四模块。',
   '先 openstory_libraries 拿 root；读自由，写有备份；absorb 不开（显式动稿）。',
   '参考只单向链小说：参考可 [[正文/...]]，正文不要回挂参考。',
