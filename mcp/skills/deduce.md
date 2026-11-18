@@ -41,7 +41,7 @@ openstory_deduce_settle {root, candidateId, action: 'choose'}
 3. openstory_enrich_graph {root, bookId}   → 完成后读知识图谱
 ```
 
-注意：enrich 的 LLM 走活动的 endpoint 型 runtime；cli/dsh 型上游不支持（会如实报 `LLM_UPSTREAM_UNSUPPORTED`）。
+注意：enrich 的 LLM 走**活动的运行时**——endpoint / CLI / DSH 三种都支持（OS-58 起统一走「单发单收」子 agent 模式，CLI 型会 spawn 一次性子进程）；输出被强制约束为纯 JSON，引擎侧有围栏/前后文容错。
 
 ## 什么时候跑 enrich
 

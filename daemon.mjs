@@ -1265,17 +1265,41 @@ async function resolveFactBookId(root, wanted) {
     const { config } = await loadAgentConfig(context.agentConfigPath)
     const upstream = await resolveChatUpstream(config, context)
     if (!upstream.ok) return sendError(res, API_ERROR_CODES.AGENT_UPSTREAM_ERROR, upstream.message)
-    if (upstream.execute) {
-      // cli/dsh 型上游是一次性子进程/stdio 会话，没有可编程的 completion 入口——
-      // enrich 每窗都要结构化 JSON 回包，硬套会全军覆没。如实报错让作者换 endpoint 型运行时。
-      return sendError(res, API_ERROR_CODES.AGENT_UPSTREAM_ERROR, `enrich 需要 endpoint 型运行时（OpenAI 兼容 chat）；当前 ${upstream.runtimeName} 是 ${upstream.execute} 型，不支持`)
-    }
-    // llmPort：把 runtime kit 的 chat 端点包成引擎要的形状（prompt → text）。单次调用 180s 上限。
+    // llmPort：把「活动运行时」包成引擎要的 prompt→text 形状（OS-58）。
+    // 作者裁定：**不接受接口直接接入**，统一走 CLI 子 agent 模式。
+    // 三种上游都收敛到同一次「单发单收」调用：
+    //   · endpoint  → HTTP chat/completions（保留：本机 sidecar 一类也算 endpoint，但不是主路径）
+    //   · cli       → 一次性子进程（cli-bridge.runCliChat），stdout 即回包
+    //   · dsh-cli   → 一 run 一进程（dsh-cli.runDshStdio），收 delta 拼成回包
+    // enrich 每窗都要结构化 JSON，所以这里对子 agent 额外下硬约束：只输出 JSON。
     const llmPort = async ({ prompt, maxTokens = 2000 }) => {
+      const strict = `${prompt}\n\n【输出约束】只输出符合要求的 JSON，不要 markdown 代码围栏，不要任何解释文字。`
+      if (upstream.execute === 'cli') {
+        const run = await runCliChat(upstream.kit, [{ role: 'user', content: strict }])
+        if (!run.ok) throw new Error(`CLI 子 agent 失败：${run.message}`)
+        return { text: text(run.text) }
+      }
+      if (upstream.execute === 'dsh-cli') {
+        let collected = ''
+        const result = await runDshStdio({
+          dshCmd: upstream.dshRun.dshCmd,
+          profile: upstream.dshRun.profile,
+          cwd: root,
+          prompt: strict,
+          ...(upstream.reasoningEffort ? { reasoningEffort: upstream.reasoningEffort } : {}),
+          // CLI/DSH 子 agent 单窗可能想很久（深析世界要素时尤甚），给足 10 分钟
+          inactivityMs: 180_000,
+          timeoutMs: 600_000,
+          onText: (piece) => { collected += piece }
+        })
+        if (!result.ok) throw new Error(`DSH 子 agent 失败：${result.message || result.code || 'unknown'}`)
+        return { text: text(collected || result.text || '') }
+      }
+      // endpoint（含 sidecar）：HTTP 单发
       const response = await fetch(upstream.url, {
         method: 'POST',
         headers: { 'content-type': 'application/json', ...upstream.headers },
-        body: JSON.stringify({ model: upstream.model, messages: [{ role: 'user', content: prompt }], max_tokens: maxTokens, temperature: 0.4, stream: false }),
+        body: JSON.stringify({ model: upstream.model, messages: [{ role: 'user', content: strict }], max_tokens: maxTokens, temperature: 0.4, stream: false }),
         signal: AbortSignal.timeout(180_000)
       })
       if (!response.ok) throw new Error(`LLM HTTP ${response.status}`)
