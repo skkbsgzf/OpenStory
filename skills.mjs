@@ -11,7 +11,8 @@
  *   transform 改写，产物是提案（作者采纳才落盘）
  *   extract 抽取，产结构化数据
  */
-import { existsSync, readdirSync, readFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs'
+import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -235,4 +236,81 @@ export function craftInstructionBlock(skills) {
   const craft = (Array.isArray(skills) ? skills : []).filter((skill) => skill.category === 'craft' && skill.body.trim())
   if (!craft.length) return ''
   return craft.map((skill) => `【技法·${skill.name}】\n${skill.body.trim()}`).join('\n\n')
+}
+
+/* ---------- Agent 选择链（OS-70）：题材 → 风格词条 → 方法论 ---------- */
+/* 灯泡三级选择链的持久层：题材走 brief.json（genres.mjs），风格词条/方法论选在这里。
+ * agent-picks.json 形状：{ schemaVersion, style: 'skill名'|'', methods: ['skill名'…], updatedAt }。
+ * 约定：style-* 前缀的 craft 技能＝文风词条（写作只能有一种主导文风，单选）；其余 craft＝方法论（可多选）。
+ * 裁剪语义：显式 picks 存在＝只注入 picks 里的技能全文；不存在（缺省）＝按体裁 genres 匹配注入、
+ * 但**永远剔除 style-* 文风包**——文风必须显式选定，绝不允许 11 个包一起灌进上下文互相打架。 */
+
+export const AGENT_PICKS_SPEC = 'openstory-agent-picks@1'
+
+export function agentPicksPath(root) {
+  return join(root, '.openstory', 'agent-picks.json')
+}
+
+export function isStyleSkill(skill) {
+  return text(skill?.name).startsWith('style-')
+}
+
+/** 读库级选择链（无文件/坏档＝null，走缺省裁剪；不拦 Agent 会话）。 */
+export async function readAgentPicks(root) {
+  let raw
+  try {
+    raw = await readFile(agentPicksPath(root), 'utf-8')
+  } catch (error) {
+    if (error?.code === 'ENOENT') return null
+    return null
+  }
+  try {
+    const parsed = JSON.parse(raw)
+    if (!parsed || typeof parsed !== 'object') return null
+    return {
+      style: text(parsed.style).trim(),
+      methods: Array.isArray(parsed.methods) ? parsed.methods.map((item) => text(item).trim()).filter(Boolean) : []
+    }
+  } catch {
+    return null
+  }
+}
+
+/** 写库级选择链（原子写）。风格/方法都必须是货架上的 craft 技能；风格不在可选集＝400。 */
+export async function writeAgentPicks(root, dirs, input = {}) {
+  const { skills } = loadSkills(dirs)
+  const craftNames = new Set(skills.filter((skill) => skill.category === 'craft').map((skill) => skill.name))
+  const style = text(input.style).trim()
+  const methods = Array.isArray(input.methods) ? input.methods.map((item) => text(item).trim()).filter(Boolean) : []
+  if (style && !craftNames.has(style)) return { ok: false, code: 'INVALID_ENTRY', message: `货架上没有这个技能：${style}` }
+  for (const name of methods) {
+    if (!craftNames.has(name)) return { ok: false, code: 'INVALID_ENTRY', message: `货架上没有这个技能：${name}` }
+  }
+  const now = new Date().toISOString()
+  const brief = { schemaVersion: AGENT_PICKS_SPEC, style, methods, updatedAt: now }
+  const target = agentPicksPath(root)
+  const tmp = `${target}.tmp-${Date.now()}`
+  try {
+    await mkdir(dirname(target), { recursive: true })
+    await writeFile(tmp, JSON.stringify(brief, null, 2), 'utf-8')
+    await rename(tmp, target)
+  } catch (error) {
+    return { ok: false, code: 'WRITE_PROTOCOL_IO_FAILED', message: `选择链写入失败：${text(error?.message || error)}` }
+  }
+  return { ok: true, picks: brief, path: target }
+}
+
+/** 注入用技能集（裁剪的落点）：
+ * - 显式 picks：风格单选全文＋方法多选全文（风格与方法重叠时以 methods 为准去重）；
+ * - 缺省：体裁 genres 匹配的 craft（剔除 style-*）；无体裁＝全部非 style 的 craft。 */
+export function craftSkillsForPrompt(skills, genreId, picks) {
+  const craft = (Array.isArray(skills) ? skills : []).filter((skill) => skill.category === 'craft')
+  if (picks) {
+    const wanted = new Set()
+    if (picks.style) wanted.add(picks.style)
+    for (const name of picks.methods) wanted.add(name)
+    return craft.filter((skill) => wanted.has(skill.name))
+  }
+  const matched = skillsForGenre(craft, text(genreId).trim())
+  return matched.filter((skill) => !isStyleSkill(skill))
 }

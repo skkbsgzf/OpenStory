@@ -450,6 +450,23 @@ export const ENDPOINTS = Object.freeze({
     response: { ok: 'true', brief: 'object', genre: 'object?', path: 'string' },
     errors: ['NO_LIBRARY', 'INVALID_ENTRY', 'WRITE_PROTOCOL_IO_FAILED']
   },
+  agentPicksGet: {
+    method: 'GET',
+    path: '/api/agent-picks',
+    // 库级选择链（OS-70）：灯泡三级链的持久层——风格词条（单选）/方法论（多选）。
+    // picks:null＋explicit:false ＝ 未做过显式选择（注入走体裁缺省裁剪）。
+    request: { query: { root: 'string' } },
+    response: { ok: 'true', picks: 'object?', explicit: 'true|false' },
+    errors: ['NO_LIBRARY', 'INVALID_ENTRY']
+  },
+  agentPicksPut: {
+    method: 'PUT',
+    path: '/api/agent-picks',
+    // 写选择链：style 为空串＝不指定文风包；style/methods 都必须是货架上的 craft 技能。
+    request: { body: { root: 'string', style: 'string', methods: 'array' } },
+    response: { ok: 'true', picks: 'object', path: 'string' },
+    errors: ['NO_LIBRARY', 'INVALID_ENTRY', 'WRITE_PROTOCOL_IO_FAILED']
+  },
   suitesGet: {
     method: 'GET',
     path: '/api/suites',
