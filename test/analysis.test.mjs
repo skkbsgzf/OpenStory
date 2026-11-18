@@ -74,3 +74,26 @@ test('确定性：同输入两次结果一致（纯计算无随机）', () => {
   const b = analyzeChapter(SAMPLE)
   assert.deepEqual(a, b)
 })
+
+test('编辑 verdict 层（OS-56）：等长段→节奏太平的人话结论＋可定位段落', async () => {
+  const { analyzeChapter } = await import('../public/analysis.mjs')
+  const flat = ['一字一句一段从容不迫。', '一字一句一段从容不迫。', '一字一句一段从容不迫。', '一字一句一段从容不迫。'].join('\n\n')
+  const r = analyzeChapter(flat)
+  assert.ok(r.editorial, '缺 editorial')
+  const rhythmProblem = r.editorial.problems.find((p) => p.module === 'rhythm')
+  assert.ok(rhythmProblem, '等长段没有报节奏太平')
+  assert.match(rhythmProblem.verdict, /节奏太平/)
+  assert.ok(Array.isArray(rhythmProblem.paras))
+  assert.ok(rhythmProblem.action.length > 6, '改法缺失')
+})
+
+test('编辑 verdict 层：对白过少、套话清单、干净章的亮点与总评', async () => {
+  const { analyzeChapter } = await import('../public/analysis.mjs')
+  const dirty = ['他不禁笑了。', '这一切仿佛宛如犹如一场梦。', '叙述一。', '叙述二。', '叙述三。', '叙述四。'].join('\n\n')
+  const r = analyzeChapter(dirty)
+  assert.ok(r.editorial.problems.some((p) => p.verdict.includes('套话')), '套话没进人话结论')
+  assert.ok(r.editorial.headline.length > 8, '总评缺失')
+  const clean = '他说：「来。」\n\n她答：「走。」\n\n两人下了楼，夜色刚好。\n\n街上只有一个卖馄饨的摊子还亮着灯。\n\n「吃点？」\n\n「吃。」'
+  const r2 = analyzeChapter(clean)
+  assert.ok(r2.editorial.goods.length >= 1, '干净章没有亮点结论')
+})

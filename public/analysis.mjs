@@ -97,6 +97,152 @@ function paragraphOf(paras, needle) {
   return hits.length ? hits[0] : -1
 }
 
+
+/* ---------- 编辑 verdict 层（OS-56）----------
+ * 数据自己不会说话：句长变异系数 0.31 对作者是天书，「句式过于整齐」也只说了问题没说怎么办。
+ * 这一层把指标翻译成编辑视角的人话——好在哪、问题在哪、下一步能怎么做。
+ * 全部判定是确定性规则，阈值来自仓内技能铁律（fanqie-pattern-playbook 的硬统计、
+ * de-ai-writing 的清单、shuangwen-chapter-check 十项），结论可追溯到具体段落。
+ */
+
+/** 找「连续等长段」：相邻段字数差都在 ±12% 内的 run（≥3 段算）。节奏平坦的硬信号。 */
+function findFlatRuns(charList) {
+  const runs = []
+  let start = 0
+  const close = (end) => {
+    const count = end - start + 1
+    if (count >= 3) {
+      const seg = charList.slice(start, end + 1)
+      const avg = Math.round(seg.reduce((sum, len) => sum + len, 0) / count)
+      runs.push({ from: start, to: end, count, chars: avg })
+    }
+  }
+  for (let i = 1; i < charList.length; i += 1) {
+    const prev = charList[i - 1]
+    const cur = charList[i]
+    const base = Math.max(20, (prev + cur) / 2)
+    if (Math.abs(cur - prev) / base > 0.12) { close(i - 1); start = i }
+  }
+  close(charList.length - 1)
+  // 只报最有感的：最长的那条 run
+  return runs.sort((left, right) => right.count - left.count).slice(0, 2)
+}
+
+function buildEditorial({ stats, rhythm, emotion, style, aiSmell, paras }) {
+  const goods = []
+  const problems = []
+
+  // —— 节奏（fanqie playbook：健康节奏是锯齿；等长段=走过场）——
+  const flatRuns = findFlatRuns(rhythm.map((item) => item.chars))
+  for (const run of flatRuns) {
+    problems.push({
+      verdict: `第 ${run.from + 1}–${run.to + 1} 段连续 ${run.count} 段都在 ${run.chars} 字上下——节奏太平`,
+      detail: '等长段落是模板文的核心体征，读者会下意识觉得「在走过场」。',
+      action: '把其中一段砍到一半，另一段放宽——长短落差本身就是节奏。',
+      module: 'rhythm',
+      paras: [run.from, run.to]
+    })
+  }
+
+  // —— 对白（chapter-check：叙述过载＝通知式写作）——
+  if (stats.paragraphs >= 6 && stats.dialogueRatio < 12) {
+    problems.push({
+      verdict: `全章对白只占 ${stats.dialogueRatio}%——几乎没有人开口`,
+      detail: '整章都是叙述在交代。信息全靠叙述推送，读者是在「听报告」，不是在「看戏」。',
+      action: '挑两处叙述交代改成对话——人物一开口，立场和温度就都有了。',
+      module: 'style'
+    })
+  } else if (stats.dialogueRatio >= 18 && stats.dialogueRatio <= 45) {
+    goods.push({ verdict: `对白比例 ${stats.dialogueRatio}%——人物在开口，叙述没有过载`, module: 'style' })
+  }
+
+  // —— 句长变异（de-ai：每句等长是最重的机器指纹之一）——
+  if (style.sentenceCv < 0.35) {
+    problems.push({
+      verdict: `句长变异系数只有 ${style.sentenceCv.toFixed(2)}——句子太齐了`,
+      detail: '每句长度接近，读起来像节拍器。中文的呼吸感来自落差：四字短句接三十字长句。',
+      action: '找一段把其中两句合并成一个长句，再补一个四五个字的短句收尾。',
+      module: 'aiSmell'
+    })
+  } else if (style.sentenceCv >= 0.55) {
+    goods.push({ verdict: `句长参差（变异系数 ${style.sentenceCv.toFixed(2)}）——读起来有呼吸感`, module: 'aiSmell' })
+  }
+
+  // —— 段落均匀 ——
+  if (style.paraCv < 0.3 && stats.paragraphs >= 5) {
+    problems.push({
+      verdict: `段长变异系数 ${style.paraCv.toFixed(2)}——段落过于均匀`,
+      detail: '每段体量差不多，页面看起来像方块阵列。',
+      action: '留一段两三行的小段（或一句独立段）当「呼吸口」。',
+      module: 'style'
+    })
+  }
+
+  // —— 套话/连接词（de-ai 清单：删完句意不变的就是填充物）——
+  const clicheTotal = style.cliches.reduce((sum, hit) => sum + hit.count, 0)
+  if (clicheTotal >= 3) {
+    const top = style.cliches.slice(0, 3).map((hit) => `「${hit.word}」×${hit.count}`).join('、')
+    problems.push({
+      verdict: `套话 ${clicheTotal} 处：${top}`,
+      detail: '这类副词/短语删掉后句意不变——它们是填充物，不是文字。',
+      action: '逐个替换成具体动作或直接删；「他不禁笑了」→「他笑了」。',
+      module: 'aiSmell'
+    })
+  } else if (clicheTotal === 0 && aiSmell.score < 25) {
+    goods.push({ verdict: '没有套话与连接词堆砌——文字干净', module: 'aiSmell' })
+  }
+
+  // —— 情绪起伏（曲线要有峰有谷）——
+  const values = emotion.map((item) => Math.abs(item.value))
+  const emoMax = Math.max(0, ...values)
+  const emoAvg = values.length ? values.reduce((sum, v) => sum + v, 0) / values.length : 0
+  const peakIndex = values.indexOf(emoMax)
+  if (values.length >= 5 && emoMax > 0 && emoMax < emoAvg * 1.6) {
+    problems.push({
+      verdict: '情绪强度几乎持平——没有真正的峰',
+      detail: '全章的情绪密度都在均值附近晃，没有一个「把读者心提起来」的位置。',
+      action: '挑一个关键节点（对峙/揭露）让情绪词密度翻倍，其余段落相应收着写。',
+      module: 'plotCurve'
+    })
+  } else if (emoMax >= emoAvg * 2 && emoMax > 0) {
+    goods.push({ verdict: `情绪有峰值（第 ${peakIndex + 1} 段）——有把读者心提起来的位置`, module: 'plotCurve' })
+  }
+
+  // —— 开篇钩子（reader-needs 铁律 1：先给「被夺走的位置」；启发式：前三段无对白且无负向情绪）——
+  const headParas = paras.slice(0, 3)
+  if (headParas.length >= 3) {
+    const headText = headParas.join('')
+    const headDialogue = /[「“"]/u.test(headText)
+    const headNeg = NEGATIVE.some((word) => headText.includes(word))
+    if (!headDialogue && !headNeg) {
+      problems.push({
+        verdict: '开篇三段没有对话、也没有冲突信号——钩子偏温',
+        detail: '前三段是读者决定去留的位置。对照铁律：开篇要有一个具体、可指认的「异常」或「被夺走的位置」。',
+        action: '把第一段改成从冲突或反常的一句切入；原交代内容后移或拆进对话。',
+        module: 'annotations',
+        paras: [0, 2]
+      })
+    } else {
+      goods.push({ verdict: '开篇三段内有对话或冲突信号——钩子立住了', module: 'annotations' })
+    }
+  }
+
+  // 总评：挑最重的两三个问题 + 一个亮点，拼一句人话
+  const worst = problems.slice(0, 2).map((item) => item.verdict)
+  const goodLine = goods.length ? `亮点：${goods[0].verdict}。` : ''
+  let headline
+  if (!problems.length) {
+    headline = `这一章的文本面干净：${goods.slice(0, 2).map((item) => item.verdict).join('；')}。可以往前推剧情了。`
+  } else if (aiSmell.score >= 50) {
+    headline = `AI 味偏重（${aiSmell.score}）：${worst.join('；')}。${goodLine}`
+  } else if (problems.length >= 3) {
+    headline = `能读，但有三处要动手：${worst.join('；')}。${goodLine}`
+  } else {
+    headline = `基本成立，${problems.length} 处可以更好：${worst.join('；')}。${goodLine}`
+  }
+  return { headline, goods, problems }
+}
+
 export function analyzeChapter(source, { paragraphs = null } = {}) {
   const raw = text(source)
   const paras = (Array.isArray(paragraphs) && paragraphs.length ? paragraphs : raw.split(/\n{2,}/u))
@@ -266,6 +412,7 @@ export function analyzeChapter(source, { paragraphs = null } = {}) {
       ]
     },
     issues: issues.slice(0, 40),
+    editorial: buildEditorial({ stats: { chars, paragraphs: paras.length, dialogueRatio: chars > 0 ? Math.round((dialogueChars / chars) * 1000) / 10 : 0 }, rhythm, emotion, style: { sentenceCv: Math.round(cv * 100) / 100, paraCv: Math.round(paraCv * 100) / 100, cliches: clicheHits }, aiSmell: { score: aiScore }, paras }),
     confidence: chars >= 800 ? 'ok' : 'low'
   }
 }
