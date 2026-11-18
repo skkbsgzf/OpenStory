@@ -1881,8 +1881,11 @@ async function refreshAgentSkillsMenu() {
     state.agent.skills = []
     state.agent.skillsError = text(error?.message || error)
   }
-  const menu = document.getElementById('agent-plus-menu')
-  if (menu && !menu.hidden) menu.innerHTML = plusMenuHtml()
+  // 两个互斥菜单都可能由本次打开触发刷新——谁开着渲谁（OS-70）
+  const plus = document.getElementById('agent-plus-menu')
+  if (plus && !plus.hidden) plus.innerHTML = plusMenuHtml()
+  const style = document.getElementById('agent-style-menu')
+  if (style && !style.hidden) style.innerHTML = genreMenuHtml()
 }
 
 /** 点选真技能：拉全文注入【技能规范】，Agent 成文按该技能执行（OS-68b）。 */
