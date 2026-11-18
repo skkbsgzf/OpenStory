@@ -3876,7 +3876,13 @@ function rerenderRefCol() {
 let graphCleanup = null
 async function mountRefGraph() {
   const canvas = document.getElementById('ref-graph-canvas')
-  if (!canvas) return
+  if (!canvas) {
+    // 图模块还在「正在构图」态（rc.graph 为空时不渲染画布）——先拉数据再挂。
+    // 不做这一步就是死锁：无 canvas → 不加载数据 → 永远无 canvas，
+    // 换库后（openLibrary 清了 rc.graph）图谱永远是空的（OS-65 作者实测）。
+    if (!state.refCol.graph && !state.refCol.graphLoading) await loadRefGraph()
+    return
+  }
   if (!state.refCol.graph) {
     await loadRefGraph()
     return
@@ -5981,9 +5987,20 @@ async function openLibrary(path) {
     engine: { busy: false, data: null, pov: '', seed: '', error: '', hint: '',
       session: null, sessionLoaded: false, customText: '', draft: null, turnBusy: false, archiveNote: '',
       view: 'scene', treePick: null,
-      assets: null, assetsLoaded: false, assetBookId: '', bgmOn: false }
+      assets: null, assetsLoaded: false, assetBookId: '', bgmOn: false },
+    characters: []
   }
   deduceBgmStop()
+  // OS-65（作者实测严重 bug）：换库必须清掉上一库的**所有模块缓存**——
+  // 世界书图谱/索引/反链、习惯表、分析结果、推演角色名单。漏掉的会跨库串数据
+  // （实测：水浒的人物图谱出现在大梦的推演页）。画布动画也要停。
+  graphCleanup?.()
+  graphCleanup = null
+  state.refCol = { graph: null, graphLoading: false, graphError: '', summary: '', summaryBusy: false, summaryError: '' }
+  state.reference = { loaded: false, loading: false, notes: [], tags: [], tagNotes: {}, stats: null, error: '', activePath: '', activeTag: '', note: null, backlinks: { linked: [], unlinked: [] }, draft: '', view: 'graph', q: '', focus: null, absorb: {}, flash: '', tagFilter: '', from: '', noteText: '', fmLen: 0 }
+  state.habits = null
+  state.habitsError = ''
+  state.analyze = { open: false, result: null, busy: false, dismissed: {}, activePara: -1, expandOthers: false, fact: null, factRoot: '', factTab: 'emotion', modOpen: {} }
   state.chapterFiles = []
   try {
     const [topPayload, chapterList, chaptersPayload] = await Promise.all([
