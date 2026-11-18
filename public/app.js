@@ -1690,28 +1690,35 @@ function toggleComposerMenu(which) {
 
 /** 灯泡菜单＝题材风格（OS-69 作者裁定，对齐 OpenDesign 的风格位）：
  * 这里选中的体裁写进库的 brief.json，之后**所有**成文与分析都按该体裁的提示词（agentPolicy）
- * 生成——全局生效，与加号里一次性注入的技能/工具分工。 */
+ * 生成——全局生效，与加号里一次性注入的技能/工具分工。
+ * 层级（OS-69b）：生效说明 → 主打体裁组 → 扩展体裁组（名一行、描述整段换行）→ 会话绑定脚注。 */
 function genreMenuHtml() {
   const polish = agent.pendingContext?.kind === 'polish'
-  const rows = []
   const cur = state.briefGenre
   const head = cur
-    ? `<div class="pop-foot">当前生效：${esc(cur.name)}——成文与分析都按它的提示词走</div>`
-    : '<div class="pop-foot">未声明体裁——下面任选一个即全局生效</div>'
+    ? `<div class="pop-note">当前生效 <b>${esc(cur.name)}</b>——之后所有成文与分析都按它的提示词走（改选项＝切换全局风格）</div>`
+    : '<div class="pop-note">这个库还没声明体裁——下面任选一个，之后所有成文与分析都按它走</div>'
   const genres = Array.isArray(state.genres) ? state.genres : []
+  const groups = []
   if (!genres.length) {
-    rows.push('<div class="pop-item plain"><span class="pi-ic">◇</span><b>体裁货架读不到</b><i>稍后再开</i></div>')
+    groups.push('<div class="pop-item plain"><span class="pi-ic">◇</span><b>体裁货架读不到</b><i>稍后再开</i></div>')
   } else {
-    for (const genre of genres) {
-      const on = cur?.id === genre.id
-      rows.push(`<div class="pop-item" data-action="genre-pick" data-genre-id="${esc(genre.id)}"><span class="pi-ic">${on ? '✓' : genre.tier === 'primary' ? '✦' : '◇'}</span><b>${esc(genre.name)}</b><i>${esc((genre.summary || '').slice(0, 34))}${on ? ' · 生效中' : ''}</i></div>`)
+    for (const [tier, label, hint] of [['primary', '主打体裁', '常见的三种：选一个即全局生效'], ['extended', '扩展体裁', '影视/文学等形制，按需启用']]) {
+      const list = genres.filter((genre) => (genre.tier || 'primary') === tier)
+      if (!list.length) continue
+      groups.push(`<div class="pop-title">${esc(label)}<span class="pop-hint">${esc(hint)}</span></div>`)
+      for (const genre of list) {
+        const on = cur?.id === genre.id
+        groups.push(`<div class="pop-item genre-item" data-action="genre-pick" data-genre-id="${esc(genre.id)}"><span class="pi-ic">${on ? '✓' : tier === 'primary' ? '✦' : '◇'}</span><span class="genre-main"><b>${esc(genre.name)}${on ? '<i class="on-tag">生效中</i>' : ''}</b><i class="genre-desc">${esc(genre.summary || '')}</i></span></div>`)
+      }
     }
   }
-  if (polish) rows.push(`<div class="pop-item" data-action="clear-agent-context"><span class="pi-ic">✕</span><b>清除当前上下文</b><i>${esc((agent.pendingContext?.label || '').slice(0, 24))}</i></div>`)
+  const foot = []
+  if (polish) foot.push(`<div class="pop-item" data-action="clear-agent-context"><span class="pi-ic">✕</span><b>清除当前上下文</b><i>${esc((agent.pendingContext?.label || '').slice(0, 24))}</i></div>`)
   // 状态脚注（OS-68c）：Agent 会话绑定的库与端点——纯读数不可点，样式与按钮行彻底分层
   const status = `${esc(state.current?.name || '未选库')} · ${esc(agent.model || (agent.configured ? '已配置' : '未配置端点'))}`
-  rows.push(`<div class="pop-foot">会话绑定：${status}</div>`)
-  return `${head}<div class="pop-div"></div>${rows.join('')}`
+  foot.push(`<div class="pop-foot">会话绑定：${status}</div>`)
+  return `${head}<div class="pop-div"></div>${groups.join('')}<div class="pop-div"></div>${foot.join('')}`
 }
 
 /** 点选体裁：写 brief.json（体裁策略从此每轮注入 system prompt＋裁剪技法技能与页签）。

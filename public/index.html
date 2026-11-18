@@ -448,13 +448,22 @@ input, textarea, select { font: inherit; color: inherit; }
 .c-tool.on { color: var(--accent); background: var(--accent-soft); }
 /* 工具弹出菜单（OS-51）：从底部弹出，对齐其它 Agent 的 ＋ 菜单 */
 .composer-pop { position: absolute; left: 8px; right: 8px; bottom: calc(100% - 4px); z-index: 88; background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius-md); box-shadow: var(--shadow); padding: 8px; max-height: 300px; overflow-y: auto; }
-.composer-pop .pop-title { font-size: 10.5px; font-weight: 600; color: var(--meta); letter-spacing: .04em; padding: 2px 6px 4px; }
+#agent-style-menu { right: auto; width: min(460px, calc(100vw - 32px)); max-height: min(430px, calc(100vh - 160px)); }
+.composer-pop .pop-title { display: flex; align-items: baseline; gap: 8px; font-size: 10.5px; font-weight: 600; color: var(--meta); letter-spacing: .04em; padding: 2px 6px 4px; }
 .composer-pop .pop-item { display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 8px; border-radius: var(--radius); text-align: left; font-size: 12.5px; color: var(--ink-2); }
 .composer-pop .pop-item:hover { background: var(--soft); }
 .composer-pop .pop-item b { font-weight: 600; }
 .composer-pop .pop-item i { font-style: normal; font-size: 11px; color: var(--meta); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .composer-pop .pop-item .pi-ic { flex: 0 0 auto; width: 22px; height: 22px; border-radius: 6px; background: var(--soft); display: grid; place-items: center; font-size: 12px; }
 .composer-pop .pop-div { border-top: 1px solid var(--hair); margin: 6px 2px; }
+.composer-pop .pop-hint { margin-left: auto; font-weight: 400; letter-spacing: 0; font-size: 10.5px; color: var(--meta); }
+.composer-pop .pop-note { padding: 2px 6px 6px; font-size: 11px; line-height: 1.6; color: var(--ink-2); }
+.composer-pop .pop-note b { color: var(--ink); }
+.composer-pop .genre-item .pi-ic { align-self: flex-start; }
+.composer-pop .genre-main { display: flex; flex-direction: column; gap: 3px; min-width: 0; flex: 1; }
+.composer-pop .genre-main b { display: flex; align-items: center; gap: 6px; font-weight: 600; font-size: 12.5px; color: var(--ink); }
+.composer-pop .genre-main .on-tag { font-style: normal; font-size: 10px; color: var(--ok, #2e7d32); border: 1px solid currentColor; border-radius: 999px; padding: 0 6px; line-height: 1.5; }
+.composer-pop .genre-main .genre-desc { font-style: normal; font-size: 11px; line-height: 1.6; color: var(--meta); white-space: normal; overflow: visible; text-overflow: clip; }
 .composer-pop .pop-foot { padding: 4px 8px 2px; font-size: 11px; color: var(--meta); cursor: default; user-select: none; }
 .composer .send { margin-left: auto; width: 30px; height: 30px; border-radius: 50%; background: var(--ink); color: var(--bg); display: grid; place-items: center; }
 .composer .send:hover { background: var(--accent); }
