@@ -1694,9 +1694,10 @@ function styleMenuHtml() {
   rows.push(`<div class="pop-item" data-action="style-mode-plain"><span class="pi-ic">💬</span><b>对话模式</b><i>问剧情、查设定、要产物</i></div>`)
   rows.push(`<div class="pop-item" data-action="style-mode-polish"><span class="pi-ic">✎</span><b>润笔模式</b><i>选中一段正文后改写</i></div>`)
   if (polish) rows.push(`<div class="pop-item" data-action="clear-agent-context"><span class="pi-ic">✕</span><b>清除当前上下文</b><i>${esc((agent.pendingContext?.label || '').slice(0, 24))}</i></div>`)
-  rows.push('<div class="pop-div"></div>')
-  rows.push(`<div class="pop-item plain"><span class="pi-ic">📚</span><b>${esc(state.current?.name || '未选库')}</b><i>${esc(agent.model || (agent.configured ? '已配置' : '未配置端点'))}</i></div>`)
-  return `<div class="pop-title">风格与模式</div>${rows.join('')}`
+  // 状态脚注（OS-68c）：Agent 会话绑定的库与端点——纯读数不可点，样式与按钮行彻底分层
+  const status = `${esc(state.current?.name || '未选库')} · ${esc(agent.model || (agent.configured ? '已配置' : '未配置端点'))}`
+  rows.push(`<div class="pop-foot">会话绑定：${status}</div>`)
+  return `<div class="pop-title">模式</div>${rows.join('')}`
 }
 
 /** ＋菜单：引用文件 / 指令 / 技能（对齐其它 Agent 的 ＋ 键）。 */
