@@ -44,9 +44,23 @@ function text(value) {
   return String(value ?? '')
 }
 
+/**
+ * 解析子 agent 的 JSON 回包（OS-58）。
+ * CLI/DSH 子 agent 不像 chat 接口那样保证纯 JSON——常见三种脏形态：
+ *   ① ```json 围栏；② 围栏前有「好的，这是结果：」之类开场；③ 末尾带解释。
+ * 全部走「截取第一个 { 到最后一个 }（或 []）」的容错，再不行才判失败。
+ */
 function parseReply(body) {
-  const raw = text(body).replace(/^```(?:json)?/u, '').replace(/```$/u, '').trim()
-  try { return JSON.parse(raw) } catch { return null }
+  let raw = text(body).replace(/^\uFEFF/u, '').trim()
+  raw = raw.replace(/^```(?:json)?\s*/iu, '').replace(/\s*```$/u, '').trim()
+  try { return JSON.parse(raw) } catch { /* 继续容错 */ }
+  const start = raw.search(/[[{]/u)
+  if (start === -1) return null
+  const endCurly = raw.lastIndexOf('}')
+  const endSquare = raw.lastIndexOf(']')
+  const end = Math.max(endCurly, endSquare)
+  if (end <= start) return null
+  try { return JSON.parse(raw.slice(start, end + 1)) } catch { return null }
 }
 
 /** 层名归一：接受 1-5、数字串、中文层名、英文 need 名，统一成 {level, need}。 */

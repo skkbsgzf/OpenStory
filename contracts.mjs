@@ -496,6 +496,8 @@ export const ENDPOINTS = Object.freeze({
     path: '/api/enrich/run',
     // 语义增补（FACT-FIRST 供给端）：六槽位＋因果图＋需求层级＋台账，全量重算并写旁挂 wiki。
     // 长任务（12–35 次模型调用，2–6 分钟）：立即返回 jobId，进度查 enrichStatus。
+    // LLM 走活动运行时（OS-58）：endpoint / CLI / DSH 都行——clI/dsh 走一次性子进程，
+    // 强制「只输出 JSON」，引擎侧有围栏与前后文容错。
     // llm 走活动 runtime kit（endpoint 型）；cli/dsh 型上游不支持，如实报错。
     request: { body: { root: 'string', bookId: 'string' } },
     response: { ok: 'true', jobId: 'string' },
