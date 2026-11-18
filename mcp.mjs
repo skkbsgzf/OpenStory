@@ -73,6 +73,29 @@ async function daemon(path, { method = 'GET', body, query } = {}) {
 
 /* ---------- 工具实现 ---------- */
 
+/** 习惯 lint（OS-59，与 daemon 同规则）：对将写入的文本跑禁用词/句式检测。 */
+function lintHabits(body, habits) {
+  const text$ = String(body ?? '')
+  const hits = []
+  if (!text$.trim() || !habits) return hits
+  for (const word of Array.isArray(habits.bannedWords) ? habits.bannedWords : []) {
+    const count = text$.split(word).length - 1
+    if (count > 0) hits.push({ kind: 'bannedWord', pattern: word, count })
+  }
+  for (const pattern of Array.isArray(habits.bannedPatterns) ? habits.bannedPatterns : []) {
+    const parts = String(pattern).split('…').filter(Boolean)
+    let count = 0
+    if (parts.length > 1) {
+      const escaped = parts.map((part) => part.replace(/[\.*+?^${}()|[\]\\]/gu, '\\$&')).join('[\\s\\S]{0,12}')
+      try { count = [...text$.matchAll(new RegExp(escaped, 'gu'))].length } catch { count = 0 }
+    } else {
+      count = text$.split(pattern).length - 1
+    }
+    if (count > 0) hits.push({ kind: 'bannedPattern', pattern, count })
+  }
+  return hits
+}
+
 const requireRoot = (args) => {
   const root = String(args.root ?? '').trim()
   if (!root) {
@@ -162,7 +185,16 @@ const tools = [
       if (!args.file) throw invalidArgs('file')
       if (typeof args.text !== 'string' || !args.text.trim()) throw invalidArgs('text（完整章节内容）')
       const payload = await daemon('/api/chapter', { method: 'PUT', body: { root, file: args.file, text: args.text } })
-      return { ok: true, chars: payload.chars, savedAt: payload.savedAt, backup: payload.backup, factStale: payload.factStale ?? null }
+      // 习惯回显（OS-59）：写入照常进行（MCP 无人工确认环节），但把命中如实回报，
+      // 让上游 agent 自己决定要不要重写——习惯表是作者的规矩，外部 agent 必须知情。
+      let habits = null
+      try { habits = (await daemon('/api/habits', { query: { root } })).habits } catch { habits = null }
+      const habitHits = lintHabits(args.text, habits)
+      return {
+        ok: true, chars: payload.chars, savedAt: payload.savedAt, backup: payload.backup,
+        factStale: payload.factStale ?? null,
+        ...(habitHits.length ? { habitHits, habitWarning: '这段正文命中了作者习惯表，建议按提示改写后重写一次' } : {})
+      }
     }
   },
   {
@@ -265,7 +297,13 @@ const tools = [
       if (!String(args.file).startsWith('参考/')) throw invalidArgs('file 必须以 参考/ 开头（参考系统只管 参考/ 目录）')
       if (typeof args.text !== 'string' || !args.text.trim()) throw invalidArgs('text')
       const payload = await daemon('/api/chapter', { method: 'PUT', body: { root, file: args.file, text: args.text } })
-      return { ok: true, chars: payload.chars, backup: payload.backup ?? null }
+      let habits2 = null
+      try { habits2 = (await daemon('/api/habits', { query: { root } })).habits } catch { habits2 = null }
+      const habitHits2 = lintHabits(args.text, habits2)
+      return {
+        ok: true, chars: payload.chars, backup: payload.backup ?? null,
+        ...(habitHits2.length ? { habitHits: habitHits2 } : {})
+      }
     }
   },
 

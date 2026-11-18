@@ -513,6 +513,30 @@ function normalizeHabits(input) {
   return out
 }
 
+/** 习惯 lint（OS-59）：对一段将要落盘的文本跑禁用词/句式检测，返回命中清单。
+ * 只报不拦——是否仍要采纳由作者定；Agent 只做提醒（习惯表是作者自己的规矩）。 */
+export function lintHabits(text$input, habits) {
+  const body = text(text$input)
+  const hits = []
+  if (!body.trim() || !habits) return hits
+  for (const word of Array.isArray(habits.bannedWords) ? habits.bannedWords : []) {
+    const count = body.split(word).length - 1
+    if (count > 0) hits.push({ kind: 'bannedWord', pattern: word, count, message: `禁用词「${word}」出现 ${count} 次` })
+  }
+  for (const pattern of Array.isArray(habits.bannedPatterns) ? habits.bannedPatterns : []) {
+    const parts = text(pattern).split('…').filter(Boolean)
+    let count = 0
+    if (parts.length > 1) {
+      const escaped = parts.map((part) => part.replace(/[\.*+?^${}()|[\]\\]/gu, '\\$&')).join('[\\s\\S]{0,12}')
+      try { count = [...body.matchAll(new RegExp(escaped, 'gu'))].length } catch { count = 0 }
+    } else {
+      count = body.split(pattern).length - 1
+    }
+    if (count > 0) hits.push({ kind: 'bannedPattern', pattern, count, message: `禁用句式「${pattern}」出现 ${count} 次` })
+  }
+  return hits
+}
+
 async function writeHabitsWithBackup(root, habits) {
   const path = habitsPath(root)
   await mkdir(dirname(path), { recursive: true })
@@ -2240,6 +2264,15 @@ async function handleAgentCardAdopt(res, request, context, root) {
       `正文在卡片创建后被改过（创建时 ${card.snapshot.exists ? `${card.snapshot.chars} 字` : '不存在'}，现在 ${current.exists ? `${current.chars} 字` : '不存在'}），拒绝覆盖。请重新创建待确认卡。`,
       { file: card.file, expected: card.snapshot, actual: current })
   }
+  // 习惯 lint（OS-59）：采纳前对产物跑禁用词/句式检测。命中且未确认 → 409 让前端弹确认；
+  // 作者确认后带 confirm:true 再来一次。只提醒不阻断（习惯表是作者自己的规矩）。
+  const habits = readHabits(root)
+  const habitHits = lintHabits(card.text, habits)
+  if (habitHits.length && request.confirm !== true) {
+    return sendError(res, API_ERROR_CODES.INVALID_ENTRY,
+      `这段产物命中了你的习惯表：${habitHits.map((hit) => hit.message).join('；')}。确认仍要采纳？`,
+      { habitHits, needsConfirm: true, file: card.file })
+  }
   const written = await writeChapterWithBackup(root, card.file, card.text)
   if (!written.ok) return sendError(res, written.code, written.message, written.details)
   const updated = await updateCard(context.agentSessionsDir, root, request.sessionId, request.id, {
@@ -2252,7 +2285,8 @@ async function handleAgentCardAdopt(res, request, context, root) {
     card: updated,
     chars: written.chars,
     savedAt: written.savedAt,
-    ...(written.backup ? { backup: written.backup } : {})
+    ...(written.backup ? { backup: written.backup } : {}),
+    ...(habitHits.length ? { habitHits } : {})
   })
 }
 
