@@ -85,7 +85,9 @@ const state = {
     streaming: false,
     controller: null,
     cardError: null,
-    lastError: null
+    lastError: null,
+    skills: null,
+    skillsError: ''
   }
 }
 
@@ -1681,6 +1683,7 @@ function toggleComposerMenu(which) {
   if (!willOpen) return
   menu.innerHTML = which === 'style' ? styleMenuHtml() : plusMenuHtml()
   menu.hidden = false
+  if (which === 'plus') refreshAgentSkillsMenu()
   document.getElementById(which === 'style' ? 'agent-style-btn' : 'agent-plus-btn')?.classList.add('on')
 }
 
@@ -1712,12 +1715,56 @@ function plusMenuHtml() {
     <div class="pop-item" data-action="pick-file" data-dir="__more" hidden></div>`
 }
 
-/** 技能节：列启用中的套件，点选把套件规范注入下一句。 */
+/** 技能节（OS-68b）：真技能货架为主列（内置/本机/套件捆绑），套件规范降为次组。 */
 function plusSkillsHtml() {
+  const catLabel = { craft: '技法', review: '审阅', transform: '改写', extract: '抽取' }
   const kits = state.suites.filter((kit) => kit.enabled !== false)
-  if (!kits.length) return '<div class="pop-item plain"><span class="pi-ic">◇</span><b>还没有启用的套件</b><i>设置 · 套件货架里开</i></div>'
+  const kitRows = kits.length
+    ? `<div class="pop-div"></div><div class="pop-title">套件规范</div>` +
+      kits.map((kit) => `<div class="pop-item" data-action="skill-attach" data-kit-name="${esc(kit.name)}" data-kit-desc="${esc((kit.description || '').slice(0, 80))}"><span class="pi-ic">◇</span><b>${esc(kit.name)}</b><i>${esc((kit.description || '').slice(0, 26))}</i></div>`).join('')
+    : ''
   // 技能（OS-66 作者口径）：选中＝chip 显示在对话框上方；说明文字不进输入框
-  return kits.map((kit) => `<div class="pop-item" data-action="skill-attach" data-kit-name="${esc(kit.name)}" data-kit-desc="${esc((kit.description || '').slice(0, 80))}"><span class="pi-ic">✦</span><b>${esc(kit.name)}</b><i>${esc((kit.description || '').slice(0, 26))}</i></div>`).join('')
+  const skills = Array.isArray(state.agent.skills) ? state.agent.skills : null
+  if (!skills) return `<div class="pop-item plain"><span class="pi-ic">…</span><b>正在读技能货架</b></div>${kitRows}`
+  if (state.agent.skillsError) return `<div class="pop-item plain"><span class="pi-ic">◇</span><b>技能货架读不到</b><i>${esc(state.agent.skillsError)}</i></div>${kitRows}`
+  if (!skills.length) return `<div class="pop-item plain"><span class="pi-ic">◇</span><b>货架还没有技能</b><i>openstory/skills/ 丢目录即上新</i></div>${kitRows}`
+  const order = { craft: 0, review: 1, transform: 2, extract: 3 }
+  const sorted = [...skills].sort((a, b) => (order[a.category] ?? 9) - (order[b.category] ?? 9) || a.name.localeCompare(b.name))
+  const rows = sorted.map((skill) => {
+    const cat = catLabel[skill.category] || skill.category || '技能'
+    const from = skill.source ? `来自${skill.source}` : ''
+    return `<div class="pop-item" data-action="skill-attach" data-skill-name="${esc(skill.name)}"><span class="pi-ic">✦</span><b>${esc(skill.name)}</b><i>${esc(cat)}${from ? ` · ${esc(from)}` : ''}${skill.description ? ` — ${esc(skill.description.slice(0, 44))}` : ''}</i></div>`
+  }).join('')
+  return rows + kitRows
+}
+
+/** 打开＋菜单时拉一次技能货架（本地 GET 很快，回来就地重渲菜单）。 */
+async function refreshAgentSkillsMenu() {
+  try {
+    const payload = await api('/api/skills')
+    state.agent.skills = Array.isArray(payload.skills) ? payload.skills : []
+    state.agent.skillsError = ''
+  } catch (error) {
+    state.agent.skills = []
+    state.agent.skillsError = text(error?.message || error)
+  }
+  const menu = document.getElementById('agent-plus-menu')
+  if (menu && !menu.hidden) menu.innerHTML = plusMenuHtml()
+}
+
+/** 点选真技能：拉全文注入【技能规范】，Agent 成文按该技能执行（OS-68b）。 */
+async function attachSkillToAgent(name) {
+  try {
+    const payload = await api(`/api/skill?name=${encodeURIComponent(name)}`)
+    const body = text(payload?.skill?.body || '')
+    agent.pendingContext = { kind: 'skill', quote: name, context: body || `按技能《${name}》执行。`, label: `技能：${name}` }
+    agent.lastError = null
+  } catch (error) {
+    agent.lastError = `技能全文读不到：${name}（${text(error?.message || error)}）`
+  }
+  closeComposerMenus()
+  renderAgent()
+  document.getElementById('agent-input')?.focus()
 }
 
 /** 引用文件：列该目录下的文件，点选喂给 Agent（内容截 2000 字，与参考 chip 同口径）。 */
@@ -2476,8 +2523,9 @@ async function sendAgentMessage() {
   const polish = ctx?.kind === 'polish'
   const head = polish ? '【润笔请求】' : ctx?.kind === 'skill' ? '【技能规范】' : '【选中段落】'
   const askTag = polish ? '【作者要求】' : '【我的问题】'
+  const ctxBlock = ctx.kind === 'skill' ? ctx.context : `【所在段落上下文】\n${ctx.context}`
   const content = ctx
-    ? `${head}\n${ctx.quote}\n\n【所在段落上下文】\n${ctx.context}${typed ? `\n\n${askTag}\n${typed}` : ''}`
+    ? `${head}\n${ctx.quote}\n\n${ctxBlock}${typed ? `\n\n${askTag}\n${typed}` : ''}`
     : typed
   if (!content) return
   if (input) input.value = ''
@@ -6941,18 +6989,22 @@ document.addEventListener('click', (event) => {
     attachFileToAgent(target.dataset.file)
   } else if (action === 'skill-attach') {
     // 技能（OS-66 作者口径）：选中＝提示 chip 显示在对话框上方；输入框不放说明文字。
-    // 发送时 pendingContext 自动拼进消息（【技能规范】段），Agent 成文即按套件规范。
-    const name = target.dataset.kitName || ''
-    const desc = target.dataset.kitDesc || ''
-    agent.pendingContext = {
-      kind: 'skill',
-      quote: name,
-      context: `按《${name}》套件的默认规范处理。${desc ? `（${desc}）` : ''}`,
-      label: `技能：${name}`
+    // data-skill-name＝真技能（拉全文注入）；data-kit-name＝套件规范引用（老链路保留）。
+    if (target.dataset.kitName) {
+      const name = target.dataset.kitName || ''
+      const desc = target.dataset.kitDesc || ''
+      agent.pendingContext = {
+        kind: 'skill',
+        quote: name,
+        context: `按《${name}》套件的默认规范处理。${desc ? `（${desc}）` : ''}`,
+        label: `套件规范：${name}`
+      }
+      closeComposerMenus()
+      renderAgent()
+      document.getElementById('agent-input')?.focus()
+    } else {
+      attachSkillToAgent(target.dataset.skillName || '')
     }
-    closeComposerMenus()
-    renderAgent()
-    document.getElementById('agent-input')?.focus()
   } else if (action === 'cmd-fill') {
     closeComposerMenus()
     const input = document.getElementById('agent-input')
