@@ -163,6 +163,24 @@ async function api(path, options = {}) {
   return payload
 }
 
+/**
+ * 把技术错误翻译成作者能懂的人话（OS-34 原口径，OS-59 补实现——此前只有调用点没有定义，
+ * 任何走到它的路径都会 ReferenceError）。
+ */
+function humanizeAgentError(error) {
+  const code = text(error?.code)
+  const message = text(error?.message || error)
+  if (/^Failed to fetch|NetworkError|ECONNREFUSED|fetch failed/iu.test(message)) {
+    return '连不上模型服务——检查本机网络，或设置里的运行时是否可用。'
+  }
+  if (code === 'DAEMON_UNREACHABLE') return '连不上 OpenStory 服务：daemon 可能没启动。'
+  if (code === 'AGENT_UPSTREAM_ERROR') return `模型服务报错：${message.replace(/^AGENT_UPSTREAM_ERROR\s*·\s*/u, '')}`
+  if (code === 'NO_LIBRARY') return '这个库不在库清单里——先在顶栏选一个库。'
+  if (code === 'REVISION_MISMATCH') return '正文在这个空档被改过了，为了不覆盖你的手改，请重新发起一次。'
+  if (/timeout|timed out|ETIMEDOUT/iu.test(message)) return '模型响应超时——可能是任务太大，试着拆小一点再来。'
+  return message || '出了点问题，但没有更多信息。'
+}
+
 function rememberError(error) {
   state.error = `${error?.code ? `${error.code} · ` : ''}${text(error?.message || error)}`
   state.loading = false
@@ -2020,7 +2038,9 @@ function toolRowHtml(tool) {
   const target = toolTarget(tool)
   const took = tool.elapsedMs ? `${(tool.elapsedMs / 1000).toFixed(1)}s` : ''
   const cls = tool.isError ? 'tool-row fail' : 'tool-row'
-  return `<div class="${cls}">
+  // 工具行可点（OS-59）：点了就打开它读写的那份文件（读＝看内容，写＝跳到正文/世界书）
+  const clickable = target && !tool.isError ? ` data-action="tool-open" data-tool-target="${esc(target)}" role="button" tabindex="0" title="打开 ${esc(target)}"` : ''
+  return `<div class="${cls}${clickable ? ' clickable' : ''}"${clickable}>
     <span class="tool-icon" title="${esc(meta.note)}">${esc(meta.icon)}</span>
     <span class="tool-verb">${esc(verb)}</span>
     ${target ? `<code class="tool-target">${esc(target)}</code>` : ''}
@@ -2063,22 +2083,26 @@ function toolTarget(tool) {
  */
 function proseOutputHtml(raw, files) {
   if (!files.length) return null
-  const match = raw.match(/```[^\n]*\n([\s\S]*?)```/u)
-  if (!match) return null
-  const body = match[1].trim()
-  if (body.replace(/\s/gu, '').length < 80) return null
-  // 正文按小说排版渲染（OS-51：模型常用单换行分段，只按双换行拆会把整章挤成一段——
-  // 改为逐非空行成段）
-  const paragraphs = body.split(/\n+/u).map((block) => block.trim()).filter(Boolean)
-  const rendered = paragraphs.map((block) => `<p>${esc(block)}</p>`).join('')
-  return `<div class="prose-out">
+  // 多段产出（OS-59）：模型一次给两章时，每个围栏一个正文框，按出现顺序与文件路径配对。
+  // 之前只取第一个围栏——第二章直接消失，作者以为模型漏写了。
+  const fences = [...raw.matchAll(/```[^\n]*\n([\s\S]*?)```/gu)]
+    .map((match) => match[1].trim())
+    .filter((body) => body.replace(/\s/gu, '').length >= 80)
+  if (!fences.length) return null
+  const renderOne = (body, file) => {
+    // 正文按小说排版渲染（OS-51：单换行也成段）
+    const paragraphs = body.split(/\n+/u).map((block) => block.trim()).filter(Boolean)
+    const rendered = paragraphs.map((block) => `<p>${esc(block)}</p>`).join('')
+    return `<div class="prose-out">
     <div class="prose-out-head">
       <span class="po-label">正文</span>
-      <code class="po-file">${esc(files[0])}</code>
-      <button class="po-copy" data-action="copy-text" data-copy-target="po-${esc(files[0].replace(/[^\w]/gu, '_'))}" title="复制这段正文">复制</button>
+      <code class="po-file">${esc(file)}</code>
+      <button class="po-copy" data-action="copy-text" data-copy-target="po-${esc(file.replace(/[^\w]/gu, '_'))}" title="复制这段正文">复制</button>
     </div>
-    <div class="prose-out-body" id="po-${esc(files[0].replace(/[^\w]/gu, '_'))}">${rendered}</div>
+    <div class="prose-out-body" id="po-${esc(file.replace(/[^\w]/gu, '_'))}">${rendered}</div>
   </div>`
+  }
+  return fences.map((body, index) => renderOne(body, files[index] || files[0])).join('')
 }
 
 /**
@@ -2094,8 +2118,8 @@ function assistantBodyHtml(item, streamingThis, files = []) {
   // 有正文产出：把那段代码块换成「正文框」
   const output = proseOutputHtml(raw, files)
   if (output) {
-    // 把原代码块从 markdown 里摘掉，避免渲染两遍
-    const rest = raw.replace(/```[^\n]*\n[\s\S]*?```/u, '')
+    // 把**所有**正文围栏从 markdown 里摘掉，避免渲染两遍（OS-59 多段产出：g 修饰符）
+    const rest = raw.replace(/```[^\n]*\n[\s\S]*?```/gu, '')
     const restHtml = (mdReady && mdModule && rest.trim()) ? mdModule.renderMarkdown(rest.trim()) : (rest.trim() ? `<p>${esc(rest.trim())}</p>` : '')
     return `${restHtml ? `<div class="prose-block">${restHtml}</div>` : ''}${output}`
   }
@@ -2131,14 +2155,15 @@ function proposedFiles(item) {
     files.add(match[1].replaceAll('\\', '/'))
   }
   if (!files.size) return []
-  // a) 代码块里至少有 80 字（去掉围栏行）
+  // a) 代码块 ≥80 字（去掉围栏行）——多段产出（模型一次给两章）也认：
+  //    按围栏出现顺序与文件路径出现顺序配对，产出多少个正文框由围栏数决定（OS-59）
   const fences = [...raw.matchAll(/```[^\n]*\n([\s\S]*?)```/gu)].map((match) => match[1].trim())
-  if (fences.some((block) => block.replace(/\s/gu, '').length >= 80)) return [...files]
+  const usable = fences.filter((block) => block.replace(/\s/gu, '').length >= 80)
+  if (usable.length) return [...files]
   // b) 连续引用块 ≥3 行且合计 ≥80 字
   const quoteLines = raw.split('\n').filter((line) => /^\s*>\s?\S/u.test(line))
   if (quoteLines.length >= 3 && quoteLines.join('').replace(/[\s>]/gu, '').length >= 80) return [...files]
-  // c) 单行长引用块 ≥60 字（OS-51 放宽：润笔「拟替换 + 引用块」常只有一行长文，
-  //    之前判不出来，作者看不到采纳/复制按钮）
+  // c) 单行长引用块 ≥60 字（OS-51 放宽：润笔「拟替换 + 引用块」常只有一行长文）
   if (quoteLines.length >= 1 && quoteLines.join('').replace(/[\s>]/gu, '').length >= 60) return [...files]
   return []
 }
@@ -2196,7 +2221,7 @@ function msgHtml(item, index) {
     : ''
   const rejected = agent.rejectedMsgs?.[index]
   const adoptBtn = files.length && !rejected
-    ? `<button class="msg-act primary" data-action="card-from" data-msg-index="${index}" title="把这段写进 ${esc(files[0])}">采纳</button>`
+    ? `<button class="msg-act primary" data-action="card-from" data-msg-index="${index}" title="${files.length > 1 ? `把 ${files.length} 段正文分别写进 ${esc(files.slice(0, 2).join('、'))}${files.length > 2 ? ' 等' : ''}` : `把这段写进 ${esc(files[0])}`}">采纳${files.length > 1 ? ` ${files.length} 段` : ''}</button>`
     : ''
   // OS-51：产物形态补齐——驳回（收起这条的产物按钮）与重新修改（带文件上下文重开一轮）
   const redoBtn = files.length && !rejected
@@ -4255,18 +4280,29 @@ async function submitCard() {
   }
 }
 
-async function adoptCard(cardId) {
+async function adoptCard(cardId, { confirmed = false } = {}) {
   agent.cardError = null
   try {
     await api('/api/agent/cards/adopt', {
       method: 'POST',
-      body: JSON.stringify({ root: state.current.path, sessionId: agent.sessionId, id: cardId })
+      body: JSON.stringify({ root: state.current.path, sessionId: agent.sessionId, id: cardId, ...(confirmed ? { confirm: true } : {}) })
     })
     // 正文被 Agent 改了：正文页签缓存作废，正开着就重读。
     state.chapterLoaded = false
     state.savedAt = ''
     if (state.view === 'write' && state.chapterFile) loadChapter(state.chapterFile)
   } catch (error) {
+    // 习惯表命中（OS-59）：不是错误——弹一次确认，作者点头再带 confirm 重发
+    if (error?.details?.needsConfirm && !confirmed) {
+      const hits = (error.details.habitHits || []).map((hit) => `· ${hit.message}`).join('\n')
+      if (globalThis.confirm?.(`这段产物命中了你的习惯表：\n\n${hits}\n\n仍要采纳？`)) {
+        await adoptCard(cardId, { confirmed: true })
+        return
+      }
+      agent.cardError = { cardId, message: `已取消采纳（命中习惯表：${(error.details.habitHits || []).map((hit) => hit.pattern).join('、')}）` }
+      renderAgent()
+      return
+    }
     if (error?.code === 'REVISION_MISMATCH') {
       agent.cardError = { cardId, message: text(error?.message || error) }
     } else {
@@ -5859,6 +5895,49 @@ document.addEventListener('click', (event) => {
       const end = input.value.length
       input.setSelectionRange?.(end, end)
     }
+  } else if (action === 'tool-open') {
+    // 工具行点击（OS-59）：按目标路径分流——正文→正文页，参考→世界书，其它→目录页
+    const raw = text(target.dataset.toolTarget).trim()
+    if (!raw) return
+    if (raw.startsWith('正文/') || /^[0-9]{3}[-_—]/u.test(raw)) {
+      const file = raw.startsWith('正文/') ? raw : `正文/${raw}`
+      loadChapter(file)
+      go('write')
+      return
+    }
+    if (raw.startsWith('参考/')) {
+      const jumpTo = (hit) => {
+        state.reference.activePath = hit.path
+        if (state.view !== 'reference') go('reference')
+        openReference(hit.path)
+      }
+      const tryJump = () => {
+        // 按标题兜底（OS-59）：文件可能已迁到「习惯/」或被改名——
+        // 旧会话里的工具行还指着老路径，用标题再找一次，别直接报错
+        const hit = findReferenceByRef(raw)
+          || (state.reference.notes || []).find((note) => raw.endsWith(`/${note.title}.md`) || raw.endsWith(`${note.title}.md`))
+        if (hit) { jumpTo(hit); return }
+        // 世界书里没有：可能是规则类笔记已迁到 习惯/（OS-57 三层定界）——
+        // 这种情况直接带作者去习惯页，而不是丢一句「不存在」
+        const base = raw.split('/').pop() || ''
+        if (state.habits && base && (state.habits.style || []).length >= 0) {
+          go('habits')
+          return
+        }
+        rememberAgentError(`打不开这个路径：${raw}`)
+      }
+      if (state.reference.loaded) tryJump()
+      else loadReferences().then(tryJump)
+      return
+    }
+    if (raw.startsWith('习惯/')) {
+      // 习惯类文件（如迁走的写作纪律）→ 跳习惯页
+      go('habits')
+      return
+    }
+    const dir = raw.split('/')[0]
+    if (state.libDirs.includes(dir)) { go(`dir:${dir}`); return }
+    rememberAgentError(`这个路径打不开：${raw}`)
   } else if (action === 'card-from') {
     openCardModal(target.dataset.msgIndex)
   } else if (action === 'card-create') {
