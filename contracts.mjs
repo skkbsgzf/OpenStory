@@ -491,6 +491,73 @@ export const ENDPOINTS = Object.freeze({
     response: { ok: 'true', action: 'string', round: 'integer' },
     errors: ['NO_LIBRARY', 'INVALID_ENTRY', 'NOT_FOUND']
   },
+  deduceSessionGet: {
+    method: 'GET',
+    path: '/api/deduce/session',
+    // 推演会话存储层（OS-61）：读「文游」容器（拍节点＋章缓存区＋归档清单）。
+    // 无会话＝session:null（空态合法，不报错）。bookId 缺省＝拆解目录最新一本（与 present 同口径）。
+    request: { query: { root: 'string', bookId: 'string?' } },
+    response: { ok: 'true', session: 'object?' },
+    errors: ['NO_LIBRARY']
+  },
+  deduceSessionPut: {
+    method: 'PUT',
+    path: '/api/deduce/session',
+    // 整存会话：归一校验（schema 必须是 openstory.deduce-session/v1、nodes 必须是数组），
+    // 原子写＋推演/<bookId>/.history 备份。
+    request: { body: { root: 'string', bookId: 'string?', session: 'object' } },
+    response: { ok: 'true', session: 'object', backup: 'string?' },
+    errors: ['NO_LIBRARY', 'INVALID_ENTRY', 'WRITE_PROTOCOL_IO_FAILED']
+  },
+  deduceArchive: {
+    method: 'POST',
+    path: '/api/deduce/archive',
+    // 归档一章：缓存区的拍整理成 markdown 写 推演/<bookId>/归档/第N章.md，
+    // 记入 archived、清缓存区。无会话＝NOT_FOUND；缓存区空＝INVALID_ENTRY。
+    request: { body: { root: 'string', bookId: 'string?', title: 'string?' } },
+    response: { ok: 'true', path: 'string', words: 'integer' },
+    errors: ['NO_LIBRARY', 'INVALID_ENTRY', 'NOT_FOUND', 'WRITE_PROTOCOL_IO_FAILED']
+  },
+  deduceTurn: {
+    method: 'POST',
+    path: '/api/deduce/turn',
+    // 推演回合层（OS-61 P2）：choiceId 走既有结算（choose）；customText 非空＝作者自定义
+    // 直接结算（inject）。结算后生成这一拍的正文草稿（小说叙述体，endpoint/cli/dsh 三路），
+    // 拍进会话缓存区。模型不可用＝prose:''＋proseError，不伪造。
+    // regenerate:true＝只重写最后一拍的正文（覆盖 node.prose），不结算、不新增节点。
+    request: { body: { root: 'string', bookId: 'string?', choiceId: 'string?', customText: 'string?', regenerate: 'boolean?' } },
+    // prose 用 string?：契约语义里空串＝没给，而模型不可用时 prose:'' 正是合法形状
+    response: { ok: 'true', node: 'object', session: 'object', prose: 'string?', proseError: 'string?' },
+    errors: ['NO_LIBRARY', 'INVALID_ENTRY', 'NOT_FOUND', 'WRITE_PROTOCOL_IO_FAILED']
+  },
+  deduceBranch: {
+    method: 'POST',
+    path: '/api/deduce/branch',
+    // 剧情树分支（OS-61 P3）：从某一拍开新分支——新 branchId、cursor 定位到该拍，
+    // 分叉溯源记在分叉节点的 forkBranchIds 上。nodes 全量保留，原子写＋.history 备份。
+    request: { body: { root: 'string', bookId: 'string?', fromNodeId: 'string' } },
+    response: { ok: 'true', session: 'object' },
+    errors: ['NO_LIBRARY', 'INVALID_ENTRY', 'NOT_FOUND', 'WRITE_PROTOCOL_IO_FAILED']
+  },
+  deduceAssets: {
+    method: 'GET',
+    path: '/api/deduce/assets',
+    // 文游素材盘点（OS-61 P4）：推演/<bookId>/素材/ 下三类可选素材——
+    // 角色/<角色名>.png（立绘）、场景/<场景名>.png、bgm/<场景或情绪>.mp3。
+    // 目录不存在＝三个空数组（空态合法，不报错）；每项 { name, path }，path 为库内相对路径。
+    request: { query: { root: 'string', bookId: 'string?' } },
+    response: { ok: 'true', bookId: 'string', characters: 'array', scenes: 'array', bgm: 'array' },
+    errors: ['NO_LIBRARY', 'PATH_ESCAPE']
+  },
+  deduceAssetFile: {
+    method: 'GET',
+    path: '/api/deduce/asset',
+    // 单个素材本体（OS-61 P4）：path 相对 推演/<bookId>/素材/，只放行 .png/.mp3。
+    // 成功响应是二进制流（image/png 或 audio/mpeg），不是 JSON——前端 <img>/<audio> 直挂。
+    request: { query: { root: 'string', bookId: 'string?', path: 'string' } },
+    response: { stream: 'string' },
+    errors: ['NO_LIBRARY', 'PATH_ESCAPE', 'INVALID_ENTRY', 'NOT_FOUND']
+  },
   enrichRun: {
     method: 'POST',
     path: '/api/enrich/run',

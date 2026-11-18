@@ -55,7 +55,10 @@ const state = {
   sel: { text: '', blockIndex: -1, rect: null, busy: false, preview: null, para: -1 },
   analyze: { open: false, result: null, busy: false, dismissed: {}, activePara: -1, expandOthers: false, fact: null, factRoot: '', factTab: 'emotion', modOpen: {} },
   deduce: { premise: '', variables: '', question: '', sessionId: '', streaming: false, reply: '', controller: null, error: '',
-    mode: 'engine', engine: { busy: false, data: null, pov: '', seed: '', error: '', hint: '' } },
+    mode: 'engine', engine: { busy: false, data: null, pov: '', seed: '', error: '', hint: '',
+      session: null, sessionLoaded: false, customText: '', draft: null, turnBusy: false, archiveNote: '',
+      view: 'scene', treePick: null,
+      assets: null, assetsLoaded: false, assetBookId: '', bgmOn: false } },
   artifacts: { root: '', groups: [], totals: null, loading: false, error: '', previewFile: '', previewText: '', previewLoading: false },
   // 参考载体（OS-44）：索引 / 当前笔记 / 反链 / 筛选标签
   reference: { loaded: false, loading: false, notes: [], tags: [], tagNotes: {}, stats: null, error: '', activePath: '', activeTag: '', note: null, backlinks: { linked: [], unlinked: [] }, draft: '', view: 'graph', q: '', focus: null, absorb: {}, flash: '', tagFilter: '', from: '', noteText: '', fmLen: 0 },
@@ -196,6 +199,7 @@ function render() {
   renderTabs()
   // 正文页自己管滚动（页头吸顶＋纸面/右栏各自滚），外层不再滚动
   viewEl.classList.toggle('content-locked', state.view === 'write')
+  if (state.view !== 'deduce') dedTypewriterStop()
   if (state.view === 'libraries') viewEl.innerHTML = libraryHtml()
   else if (state.view === 'write') {
     viewEl.innerHTML = writeHtml()
@@ -238,10 +242,35 @@ function render() {
           if (payload?.ok === false && payload.code === 'NO_DEDUCE_SESSION') return
           engine.data = payload
           if (Array.isArray(payload.characters)) state.deduce.characters = payload.characters
+          deduceRestoreDraft()
         })
         .catch(() => { /* 没有会话就当空态，不报错 */ })
         .finally(() => { engine.busy = false; if (state.view === 'deduce') render() })
     }
+    // 回合层（OS-61 P2）：会话缓存区进度＋续上没写完的正文草稿
+    if (!engine.sessionLoaded) {
+      engine.sessionLoaded = true
+      api(`/api/deduce/session?root=${encodeURIComponent(state.current.path)}`)
+        .then((payload) => { engine.session = payload.session ?? null; deduceRestoreDraft() })
+        .catch(() => { /* 读不到会话不拦推演 */ })
+        .finally(() => { if (state.view === 'deduce') render() })
+    }
+    // 剧情树（OS-61 P3）：树视图挂 SVG 导图；离开树视图就清理（mode 在 state.deduce 上，不在 engine 上）
+    if (state.deduce.mode === 'engine' && engine.view === 'tree') mountDeduceTree()
+    else { deduceTreeCleanup?.(); deduceTreeCleanup = null }
+    // 文游素材（OS-61 P4）：进页拉一次盘点；打字机只在「当前局面」视图挂
+    if (!engine.assetsLoaded) {
+      engine.assetsLoaded = true
+      api(`/api/deduce/assets?root=${encodeURIComponent(state.current.path)}`)
+        .then((payload) => {
+          engine.assets = { characters: payload.characters || [], scenes: payload.scenes || [], bgm: payload.bgm || [] }
+          engine.assetBookId = text(payload.bookId)
+        })
+        .catch(() => { engine.assets = { characters: [], scenes: [], bgm: [] } })
+        .finally(() => { if (state.view === 'deduce') render() })
+    }
+    if (state.deduce.mode === 'engine' && engine.view !== 'tree' && engine.data) mountDedTypewriter()
+    else dedTypewriterStop()
   }
   else if (state.view === 'settings') viewEl.innerHTML = settingsHtml()
   else if (state.view === 'artifacts') viewEl.innerHTML = artifactsHtml()
@@ -2772,7 +2801,32 @@ function settingsWritingSectionHtml() {
  * 每个插件的设置都归它自己的设置页（点进去），不在应用设置里摊开。
  */
 function settingsPluginsSectionHtml() {
-  return suitesSectionHtml() + settingsRuntimeSectionHtml()
+  return suitesSectionHtml() + settingsRuntimeSectionHtml() + settingsImageGenSectionHtml()
+}
+
+/**
+ * 生图接口预留（OS-61 P4）：只读说明块，暂未启用——不保存、不发起任何调用。
+ * 未来接 OpenAI 兼容 /v1/images/generations，为推演自动生成角色立绘/场景图，
+ * 生成结果落 推演/<bookId>/素材/ 约定路径，前端零改动换真图。
+ */
+function settingsImageGenSectionHtml() {
+  return `<div class="step">
+    <h3>生图接口 <span class="pill">暂未启用</span></h3>
+    <p class="sub">未来接 OpenAI 兼容的 /v1/images/generations，为推演自动生成角色立绘与场景图。现在只是字段占位说明——不保存、不发起任何调用；立绘/BGM 先手工放进库内 推演/&lt;bookId&gt;/素材/ 目录即可上屏。</p>
+    <div class="field"><label>Endpoint（占位）</label>
+      <input value="" placeholder="https://api.example.com/v1/images/generations" disabled>
+    </div>
+    <div class="field"><label>Model（占位）</label>
+      <input value="" placeholder="gpt-image-1" disabled>
+    </div>
+    <div class="field"><label>尺寸（占位）</label>
+      <select class="select" disabled>
+        <option>1024x1024（头像/立绘方图）</option>
+        <option>1536x1024（场景横图）</option>
+        <option>1024x1536（立绘竖图）</option>
+      </select>
+    </div>
+  </div>`
 }
 
 /**
@@ -5137,6 +5191,332 @@ async function deduceEngineSettle(candidateId, action) {
   render()
 }
 
+/* ---------- 推演回合层（OS-61 P2）：选/自定义 → 成文草稿 → 缓存区 → 归档 ---------- */
+
+/** 进页面续草稿：会话最后一拍与当前局面同拍号＝这拍结算过还没推下一拍，草稿接着写。 */
+function deduceRestoreDraft() {
+  const engine = state.deduce.engine
+  if (engine.draft || !engine.data || !engine.session) return
+  const branchId = engine.session.branchId || 'main'
+  const nodes = (engine.session.nodes || []).filter((node) => (node.branchId || 'main') === branchId)
+  const last = nodes[nodes.length - 1]
+  if (last && Number(last.round) === Number(engine.data.round)) {
+    engine.draft = { nodeId: last.id, round: last.round, prose: last.prose || '', proseError: '' }
+  }
+}
+
+/** 结算这一拍并成文：choiceId 走候选结算，customText 走作者注入；regenerate 只重写正文。 */
+async function deduceEngineTurn(opts) {
+  const engine = state.deduce.engine
+  if (!state.current || engine.turnBusy) return
+  engine.turnBusy = true
+  engine.error = ''
+  engine.archiveNote = ''
+  render()
+  try {
+    const payload = await api('/api/deduce/turn', {
+      method: 'POST',
+      body: JSON.stringify({
+        root: state.current.path,
+        choiceId: opts.choiceId || undefined,
+        customText: opts.customText || undefined,
+        regenerate: opts.regenerate === true || undefined
+      })
+    })
+    engine.session = payload.session
+    engine.sessionLoaded = true
+    engine.draft = {
+      nodeId: payload.node.id,
+      round: payload.node.round,
+      prose: payload.prose ?? payload.node.prose ?? '',
+      proseError: payload.proseError || ''
+    }
+    if (!opts.regenerate) engine.customText = ''
+    engine.hint = opts.regenerate ? '已重写这一拍的正文' : `第 ${payload.node.round} 拍已结算——正文草稿进缓存区，不落正文文件`
+  } catch (error) {
+    engine.error = (error && error.code ? error.code + ' · ' : '') + text((error && error.message) || error)
+  }
+  engine.turnBusy = false
+  render()
+}
+
+/** 草稿写回会话（PUT 整存）：textarea 失焦或离开草稿区前调。字数按新正文重算。 */
+async function deduceSaveDraft() {
+  const engine = state.deduce.engine
+  const draft = engine.draft
+  if (!state.current || !draft || !engine.session) return true
+  const node = (engine.session.nodes || []).find((item) => item.id === draft.nodeId)
+  if (!node || node.prose === draft.prose) return true
+  node.prose = draft.prose
+  const buffered = (engine.session.buffer?.nodes || []).find((item) => item.id === draft.nodeId)
+  if (buffered) buffered.prose = draft.prose
+  if (engine.session.buffer) {
+    engine.session.buffer.words = (engine.session.buffer.nodes || []).reduce((sum, item) => {
+      const prose = text(item.prose)
+      if (prose.trim()) return sum + prose.length
+      return sum + (item.candidates || []).reduce((acc, candidate) => acc + text(candidate?.text).length, 0)
+    }, 0)
+  }
+  try {
+    const payload = await api('/api/deduce/session', {
+      method: 'PUT',
+      body: JSON.stringify({ root: state.current.path, session: engine.session })
+    })
+    engine.session = payload.session
+    return true
+  } catch (error) {
+    engine.error = (error && error.code ? error.code + ' · ' : '') + text((error && error.message) || error)
+    render()
+    return false
+  }
+}
+
+/** 下一拍：先存草稿，再呈现新局面（草稿区收起）。存失败就停下，不丢作者改过的字。 */
+async function deduceEngineNext() {
+  const saved = await deduceSaveDraft()
+  if (!saved) return
+  const engine = state.deduce.engine
+  engine.draft = null
+  await deduceEnginePresent({})
+}
+
+/** 归档本章：缓存区整理成 md；结果用 ok-note 报路径与字数。 */
+async function deduceArchiveChapter() {
+  const engine = state.deduce.engine
+  if (!state.current || engine.turnBusy) return
+  const saved = await deduceSaveDraft()
+  if (!saved) return
+  engine.turnBusy = true
+  engine.error = ''
+  engine.archiveNote = ''
+  render()
+  try {
+    const payload = await api('/api/deduce/archive', {
+      method: 'POST',
+      body: JSON.stringify({ root: state.current.path })
+    })
+    engine.archiveNote = `已归档：${payload.path} · ${payload.words} 字`
+    const sessionPayload = await api(`/api/deduce/session?root=${encodeURIComponent(state.current.path)}`)
+    engine.session = sessionPayload.session ?? null
+  } catch (error) {
+    engine.error = (error && error.code ? error.code + ' · ' : '') + text((error && error.message) || error)
+  }
+  engine.turnBusy = false
+  render()
+}
+
+/* ---------- 文游素材（OS-61 P4）：立绘/BGM 占位骨架＋打字机 ---------- */
+
+/** 素材本体直挂 URL（<img>/<audio> 同源装载）：path 相对 推演/<bookId>/素材/。 */
+function dedAssetUrl(item) {
+  const engine = state.deduce.engine
+  const bookId = engine.assetBookId
+  const prefix = `推演/${bookId}/素材/`
+  const sub = text(item.path).startsWith(prefix) ? text(item.path).slice(prefix.length) : text(item.path)
+  return `/api/deduce/asset?root=${encodeURIComponent(state.current.path)}&bookId=${encodeURIComponent(bookId)}&path=${encodeURIComponent(sub)}`
+}
+
+/** BGM 选曲：先按场景名，再按张力情绪（中文标签或 low/medium…），都没有就取第一首。 */
+function pickDedBgm() {
+  const engine = state.deduce.engine
+  const list = engine.assets?.bgm || []
+  if (!list.length) return null
+  const card = engine.data?.sceneCard ?? {}
+  const sceneName = card.where && card.where !== '未标记地点' ? text(card.where) : ''
+  const level = text(engine.data?.tension?.level)
+  const label = { low: '平静', medium: '升温', high: '紧迫', critical: '一触即发' }[level] || ''
+  return list.find((item) => item.name === sceneName)
+    || list.find((item) => item.name === label || item.name === level)
+    || list[0]
+}
+
+let dedBgmAudio = null
+
+function deduceBgmStop() {
+  if (dedBgmAudio) {
+    try { dedBgmAudio.pause() } catch { /* 已结束 */ }
+    dedBgmAudio = null
+  }
+}
+
+function deduceBgmToggle() {
+  const engine = state.deduce.engine
+  if (engine.bgmOn) {
+    engine.bgmOn = false
+    deduceBgmStop()
+    render()
+    return
+  }
+  const pick = pickDedBgm()
+  if (!pick) return
+  deduceBgmStop()
+  dedBgmAudio = new Audio(dedAssetUrl(pick))
+  dedBgmAudio.loop = true
+  dedBgmAudio.play()
+    .then(() => { engine.bgmOn = true; if (state.view === 'deduce') render() })
+    .catch(() => {
+      engine.bgmOn = false
+      deduceBgmStop()
+      engine.error = 'BGM 播放失败——文件可能损坏，或浏览器拦了自动播放（再点一次试试）。'
+      if (state.view === 'deduce') render()
+    })
+}
+
+/** 打字机：正文逐字出现；重渲不重打（按拍号＋文本键续进度），点对话框立即全显。 */
+let dedTypewriter = { key: '', full: '', pos: 0, timer: null }
+
+function dedTypewriterStop() {
+  if (dedTypewriter.timer) {
+    clearInterval(dedTypewriter.timer)
+    dedTypewriter.timer = null
+  }
+}
+
+function mountDedTypewriter() {
+  const el = document.getElementById('deduce-dialog-text')
+  if (!el) return
+  const full = text(el.dataset.stageText)
+  const engine = state.deduce.engine
+  const key = `${engine.data?.round}|${engine.draft?.nodeId || ''}|${full.length}|${full.slice(0, 24)}`
+  dedTypewriterStop()
+  if (key !== dedTypewriter.key) {
+    dedTypewriter.key = key
+    dedTypewriter.pos = 0
+  }
+  dedTypewriter.full = full
+  const paint = () => {
+    el.textContent = full.slice(0, dedTypewriter.pos)
+    const caret = document.getElementById('deduce-dialog-caret')
+    if (caret) caret.hidden = dedTypewriter.pos >= full.length
+  }
+  paint()
+  if (dedTypewriter.pos < full.length) {
+    dedTypewriter.timer = setInterval(() => {
+      dedTypewriter.pos = Math.min(full.length, dedTypewriter.pos + 2)
+      paint()
+      if (dedTypewriter.pos >= full.length) dedTypewriterStop()
+    }, 30)
+  }
+}
+
+function dedTypewriterSkip() {
+  dedTypewriterStop()
+  dedTypewriter.pos = dedTypewriter.full.length
+  const el = document.getElementById('deduce-dialog-text')
+  if (el) el.textContent = dedTypewriter.full
+  const caret = document.getElementById('deduce-dialog-caret')
+  if (caret) caret.hidden = true
+}
+
+/* ---------- 推演剧情树（OS-61 P3）：二维分支导图＋回跳/开分支 ---------- */
+
+let deduceTreeCleanup = null
+
+/** 选中节点的右上提示面板：回到这一拍 / 从这拍开新分支。 */
+function deduceTreePickHtml() {
+  const engine = state.deduce.engine
+  const node = (engine.session?.nodes || []).find((item) => item.id === engine.treePick)
+  if (!node) return ''
+  const branchLabel = (node.branchId || 'main') === 'main' ? '主线' : node.branchId
+  return `<span class="ded-tree-pick-label">选中：第 ${Number(node.round) || 0} 拍 · ${esc(branchLabel)}</span>
+    <button class="btn-primary" data-action="deduce-tree-back"${engine.turnBusy ? ' disabled' : ''} title="切到这一拍所在的分支与拍号，回「当前局面」继续">回到这一拍</button>
+    <button class="btn-ghost" data-action="deduce-tree-branch"${engine.turnBusy ? ' disabled' : ''} title="以这一拍为分叉点开一条新分支，下一拍走新路">从这拍开新分支</button>`
+}
+
+/** 树视图：整宽画布＋右上选中提示（选中节点后出现）。 */
+function deduceTreeHtml() {
+  const engine = state.deduce.engine
+  const nodes = engine.session?.nodes || []
+  const branchCount = new Set(nodes.map((node) => node.branchId || 'main')).size
+  return `${flowError(engine.error || '')}
+    <div class="ded-tree-wrap">
+      <div class="ded-tree-bar">
+        <span class="ded-buffer-stat">共 ${nodes.length} 拍 · ${branchCount} 条分支</span>
+        <span class="sub">横轴＝拍号，纵轴＝分支 · 点节点选中，空白拖动平移，滚轮缩放</span>
+      </div>
+      <div class="ded-tree-host" id="deduce-tree-host"></div>
+      <div class="ded-tree-pick" id="deduce-tree-pick"${engine.treePick ? '' : ' hidden'}>${deduceTreePickHtml()}</div>
+    </div>`
+}
+
+/** 挂导图：只更新选中面板、不整页重渲——保住作者拖好的视野。 */
+async function mountDeduceTree() {
+  const host = document.getElementById('deduce-tree-host')
+  if (!host) return
+  const mod = await import('./storyTree.mjs')
+  if (!document.getElementById('deduce-tree-host')) return // 等待期间页面切走了
+  deduceTreeCleanup?.()
+  deduceTreeCleanup = mod.mountStoryTree({
+    host,
+    session: state.deduce.engine.session,
+    onPick: (node) => {
+      state.deduce.engine.treePick = node.id
+      const slot = document.getElementById('deduce-tree-pick')
+      if (slot) {
+        slot.hidden = false
+        slot.innerHTML = deduceTreePickHtml()
+      }
+    }
+  })
+}
+
+/** 回到这一拍：切分支＋cursor 定位（switchBranch 语义），PUT 整存后回「当前局面」。 */
+async function deduceTreeJump() {
+  const engine = state.deduce.engine
+  const node = (engine.session?.nodes || []).find((item) => item.id === engine.treePick)
+  if (!state.current || !node || !engine.session || engine.turnBusy) return
+  const saved = await deduceSaveDraft()
+  if (!saved) return
+  engine.turnBusy = true
+  engine.error = ''
+  render()
+  try {
+    const session = { ...engine.session, branchId: node.branchId || 'main', cursor: Number(node.round) || 0 }
+    const payload = await api('/api/deduce/session', {
+      method: 'PUT',
+      body: JSON.stringify({ root: state.current.path, session })
+    })
+    engine.session = payload.session
+    engine.view = 'scene'
+    engine.treePick = null
+    engine.draft = null
+    deduceRestoreDraft()
+    engine.hint = `已回到第 ${Number(node.round) || 0} 拍（${session.branchId === 'main' ? '主线' : session.branchId}）——下一拍从这里续`
+  } catch (error) {
+    engine.error = (error && error.code ? error.code + ' · ' : '') + text((error && error.message) || error)
+  }
+  engine.turnBusy = false
+  render()
+}
+
+/** 从选中拍开新分支：daemon 给新 branchId＋cursor 定位，成功后回「当前局面」。 */
+async function deduceTreeBranch() {
+  const engine = state.deduce.engine
+  const node = (engine.session?.nodes || []).find((item) => item.id === engine.treePick)
+  if (!state.current || !node || engine.turnBusy) return
+  const saved = await deduceSaveDraft()
+  if (!saved) return
+  engine.turnBusy = true
+  engine.error = ''
+  render()
+  try {
+    const payload = await api('/api/deduce/branch', {
+      method: 'POST',
+      body: JSON.stringify({ root: state.current.path, fromNodeId: node.id })
+    })
+    engine.session = payload.session
+    engine.sessionLoaded = true
+    engine.view = 'scene'
+    engine.treePick = null
+    engine.draft = null
+    engine.hint = `已从第 ${Number(node.round) || 0} 拍开出新分支 ${payload.session.branchId}——下一拍走新路`
+  } catch (error) {
+    engine.error = (error && error.code ? error.code + ' · ' : '') + text((error && error.message) || error)
+  }
+  engine.turnBusy = false
+  render()
+}
+
 function composeDeduceContent() {
   const deduce = state.deduce
   const variables = deduce.variables.split('\n').map((line) => line.trim()).filter(Boolean).map((line) => `- ${line}`).join('\n')
@@ -5203,9 +5583,14 @@ function deduceHtml() {
       <button class="chip${deduce.mode === 'engine' ? ' on' : ''}" data-action="deduce-mode-engine" title="确定性推演引擎（种子化 2d6，不需要模型）">引擎</button>
       <button class="chip${deduce.mode === 'agent' ? ' on' : ''}" data-action="deduce-mode-agent" title="Agent 分支推理（需要模型）">Agent</button>
     </span>`
+  // 视图切换（OS-61 P3）：当前局面 / 剧情树——只在引擎模式下有意义
+  const viewTabs = deduce.mode === 'engine' ? `<span class="subtabs">
+      <button class="chip${engine.view !== 'tree' ? ' on' : ''}" data-action="deduce-view-scene" title="局面卡＋候选＋正文草稿">当前局面</button>
+      <button class="chip${engine.view === 'tree' ? ' on' : ''}" data-action="deduce-view-tree" title="二维分支导图：横轴拍号、纵轴分支，点节点可回跳或开新分支">剧情树</button>
+    </span>` : ''
   const head = `<div class="doc-head">
       <div class="kick">${esc(state.current.name)} / 推演</div>
-      <div class="doc-line-row"><h1>推演</h1>${tabs}</div>
+      <div class="doc-line-row"><h1>推演</h1>${tabs}${viewTabs}</div>
       <div class="doc-meta">
         <span class="b">${deduce.mode === 'engine' ? '事实推演引擎' : 'Agent 推演'}</span>
         ${deduce.mode === 'engine' ? '<span class="count">局面卡＋三层候选（必然/命运/戏剧）· 种子化确定性</span>' : ''}
@@ -5213,7 +5598,7 @@ function deduceHtml() {
       </div>
     </div>`
   if (deduce.mode === 'agent') return head + deduceAgentHtml()
-  return head + deduceEngineHtml()
+  return head + (engine.view === 'tree' ? deduceTreeHtml() : deduceEngineHtml())
 }
 
 /**
@@ -5250,15 +5635,23 @@ function dedPackHtml() {
 function deduceEngineHtml() {
   const engine = state.deduce.engine
   const data = engine.data
+  /* —— 缓存区进度（OS-61 P2）：本章攒了几拍几字＋归档出口 —— */
+  const buffer = engine.session?.buffer
+  const bufferCount = buffer?.nodes?.length || 0
+  const bufferHtml = `<div class="ded-buffer">
+      <span class="ded-buffer-stat">本章缓冲 ${bufferCount} 拍 · ${buffer?.words || 0} 字</span>
+      <button class="btn-ghost" data-action="deduce-archive"${engine.turnBusy || !bufferCount ? ' disabled' : ''} title="把缓存区的拍整理成 markdown 归档（不写正文文件）">归档本章</button>
+      ${engine.archiveNote ? `<span class="ok-note">${esc(engine.archiveNote)}</span>` : ''}
+    </div>`
   const controls = `<div class="ded-tools">
       <input class="file-input" id="deduce-pov" list="deduce-pov-list" placeholder="以谁的眼睛看（可选）" value="${esc(engine.pov)}">
       <datalist id="deduce-pov-list">${(state.deduce.characters || []).map((name) => `<option value="${esc(name)}"></option>`).join('')}</datalist>
       <input class="file-input" id="deduce-seed" placeholder="种子（留空＝随机）" value="${esc(engine.seed)}" title="同一种子＋同一份事实＝同一拍，可复现">
-      <button class="btn-primary" data-action="deduce-engine-present"${engine.busy ? ' disabled' : ''}>${engine.busy ? '推演中…' : data ? '推下一拍' : '开始推演'}</button>
+      <button class="btn-primary" data-action="deduce-engine-present"${engine.busy || engine.turnBusy ? ' disabled' : ''}>${engine.busy ? '推演中…' : data ? '推下一拍' : '开始推演'}</button>
       ${data ? '<button class="btn-ghost" data-action="deduce-engine-reset" title="清空会话从第一拍重来">重新开局</button>' : ''}
     </div>`
   if (!data) {
-    return `${controls}
+    return `${bufferHtml}${controls}
       ${flowError(engine.error || '')}
       ${engine.hint ? `<div class="warn-box">${esc(engine.hint)}</div>` : ''}
       <div class="ded-empty">
@@ -5320,35 +5713,86 @@ function deduceEngineHtml() {
     }
     return { title: candidate.text || '（空候选）', sub: '', roll: '' }
   }
-  const candRows = candidates.map((candidate) => {
+
+  /* —— 文游舞台（OS-61 P4）：场景立绘＋对话框打字机＋人物头像列＋宽按钮选项 —— */
+  const assets = engine.assets || { characters: [], scenes: [], bgm: [] }
+  const sceneName = card.where && card.where !== '未标记地点' ? text(card.where) : ''
+  const sceneAsset = sceneName ? assets.scenes.find((item) => item.name === sceneName) : null
+  const sceneVisual = `<div class="ded-scene-visual">
+      ${sceneAsset
+        ? `<img class="ded-scene-img" src="${dedAssetUrl(sceneAsset)}" alt="${esc(sceneName)}">`
+        : `<div class="ded-scene-ph"><b>${esc(sceneName || '未知场景')}</b><i>场景立绘占位——放 推演/…/素材/场景/${esc(sceneName || '场景名')}.png 即换真图</i></div>`}
+      ${sceneAsset ? `<span class="ded-scene-name">${esc(sceneName)}</span>` : ''}
+    </div>`
+
+  const avatarsHtml = who.map((name) => {
+    const asset = assets.characters.find((item) => item.name === name)
+    const hue = [...name].reduce((sum, char) => sum + char.codePointAt(0), 0) % 360
+    return `<div class="ded-avatar" title="${esc(name)}">
+      ${asset
+        ? `<img src="${dedAssetUrl(asset)}" alt="${esc(name)}">`
+        : `<span class="ded-avatar-ph" style="background:hsl(${hue} 42% 84%);color:hsl(${hue} 45% 30%)">${esc(name.slice(0, 1))}</span>`}
+      <span class="ded-avatar-name">${esc(name)}</span>
+    </div>`
+  }).join('') || '<div class="ded-avatar-none">这一拍无人在场</div>'
+
+  const bgmAsset = pickDedBgm()
+  const bgmBtn = `<button class="ded-bgm${engine.bgmOn ? ' on' : ''}" data-action="deduce-bgm-toggle"${bgmAsset ? '' : ' disabled'}
+      title="${bgmAsset ? `播放：${esc(bgmAsset.name)}（循环）` : '未配置 BGM——放 推演/…/素材/bgm/<场景或情绪>.mp3 即可启用'}">♪ ${bgmAsset ? (engine.bgmOn ? 'BGM 开' : 'BGM 关') : '未配置 BGM'}</button>`
+
+  const stageTop = `<div class="ded-stage-top">
+      <span class="ded-stage-progress">第 ${Number(data.round) || 0} 拍 · 本章 ${bufferCount} 拍 ${buffer?.words || 0} 字</span>
+      ${heatLabel ? `<span class="ded-heat ${heatClass}">${esc(heatLabel)}</span>` : ''}
+      ${bgmBtn}
+    </div>`
+
+  const draft = engine.draft
+  const stageText = draft
+    ? (text(draft.prose).trim() ? text(draft.prose) : '（这一拍还没有正文——展开下方「草稿编辑」自己写，或配好模型后点「重写」。）')
+    : (card.hook && card.hook !== '……' ? text(card.hook) : `${sceneName ? `${sceneName}。` : ''}${text(card.tension) || '局面已摆好——选一条走向。'}`)
+  const dialogHtml = `<div class="ded-dialog" data-action="deduce-tw-skip" title="点一下立即全显">
+      <div class="ded-dialog-head">第 ${Number(data.round) || 0} 拍${draft ? ' · 正文草稿' : ' · 局面'}<span class="ded-dialog-tip">点击全文立显</span></div>
+      ${draft?.proseError ? `<div class="warn-box">${esc(draft.proseError)}——可以在下方草稿区自己写，或配好模型后点「重写」。</div>` : ''}
+      <div class="ded-dialog-body"><span class="ded-dialog-text" id="deduce-dialog-text" data-stage-text="${esc(stageText)}"></span><span class="ded-dialog-caret" id="deduce-dialog-caret">▍</span></div>
+    </div>`
+
+  /* —— 选项区：宽按钮（RPG 对话框风格）；否决/自定义一个不少 —— */
+  const optRows = candidates.map((candidate) => {
     const kind = { 必然: 'certain', 命运: 'fate', 戏剧: 'drama' }[candidate.source] || 'other'
     const info = describeCandidate(candidate)
-    return `<article class="ded-cand src-${kind}">
-      <div class="ded-cand-head">
-        <span class="ded-badge">${esc(sourceText[candidate.source] || candidate.source || '候选')}</span>
-        <span class="ded-cand-note">${esc(sourceNote[candidate.source] || '')}</span>
-      </div>
-      <p class="ded-cand-title">${esc(info.title)}</p>
-      ${info.sub ? `<p class="ded-cand-sub">${esc(info.sub)}</p>` : ''}
-      ${candidate.refs && candidate.refs.length ? `<p class="ded-cand-refs">引用：${esc(candidate.refs.join('、'))}</p>` : ''}
-      <div class="ded-cand-ops">
-        <button class="btn-primary" data-action="deduce-engine-choose" data-candidate-id="${esc(candidate.id)}">走这条</button>
-        <button class="btn-ghost" data-action="deduce-engine-veto" data-candidate-id="${esc(candidate.id)}" title="只记账，不落库">否决</button>
-      </div>
-    </article>`
+    return `<div class="ded-opt-row src-${kind}">
+      <button class="ded-opt" data-action="deduce-engine-choose" data-candidate-id="${esc(candidate.id)}"${engine.turnBusy ? ' disabled' : ''}>
+        <span class="ded-opt-head"><span class="ded-badge">${esc(sourceText[candidate.source] || candidate.source || '候选')}</span><span class="ded-cand-note">${esc(sourceNote[candidate.source] || '')}</span></span>
+        <span class="ded-opt-title">${esc(info.title)}</span>
+        ${info.sub ? `<span class="ded-opt-sub">${esc(info.sub)}</span>` : ''}
+        ${candidate.refs && candidate.refs.length ? `<span class="ded-opt-refs">引用：${esc(candidate.refs.join('、'))}</span>` : ''}
+      </button>
+      <button class="ded-opt-veto" data-action="deduce-engine-veto" data-candidate-id="${esc(candidate.id)}" title="只记账，不落库">否决</button>
+    </div>`
   }).join('')
+  const customRow = `<div class="ded-custom">
+      <textarea class="ded-custom-input" id="deduce-custom" placeholder="自己写：这一拍发生什么，你说了算">${esc(engine.customText)}</textarea>
+      <button class="btn-primary" data-action="deduce-engine-custom"${engine.busy || engine.turnBusy ? ' disabled' : ''}>按我写的走</button>
+    </div>`
+  const optionsHtml = draft
+    ? `<div class="ded-stage-options">
+        <div class="ded-opt-row"><button class="ded-opt ded-opt-main" data-action="deduce-engine-next"${engine.turnBusy || engine.busy ? ' disabled' : ''}><span class="ded-opt-title">下一拍</span><span class="ded-opt-sub">收下这一拍，推新的局面</span></button>
+        <button class="ded-opt-veto" data-action="deduce-engine-regen"${engine.turnBusy ? ' disabled' : ''} title="让模型重写这一拍的正文（覆盖草稿）">${engine.turnBusy ? '成文中…' : '重写'}</button></div>
+      </div>`
+    : `<div class="ded-stage-options">
+        ${optRows || '<p class="sub" style="padding:4px 0">这一拍没有候选——事实包不够（世界观／角色／剧情条目太少）或预算用尽。</p>'}
+        ${customRow}
+      </div>`
 
-  const candPanel = `<section class="ded-card ded-cands">
-      <div class="ded-card-head">
-        <h3>候选 <span class="count">${candidates.length}</span></h3>
-        <span class="sub">选一条结算成事件条目（不自动写库）</span>
+  const stageHtml = `<div class="ded-stage">
+      <div class="ded-stage-main">
+        ${stageTop}
+        ${sceneVisual}
+        ${dialogHtml}
+        ${optionsHtml}
       </div>
-      ${candRows || '<p class="sub" style="padding:4px 0">这一拍没有候选——事实包不够（世界观／角色／剧情条目太少）或预算用尽。</p>'}
-      <div class="ded-howto">
-        <b>怎么用这一拍</b>
-        <span>「走这条」＝把它结算成一条事件条目（进拆解，不写正文）；「否决」＝只记账不落库。想更丰富的候选，先补拆解条目（世界观／角色／剧情）再推。</span>
-      </div>
-    </section>`
+      <div class="ded-stage-side">${avatarsHtml}</div>
+    </div>`
 
   /* —— 前线：有才显示 —— */
   const frontsHtml = fronts.length ? `<section class="ded-card ded-fronts">
@@ -5367,13 +5811,39 @@ function deduceEngineHtml() {
   /* —— 历史：本会话已结算的拍（从 lastTurn 之前的 log 拿不到，就用 hint 兜） —— */
   const historyHtml = engine.hint ? `<div class="ded-hint">${esc(engine.hint)}</div>` : ''
 
-  return `${controls}
+  /* —— 正文草稿（OS-61 P2）：可编辑、可重写、可下一拍（编辑区收在详情里，功能不减） —— */
+  const draftPanel = draft ? `<section class="ded-card ded-draft">
+      <div class="ded-card-head">
+        <h3>第 ${Number(draft.round) || 0} 拍 · 正文草稿</h3>
+        <span class="sub">进缓存区，不直接落正文文件</span>
+      </div>
+      ${draft.proseError ? `<div class="warn-box">${esc(draft.proseError)}——可以直接在草稿区自己写，或配好模型后点「重写」。</div>` : ''}
+      <textarea class="ded-draft-input" id="deduce-draft" placeholder="这一拍的正文草稿（200–400 字），可编辑，失焦自动保存">${esc(draft.prose)}</textarea>
+      <div class="ded-draft-meta"><span id="deduce-draft-chars">${text(draft.prose).length} 字</span></div>
+      <div class="ded-cand-ops">
+        <button class="btn-ghost" data-action="deduce-engine-regen"${engine.turnBusy ? ' disabled' : ''} title="让模型重写这一拍的正文（覆盖草稿）">${engine.turnBusy ? '成文中…' : '重写'}</button>
+        <button class="btn-primary" data-action="deduce-engine-next"${engine.turnBusy || engine.busy ? ' disabled' : ''}>下一拍</button>
+      </div>
+    </section>` : ''
+
+  const howtoPanel = `<section class="ded-card">
+      <div class="ded-card-head"><h3>怎么用这一拍</h3></div>
+      <div class="ded-howto" style="margin-top:0;padding-top:0;border-top:0">
+        <span>「走这条」＝结算这一拍并生成正文草稿（进缓存区，不写正文文件）；「否决」＝只记账不落库；「按我写的走」＝用你自己的话结算。想更丰富的候选，先补拆解条目（世界观／角色／剧情）再推。</span>
+      </div>
+    </section>`
+
+  return `${bufferHtml}${controls}
     ${flowError(engine.error || '')}
     ${historyHtml}
-    <div class="ded-grid">
-      <div class="ded-col-left">${sceneHtml}${frontsHtml}${dedPackHtml()}</div>
-      <div class="ded-col-right">${candPanel}</div>
-    </div>`
+    ${stageHtml}
+    <details class="ded-details"${draft ? ' open' : ''}>
+      <summary>局面详情 · 前线 · 事实包${draft ? ' · 草稿编辑' : ''}</summary>
+      <div class="ded-grid">
+        <div class="ded-col-left">${sceneHtml}${frontsHtml}${dedPackHtml()}</div>
+        <div class="ded-col-right">${draft ? draftPanel : howtoPanel}</div>
+      </div>
+    </details>`
 }
 
 /** Agent 模式（原三栏表单，保留）。 */
@@ -5476,8 +5946,12 @@ async function openLibrary(path) {
   state.deduce = {
     premise: '', variables: '', question: '', sessionId: '', streaming: false, reply: '', controller: null, error: '',
     mode: 'engine',
-    engine: { busy: false, data: null, pov: '', seed: '', error: '', hint: '' }
+    engine: { busy: false, data: null, pov: '', seed: '', error: '', hint: '',
+      session: null, sessionLoaded: false, customText: '', draft: null, turnBusy: false, archiveNote: '',
+      view: 'scene', treePick: null,
+      assets: null, assetsLoaded: false, assetBookId: '', bgmOn: false }
   }
+  deduceBgmStop()
   state.chapterFiles = []
   try {
     const [topPayload, chapterList, chaptersPayload] = await Promise.all([
@@ -6105,19 +6579,51 @@ document.addEventListener('click', (event) => {
   } else if (action === 'dirfile-new') {
     if (state.view?.startsWith('dir:')) createDirFile(state.view.slice(4))
   } else if (action === 'deduce-engine-present') {
-    deduceEnginePresent({})
+    // 草稿还没收口就推下一拍＝先存草稿再推（不丢作者改过的字）
+    if (state.deduce.engine.draft) deduceEngineNext()
+    else deduceEnginePresent({})
   } else if (action === 'deduce-engine-reset') {
+    state.deduce.engine.draft = null
     deduceEnginePresent({ reset: true, hint: '新开了推演会话' })
   } else if (action === 'deduce-engine-choose') {
-    deduceEngineSettle(target.dataset.candidateId, 'choose')
+    deduceEngineTurn({ choiceId: target.dataset.candidateId })
+  } else if (action === 'deduce-engine-custom') {
+    const customValue = (document.getElementById('deduce-custom')?.value ?? '').trim()
+    if (!customValue) {
+      state.deduce.engine.error = '先写两句「这一拍发生什么」，再按「按我写的走」。'
+      render()
+    } else {
+      deduceEngineTurn({ customText: customValue })
+    }
+  } else if (action === 'deduce-engine-regen') {
+    deduceEngineTurn({ regenerate: true })
+  } else if (action === 'deduce-engine-next') {
+    deduceEngineNext()
+  } else if (action === 'deduce-archive') {
+    deduceArchiveChapter()
   } else if (action === 'deduce-engine-veto') {
     deduceEngineSettle(target.dataset.candidateId, 'veto')
+  } else if (action === 'deduce-tw-skip') {
+    dedTypewriterSkip()
+  } else if (action === 'deduce-bgm-toggle') {
+    deduceBgmToggle()
   } else if (action === 'deduce-mode-engine') {
     state.deduce.mode = 'engine'
     render()
   } else if (action === 'deduce-mode-agent') {
     state.deduce.mode = 'agent'
     render()
+  } else if (action === 'deduce-view-scene') {
+    state.deduce.engine.view = 'scene'
+    state.deduce.engine.treePick = null
+    render()
+  } else if (action === 'deduce-view-tree') {
+    state.deduce.engine.view = 'tree'
+    render()
+  } else if (action === 'deduce-tree-back') {
+    deduceTreeJump()
+  } else if (action === 'deduce-tree-branch') {
+    deduceTreeBranch()
   } else if (action === 'deduce-start') {
     startDeduce()
   } else if (action === 'deduce-stop') {
@@ -6303,6 +6809,11 @@ document.addEventListener('change', (event) => {
     loadDirFile(state.view.slice(4), target.value)
     return
   }
+  // 推演草稿（OS-61 P2）：失焦即存进会话
+  if (target.id === 'deduce-draft') {
+    deduceSaveDraft()
+    return
+  }
 })
 
 document.addEventListener('input', (event) => {
@@ -6349,6 +6860,16 @@ document.addEventListener('input', (event) => {
     state.chapterText = target.value
     state.savedAt = ''
     const chars = document.getElementById('chapter-chars')
+    if (chars) chars.textContent = `${target.value.length} 字`
+  }
+  // 推演回合层（OS-61 P2）：输入同步进 state，重渲不丢字
+  if (target.id === 'deduce-custom') {
+    state.deduce.engine.customText = target.value
+    return
+  }
+  if (target.id === 'deduce-draft' && state.deduce.engine.draft) {
+    state.deduce.engine.draft.prose = target.value
+    const chars = document.getElementById('deduce-draft-chars')
     if (chars) chars.textContent = `${target.value.length} 字`
   }
 })

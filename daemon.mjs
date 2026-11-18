@@ -122,7 +122,15 @@ import {
 } from './libraryManage.mjs'
 import { createFactFileStore } from './core/pinax/next/kernel/factFileStore.mjs'
 import { absorbLegacyDirs, backlinksOf, buildReferenceGraph, REFERENCE_DIR, scanReferences } from './referenceStore.mjs'
-import { deducePresent, deduceSettle } from './deduceEngine.mjs'
+import { deducePresent, deduceSettle, deduceStatePath } from './deduceEngine.mjs'
+import {
+  appendNode,
+  archiveChapter,
+  DEDUCE_SESSION_SCHEMA,
+  loadDeduceSession,
+  normalizeDeduceSession,
+  saveDeduceSession
+} from './deduceSession.mjs'
 import { factHealth } from './factGuard.mjs'
 import { enrichBook, enrichGraph } from './enrichEngine.mjs'
 
@@ -971,6 +979,39 @@ async function resolveFactBookId(root, wanted) {
   return pick ? pick.name.replace(/\.json$/u, '') : 'default'
 }
 
+/** 素材单文件上限：立绘/BGM 都是本机小文件，16MB 足够且防误挂大档。 */
+const DEDUCE_ASSET_MAX = 16 * 1024 * 1024
+
+/** 素材三类目录 → 响应字段与扩展名（约定见 deduceAssets 处理块注释）。 */
+const DEDUCE_ASSET_KINDS = Object.freeze([
+  { dir: '角色', field: 'characters', ext: '.png' },
+  { dir: '场景', field: 'scenes', ext: '.png' },
+  { dir: 'bgm', field: 'bgm', ext: '.mp3' }
+])
+
+/** 盘点 推演/<bookId>/素材/：目录不存在＝空数组；隐藏文件/子目录/异扩展名跳过。 */
+async function listDeduceAssets(root, bookId) {
+  const base = resolveInsideRoot(root, `推演/${bookId}/素材`)
+  if (!base.ok) return base
+  const result = { ok: true, characters: [], scenes: [], bgm: [] }
+  for (const kind of DEDUCE_ASSET_KINDS) {
+    let entries = []
+    try {
+      entries = await readdir(join(base.path, kind.dir), { withFileTypes: true })
+    } catch {
+      continue
+    }
+    result[kind.field] = entries
+      .filter((entry) => entry.isFile() && !entry.name.startsWith('.') && extname(entry.name).toLowerCase() === kind.ext)
+      .map((entry) => ({
+        name: entry.name.slice(0, -kind.ext.length),
+        path: `推演/${bookId}/素材/${kind.dir}/${entry.name}`
+      }))
+      .sort((left, right) => left.name.localeCompare(right.name, 'zh-Hans-CN'))
+  }
+  return result
+}
+
   if (endpointId === 'deducePresent') {
     const authorized = authorizeRoot(allowlist, request.root)
     if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
@@ -1000,6 +1041,203 @@ async function resolveFactBookId(root, wanted) {
     })
     if (!result.ok) return sendError(res, result.code ?? API_ERROR_CODES.INVALID_ENTRY, result.message)
     return sendJson(res, 200, result)
+  }
+
+  // 推演会话存储层（OS-61）：「文游」容器——读/整存会话、归档一章。
+  if (endpointId === 'deduceSessionGet') {
+    const authorized = authorizeRoot(allowlist, request.root)
+    if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
+    const bookId = await resolveFactBookId(authorized.root, request.bookId)
+    return sendJson(res, 200, { ok: true, session: loadDeduceSession(authorized.root, bookId) })
+  }
+
+  if (endpointId === 'deduceSessionPut') {
+    const authorized = authorizeRoot(allowlist, request.root)
+    if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
+    const bookId = await resolveFactBookId(authorized.root, request.bookId)
+    const session = normalizeDeduceSession(request.session, bookId)
+    if (!session) {
+      return sendError(res, API_ERROR_CODES.INVALID_ENTRY, `推演会话形状不对：schema 必须是 ${DEDUCE_SESSION_SCHEMA}，nodes 必须是数组`)
+    }
+    const saved = await saveDeduceSession(authorized.root, bookId, session)
+    if (!saved.ok) return sendError(res, saved.code ?? API_ERROR_CODES.WRITE_PROTOCOL_IO_FAILED, saved.message)
+    return sendJson(res, 200, { ok: true, session, ...(saved.backup ? { backup: saved.backup } : {}) })
+  }
+
+  if (endpointId === 'deduceArchive') {
+    const authorized = authorizeRoot(allowlist, request.root)
+    if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
+    const bookId = await resolveFactBookId(authorized.root, request.bookId)
+    const session = loadDeduceSession(authorized.root, bookId)
+    if (!session) return sendError(res, API_ERROR_CODES.NOT_FOUND, `还没有推演会话：${bookId}`)
+    const archived = await archiveChapter(authorized.root, session, { title: text(request.title) })
+    if (!archived.ok) return sendError(res, archived.code ?? API_ERROR_CODES.INVALID_ENTRY, archived.message)
+    return sendJson(res, 200, { ok: true, path: archived.path, words: archived.words })
+  }
+
+  // 推演回合层（OS-61 P2）：选候选/自定义 → 结算 → 成文草稿 → 拍进会话缓存区。
+  // regenerate:true 只重写最后一拍的正文（覆盖 node.prose），不结算、不新增节点。
+  if (endpointId === 'deduceTurn') {
+    const authorized = authorizeRoot(allowlist, request.root)
+    if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
+    const root = authorized.root
+    const bookId = await resolveFactBookId(root, request.bookId)
+    const customText = text(request.customText).trim()
+    const choiceId = text(request.choiceId).trim()
+    const session = loadDeduceSession(root, bookId)
+      ?? normalizeDeduceSession({ schema: DEDUCE_SESSION_SCHEMA, nodes: [] }, bookId)
+    const branchId = session.branchId || 'main'
+    const branchNodes = session.nodes.filter((node) => (text(node?.branchId) || 'main') === branchId)
+
+    if (request.regenerate === true) {
+      const last = branchNodes[branchNodes.length - 1]
+      if (!last) return sendError(res, API_ERROR_CODES.INVALID_ENTRY, '还没有可重写的拍：先选一条候选或自己写一拍')
+      const previous = branchNodes[branchNodes.length - 2]
+      const gen = await generateTurnProse({ context, root, node: last, previousProse: previous?.prose })
+      // 模型不可用时不毁旧稿：prose 保持原样，proseError 如实报
+      if (gen.prose) {
+        last.prose = gen.prose
+        const buffered = (session.buffer?.nodes ?? []).find((node) => node.id === last.id)
+        if (buffered) buffered.prose = gen.prose
+        if (session.buffer) session.buffer.words = (session.buffer.nodes ?? []).reduce((sum, node) => sum + turnNodeWords(node), 0)
+      }
+      const saved = await saveDeduceSession(root, bookId, session)
+      if (!saved.ok) return sendError(res, saved.code ?? API_ERROR_CODES.WRITE_PROTOCOL_IO_FAILED, saved.message)
+      return sendJson(res, 200, { ok: true, node: last, session, prose: text(last.prose), ...(gen.proseError ? { proseError: gen.proseError } : {}) })
+    }
+
+    if (!customText && !choiceId) {
+      return sendError(res, API_ERROR_CODES.INVALID_ENTRY, '选一条候选（choiceId）或自己写（customText）再结算')
+    }
+    let settled
+    if (customText) {
+      settled = await deduceSettle({ root, bookId, action: 'inject', note: customText })
+    } else {
+      const bridged = await bridgeDeduceCandidates(root, bookId)
+      if (!bridged.ok) return sendError(res, bridged.code ?? API_ERROR_CODES.INVALID_ENTRY, bridged.message)
+      settled = await deduceSettle({ root, bookId, candidateId: choiceId, action: 'choose' })
+    }
+    if (!settled.ok) return sendError(res, settled.code ?? API_ERROR_CODES.INVALID_ENTRY, settled.message)
+
+    // 局面与候选取自引擎最后一面（present 存的 lastTurn）；自定义拍补一条「作者」候选
+    let lastTurn = null
+    try { lastTurn = JSON.parse(readFileSync(deduceStatePath(root, bookId), 'utf-8')).lastTurn ?? null } catch { lastTurn = null }
+    const sceneCard = lastTurn?.sceneCard ?? {}
+    const candidates = (Array.isArray(lastTurn?.candidates) ? lastTurn.candidates : [])
+      .map((candidate) => ({ id: text(candidate?.id), source: text(candidate?.source), text: text(candidate?.text) }))
+    if (customText) candidates.push({ id: 'custom', source: '作者', text: customText })
+    const draft = {
+      round: settled.round,
+      choiceId: customText ? 'custom' : choiceId,
+      scene: {
+        who: Array.isArray(sceneCard.who) ? sceneCard.who.filter(Boolean).join('、') : text(sceneCard.who),
+        where: text(sceneCard.where),
+        tension: text(sceneCard.tension),
+        hook: text(sceneCard.hook)
+      },
+      candidates,
+      prose: ''
+    }
+    const previous = branchNodes[branchNodes.length - 1]
+    // 剧情树父链（OS-61 P3）：接本分支上一拍；新分支第一拍没有上一拍＝溯源到分叉节点
+    let parentId = text(previous?.id)
+    if (!parentId && branchId !== 'main') {
+      const fork = session.nodes.find((node) => Array.isArray(node?.forkBranchIds) && node.forkBranchIds.includes(branchId))
+      parentId = text(fork?.id)
+    }
+    draft.parentId = parentId
+    const gen = await generateTurnProse({ context, root, node: draft, previousProse: previous?.prose })
+    draft.prose = gen.prose
+    const node = appendNode(session, draft)
+    const saved = await saveDeduceSession(root, bookId, session)
+    if (!saved.ok) return sendError(res, saved.code ?? API_ERROR_CODES.WRITE_PROTOCOL_IO_FAILED, saved.message)
+    return sendJson(res, 200, { ok: true, node, session, prose: node.prose, ...(gen.proseError ? { proseError: gen.proseError } : {}) })
+  }
+
+  // 剧情树分支（OS-61 P3）：从某一拍开新分支。只动 branchId/cursor 与分叉溯源，
+  // nodes 全量保留；缓存区沿用 switchBranch 语义不动（归档仍按缓存区里的拍走）。
+  if (endpointId === 'deduceBranch') {
+    const authorized = authorizeRoot(allowlist, request.root)
+    if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
+    const root = authorized.root
+    const bookId = await resolveFactBookId(root, request.bookId)
+    const fromNodeId = text(request.fromNodeId).trim()
+    if (!fromNodeId) return sendError(res, API_ERROR_CODES.INVALID_ENTRY, '指明从哪一拍开分支（fromNodeId）')
+    const session = loadDeduceSession(root, bookId)
+    if (!session) return sendError(res, API_ERROR_CODES.NOT_FOUND, `还没有推演会话：${bookId}`)
+    const fromNode = session.nodes.find((node) => text(node?.id) === fromNodeId)
+    if (!fromNode) return sendError(res, API_ERROR_CODES.NOT_FOUND, `会话里没有这一拍：${fromNodeId}`)
+    const existing = new Set(session.nodes.map((node) => text(node?.branchId).trim() || 'main'))
+    existing.add(text(session.branchId).trim() || 'main')
+    let seq = 2
+    while (existing.has(`branch-${seq}`)) seq += 1
+    const branchId = `branch-${seq}`
+    // 分叉溯源记在节点上（会话归一层只认固定顶层字段，节点原样透传）
+    if (!Array.isArray(fromNode.forkBranchIds)) fromNode.forkBranchIds = []
+    if (!fromNode.forkBranchIds.includes(branchId)) fromNode.forkBranchIds.push(branchId)
+    session.branchId = branchId
+    session.cursor = Number.isSafeInteger(Number(fromNode.round)) ? Number(fromNode.round) : 0
+    const saved = await saveDeduceSession(root, bookId, session)
+    if (!saved.ok) return sendError(res, saved.code ?? API_ERROR_CODES.WRITE_PROTOCOL_IO_FAILED, saved.message)
+    return sendJson(res, 200, { ok: true, session })
+  }
+
+  /* ---------- 文游素材（OS-61 P4）：立绘/BGM 占位骨架 ----------
+   * 素材绑定约定（全部可选，缺失时前端用渐变占位块，不同 kind 不同色）：
+   *   推演/<bookId>/素材/角色/<角色名>.png   —— 人物立绘/头像（按局面卡 who 匹配）
+   *   推演/<bookId>/素材/场景/<场景名>.png   —— 场景立绘（按局面卡 where 匹配）
+   *   推演/<bookId>/素材/bgm/<场景或情绪>.mp3 —— 背景乐（按场景名或张力情绪匹配）
+   * 素材到位后无需改代码：盘点端点现扫目录，前端按名字对上就换真图。
+   *
+   * 生图接口预留（暂未启用——只留形状，不读不写任何配置）：
+   * IMAGE_ENDPOINT_CONFIG = {
+   *   endpoint: string,   // OpenAI 兼容 /v1/images/generations 完整地址
+   *   model: string,      // 生图模型 id（如 gpt-image-1）
+   *   size: string,       // '1024x1024' | '1536x1024' | '1024x1536'
+   *   apiKey: string      // 只存 daemon 本机配置，任何响应不回显完整 key（与 agent-config 同红线）
+   * }
+   * 未来实现时：生成结果落上面的素材约定路径，前端零改动换真图。
+   */
+  if (endpointId === 'deduceAssets') {
+    const authorized = authorizeRoot(allowlist, request.root)
+    if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
+    const bookId = await resolveFactBookId(authorized.root, request.bookId)
+    const listed = await listDeduceAssets(authorized.root, bookId)
+    if (!listed.ok) return sendError(res, listed.code, listed.message)
+    return sendJson(res, 200, { ok: true, bookId, characters: listed.characters, scenes: listed.scenes, bgm: listed.bgm })
+  }
+
+  if (endpointId === 'deduceAssetFile') {
+    const authorized = authorizeRoot(allowlist, request.root)
+    if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
+    const bookId = await resolveFactBookId(authorized.root, request.bookId)
+    // 盘符注入闸：相对路径段里混进 `C:` 这类盘符会在 Windows 上改指向，直接按逃逸拒收
+    if (text(request.path).includes(':')) {
+      return sendError(res, API_ERROR_CODES.PATH_ESCAPE, `素材路径不许带盘符：${text(request.path)}`)
+    }
+    const resolved = resolveInsideRoot(authorized.root, `推演/${bookId}/素材/${text(request.path)}`)
+    if (!resolved.ok) return sendError(res, resolved.code, resolved.message, resolved.details)
+    const ext = extname(resolved.path).toLowerCase()
+    if (ext !== '.png' && ext !== '.mp3') {
+      return sendError(res, API_ERROR_CODES.INVALID_ENTRY, `素材只收 .png（立绘）与 .mp3（BGM）：${text(request.path)}`)
+    }
+    let stats
+    try {
+      stats = statSync(resolved.path)
+    } catch {
+      return sendError(res, API_ERROR_CODES.NOT_FOUND, `素材不存在：${text(request.path)}`)
+    }
+    if (!stats.isFile() || stats.size > DEDUCE_ASSET_MAX) {
+      return sendError(res, API_ERROR_CODES.INVALID_ENTRY, `素材不是文件或超过 16MB：${text(request.path)}`)
+    }
+    res.writeHead(200, {
+      'content-type': ext === '.png' ? 'image/png' : 'audio/mpeg',
+      'content-length': stats.size,
+      'cache-control': 'no-store',
+      'x-content-type-options': 'nosniff'
+    })
+    createReadStream(resolved.path).pipe(res)
+    return
   }
 
   if (endpointId === 'agentRuntimeSetup') {
@@ -1419,7 +1657,7 @@ async function resolveFactBookId(root, wanted) {
   return sendError(res, API_ERROR_CODES.NOT_FOUND, `端点未实现：${endpointId}`)
 }
 
-const ENDPOINT_HAS_QUERY = new Set(['habitsGet', 'chapterGet', 'agentSessions', 'agentSessionGet', 'agentSessionDelete', 'libraryDiagnose', 'filesGet', 'chaptersGet', 'chapterDelete', 'artifactsGet', 'suiteStateDataGet', 'briefGet', 'skillsGet', 'skillGet', 'enrichStatus', 'enrichGraph', 'kbStatusGet', 'agentDshModelsGet', 'factCurveGet', 'referenceGet', 'referenceGraphGet', 'referenceNoteGet'])
+const ENDPOINT_HAS_QUERY = new Set(['habitsGet', 'chapterGet', 'agentSessions', 'agentSessionGet', 'agentSessionDelete', 'libraryDiagnose', 'filesGet', 'chaptersGet', 'chapterDelete', 'artifactsGet', 'suiteStateDataGet', 'briefGet', 'skillsGet', 'skillGet', 'enrichStatus', 'enrichGraph', 'kbStatusGet', 'agentDshModelsGet', 'factCurveGet', 'referenceGet', 'referenceGraphGet', 'referenceNoteGet', 'deduceSessionGet', 'deduceAssets', 'deduceAssetFile'])
 
 /** 套件资产 MIME（page 模式自带页同源装载）。 */
 const SUITE_ASSET_MIME = Object.freeze({
@@ -1841,6 +2079,127 @@ async function resolveChatUpstream(config, context) {
   const up = await ensureSidecar(kit, { env: context.env })
   if (!up.ok) return fallbackToPi(config, `运行时 ${kit.name} 起不来（${up.message}）`)
   return { ok: true, url: `http://127.0.0.1:${up.port}${kit.chatPath}`, headers, model: kit.model, runtimeName: kit.name }
+}
+
+/* ---------- 推演回合层（OS-61 P2）：结算桥接＋叙述体成文 ---------- */
+
+/**
+ * 候选结算桥接：deducePresent 把本拍候选存在 state.lastTurn.candidates（id 已重映射），
+ * 而 deduceSettle 的 choose 读的是 state.lastCandidates——两者从没接上，choose 恒报
+ * 「候选不在本拍里」。根因在 deduceEngine.mjs（本工单允许文件之外），这里在结算前把
+ * lastTurn 的候选同步进 lastCandidates（同一份数据、同一套 id，不是伪造候选）。
+ */
+async function bridgeDeduceCandidates(root, bookId) {
+  const path = deduceStatePath(root, bookId)
+  if (!existsSync(path)) return { ok: false, code: 'NOT_FOUND', message: '还没有推演会话：先呈现一拍' }
+  let state
+  try { state = JSON.parse(readFileSync(path, 'utf-8')) } catch {
+    return { ok: false, code: 'INVALID_ENTRY', message: '推演会话文件读不了：重新开局再试' }
+  }
+  const presented = Array.isArray(state?.lastTurn?.candidates) ? state.lastTurn.candidates : []
+  if (!presented.length) return { ok: false, code: 'INVALID_ENTRY', message: '这一拍没有候选：先呈现一拍' }
+  if (JSON.stringify(state.lastCandidates ?? null) === JSON.stringify(presented)) return { ok: true }
+  state.lastCandidates = presented
+  try {
+    const backupPath = join(dirname(path), '.history', `${basename(path)}.bak-${Date.now()}`)
+    await mkdir(dirname(backupPath), { recursive: true })
+    await writeFile(backupPath, readFileSync(path))
+    const tmp = `${path}.tmp-${Date.now()}`
+    await writeFile(tmp, JSON.stringify(state, null, 2), 'utf-8')
+    await rename(tmp, path)
+  } catch (error) {
+    return { ok: false, code: 'WRITE_PROTOCOL_IO_FAILED', message: `推演会话写入失败：${text(error?.message || error)}` }
+  }
+  return { ok: true }
+}
+
+/** 一拍的字数（与 deduceSession.nodeWords 同口径）：有正文算正文，没正文算候选摘要。 */
+function turnNodeWords(node) {
+  const prose = text(node?.prose)
+  if (prose.trim()) return prose.length
+  return (Array.isArray(node?.candidates) ? node.candidates : [])
+    .reduce((sum, candidate) => sum + text(candidate?.text).length, 0)
+}
+
+/** 成文 system 提示：小说叙述体——与推演提议体（DEDUCE_DRAMA_SYSTEM_PROMPT）绝不共用。 */
+const DEDUCE_PROSE_SYSTEM = '你是小说家，用小说叙述体写作：跟随视角人物的感官与行动推进场景，细节具体，对话自然贴人物。只输出这一拍的正文（200–400 字），不要标题、不要候选列表、不要解释、不要 markdown 围栏。'
+
+function turnProsePrompt(node, previousProse) {
+  const scene = node?.scene ?? {}
+  const candidates = Array.isArray(node?.candidates) ? node.candidates : []
+  const chosen = candidates.find((candidate) => candidate.id === text(node?.choiceId))
+  const lines = [
+    '【当前局面】',
+    `在场：${text(scene.who) || '未标记'}`,
+    `地点：${text(scene.where) || '未标记'}`,
+    `张力：${text(scene.tension) || '平缓'}`,
+    `钩子：${text(scene.hook) || '无'}`,
+    `【本拍选定】${text(chosen?.text) || text(node?.choiceId)}`
+  ]
+  const others = candidates.filter((candidate) => candidate.id !== text(node?.choiceId) && candidate.text)
+  if (others.length) lines.push(`【其他候选（参照，不要写成选项）】${others.map((candidate) => candidate.text).join('；')}`)
+  const tail = text(previousProse).trim().slice(-200)
+  if (tail) lines.push(`【上一拍正文结尾（自然衔接，不要重复）】……${tail}`)
+  lines.push('把这一拍写成 200–400 字的小说正文。')
+  return lines.join('\n')
+}
+
+/**
+ * 这一拍的正文草稿：复用 enrich 的 llmPort 手法（OS-58）——endpoint/cli/dsh 三路
+ * 都收敛到单发单收。模型不可用/调用失败/回空＝{ prose:'', proseError:'模型不可用' }，
+ * 绝不伪造正文。
+ */
+async function generateTurnProse({ context, root, node, previousProse }) {
+  let upstream
+  try {
+    const { config } = await loadAgentConfig(context.agentConfigPath)
+    upstream = await resolveChatUpstream(config, context)
+  } catch { upstream = null }
+  if (!upstream?.ok) return { prose: '', proseError: '模型不可用' }
+  const prompt = turnProsePrompt(node, previousProse)
+  try {
+    let raw = ''
+    if (upstream.execute === 'cli') {
+      const run = await runCliChat(upstream.kit, [{ role: 'user', content: `${DEDUCE_PROSE_SYSTEM}\n\n${prompt}` }])
+      if (!run.ok) throw new Error(run.message)
+      raw = text(run.text)
+    } else if (upstream.execute === 'dsh-cli') {
+      let collected = ''
+      const result = await runDshStdio({
+        dshCmd: upstream.dshRun.dshCmd,
+        profile: upstream.dshRun.profile,
+        cwd: root,
+        prompt: `${DEDUCE_PROSE_SYSTEM}\n\n${prompt}`,
+        ...(upstream.reasoningEffort ? { reasoningEffort: upstream.reasoningEffort } : {}),
+        inactivityMs: 180_000,
+        timeoutMs: 600_000,
+        onText: (piece) => { collected += piece }
+      })
+      if (!result.ok) throw new Error(result.message || result.code || 'unknown')
+      raw = text(collected || result.text || '')
+    } else {
+      const response = await fetch(upstream.url, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', ...upstream.headers },
+        body: JSON.stringify({
+          model: upstream.model,
+          messages: [{ role: 'system', content: DEDUCE_PROSE_SYSTEM }, { role: 'user', content: prompt }],
+          max_tokens: 1500,
+          temperature: 0.7,
+          stream: false
+        }),
+        signal: AbortSignal.timeout(180_000)
+      })
+      if (!response.ok) throw new Error(`LLM HTTP ${response.status}`)
+      const data = await response.json()
+      raw = text(data.choices?.[0]?.message?.content ?? '')
+    }
+    const prose = raw.replace(/^```[^\n]*\n/u, '').replace(/\n```$/u, '').trim()
+    if (!prose) return { prose: '', proseError: '模型不可用' }
+    return { prose, proseError: '' }
+  } catch {
+    return { prose: '', proseError: '模型不可用' }
+  }
 }
 
 /**
