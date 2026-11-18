@@ -247,7 +247,7 @@ export function suitePublic(suite, suiteState) {
   try {
     const skillsDir = join(text(suite.dir), 'skills')
     if (existsSync(skillsDir)) bundledSkills = loadSkills([{ dir: skillsDir, source: suite.name }]).skills
-      .map((skill) => ({ name: skill.name, category: skill.category, summary: skill.summary }))
+      .map((skill) => ({ name: skill.name, category: skill.category, summary: skill.description }))
   } catch { bundledSkills = [] }
   const settingsMode = suite.capabilities.settings.mode
   let values = {}
