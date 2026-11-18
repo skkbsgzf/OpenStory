@@ -39,7 +39,7 @@
 - 阈值来自 fanqie-pattern-playbook / de-ai-writing / shuangwen-chapter-check / reader-needs-ironrules。
 
 ## 六、MCP（对外输出）
-18→19 个工具覆盖四模块（详见 `mcp/skills/OVERVIEW.md`）。
+20 个工具覆盖五模块（小说/世界书/习惯/拆解/推演/分析，详见 `mcp/skills/OVERVIEW.md`）。
 读写分级：读自由；写有 .history 备份；absorb 不开；习惯表有 `openstory_habits_read`。
 
 ## 已知边界
