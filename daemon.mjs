@@ -979,8 +979,11 @@ async function resolveFactBookId(root, wanted) {
       bookId: await resolveFactBookId(authorized.root, request.bookId),
       pov: text(request.pov),
       seed: Number.isSafeInteger(request.seed) ? request.seed : null,
-      reset: request.reset === true
+      reset: request.reset === true,
+      peek: request.peek === true
     })
+    // peek 且无会话：不是错误——前端维持空态
+    if (!result.ok && result.code === 'NO_DEDUCE_SESSION') return sendJson(res, 200, { ok: false, code: 'NO_DEDUCE_SESSION', message: result.message })
     if (!result.ok) return sendError(res, result.code === 'WORLD_EMPTY' ? API_ERROR_CODES.INVALID_ENTRY : (result.code ?? API_ERROR_CODES.INVALID_ENTRY), result.message)
     return sendJson(res, 200, result)
   }

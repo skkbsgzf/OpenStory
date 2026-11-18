@@ -68,7 +68,7 @@ function defaultPov(entries) {
   return chars[0]?.name ?? null
 }
 
-export async function deducePresent({ root, bookId = 'default', pov = '', seed = null, reset = false } = {}) {
+export async function deducePresent({ root, bookId = 'default', pov = '', seed = null, reset = false, peek = false } = {}) {
   const loaded = loadEntries(root)
   if (!loaded.ok) return { ok: false, code: 'INVALID_ENTRY', message: loaded.message }
   const entries = loaded.entries
@@ -76,6 +76,27 @@ export async function deducePresent({ root, bookId = 'default', pov = '', seed =
     return { ok: false, code: 'INVALID_ENTRY', message: '这个库还没有拆解条目（worldview/角色/剧情），推演引擎需要事实包才能开局' }
   }
   let state = reset ? null : loadState(root, bookId)
+  // peek（OS-60）：界面进入时只读当前局面，**不推进一拍**。
+  if (peek) {
+    if (!state) return { ok: false, code: 'NO_DEDUCE_SESSION', message: '这个库还没有推演会话' }
+    const last = state.lastTurn || null
+    return {
+      ok: true,
+      peek: true,
+      bookId,
+      round: state.round ?? 0,
+      seed: state.seed ?? null,
+      sceneCard: last?.sceneCard ?? null,
+      candidates: Array.isArray(last?.candidates) ? last.candidates : [],
+      tension: last?.tension ?? null,
+      fronts: summarizeFronts(state.fronts),
+      budget: { used: state.aiSpent ?? 0, max: state.budgetMax ?? 8 },
+      characters: entries
+        .filter((entry) => text(entry?.layer).trim().toLowerCase() === 'character')
+        .map((entry) => text(entry?.name).trim())
+        .filter(Boolean)
+    }
+  }
   if (!state) {
     let opened
     try {
@@ -97,6 +118,18 @@ export async function deducePresent({ root, bookId = 'default', pov = '', seed =
     turn = await presentTurn({ state, entries, pov: pov || state.pov || null, seed: useSeed })
   } catch (error) {
     return { ok: false, code: text(error?.code || 'INVALID_ENTRY'), message: text(error?.message || error) }
+  }
+  // 存最后一面（OS-60）：进入推演页时 peek 回放这一面，不额外推进
+  state.lastTurn = {
+    sceneCard: turn.sceneCard ?? null,
+    candidates: (turn.candidates ?? []).map((candidate, index) => ({
+      id: text(candidate.id) ? `${text(candidate.id)}-${index}` : `c${index}`,
+      source: text(candidate.source),
+      text: text(candidate.text),
+      refs: Array.isArray(candidate.refs) ? candidate.refs : [],
+      trace: candidate.trace ?? null
+    })),
+    tension: turn.tension ?? null
   }
   await saveState(root, bookId, state)
   return {
