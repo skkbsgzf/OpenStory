@@ -460,6 +460,75 @@ function authorizeRoot(allowlist, requested) {
  * 正文原子写（tmp＋rename）＋写前 .history 备份。`PUT /api/chapter`（手工保存）与
  * 待确认卡采纳共用同一条实现，保证两条路的落盘行为完全一致。
  */
+/* ---------- 习惯表（OS-57）：本库的写作习惯——正向＋负向词条，Agent 成文前必读 ----------
+ * 定位（作者口径）：原「参考/约束」里的规则类内容移到这里。世界书只管创作型条目
+ * （人物/场景/事件），规则归习惯。
+ * 形态：描述性自定义表单。必含正向（惯用词/描述公式）与负向（禁用词/禁用句式/禁用修辞）。
+ * 存储：习惯/habits.json（库内），原子写＋.history 备份（与正文同一可逆语义）。
+ */
+const HABITS_SCHEMA = 'openstory.habits/v1'
+const HABITS_DEFAULT = {
+  schema: HABITS_SCHEMA,
+  tone: 'direct',
+  style: '',
+  bannedWords: [],
+  preferredWords: [],
+  bannedPatterns: [],
+  bannedRhetoric: [],
+  formulas: []
+}
+
+function habitsPath(root) {
+  return join(root, '习惯', 'habits.json')
+}
+
+function readHabitsRaw(root) {
+  try {
+    const parsed = JSON.parse(readFileSync(habitsPath(root), 'utf-8'))
+    return parsed && typeof parsed === 'object' ? parsed : null
+  } catch {
+    return null
+  }
+}
+
+function readHabits(root) {
+  const raw = readHabitsRaw(root)
+  if (!raw) return { ...HABITS_DEFAULT }
+  const merged = { ...HABITS_DEFAULT }
+  for (const key of Object.keys(HABITS_DEFAULT)) {
+    if (raw[key] !== undefined) merged[key] = raw[key]
+  }
+  return merged
+}
+
+const HABIT_LIST_KEYS = ['bannedWords', 'preferredWords', 'bannedPatterns', 'bannedRhetoric', 'formulas']
+
+function normalizeHabits(input) {
+  if (!input || typeof input !== 'object') return null
+  const out = { schema: HABITS_SCHEMA, tone: input.tone === 'gentle' ? 'gentle' : 'direct', style: text(input.style).slice(0, 400) }
+  for (const key of HABIT_LIST_KEYS) {
+    const list = Array.isArray(input[key]) ? input[key].map((item) => text(item).trim().slice(0, 60)).filter(Boolean) : []
+    out[key] = [...new Set(list)].slice(0, 60)
+  }
+  return out
+}
+
+async function writeHabitsWithBackup(root, habits) {
+  const path = habitsPath(root)
+  await mkdir(dirname(path), { recursive: true })
+  let backup = null
+  try {
+    const prev = readFileSync(path)
+    backup = join(dirname(path), '.history', `habits-${Date.now()}.json`)
+    await mkdir(dirname(backup), { recursive: true })
+    await writeFile(backup, prev)
+  } catch { /* 首次没有旧稿 */ }
+  const tmp = `${path}.tmp-${Date.now()}`
+  await writeFile(tmp, JSON.stringify(habits, null, 2), 'utf-8')
+  await rename(tmp, path)
+  return backup
+}
+
 async function writeChapterWithBackup(root, file, newText) {
   const resolved = resolveInsideRoot(root, file)
   if (!resolved.ok) return { ok: false, code: resolved.code, message: resolved.message, details: resolved.details }
@@ -787,6 +856,21 @@ async function handleApi(req, res, url, context) {
       chapters,
       books: files.map((name) => name.replace(/\.json$/, ''))
     })
+  }
+
+  if (endpointId === 'habitsGet') {
+    const authorized = authorizeRoot(allowlist, request.root)
+    if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
+    return sendJson(res, 200, { ok: true, habits: readHabits(authorized.root) })
+  }
+
+  if (endpointId === 'habitsPut') {
+    const authorized = authorizeRoot(allowlist, request.root)
+    if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
+    const habits = normalizeHabits(request.habits)
+    if (!habits) return sendError(res, API_ERROR_CODES.INVALID_ENTRY, '习惯表形状不对：需要 { tone, style, bannedWords, preferredWords, bannedPatterns, bannedRhetoric, formulas }')
+    const backup = await writeHabitsWithBackup(authorized.root, habits)
+    return sendJson(res, 200, { ok: true, habits, backup })
   }
 
   if (endpointId === 'skillsGet') {
@@ -1284,7 +1368,7 @@ async function resolveFactBookId(root, wanted) {
   return sendError(res, API_ERROR_CODES.NOT_FOUND, `端点未实现：${endpointId}`)
 }
 
-const ENDPOINT_HAS_QUERY = new Set(['chapterGet', 'agentSessions', 'agentSessionGet', 'agentSessionDelete', 'libraryDiagnose', 'filesGet', 'chaptersGet', 'chapterDelete', 'artifactsGet', 'suiteStateDataGet', 'briefGet', 'skillsGet', 'skillGet', 'enrichStatus', 'enrichGraph', 'kbStatusGet', 'agentDshModelsGet', 'factCurveGet', 'referenceGet', 'referenceGraphGet', 'referenceNoteGet'])
+const ENDPOINT_HAS_QUERY = new Set(['habitsGet', 'chapterGet', 'agentSessions', 'agentSessionGet', 'agentSessionDelete', 'libraryDiagnose', 'filesGet', 'chaptersGet', 'chapterDelete', 'artifactsGet', 'suiteStateDataGet', 'briefGet', 'skillsGet', 'skillGet', 'enrichStatus', 'enrichGraph', 'kbStatusGet', 'agentDshModelsGet', 'factCurveGet', 'referenceGet', 'referenceGraphGet', 'referenceNoteGet'])
 
 /** 套件资产 MIME（page 模式自带页同源装载）。 */
 const SUITE_ASSET_MIME = Object.freeze({
@@ -1437,7 +1521,7 @@ async function systemPromptFor(root, libraries, genresDirs, skillsDirs, { canRea
   const record = (Array.isArray(libraries) ? libraries : []).find((library) => rootKey(library.path) === key)
   const name = record?.name || basename(root) || '未命名库'
   // 生效清单（OS-43）：这轮提示词里到底塞了哪些东西，回报给界面做标注
-  const applied = { canReadFiles, chineseReasoning, craftSkills: [], genre: '', brief: false, kb: false }
+  const applied = { canReadFiles, chineseReasoning, craftSkills: [], genre: '', brief: false, kb: false, habits: 0 }
   const lines = [
     `你是 OpenStory 工作台的写作助手，正在协助作者创作《${name}》（本机磁盘上的一个 Pinax 库）。`,
     '- 用中文回复。',
@@ -1454,6 +1538,21 @@ async function systemPromptFor(root, libraries, genresDirs, skillsDirs, { canRea
       ? ['- 请用中文思考（推理过程也用中文）。对中文写作讨论更贴切；如果遇到需要精确形式推理的环节，可以内部切换思维语言再切回。']
       : [])
   ]
+  // 习惯表（OS-57）：作者定义的写作习惯——Agent 成文前必须逐条遵循。规则唯一来源。
+  try {
+    const habits = readHabits(root)
+    const habitLines = []
+    if (habits.style) habitLines.push(`- 文风：${habits.style}`)
+    if (habits.bannedWords?.length) habitLines.push(`- 禁用词（出现即改）：${habits.bannedWords.join('、')}`)
+    if (habits.preferredWords?.length) habitLines.push(`- 惯用词（优先使用）：${habits.preferredWords.join('、')}`)
+    if (habits.bannedPatterns?.length) habitLines.push(`- 禁用句式：${habits.bannedPatterns.join('；')}`)
+    if (habits.bannedRhetoric?.length) habitLines.push(`- 禁用修辞：${habits.bannedRhetoric.join('；')}`)
+    if (habits.formulas?.length) habitLines.push(`- 喜好的描述公式：${habits.formulas.join('；')}`)
+    if (habitLines.length) {
+      lines.push('', '【本库写作习惯】（作者自定义，产出任何成文文字前必须逐条遵循）：', ...habitLines)
+      applied.habits = habitLines.length
+    }
+  } catch { /* 习惯表读不到就不注入，不拦聊天 */ }
   // OS-19：项目简报（体裁/篇幅/分章）是一等约束——注入体裁策略段
   try {
     const loaded = await readBrief(root, genresDirs)

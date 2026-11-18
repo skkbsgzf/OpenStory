@@ -304,6 +304,23 @@ export const ENDPOINTS = Object.freeze({
     response: { ok: 'true', note: 'object', backlinks: 'object' },
     errors: ['NO_LIBRARY', 'PATH_ESCAPE', 'INVALID_ENTRY', 'NOT_FOUND']
   },
+  habitsGet: {
+    method: 'GET',
+    path: '/api/habits',
+    // 习惯表（OS-57）：本库写作习惯——正向（惯用词/描述公式）＋负向（禁用词/句式/修辞）。
+    // Agent 成文前必读；分析引擎的 verdict 也按它参数化。
+    request: { query: { root: 'string' } },
+    response: { ok: 'true', habits: 'object' },
+    errors: ['NO_LIBRARY']
+  },
+  habitsPut: {
+    method: 'PUT',
+    path: '/api/habits',
+    // 保存习惯表：按 schema 归一（未知键丢弃、列表去重限长）；原子写＋.history 备份。
+    request: { body: { root: 'string', habits: 'object' } },
+    response: { ok: 'true', habits: 'object', backup: 'string?' },
+    errors: ['NO_LIBRARY', 'INVALID_ENTRY', 'WRITE_PROTOCOL_IO_FAILED']
+  },
   referenceAbsorb: {
     method: 'POST',
     path: '/api/reference/absorb',

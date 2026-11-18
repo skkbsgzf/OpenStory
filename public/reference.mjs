@@ -189,7 +189,7 @@ export function referenceShellHtml({ notes, tags, activeTag, activePath, view = 
   const nav = refNavHtml({ tags, notes, activeTag, activePath, view, q })
   return `<div class="ref-page">
     <div class="ref-toolbar">
-      <h1>参考</h1>
+      <h1>世界书</h1>
       ${statsLine}
       <span class="sp"></span>
       ${absorbable > 0 ? `<button class="btn-ghost" data-action="ref-absorb">迁入旧目录（${absorbable} 篇）</button>` : ''}

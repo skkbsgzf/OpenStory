@@ -106,6 +106,10 @@ function paragraphOf(paras, needle) {
  */
 
 /** 找「连续等长段」：相邻段字数差都在 ±12% 内的 run（≥3 段算）。节奏平坦的硬信号。 */
+function allIncludes(paras, needle) {
+  return paras.some((para) => para.includes(needle))
+}
+
 function findFlatRuns(charList) {
   const runs = []
   let start = 0
@@ -128,7 +132,19 @@ function findFlatRuns(charList) {
   return runs.sort((left, right) => right.count - left.count).slice(0, 2)
 }
 
-function buildEditorial({ stats, rhythm, emotion, style, aiSmell, paras }) {
+function buildEditorial({ stats, rhythm, emotion, style, aiSmell, paras, habits = null, habitIssues = [] }) {
+  const tone = habits?.tone === 'gentle' ? 'gentle' : 'direct'
+  // 依据来源（OS-57 口径：结论必须有出处，不许空想）：每条 verdict 注明判定依据
+  const SOURCE = {
+    rhythm: '节奏铁律 · 番茄 16 本硬统计',
+    dialogue: '爽文章检十项 · 毒点扫描',
+    sentence: '去 AI 味清单 · 节奏均一',
+    para: '去 AI 味清单 · 段落模板',
+    cliche: '去 AI 味清单 · 套话',
+    emotion: '编辑审稿惯例 · 情绪峰值',
+    hook: '读者需求五铁律 · 铁律一',
+    habit: '本库习惯表'
+  }
   const goods = []
   const problems = []
 
@@ -140,7 +156,8 @@ function buildEditorial({ stats, rhythm, emotion, style, aiSmell, paras }) {
       detail: '等长段落是模板文的核心体征，读者会下意识觉得「在走过场」。',
       action: '把其中一段砍到一半，另一段放宽——长短落差本身就是节奏。',
       module: 'rhythm',
-      paras: [run.from, run.to]
+      paras: [run.from, run.to],
+      source: SOURCE.rhythm
     })
   }
 
@@ -150,7 +167,8 @@ function buildEditorial({ stats, rhythm, emotion, style, aiSmell, paras }) {
       verdict: `全章对白只占 ${stats.dialogueRatio}%——几乎没有人开口`,
       detail: '整章都是叙述在交代。信息全靠叙述推送，读者是在「听报告」，不是在「看戏」。',
       action: '挑两处叙述交代改成对话——人物一开口，立场和温度就都有了。',
-      module: 'style'
+      module: 'style',
+      source: SOURCE.dialogue
     })
   } else if (stats.dialogueRatio >= 18 && stats.dialogueRatio <= 45) {
     goods.push({ verdict: `对白比例 ${stats.dialogueRatio}%——人物在开口，叙述没有过载`, module: 'style' })
@@ -162,7 +180,8 @@ function buildEditorial({ stats, rhythm, emotion, style, aiSmell, paras }) {
       verdict: `句长变异系数只有 ${style.sentenceCv.toFixed(2)}——句子太齐了`,
       detail: '每句长度接近，读起来像节拍器。中文的呼吸感来自落差：四字短句接三十字长句。',
       action: '找一段把其中两句合并成一个长句，再补一个四五个字的短句收尾。',
-      module: 'aiSmell'
+      module: 'aiSmell',
+      source: SOURCE.sentence
     })
   } else if (style.sentenceCv >= 0.55) {
     goods.push({ verdict: `句长参差（变异系数 ${style.sentenceCv.toFixed(2)}）——读起来有呼吸感`, module: 'aiSmell' })
@@ -174,7 +193,8 @@ function buildEditorial({ stats, rhythm, emotion, style, aiSmell, paras }) {
       verdict: `段长变异系数 ${style.paraCv.toFixed(2)}——段落过于均匀`,
       detail: '每段体量差不多，页面看起来像方块阵列。',
       action: '留一段两三行的小段（或一句独立段）当「呼吸口」。',
-      module: 'style'
+      module: 'style',
+      source: SOURCE.para
     })
   }
 
@@ -186,7 +206,8 @@ function buildEditorial({ stats, rhythm, emotion, style, aiSmell, paras }) {
       verdict: `套话 ${clicheTotal} 处：${top}`,
       detail: '这类副词/短语删掉后句意不变——它们是填充物，不是文字。',
       action: '逐个替换成具体动作或直接删；「他不禁笑了」→「他笑了」。',
-      module: 'aiSmell'
+      module: 'aiSmell',
+      source: SOURCE.cliche
     })
   } else if (clicheTotal === 0 && aiSmell.score < 25) {
     goods.push({ verdict: '没有套话与连接词堆砌——文字干净', module: 'aiSmell' })
@@ -202,7 +223,8 @@ function buildEditorial({ stats, rhythm, emotion, style, aiSmell, paras }) {
       verdict: '情绪强度几乎持平——没有真正的峰',
       detail: '全章的情绪密度都在均值附近晃，没有一个「把读者心提起来」的位置。',
       action: '挑一个关键节点（对峙/揭露）让情绪词密度翻倍，其余段落相应收着写。',
-      module: 'plotCurve'
+      module: 'plotCurve',
+      source: SOURCE.emotion
     })
   } else if (emoMax >= emoAvg * 2 && emoMax > 0) {
     goods.push({ verdict: `情绪有峰值（第 ${peakIndex + 1} 段）——有把读者心提起来的位置`, module: 'plotCurve' })
@@ -220,19 +242,37 @@ function buildEditorial({ stats, rhythm, emotion, style, aiSmell, paras }) {
         detail: '前三段是读者决定去留的位置。对照铁律：开篇要有一个具体、可指认的「异常」或「被夺走的位置」。',
         action: '把第一段改成从冲突或反常的一句切入；原交代内容后移或拆进对话。',
         module: 'annotations',
-        paras: [0, 2]
+        paras: [0, 2],
+        source: SOURCE.hook
       })
     } else {
       goods.push({ verdict: '开篇三段内有对话或冲突信号——钩子立住了', module: 'annotations' })
     }
   }
 
-  // 总评：挑最重的两三个问题 + 一个亮点，拼一句人话
+  // 习惯表命中 → 人话问题（依据＝作者自己定的规矩，最有说服力）
+  for (const issue of habitIssues) {
+    problems.push({
+      verdict: issue.label + (issue.paragraphs.length > 1 ? `（${issue.paragraphs.length} 处）` : ''),
+      detail: issue.detail,
+      action: issue.type === 'habit' && issue.label.includes('禁用词') ? '换成具体说法或直接删。' : '改写成符合习惯表的句式。',
+      module: 'aiSmell',
+      paras: issue.paragraphs,
+      source: '本库习惯表'
+    })
+  }
+
+  // 总评：挑最重的两三个问题 + 一个亮点，拼一句人话。口吻参数（习惯表 tone）：
+  //   direct＝编辑直言（默认）；gentle＝先扬后抑，把「问题」说成「可以先动的」
   const worst = problems.slice(0, 2).map((item) => item.verdict)
   const goodLine = goods.length ? `亮点：${goods[0].verdict}。` : ''
   let headline
   if (!problems.length) {
-    headline = `这一章的文本面干净：${goods.slice(0, 2).map((item) => item.verdict).join('；')}。可以往前推剧情了。`
+    headline = tone === 'gentle'
+      ? `这一章的底子很好：${goods.slice(0, 2).map((item) => item.verdict).join('；')}。放心往前推剧情。`
+      : `这一章的文本面干净：${goods.slice(0, 2).map((item) => item.verdict).join('；')}。可以往前推剧情了。`
+  } else if (tone === 'gentle') {
+    headline = `${goodLine}可以先动的地方：${worst.join('；')}。`
   } else if (aiSmell.score >= 50) {
     headline = `AI 味偏重（${aiSmell.score}）：${worst.join('；')}。${goodLine}`
   } else if (problems.length >= 3) {
@@ -240,10 +280,10 @@ function buildEditorial({ stats, rhythm, emotion, style, aiSmell, paras }) {
   } else {
     headline = `基本成立，${problems.length} 处可以更好：${worst.join('；')}。${goodLine}`
   }
-  return { headline, goods, problems }
+  return { headline, goods, problems, tone }
 }
 
-export function analyzeChapter(source, { paragraphs = null } = {}) {
+export function analyzeChapter(source, { paragraphs = null, habits = null } = {}) {
   const raw = text(source)
   const paras = (Array.isArray(paragraphs) && paragraphs.length ? paragraphs : raw.split(/\n{2,}/u))
     .map((line) => text(line).trim())
@@ -384,6 +424,55 @@ export function analyzeChapter(source, { paragraphs = null } = {}) {
     return (rank[left.severity] ?? 3) - (rank[right.severity] ?? 3)
   })
 
+  // —— 习惯表检测（OS-57）：作者自定义的禁用词/禁用句式，命中即问题，依据＝本库习惯表 ——
+  const habitIssues = []
+  if (habits?.bannedWords?.length) {
+    for (const word of habits.bannedWords) {
+      const hits = paragraphsOf(paras, word)
+      if (hits.length) {
+        habitIssues.push({
+          id: `habit-word-${word}-${habitIssues.length}`,
+          type: 'habit',
+          severity: 'high',
+          label: `禁用词「${word}」`,
+          excerpt: word,
+          detail: `习惯表禁用词，出现 ${hits.length} 次——按你自己定的规矩，换成具体说法或删掉。`,
+          paragraph: hits[0],
+          paragraphs: hits
+        })
+      }
+    }
+  }
+  if (habits?.bannedPatterns?.length) {
+    for (const pattern of habits.bannedPatterns) {
+      // 字面匹配；含 … 的句式按「中间可隔 0–12 字」解析（如「不是…而是…」）
+      const parts = pattern.split('…').filter(Boolean)
+      let hits = []
+      if (parts.length > 1) {
+          const re = new RegExp(parts.map((part) => part.replace(/[\.*+?^${}()|[\]\\]/gu, '\\$&')).join('[\\s\\S]{0,12}'), 'gu')
+        const all = paras.join('\n')
+        for (const match of all.matchAll(re)) {
+          hits.push(paragraphOf(paras, match[0].slice(0, 20)))
+        }
+      } else if (allIncludes(paras, pattern)) {
+        hits = paragraphsOf(paras, pattern)
+      }
+      hits = [...new Set(hits)].filter((n) => Number.isInteger(n))
+      if (hits.length) {
+        habitIssues.push({
+          id: `habit-pattern-${habitIssues.length}`,
+          type: 'habit',
+          severity: 'medium',
+          label: `禁用句式「${pattern}」`,
+          excerpt: pattern,
+          detail: '习惯表禁用句式——按你自己定的规矩改写或删掉。',
+          paragraph: hits[0],
+          paragraphs: hits
+        })
+      }
+    }
+  }
+
   return {
     stats: {
       chars,
@@ -411,8 +500,8 @@ export function analyzeChapter(source, { paragraphs = null } = {}) {
         { id: 'para-uniform', label: '段落过于均匀', score: Math.round(factorParaUniform), detail: `段长变异系数 ${paraCv.toFixed(2)}` }
       ]
     },
-    issues: issues.slice(0, 40),
-    editorial: buildEditorial({ stats: { chars, paragraphs: paras.length, dialogueRatio: chars > 0 ? Math.round((dialogueChars / chars) * 1000) / 10 : 0 }, rhythm, emotion, style: { sentenceCv: Math.round(cv * 100) / 100, paraCv: Math.round(paraCv * 100) / 100, cliches: clicheHits }, aiSmell: { score: aiScore }, paras }),
+    issues: [...habitIssues, ...issues].slice(0, 40),
+    editorial: buildEditorial({ stats: { chars, paragraphs: paras.length, dialogueRatio: chars > 0 ? Math.round((dialogueChars / chars) * 1000) / 10 : 0 }, rhythm, emotion, style: { sentenceCv: Math.round(cv * 100) / 100, paraCv: Math.round(paraCv * 100) / 100, cliches: clicheHits }, aiSmell: { score: aiScore }, paras, habits, habitIssues }),
     confidence: chars >= 800 ? 'ok' : 'low'
   }
 }
