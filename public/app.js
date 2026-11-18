@@ -5718,11 +5718,11 @@ function deduceEngineHtml() {
   const assets = engine.assets || { characters: [], scenes: [], bgm: [] }
   const sceneName = card.where && card.where !== '未标记地点' ? text(card.where) : ''
   const sceneAsset = sceneName ? assets.scenes.find((item) => item.name === sceneName) : null
-  const sceneVisual = `<div class="ded-scene-visual">
-      ${sceneAsset
-        ? `<img class="ded-scene-img" src="${dedAssetUrl(sceneAsset)}" alt="${esc(sceneName)}">`
-        : `<div class="ded-scene-ph"><b>${esc(sceneName || '未知场景')}</b><i>场景立绘占位——放 推演/…/素材/场景/${esc(sceneName || '场景名')}.png 即换真图</i></div>`}
-      ${sceneAsset ? `<span class="ded-scene-name">${esc(sceneName)}</span>` : ''}
+  // 场景＝舞台背景（OS-63）：有素材铺真图，没有就渐变氛围；不再单独占一块高度，
+  // 这样对话框与选项能浮在场景上，才是 galgame 的观感。
+  const sceneVisual = `<div class="ded-scene-visual"${sceneAsset ? ` style="background-image:url('${dedAssetUrl(sceneAsset)}')"` : ''}>
+      ${sceneAsset ? '' : '<div class="ded-scene-grain"></div>'}
+      <span class="ded-scene-badge">${esc(sceneName || '未知场景')}</span>
     </div>`
 
   const avatarsHtml = who.map((name) => {
@@ -5740,10 +5740,13 @@ function deduceEngineHtml() {
   const bgmBtn = `<button class="ded-bgm${engine.bgmOn ? ' on' : ''}" data-action="deduce-bgm-toggle"${bgmAsset ? '' : ' disabled'}
       title="${bgmAsset ? `播放：${esc(bgmAsset.name)}（循环）` : '未配置 BGM——放 推演/…/素材/bgm/<场景或情绪>.mp3 即可启用'}">♪ ${bgmAsset ? (engine.bgmOn ? 'BGM 开' : 'BGM 关') : '未配置 BGM'}</button>`
 
-  const stageTop = `<div class="ded-stage-top">
-      <span class="ded-stage-progress">第 ${Number(data.round) || 0} 拍 · 本章 ${bufferCount} 拍 ${buffer?.words || 0} 字</span>
-      ${heatLabel ? `<span class="ded-heat ${heatClass}">${esc(heatLabel)}</span>` : ''}
-      ${bgmBtn}
+  // 顶部条（OS-63）：左＝进度，右＝张力＋BGM。分两簇，避免挤成一团。
+  const stageTop = `<div class="ded-stage-bar">
+      <span class="ded-stage-progress">第 ${Number(data.round) || 0} 拍<span class="ded-bar-sep">·</span>本章 ${bufferCount} 拍 ${buffer?.words || 0} 字</span>
+      <span class="ded-bar-right">
+        ${heatLabel ? `<span class="ded-heat ${heatClass}">${esc(heatLabel)}</span>` : ''}
+        ${bgmBtn}
+      </span>
     </div>`
 
   const draft = engine.draft
@@ -5784,14 +5787,16 @@ function deduceEngineHtml() {
         ${customRow}
       </div>`
 
+  // 舞台（OS-63）：一张铺满的「画面」，对话框浮在底部、选项浮在对话框上、头像浮右侧。
+  // 工具控件（POV/种子/推下一拍/重新开局）收进顶部细线，不再占据画面中央。
   const stageHtml = `<div class="ded-stage">
-      <div class="ded-stage-main">
-        ${stageTop}
-        ${sceneVisual}
-        ${dialogHtml}
-        ${optionsHtml}
-      </div>
+      ${sceneVisual}
+      ${stageTop}
       <div class="ded-stage-side">${avatarsHtml}</div>
+      <div class="ded-stage-bottom">
+        ${optionsHtml}
+        ${dialogHtml}
+      </div>
     </div>`
 
   /* —— 前线：有才显示 —— */
@@ -5833,10 +5838,14 @@ function deduceEngineHtml() {
       </div>
     </section>`
 
-  return `${bufferHtml}${controls}
+  return `${bufferHtml}
     ${flowError(engine.error || '')}
     ${historyHtml}
     ${stageHtml}
+    <details class="ded-toolbox">
+      <summary>推演设置 · POV / 种子 / 推进</summary>
+      ${controls}
+    </details>
     <details class="ded-details"${draft ? ' open' : ''}>
       <summary>局面详情 · 前线 · 事实包${draft ? ' · 草稿编辑' : ''}</summary>
       <div class="ded-grid">
