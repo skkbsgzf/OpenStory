@@ -18,9 +18,12 @@ OpenStory 是跑在本机的小说工作台：**小说**（正文读写＋事实
 |---|---|---|---|
 | 元 | `openstory_libraries` / `openstory_files` | 拿 root、看目录 | 见下 |
 | 小说 | `openstory_novel_*` | 正文的读与写（写有备份） | [novel.md](novel.md) |
+| 习惯 | `openstory_habits_read` / `openstory_habits_put` | 作者写作习惯表（成文前必读必守） | 见下 |
 | 参考 | `openstory_reference_*` | Obsidian 式标签双链笔记 | [reference.md](reference.md) |
 | 推演 | `openstory_deduce_*` / `openstory_enrich_*` / `openstory_fact_curve` | 种子化拍循环＋语义富化 | [deduce.md](deduce.md) |
 | 分析 | `openstory_analysis_chapter` | 本地秒回的文本分析 | [analysis.md](analysis.md) |
+
+**习惯表**：`openstory_habits_read` 读本库作者的文风自述、禁用词/惯用词/禁用句式等规矩——**任何写正文/参考的动作前必读，产出必须逐条遵循**。`openstory_habits_put` 只在作者明确要求调整习惯表时使用（整表覆盖，写有备份）。正文写入工具会自动做习惯命中检查并在返回里给 `habitHits`——命中了先改产出，别删规矩。
 
 ## 标准开场
 

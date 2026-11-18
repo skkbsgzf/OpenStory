@@ -1,0 +1,162 @@
+{
+  "schema": "openstory.acceptance/v1",
+  "generatedAt": "2026-11-18T15:44:37.754Z",
+  "standards": [
+    "S1 Agentic",
+    "S2 可插拔",
+    "S3 前端一致性",
+    "S4 UX 跳转层级"
+  ],
+  "summary": {
+    "pass": 14,
+    "fail": 0,
+    "warn": 0
+  },
+  "checks": [
+    {
+      "id": "S1.1",
+      "standard": "S1",
+      "name": "MCP 工具覆盖模块面（共 20 个工具，4 模块组）",
+      "verdict": "PASS",
+      "note": "各模块组均有读+写工具",
+      "evidence": [
+        "mcp.mjs:112",
+        "mcp.mjs:122",
+        "mcp.mjs:140",
+        "mcp.mjs:156"
+      ]
+    },
+    {
+      "id": "S1.2",
+      "standard": "S1",
+      "name": "mcp/skills 对外文档同步（OVERVIEW 声称 —，实际 20）",
+      "verdict": "PASS",
+      "note": "",
+      "evidence": [
+        "mcp/skills/analysis.md",
+        "mcp/skills/deduce.md",
+        "mcp/skills/novel.md",
+        "mcp/skills/OVERVIEW.md",
+        "mcp/skills/reference.md"
+      ]
+    },
+    {
+      "id": "S1.3",
+      "standard": "S1",
+      "name": "skills/ 知识库包完整（30 包）",
+      "verdict": "PASS",
+      "note": "全部包有 SKILL.md",
+      "evidence": []
+    },
+    {
+      "id": "S1.4",
+      "standard": "S1",
+      "name": "dsh native runtime 适配件齐全（dsh-cli 一次一进程型已注册）",
+      "verdict": "PASS",
+      "note": "dsh-cli 型（一次一进程）就位",
+      "evidence": [
+        "dsh-cli.mjs:25",
+        "dsh-bridge.mjs:27",
+        "cli-bridge.mjs:16",
+        "runtimes.mjs:21",
+        "runtimes.mjs:54"
+      ]
+    },
+    {
+      "id": "S1.5",
+      "standard": "S1",
+      "name": "外部 CLI 派发器就位（Qoder 子 agent 模式）",
+      "verdict": "PASS",
+      "note": "",
+      "evidence": [
+        ".zcode/qoder-agent.mjs:12",
+        ".zcode/run-gate.mjs:5"
+      ]
+    },
+    {
+      "id": "S2.1",
+      "standard": "S2",
+      "name": "功能模块间零直接耦合（协议层/vendor 内核除外）",
+      "verdict": "PASS",
+      "note": "模块只引 contracts/chapters 协议层、vendor 内核与白名单",
+      "evidence": []
+    },
+    {
+      "id": "S2.2",
+      "standard": "S2",
+      "name": "前端分析/图谱/参考/树模块互不 import（md.mjs 渲染协议除外）",
+      "verdict": "PASS",
+      "note": "",
+      "evidence": []
+    },
+    {
+      "id": "S2.3",
+      "standard": "S2",
+      "name": "契约驱动架构（contracts 62 端点；daemon 契约分派+响应校验）",
+      "verdict": "PASS",
+      "note": "契约表是模块间调用的唯一底座；新增端点必须先进 contracts",
+      "evidence": [
+        "contracts.mjs:37",
+        "daemon.mjs:771",
+        "daemon.mjs:791"
+      ]
+    },
+    {
+      "id": "S3.1",
+      "standard": "S3",
+      "name": "语义令牌覆盖率（令牌定义区外裸色值 0 处）",
+      "verdict": "PASS",
+      "note": "全部颜色走 var(--*)",
+      "evidence": []
+    },
+    {
+      "id": "S3.2",
+      "standard": "S3",
+      "name": "侧栏=浮层（正文恒居中，OS-48 宪法）",
+      "verdict": "PASS",
+      "note": "",
+      "evidence": [
+        "public/index.html:101"
+      ]
+    },
+    {
+      "id": "S3.3",
+      "standard": "S3",
+      "name": "统一组件约定类在样式表有定义（surface-card/rm-toggle/rm-x/shadow-card）",
+      "verdict": "PASS",
+      "note": "",
+      "evidence": [
+        "public/index.html:23",
+        "public/index.html:109",
+        "public/index.html:115",
+        "public/index.html:29"
+      ]
+    },
+    {
+      "id": "S4.1",
+      "standard": "S4",
+      "name": "核心模块页签顶栏可达（正文/世界书/习惯/拆解/推演/参考）",
+      "verdict": "PASS",
+      "note": "",
+      "evidence": []
+    },
+    {
+      "id": "S4.2",
+      "standard": "S4",
+      "name": "官方关闭按钮统一（rm-x 引用 2 处；旁路 close 类 0 处）",
+      "verdict": "PASS",
+      "note": "关闭走 rm-x + page-close 两级约定",
+      "evidence": []
+    },
+    {
+      "id": "S4.3",
+      "standard": "S4",
+      "name": "UX 结构清单文档存在（docs/UX-STRUCTURE.md：页签/子页签/入口层级）",
+      "verdict": "PASS",
+      "note": "",
+      "evidence": [
+        "docs/UX-STRUCTURE.md"
+      ]
+    }
+  ]
+}

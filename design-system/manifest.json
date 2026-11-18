@@ -1,0 +1,15 @@
+{
+  "schemaVersion": "openstory-design-system/v1",
+  "id": "openstory-paper",
+  "name": "OpenStory Paper",
+  "category": "Writing & Creative Tools",
+  "description": "类纸工作台：中性面卡片堆叠、暖墨阴影、珊瑚主色、正文恒居中；左右栏为绝对定位浮层。",
+  "source": {
+    "type": "bundled",
+    "origin": "OpenStory public/index.html :root（OS-49 依 OpenDesign 取色口径逆向）"
+  },
+  "files": {
+    "design": "DESIGN.md",
+    "tokens": "tokens.css"
+  }
+}

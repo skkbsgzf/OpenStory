@@ -1,0 +1,72 @@
+/* design-system/tokens.css — OpenStory 语义令牌单一真源（OpenDesign 范式）
+ *
+ * 与 public/index.html 的 :root 保持同步（验收门禁 S3.1 机械检查裸色值回归）。
+ * 皮肤（styles/*.json）运行时注入 skin-style 块后置覆盖同名令牌。
+ */
+
+:root {
+  /* 画布与面 */
+  --bg: #ffffff;
+  --soft: #faf9f7;
+  --warm: #fff6ef;
+  --surface-card: color-mix(in srgb, var(--ink) 3%, var(--bg));
+
+  /* 墨色 */
+  --ink: #222222;
+  --ink-2: #3d3a36;
+  --muted: #6f6a63;
+  --meta: #a39d94;
+  --on-accent: #ffffff;
+
+  /* 线 */
+  --line: #e7e3dd;
+  --hair: #f0ede8;
+
+  /* 语义色 */
+  --accent: #ff385c;
+  --accent-hover: #e31c5f;
+  --accent-active: #e00b41;
+  --accent-soft: #fff1f3;
+  --ok: #008a05;
+  --danger: #c13515;
+  --warn: #c48a00;
+  --warn-ink: #a06a00;
+  --warn-on-dark: #ffd7a8;
+
+  /* 推演场景渐变（galgame 舞台回退底） */
+  --scene-deep: #2b2a4a;
+  --scene-mid: #4a3d6b;
+  --scene-far: #6b4f6b;
+  --scene-overlay: rgba(20, 18, 30, .55);
+
+  /* 圆角与影（影属于卡片，不属于栏容器——OS-49） */
+  --radius: 10px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
+  --pill: 999px;
+  --shadow: 0 8px 30px rgba(34, 34, 34, .08);
+  --shadow-base: 28, 27, 26;
+  --shadow-card: 0 1px 2px rgba(var(--shadow-base), .05), 0 1px 3px rgba(var(--shadow-base), .04);
+  --shadow-card-hover: 0 2px 6px rgba(var(--shadow-base), .07), 0 1px 2px rgba(var(--shadow-base), .05);
+  --shadow-float: 0 1px 2px rgba(var(--shadow-base), .04), 0 10px 28px -10px rgba(var(--shadow-base), .18);
+
+  /* 字体与排版 */
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", "PingFang SC", sans-serif;
+  --serif: "Noto Serif SC", "Songti SC", Georgia, serif;
+  --mono: "SF Mono", "Cascadia Code", Consolas, monospace;
+  --content-max: 1180px;
+  --content-px: 40px;
+
+  /* 正文排版 */
+  --doc-font-size: 17px;
+  --doc-line-height: 1.9;
+  --doc-para-gap: 1em;
+  --doc-indent: 2em;
+  --doc-max: 720px;
+}
+
+/* 夜间皮默认块（styles/night.json 激活时由 daemon/skin 注入同名覆盖）：
+   --shadow-base: 0, 0, 0;
+   --shadow-card: 0 1px 2px rgba(var(--shadow-base), .38), 0 1px 3px rgba(var(--shadow-base), .3);
+   --shadow-card-hover: 0 2px 8px rgba(var(--shadow-base), .46), 0 1px 3px rgba(var(--shadow-base), .32);
+   同名令牌整体换值，语义不变。 */

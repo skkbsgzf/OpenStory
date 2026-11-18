@@ -14,12 +14,28 @@
  *   · hover halo 光圈（0.10 → 0.26），密集时标签默认只显圆点
  */
 
-const KIND_COLOR = {
-  reference: '#ff385c',
-  tag: '#c48a00',
-  artifact: '#008a05',
-  entry: '#9a9a9a'
+/** 画布 fillStyle 不认 var(--*)，这里从 :root 令牌现读（令牌缺失时回退最后值）。 */
+const KIND_TOKENS = {
+  reference: ['--accent', '#ff385c'],
+  tag: ['--warn', '#c48a00'],
+  artifact: ['--ok', '#008a05'],
+  entry: ['--meta', '#9a9a9a']
 }
+const KIND_COLOR_CACHE = new Map()
+function kindColor(kind) {
+  if (KIND_COLOR_CACHE.has(kind)) return KIND_COLOR_CACHE.get(kind)
+  const [token, fallback] = KIND_TOKENS[kind] || ['', fallbackHex(kind)]
+  let v = fallback
+  try {
+    v = getComputedStyle(document.documentElement).getPropertyValue(token).trim() || fallback
+  } catch { /* 非 DOM 环境（测试）用回退 */ }
+  KIND_COLOR_CACHE.set(kind, v)
+  return v
+}
+function fallbackHex(kind) {
+  return { reference: '#ff385c', tag: '#c48a00', artifact: '#008a05', entry: '#9a9a9a' }[kind] || '#9a9a9a'
+}
+const KIND_COLOR = new Proxy({}, { get: (_t, kind) => kindColor(kind) })
 
 /** 初始环半径比例（相对画布短边）：越「核心」的 kind 越靠内。 */
 const KIND_RING = {
@@ -504,4 +520,6 @@ export function mountGraph({ canvas, graph, onPick, onBlank, mode = 'jump', focu
 }
 
 /** 节点配色（供图例复用）。 */
+/** 皮肤/库切换后清颜色缓存（app.js openLibrary 重置块调用）。 */
+export function resetGraphColors() { KIND_COLOR_CACHE.clear() }
 export { KIND_COLOR }

@@ -24,3 +24,9 @@ test/fixtures/os-e2e-agent-config.json
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# ── Understand-Anything 知识图谱（图谱本体入库，运行产物不入）──
+.ua/intermediate/
+.ua/tmp/
+.ua/diff-overlay.json
+.ua/.trash-*/
