@@ -198,6 +198,74 @@ async function writeTextWithBackup(root, absPath, content) {
  * 写到 `推演/<bookId>/归档/第N章.md`，记入 archived、清缓存区、会话落盘。
  * 返回 { ok, path, words }；缓存区为空或写盘失败＝ok:false（不抛）。
  */
+/**
+ * 旧引擎会话 → 新会话层的一次性桥接（OS-62）。
+ *
+ * 背景：OS-61 之前推演状态在 `.openstory/deduce/<bookId>.json`（引擎自己的 sessionState），
+ * OS-61 之后「拍 → 章」的容器在 `推演/<bookId>/session.json`。两层没打通，导致老库的
+ * 推演历史在剧情树里看不到（树读新层，旧层有 round 却没有 nodes）。
+ *
+ * 口径：**只补历史，不动旧档**。把旧状态里的 lastTurn（最后一面：局面卡＋候选＋张力）
+ * 与它的 round 一起，作为新层的第一个节点插进去，prose 留空（旧层没存正文）。
+ * 重复调用幂等：已有节点的 round 与旧状态相同就不插。
+ */
+export function importLegacyDeduce({ legacyState, session, bookId = '' } = {}) {
+  const legacy = legacyState && typeof legacyState === 'object' ? legacyState : null
+  if (!legacy) return { ok: false, code: 'NO_LEGACY_STATE', imported: false, added: 0 }
+  const round = Number(legacy.round)
+  if (!Number.isSafeInteger(round) || round <= 0) {
+    return { ok: false, code: 'NO_LEGACY_ROUND', imported: false, added: 0 }
+  }
+  const current = session || normalizeDeduceSession({
+    schema: DEDUCE_SESSION_SCHEMA,
+    bookId,
+    branchId: 'main',
+    cursor: 0,
+    nodes: [],
+    buffer: { chapterNo: 1, nodes: [], words: 0 },
+    archived: []
+  }, bookId)
+  if (!current) return { ok: false, code: 'BAD_SESSION', imported: false, added: 0 }
+
+  // 幂等：同一 round 的节点已经在（不论分支）就不重复导入
+  const exists = (current.nodes || []).some((node) => Number(node?.round) === round)
+  if (exists) return { ok: true, imported: false, added: 0, session: current, reason: 'already-imported' }
+
+  const last = legacy.lastTurn && typeof legacy.lastTurn === 'object' ? legacy.lastTurn : {}
+  const sceneCard = last.sceneCard && typeof last.sceneCard === 'object' ? last.sceneCard : {}
+  const candidates = Array.isArray(last.candidates) ? last.candidates : []
+  const node = {
+    id: `legacy-${round}`,
+    round,
+    branchId: 'main',
+    parentId: '',
+    choiceId: '',
+    scene: {
+      who: Array.isArray(sceneCard.who) ? sceneCard.who.filter(Boolean) : [],
+      where: text(sceneCard.where),
+      tension: text(sceneCard.tension),
+      hook: text(sceneCard.hook)
+    },
+    candidates: candidates.map((item, index) => ({
+      id: text(item?.id) || `legacy-${round}-${index}`,
+      source: text(item?.source),
+      text: text(item?.text)
+    })),
+    prose: '',
+    events: [],
+    createdAt: new Date().toISOString(),
+    importedFrom: 'legacy-deduce-state'
+  }
+  // 不走 appendNode：它按「引擎实时产出的节点」形状重建对象，会把 who 数组压成字符串、
+  // 也会丢掉 importedFrom 标记。桥接直接按会话层的规范形状推入，语义与 appendNode 一致
+  // （cursor+1、进 buffer、字数累加）。
+  current.cursor = (Number.isSafeInteger(current.cursor) ? current.cursor : 0) + 1
+  if (!current.buffer) current.buffer = normalizeBuffer(null)
+  current.nodes.push(node)
+  current.buffer.nodes.push(node)
+  return { ok: true, imported: true, added: 1, session: current, round, nodeId: node.id }
+}
+
 export async function archiveChapter(root, session, { title = '' } = {}) {
   const buffer = session?.buffer
   if (!buffer || !Array.isArray(buffer.nodes) || buffer.nodes.length === 0) {

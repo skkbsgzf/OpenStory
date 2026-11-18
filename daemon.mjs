@@ -127,6 +127,7 @@ import {
   appendNode,
   archiveChapter,
   DEDUCE_SESSION_SCHEMA,
+  importLegacyDeduce,
   loadDeduceSession,
   normalizeDeduceSession,
   saveDeduceSession
@@ -1044,11 +1045,38 @@ async function listDeduceAssets(root, bookId) {
   }
 
   // 推演会话存储层（OS-61）：「文游」容器——读/整存会话、归档一章。
+/** 读旧引擎推演状态（.openstory/deduce/<bookId>.json）——桥接用，只读。 */
+function readLegacyDeduceState(root, bookId) {
+  try {
+    const path = deduceStatePath(root, bookId)
+    if (!existsSync(path)) return null
+    const parsed = JSON.parse(readFileSync(path, 'utf-8'))
+    return parsed && typeof parsed === 'object' ? parsed : null
+  } catch {
+    return null
+  }
+}
+
   if (endpointId === 'deduceSessionGet') {
     const authorized = authorizeRoot(allowlist, request.root)
     if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
     const bookId = await resolveFactBookId(authorized.root, request.bookId)
-    return sendJson(res, 200, { ok: true, session: loadDeduceSession(authorized.root, bookId) })
+    let session = loadDeduceSession(authorized.root, bookId)
+    // 自动桥接（OS-62）：新层还没有节点、但旧引擎层推过拍 → 把最后一面导入成首节点。
+    // 老库升级后剧情树不再空白；旧档不动，重复读幂等。
+    if (!session || !(session.nodes || []).length) {
+      const legacy = readLegacyDeduceState(authorized.root, bookId)
+      if (legacy) {
+        const merged = importLegacyDeduce({ legacyState: legacy, session, bookId })
+        if (merged.ok && merged.imported) {
+          const saved = await saveDeduceSession(authorized.root, bookId, merged.session)
+          session = saved.ok ? merged.session : merged.session
+        } else if (merged.ok) {
+          session = merged.session
+        }
+      }
+    }
+    return sendJson(res, 200, { ok: true, session })
   }
 
   if (endpointId === 'deduceSessionPut') {
