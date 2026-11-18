@@ -84,6 +84,9 @@ import {
   defaultUserSkillsDir,
   loadSkills,
   suiteSkillDirs,
+  readAgentPicks,
+  writeAgentPicks,
+  craftSkillsForPrompt,
   skillSummary,
   skillsForGenre
 } from './skills.mjs'
@@ -952,6 +955,21 @@ async function handleApi(req, res, url, context) {
     return sendJson(res, 200, { ok: true, brief: written.brief, genre, path: written.path })
   }
 
+  if (endpointId === 'agentPicksGet') {
+    const authorized = authorizeRoot(allowlist, request.root)
+    if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
+    const picks = await readAgentPicks(authorized.root)
+    return sendJson(res, 200, { ok: true, picks: picks ?? null, explicit: picks !== null })
+  }
+
+  if (endpointId === 'agentPicksPut') {
+    const authorized = authorizeRoot(allowlist, request.root)
+    if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
+    const written = await writeAgentPicks(authorized.root, context.skillsDirs, request)
+    if (!written.ok) return sendError(res, written.code ?? API_ERROR_CODES.INVALID_ENTRY, written.message)
+    return sendJson(res, 200, { ok: true, picks: written.picks, path: written.path })
+  }
+
   if (endpointId === 'suitesGet') {
     const listed = await listSuitesPublic(context.suitesDirs, context.suiteStatePath)
     const suitesUserDir = Array.isArray(context.suitesDirs) && context.suitesDirs[1] ? context.suitesDirs[1] : ''
@@ -1728,7 +1746,7 @@ function readLegacyDeduceState(root, bookId) {
   return sendError(res, API_ERROR_CODES.NOT_FOUND, `端点未实现：${endpointId}`)
 }
 
-const ENDPOINT_HAS_QUERY = new Set(['habitsGet', 'chapterGet', 'agentSessions', 'agentSessionGet', 'agentSessionDelete', 'libraryDiagnose', 'filesGet', 'chaptersGet', 'chapterDelete', 'artifactsGet', 'suiteStateDataGet', 'briefGet', 'skillsGet', 'skillGet', 'enrichStatus', 'enrichGraph', 'kbStatusGet', 'agentDshModelsGet', 'factCurveGet', 'referenceGet', 'referenceGraphGet', 'referenceNoteGet', 'deduceSessionGet', 'deduceAssets', 'deduceAssetFile'])
+const ENDPOINT_HAS_QUERY = new Set(['habitsGet', 'chapterGet', 'agentSessions', 'agentSessionGet', 'agentSessionDelete', 'libraryDiagnose', 'filesGet', 'chaptersGet', 'chapterDelete', 'artifactsGet', 'suiteStateDataGet', 'agentPicksGet', 'briefGet', 'skillsGet', 'skillGet', 'enrichStatus', 'enrichGraph', 'kbStatusGet', 'agentDshModelsGet', 'factCurveGet', 'referenceGet', 'referenceGraphGet', 'referenceNoteGet', 'deduceSessionGet', 'deduceAssets', 'deduceAssetFile'])
 
 /** 套件资产 MIME（page 模式自带页同源装载）。 */
 const SUITE_ASSET_MIME = Object.freeze({
@@ -1928,7 +1946,8 @@ async function systemPromptFor(root, libraries, genresDirs, skillsDirs, { canRea
       if (section) lines.push('', section)
       // OS-22：按体裁选 craft 类技能（技法规则）注入——只取 craft，review/transform/extract 不注入
       const loadedSkills = loadSkills(effectiveSkillsDirs({ skillsDirs, suitesDirs, suiteStatePath, env }))
-      const matched = skillsForGenre(loadedSkills.skills, loaded.brief.genre)
+      const picks = await readAgentPicks(root)
+      const matched = craftSkillsForPrompt(loadedSkills.skills, loaded.brief.genre, picks)
       const craft = craftInstructionBlock(matched)
       if (craft) lines.push('', craft)
       // 生效清单（OS-43）：把「这轮用到了哪些技能」回报给界面，让作者知道 AI 手里有什么

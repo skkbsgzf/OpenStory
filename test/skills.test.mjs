@@ -13,10 +13,13 @@ import { validateRequest, validateResponse } from '../contracts.mjs'
 import {
   builtinSkillsDir,
   craftInstructionBlock,
+  craftSkillsForPrompt,
   loadSkills,
   parseSkillMarkdown,
+  readAgentPicks,
   skillSummary,
-  skillsForGenre
+  skillsForGenre,
+  writeAgentPicks
 } from '../skills.mjs'
 import { startDaemon } from '../daemon.mjs'
 
@@ -176,4 +179,50 @@ test('daemon 端到端：列技能（体裁过滤）→ 取全文 → 未知技�
     await daemon.close()
     await rm(base, { recursive: true, force: true })
   }
+})
+
+/* ---------- OS-70：Agent 选择链（风格词条单选/方法论多选/缺省裁剪） ---------- */
+
+test('选择链：读写往返＋坏技能名拒收', async () => {
+  const base = await mkdtemp(join(tmpdir(), 'openstory-picks-'))
+  const root = join(base, '库')
+  await mkdir(root, { recursive: true })
+  try {
+    // 无文件＝null（缺省裁剪）
+    assert.equal(await readAgentPicks(root), null)
+    // 写入：风格单选＋方法多选
+    const written = await writeAgentPicks(root, [builtinSkillsDir()], { style: 'style-chixie-rusong', methods: ['de-ai-writing'] })
+    assert.equal(written.ok, true)
+    const picks = await readAgentPicks(root)
+    assert.deepEqual(picks, { style: 'style-chixie-rusong', methods: ['de-ai-writing'] })
+    // 货架上没有的技能拒收
+    const bad = await writeAgentPicks(root, [builtinSkillsDir()], { style: 'nope', methods: [] })
+    assert.equal(bad.ok, false)
+    // 清空（显式空选择也是合法状态）
+    const cleared = await writeAgentPicks(root, [builtinSkillsDir()], { style: '', methods: [] })
+    assert.equal(cleared.ok, true)
+    assert.deepEqual(await readAgentPicks(root), { style: '', methods: [] })
+  } finally {
+    await rm(base, { recursive: true, force: true })
+  }
+})
+
+test('注入裁剪：缺省剔 style 包；显式 picks 只注入所选', () => {
+  const { skills } = loadSkills([builtinSkillsDir()])
+  const craft = skills.filter((skill) => skill.category === 'craft')
+  const bodyOf = (name) => craft.find((skill) => skill.name === name)
+
+  // 缺省：任何体裁都不出现 style-* 文风包
+  for (const genre of ['', 'short-story', 'long-serial']) {
+    const matched = craftSkillsForPrompt(skills, genre, null)
+    assert.ok(!matched.some((skill) => skill.name.startsWith('style-')), `体裁 ${genre || '(无)'} 缺省不得注入文风包`)
+  }
+  // 缺省＋体裁：genres 匹配的非 style craft 仍在（如 de-ai-writing ["*"]）
+  const def = craftSkillsForPrompt(skills, 'long-serial', null)
+  assert.ok(def.some((skill) => skill.name === 'de-ai-writing'))
+
+  // 显式：风格单选＋方法多选——只注入所选，别的文风包不进来
+  const picks = { style: 'style-chixie-rusong', methods: ['de-ai-writing', 'info-reveal-budget'] }
+  const explicit = craftSkillsForPrompt(skills, 'long-serial', picks)
+  assert.deepEqual(explicit.map((skill) => skill.name).sort(), ['de-ai-writing', 'info-reveal-budget', 'style-chixie-rusong'])
 })
