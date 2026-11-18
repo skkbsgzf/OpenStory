@@ -394,7 +394,7 @@ const tools = [
       const { analyzeChapter } = await import('./public/analysis.mjs')
       const paragraphs = args.text.split(/\n+/u).map((block) => block.trim()).filter(Boolean)
       const result = analyzeChapter(args.text, { paragraphs })
-      return { stats: result.stats, style: result.style, aiSmell: { score: result.aiSmell?.score, factors: result.aiSmell?.factors }, issues: result.issues, emotion: result.emotion, rhythm: result.rhythm }
+      return { editorial: result.editorial, stats: result.stats, style: result.style, aiSmell: { score: result.aiSmell?.score, factors: result.aiSmell?.factors }, issues: result.issues, emotion: result.emotion, rhythm: result.rhythm }
     }
   }
 ]

@@ -53,7 +53,7 @@ const state = {
   dirWork: {},
   write: { chapters: [], listLoading: false, mode: 'read', docPrefs: null },
   sel: { text: '', blockIndex: -1, rect: null, busy: false, preview: null, para: -1 },
-  analyze: { open: false, result: null, busy: false, dismissed: {}, activePara: -1, expandOthers: false, fact: null, factRoot: '', factTab: 'emotion' },
+  analyze: { open: false, result: null, busy: false, dismissed: {}, activePara: -1, expandOthers: false, fact: null, factRoot: '', factTab: 'emotion', modOpen: {} },
   deduce: { premise: '', variables: '', question: '', sessionId: '', streaming: false, reply: '', controller: null, error: '',
     mode: 'engine', engine: { busy: false, data: null, pov: '', seed: '', error: '', hint: '' } },
   artifacts: { root: '', groups: [], totals: null, loading: false, error: '', previewFile: '', previewText: '', previewLoading: false },
@@ -1078,27 +1078,28 @@ function analyzePanelHtml() {
       ? charts.renderEventArea(fact.chapters, { activeNo })
       : charts.renderEmotionCurve(fact.chapters, { activeNo })
     const ribbon = charts.renderFunctionRibbon(fact.chapters, { activeNo })
-    curveSection = '<section class="analyze-sec"><h4>剧情曲线 <span class="count">fact · ' + esc(fact.title || fact.bookId) +
-      ' · ' + fact.chapters.length + ' 章</span></h4>' +
-      '<div class="chart-tabs"><button class="chart-tab' + (tab === 'emotion' ? ' on' : '') + '" data-action="analyze-chart" data-tab="emotion">情绪曲线</button>' +
+    curveSection = '<div class="chart-tabs"><button class="chart-tab' + (tab === 'emotion' ? ' on' : '') + '" data-action="analyze-chart" data-tab="emotion">情绪曲线</button>' +
       '<button class="chart-tab' + (tab === 'events' ? ' on' : '') + '" data-action="analyze-chart" data-tab="events">事件密度</button></div>' +
       chart + ribbon +
-      '<p class="sub">图上的点/柱/彩带都可以点——跳到对应章；正文切章或滚动，当前章在这里高亮回看。</p></section>'
+      '<p class="sub">图上的点/柱/彩带都可以点——跳到对应章；正文切章或滚动，当前章在这里高亮回看。</p>'
   } else if (charts) {
-    curveSection = '<section class="analyze-sec"><h4>情绪曲线 <span class="count">词典近似 · 低置信</span></h4>' +
-      charts.renderLocalCurve(result.emotion, { activePara: viewPara }) +
-      '<p class="sub">本库还没有拆解 fact——曲线只是词典近似。跑一次「拆解 → enrich」后，这里会换成语义级剧情曲线：峰值标情绪、可点击跳章。</p></section>'
+    curveSection = charts.renderLocalCurve(result.emotion, { activePara: viewPara }) +
+      '<p class="sub">本库还没有拆解 fact——曲线只是词典近似。跑一次「拆解 → enrich」后，这里会换成语义级剧情曲线：峰值标情绪、可点击跳章。</p>'
   }
   // OS-44：面板改为模块化装配——每个分析是一个独立卡片，可在设置里插拔
+  // OS-56：模块卡改「折叠＋人话结论」——summary 行是编辑结论，展开才是数据（详有略）。
+  // annotations 是活卡（跟正文滚动），保持原样不折叠。
   const modules = [
-    { id: 'plotCurve', html: curveSection },
-    { id: 'style', html: `<section class="analyze-sec"><h4>文风</h4>${styleSectionHtml(result)}</section>` },
-    { id: 'rhythm', html: `<section class="analyze-sec"><h4>节奏（逐段字数）</h4>${sparkline(rhythmValues, { color: 'var(--ok)' })}</section>` },
-    { id: 'aiSmell', html: `<section class="analyze-sec"><h4>AI 味 <b class="ai-score ${aiClass}">${result.aiSmell.score}</b></h4>${result.aiSmell.factors.map(barRow).join('')}</section>` },
+    { id: 'plotCurve', title: '情绪曲线', body: curveSection },
+    { id: 'style', title: '文风', body: styleSectionHtml(result) },
+    { id: 'rhythm', title: '节奏（逐段字数）', body: sparkline(rhythmValues, { color: 'var(--ok)' }) },
+    { id: 'aiSmell', title: `AI 味 ${result.aiSmell.score}`, body: result.aiSmell.factors.map(barRow).join('') },
     {
       id: 'annotations',
       // 空态（OS-50）：以前只剩一行灰字 + 大片留白（作者截图指出）。现在空态也给信息与出路：
       //   · 说清「这一段干净」还是「还没滚动」，给出全章条数与最近的批注段，可一键跳过去看
+      // raw＝活卡原样渲染（跟正文滚动对齐），不进折叠（OS-56）
+      raw: true,
       html: '<section class="analyze-sec analyze-here" id="analyze-here">' +
         '<h4>本段批注 <span class="count">' +
         (pickPara < 0 ? '滚动正文即对齐'
@@ -1124,13 +1125,56 @@ function analyzePanelHtml() {
     }
   ]
   const hiddenMods = hiddenModules()
-  const live = modules.filter((mod) => !hiddenMods.has(mod.id) && mod.html)
+  // OS-56 编辑 verdict：每个模块的「一句话结论」——有问题先显问题，没问题显亮点，都没有给中性位
+  const ed = result.editorial || { headline: '', goods: [], problems: [] }
+  const verdictFor = (id) => {
+    const bad = ed.problems.find((item) => item.module === id)
+    if (bad) return { icon: '⚠', tone: 'warn', text: bad.verdict }
+    const ok = ed.goods.find((item) => item.module === id)
+    if (ok) return { icon: '✓', tone: 'good', text: ok.verdict }
+    return null
+  }
+  const wrapMod = (mod, verdict) => {
+    const open = state.analyze.modOpen?.[mod.id] === true
+    const line = verdict
+      ? `<span class="mod-verdict ${verdict.tone}">${verdict.icon} ${esc(verdict.text)}</span>`
+      : '<span class="mod-verdict neutral">详见展开</span>'
+    return `<details class="analyze-sec mod${open ? ' open' : ''}" data-mod-card="${esc(mod.id)}"${open ? ' open' : ''}>
+      <summary data-action="mod-toggle" data-mod-id="${esc(mod.id)}">
+        <span class="mod-v-head">${mod.title}</span>${line}<span class="mod-caret">›</span>
+      </summary>
+      <div class="mod-v-body">${mod.body}</div>
+    </details>`
+  }
+
+  const live = modules.filter((mod) => !hiddenMods.has(mod.id) && (mod.body || mod.html))
+  // 总评卡（OS-56）：结论优先——一句话总评＋好在哪＋问题在哪（可定位、可跳详情）
+  const edCard = '<section class="analyze-sec ed-card">' +
+    '<h4>编辑总评</h4>' +
+    '<p class="ed-headline">' + esc(ed.headline || '还没有结论——点「重新分析」。') + '</p>' +
+    (ed.goods.length ? '<div class="ed-goods">' + ed.goods.slice(0, 3).map((item) =>
+      '<div class="ed-line good"><span class="ed-ic">✓</span><span>' + esc(item.verdict) + '</span></div>').join('') + '</div>' : '') +
+    (ed.problems.length ? '<div class="ed-problems">' + ed.problems.slice(0, 4).map((item) => {
+      const goto = item.paras && item.paras.length
+        ? '<button class="ed-act" data-action="analyze-goto" data-paragraph="' + item.paras[0] + '">定位第 ' + (item.paras[0] + 1) + ' 段</button>' : ''
+      const jump = item.module && !hiddenMods.has(item.module)
+        ? '<button class="ed-act" data-action="ed-jump" data-module="' + esc(item.module) + '">详情 ↘</button>' : ''
+      return '<div class="ed-line warn"><span class="ed-ic">⚠</span><span class="ed-text"><b>' + esc(item.verdict) + '</b>' +
+        (item.action ? '<i class="ed-action">改法：' + esc(item.action) + '</i>' : '') +
+        (item.detail ? '<i class="ed-why">' + esc(item.detail) + '</i>' : '') +
+        '</span><span class="ed-ops">' + goto + jump + '</span></div>'
+    }).join('') + '</div>' : '') +
+    '</section>'
   return '<div class="analyze-body">' +
     '<div class="analyze-kpis"><span><b>' + stats.chars + "</b> 字</span><span><b>" + stats.paragraphs +
     "</b> 段</span><span><b>" + stats.avgSentenceLen + "</b> 字/句</span><span><b>" + stats.dialogueRatio +
     "%</b> 对白</span></div>" +
     (result.confidence === "low" ? '<div class="warn-box">本章偏短，指标仅供参考。</div>' : "") +
-    live.map((mod) => mod.html).join('') +
+    edCard +
+    live.map((mod) => {
+      if (mod.raw) return mod.html
+      return wrapMod({ id: mod.id, body: mod.body, title: mod.title }, verdictFor(mod.id))
+    }).join('') +
     '<div class="ops"><button class="btn-ghost" data-action="analyze-run">重新分析</button></div></div>'
 }
 
@@ -5906,6 +5950,19 @@ document.addEventListener('click', (event) => {
     startPolishRequest()
   } else if (action === 'analyze-toggle') {
     toggleAnalyzePanel()
+  } else if (action === 'mod-toggle') {
+    const id = target.dataset.modId
+    if (!state.analyze.modOpen) state.analyze.modOpen = {}
+    state.analyze.modOpen[id] = !(state.analyze.modOpen[id] === true)
+    renderAnalyzePanel()
+  } else if (action === 'ed-jump') {
+    // 总评「详情 ↘」：展开对应模块卡并把右栏滚到它（OS-56 详有略的「略→详」跳转）
+    const id = target.dataset.module
+    if (!state.analyze.modOpen) state.analyze.modOpen = {}
+    state.analyze.modOpen[id] = true
+    renderAnalyzePanel()
+    const card = document.querySelector(`.analyze-sec[data-mod-card="${id}"]`)
+    card?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   } else if (action === 'analyze-expand') {
     state.analyze.expandOthers = !state.analyze.expandOthers
     renderAnalyzePanel()
