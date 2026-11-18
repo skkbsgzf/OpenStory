@@ -72,6 +72,28 @@ export function layoutStoryTree(session, options = {}) {
   }
   laneOrder.sort((a, b) => (a === 'main' ? -1 : b === 'main' ? 1 : 0))
 
+  /**
+   * 分支本地拍号（OS-65 作者确认的弯度）：分支拍的引擎全局 round 会跳号
+   * （分叉在第 8 拍，分支第一拍可能是第 12 拍），树横轴若按全局 round 排，
+   * 分支节点会飘到主线右侧、读不出「从分叉点重新走」。
+   * 这里给每条非主线分支算 forkRound（分叉点的拍号），分支第 n 拍的本地拍号
+   * ＝ forkRound + n。主线用全局 round，两条泳道各自成立、分叉处自然对齐。
+   */
+  const forkRoundOf = (branchId) => {
+    const forkNode = nodes.find((node) => Array.isArray(node?.forkBranchIds) && node.forkBranchIds.includes(branchId))
+    return forkNode ? roundOf(forkNode) : null
+  }
+  const localBeatOf = new Map()
+  for (const branchId of laneOrder) {
+    if (branchId === 'main') continue
+    const laneNodes = indexed.filter(({ node }) => branchOf(node) === branchId)
+    const forkRound = forkRoundOf(branchId) ?? roundOf(laneNodes[0]?.node) ?? 1
+    laneNodes.forEach(({ node }, index) => {
+      localBeatOf.set(node.id, forkRound + 1 + index)
+    })
+  }
+  const beatOf = (node, branchId) => branchId === 'main' ? roundOf(node) : (localBeatOf.get(text(node.id)) ?? roundOf(node))
+
   const rounds = nodes.map(roundOf)
   const minRound = Math.min(...rounds)
   const maxRound = Math.max(...rounds)
@@ -86,22 +108,24 @@ export function layoutStoryTree(session, options = {}) {
     const stacks = new Map()
     let maxStack = 1
     const placed = laneNodes.map(({ node }) => {
-      const round = roundOf(node)
-      const stack = stacks.get(round) ?? 0
-      stacks.set(round, stack + 1)
+      const beat = branchId === 'main' ? roundOf(node) : (localBeatOf.get(text(node.id)) ?? roundOf(node))
+      const stack = stacks.get(beat) ?? 0
+      stacks.set(beat, stack + 1)
       maxStack = Math.max(maxStack, stack + 1)
-      return { node, round, stack }
+      return { node, beat, stack }
     })
     const height = lanePad * 2 + maxStack * rowGap
-    for (const { node, round, stack } of placed) {
+    for (const { node, beat, stack } of placed) {
       laid.push({
         id: text(node.id),
-        round,
+        round: roundOf(node),
+        beat,
         branchId,
         lane: laneOrder.indexOf(branchId),
-        x: padX + (round - minRound) * colGap,
+        x: padX + (beat - minRound) * colGap,
         y: top + lanePad + stack * rowGap + rowGap / 2,
         label: storyNodeLabel(node),
+        beatLabel: branchId === 'main' ? `第${beat}拍` : `第${beat}拍·${branchId}`,
         current: false,
         node
       })
@@ -205,7 +229,7 @@ export function mountStoryTree({ host, session, onPick }) {
     seenRounds.add(item.round)
     world.appendChild(svgEl('line', { class: 'ded-tree-grid', x1: item.x, y1: 34, x2: item.x, y2: layout.height - 16 }))
     const tick = svgEl('text', { class: 'ded-tree-tick', x: item.x, y: 24, 'text-anchor': 'middle' })
-    tick.textContent = `第${item.round}拍`
+    tick.textContent = item.beatLabel
     world.appendChild(tick)
   }
   // 父→子连线（分叉边虚线）
@@ -223,13 +247,13 @@ export function mountStoryTree({ host, session, onPick }) {
     if (item.current) group.appendChild(svgEl('circle', { class: 'ring', cx: item.x, cy: item.y, r: 13 }))
     group.appendChild(svgEl('circle', { class: 'core', cx: item.x, cy: item.y, r: 7 }))
     const roundText = svgEl('text', { class: 'no', x: item.x, y: item.y - 16, 'text-anchor': 'middle' })
-    roundText.textContent = `第${item.round}拍`
+    roundText.textContent = item.beatLabel
     group.appendChild(roundText)
     const labelText = svgEl('text', { class: 'label', x: item.x, y: item.y + 26, 'text-anchor': 'middle' })
     labelText.textContent = item.label
     group.appendChild(labelText)
     const title = svgEl('title')
-    title.textContent = `${item.branchId === 'main' ? '主线' : item.branchId} · 第${item.round}拍 · ${item.label}`
+    title.textContent = `${item.branchId === 'main' ? '主线' : item.branchId} · ${item.beatLabel}（全局第${item.round}拍） · ${item.label}`
     group.appendChild(title)
     world.appendChild(group)
   }
