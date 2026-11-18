@@ -154,7 +154,7 @@ test('daemon 端到端：列技能（体裁过滤）→ 取全文 → 未知技�
   try {
     const all = await (await fetch(`${origin}/api/skills`)).json()
     assert.equal(all.ok, true)
-    assert.equal(all.skills.length, 30)
+    assert.equal(all.skills.length, 32) // 30 内置＋写作/编剧套件捆绑 2（OS-68）
     assert.ok(all.skills.every((skill) => skill.body === undefined), '清单不带正文')
 
     const drama = await (await fetch(`${origin}/api/skills?genre=short-drama`)).json()
@@ -162,7 +162,7 @@ test('daemon 端到端：列技能（体裁过滤）→ 取全文 → 未知技�
     assert.ok(drama.skills.some((skill) => skill.name === 'storyboard-craft'), '分镜在短剧体裁可用')
     const featureOnly = all.skills.filter((skill) => skill.genres.length && !skill.genres.includes('*'))
     assert.ok(featureOnly.length >= 2, '有技能声明了具体体裁')
-    assert.equal(drama.skills.length, 15, '短剧：排除长篇/短篇专属 15 个，其余 15 个兼容')
+    assert.equal(drama.skills.length, 17, '短剧：排除长篇/短篇专属 13 个，其余 17 个兼容（含套件捆绑 2）')
     assert.ok(!drama.skills.some((skill) => skill.name === 'rule-horror-cold-prose'), '长篇专属技能在短剧下被过滤')
 
     const one = await (await fetch(`${origin}/api/skill?name=screenplay-craft`)).json()
