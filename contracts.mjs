@@ -304,6 +304,15 @@ export const ENDPOINTS = Object.freeze({
     response: { ok: 'true', note: 'object', backlinks: 'object' },
     errors: ['NO_LIBRARY', 'PATH_ESCAPE', 'INVALID_ENTRY', 'NOT_FOUND']
   },
+  deduceImage: {
+    method: 'POST',
+    path: '/api/deduce/image',
+    // 生图（OS-63 预留转正）：调 agent config 里可选的 imageEndpoint（OpenAI 兼容
+    // images/generations），产物落 推演/<bookId>/素材/场景/<name>.png。未配置如实报。
+    request: { body: { root: 'string', bookId: 'string?', name: 'string', prompt: 'string', size: 'string?' } },
+    response: { ok: 'true', name: 'string', path: 'string', size: 'string' },
+    errors: ['NO_LIBRARY', 'PATH_ESCAPE', 'INVALID_ENTRY', 'AGENT_UPSTREAM_ERROR']
+  },
   habitsGet: {
     method: 'GET',
     path: '/api/habits',

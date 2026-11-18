@@ -104,7 +104,8 @@ function treeNoteRow(note, activePath) {
 function renderTreeBranch(node, { activeTag = '', activePath = '', q = '' } = {}, depth = 0) {
   const kids = [...node.children.values()].sort((left, right) => right.count - left.count || left.name.localeCompare(right.name, 'zh-Hans-CN'))
   const on = activeTag && node.full === activeTag ? ' on' : ''
-  const row = `<button class="nav-row tag${on}" data-ref-tag="${esc(node.full)}">
+  const empty = !node.count
+  const row = `<button class="nav-row tag${on}${empty ? ' tag-empty' : ''}" data-ref-tag="${esc(node.full)}" title="${empty ? '暂无挂靠笔记——在笔记 frontmatter 里加 #" + node.name + " 即归入此标签' : ''}">
       <span class="tag-name">${esc(node.name)}</span>
       <span class="nav-count">${node.count}</span>
     </button>`

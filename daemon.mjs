@@ -123,6 +123,7 @@ import {
 import { createFactFileStore } from './core/pinax/next/kernel/factFileStore.mjs'
 import { absorbLegacyDirs, backlinksOf, buildReferenceGraph, REFERENCE_DIR, scanReferences } from './referenceStore.mjs'
 import { deducePresent, deduceSettle, deduceStatePath } from './deduceEngine.mjs'
+import { safeDeduceBookId } from './deduceSession.mjs'
 import {
   appendNode,
   archiveChapter,
@@ -1184,6 +1185,46 @@ function readLegacyDeduceState(root, bookId) {
 
   // 剧情树分支（OS-61 P3）：从某一拍开新分支。只动 branchId/cursor 与分叉溯源，
   // nodes 全量保留；缓存区沿用 switchBranch 语义不动（归档仍按缓存区里的拍走）。
+  if (endpointId === 'deduceImage') {
+    // 生图（OS-63 预留转正）：调 OpenAI 兼容 /v1/images/generations，产物落
+    // 推演/<bookId>/素材/场景/<name>.png。端点配置在 agent config 的 imageEndpoint
+    // （url/apiKey/model/size）；未配置＝如实报，不假装生成。
+    const authorized = authorizeRoot(allowlist, request.root)
+    if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
+    const { config } = await loadAgentConfig(context.agentConfigPath)
+    const imageEndpoint = config?.imageEndpoint && typeof config.imageEndpoint === 'object' ? config.imageEndpoint : null
+    if (!imageEndpoint?.url) {
+      return sendError(res, API_ERROR_CODES.AGENT_UPSTREAM_ERROR, '未配置生图端点——设置 · 插件 · 生图端点里填 OpenAI 兼容 images API 的地址与模型后可用')
+    }
+    const name = text(request.name).trim().slice(0, 40)
+    const prompt = text(request.prompt).trim()
+    if (!name || !prompt) return sendError(res, API_ERROR_CODES.INVALID_ENTRY, 'name 与 prompt 必填')
+    if (/[\/]|\.\./u.test(name)) return sendError(res, API_ERROR_CODES.PATH_ESCAPE, 'name 不能含路径分隔符')
+    const size = text(request.size).trim() || '1024x1024'
+    const body = JSON.stringify({ model: text(imageEndpoint.model), prompt: `小说场景立绘，无文字：${prompt}`, size, n: 1, response_format: 'b64_json' })
+    let payload = null
+    try {
+      const response = await fetch(`${text(imageEndpoint.url).replace(/\/$/u, '')}/images/generations`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', ...(imageEndpoint.apiKey ? { authorization: `Bearer ${imageEndpoint.apiKey}` } : {}) },
+        body, signal: AbortSignal.timeout(300_000)
+      })
+      if (!response.ok) throw new Error(`HTTP ${response.status} · ${(await response.text()).slice(0, 200)}`)
+      payload = await response.json()
+    } catch (error) {
+      return sendError(res, API_ERROR_CODES.AGENT_UPSTREAM_ERROR, `生图端点失败：${text(error?.message || error)}`)
+    }
+    const b64 = payload?.data?.[0]?.b64_json
+    if (!b64) return sendError(res, API_ERROR_CODES.AGENT_UPSTREAM_ERROR, '生图端点没有返回图片数据（b64_json 为空）')
+    const dir = join(authorized.root, '推演', safeDeduceBookId(bookId), '素材', '场景')
+    await mkdir(dir, { recursive: true })
+    const path = join(dir, `${name}.png`)
+    const tmp = `${path}.tmp-${Date.now()}`
+    await writeFile(tmp, Buffer.from(b64, 'base64'))
+    await rename(tmp, path)
+    return sendJson(res, 200, { ok: true, name, path: `推演/${safeDeduceBookId(bookId)}/素材/场景/${name}.png`, size })
+  }
+
   if (endpointId === 'deduceBranch') {
     const authorized = authorizeRoot(allowlist, request.root)
     if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
