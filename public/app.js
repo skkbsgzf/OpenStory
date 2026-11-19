@@ -6127,8 +6127,10 @@ function renderTabs() {
     if (!state.brief || hasDir('正文')) defs.push({ view: 'write', label: '正文', ic: '章', closable: true })
     // OS-48：这个页签暴露的其实是 fact 拆解条目（真源 拆解/*.json），改名「条目」消除与世界书目录/参考的定位混淆
     const extra = libDirs
-      // 作者要求页签可自选：库里任何顶层目录都能出页签（不再只认 DIR_LABELS 里的名单）
-      .filter((dir) => dir !== '正文' && dir !== '世界书' && !excluded.has(dir))
+      // OS-88：正文/世界书/推演 都有内置页签，不能再按目录重复出一个（此前推演会重复成两个）。
+      .filter((dir) => dir !== '正文' && dir !== '世界书' && dir !== '推演' && !excluded.has(dir))
+      // OS-88：只认有真实实现的标签——词表外的目录（素材/漫画/联机…）不出页签，不凭空许诺工作面
+      .filter((dir) => Boolean(DIR_LABELS[dir]) || dir === '参考' || dir === '习惯')
       // OS-86：已退场的旧目录（大纲/构思/资料/约束）一律不出页签，不管磁盘上还剩什么
       .filter((dir) => !RETIRED_DIRS.includes(dir))
       .sort((left, right) => {
