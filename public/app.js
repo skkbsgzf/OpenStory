@@ -8028,8 +8028,10 @@ function deduceTurnLineHtml(node) {
   if (!node.choiceId || !chosen) return ''
   // OS-88：命运候选历史拍是黑话文本——渲染时翻人话；新档已是人话（正则不中）原样
   const chosenText = chosen.source === '命运' ? (fateHumanFromLegacy(chosen) || chosen.text) : chosen.text
-  return `<div class="fl-you">
-    <span class="fl-you-arrow">▸</span><span class="fl-you-label">你</span>
+  // OS-89：这行不是叙述，是那一拍拍板的走向——标签语义化：候选＝「你的选择」，作者自写＝「你写」
+  const choiceLabel = chosen.id === 'custom' || chosen.source === '作者' ? '你写' : '你的选择'
+  return `<div class="fl-you" title="这一拍拍板的走向（从当时的候选里选的，或作者自己写的）">
+    <span class="fl-you-arrow">▸</span><span class="fl-you-label">${choiceLabel}</span>
     <span class="fl-you-text">${esc(chosenText)}</span>
     ${chosen.source ? `<span class="ded-badge">${esc(chosen.source)}</span>` : ''}
   </div>`
@@ -8174,6 +8176,7 @@ function deducePendingHtml(data) {
       <span class="fl-pending-where">${esc(where)}</span>
       ${deduceWhoChipsHtml(who)}
     </div>
+    <p class="fl-prompt">轮到你了——选一条走向（这一拍怎么走由你拍板），或者在下面自己写</p>
     ${busyNote}
     ${optRows || (engine.busy || engine.turnBusy ? '' : '<p class="fl-no-cand">这一拍没有候选——事实包不够（世界观／角色／剧情条目太少）或预算用尽。点下方自己写一拍，或去设置里重掷。</p>')}
   </section>`

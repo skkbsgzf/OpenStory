@@ -1310,10 +1310,15 @@ html[data-doc-auto-gap="off"] .doc-block { margin-bottom: 0; }
 .fl-missing-note { font-size: 10.5px; font-style: italic; color: var(--meta);
 background: transparent; border-left: 2px dashed color-mix(in srgb, var(--warn) 55%, transparent);
 padding: 3px 9px; margin-top: 6px; }
-/* 你的回合：引用块直接写在流上（不占卡片） */
-.fl-you { display: flex; align-items: baseline; gap: 7px; padding: 0 6px; flex-wrap: wrap;
-  color: rgba(255,255,255,.92); }
+/* 你的回合：引用块直接写在流上（不占卡片）——OS-89 标签语义化＋accent 左缘点明这是选择不是叙述 */
+.fl-you { display: flex; align-items: baseline; gap: 7px; padding: 2px 6px 2px 10px; flex-wrap: wrap;
+color: rgba(255,255,255,.92); border-left: 2px solid color-mix(in srgb, var(--accent) 55%, transparent); }
 .ded-flow[data-paper="1"] .fl-you { color: var(--ink-2); }
+.fl-you-label { font-size: 11px; font-weight: 700; color: var(--accent); white-space: nowrap; }
+/* 待决区提示（OS-89）：轮到你拍板——选项环节不再靠猜 */
+.fl-prompt { margin: 8px 0 10px; font-size: 12px; color: var(--ink-2);
+background: color-mix(in srgb, var(--accent) 9%, transparent);
+border-left: 2px solid var(--accent); padding: 6px 10px; border-radius: 0 var(--radius-sm) var(--radius-sm) 0; }
 .fl-you-arrow { color: var(--accent); font-size: 12px; }
 .fl-you-label { font-size: 10.5px; color: rgba(255,255,255,.6); }
 .ded-flow[data-paper="1"] .fl-you-label { color: var(--meta); }
