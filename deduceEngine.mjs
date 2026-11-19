@@ -8,7 +8,7 @@
  *
  * 会话状态：一个库一个推演会话文件 `.openstory/deduce/<bookId>.json`（原子写，不碰 Pinax 元数据）。
  */
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { mkdir, rename, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { openDeduceSession } from './core/pinax/next/fact/usecases/deduce/opening.js'
@@ -38,6 +38,58 @@ export function loadEntries(root) {
   const listed = store.list({ limit: 5000 })
   if (!listed.ok) return { ok: false, message: text(listed.error?.message || '条目读取失败') }
   return { ok: true, entries: listed.entries ?? [] }
+}
+
+/**
+ * 开局三件套（OS-93，照酒馆：选角色卡 → 选世界书 → 选开头）：
+ *   books     拆解目录里的书（bookId＋标题＋各类条目数）＝世界书候选
+ *   characters 角色卡（character 条目：名字/identity/archetype/出场数）
+ *   openings  开头候选：引擎摆局（默认）＋剧情条目（每条剧情事实都是一个可进入的开头，
+ *             对应酒馆 alternate_greetings 的位置——选它＝戏剧候选围绕这段锚定）
+ */
+export function deduceOpening({ root }) {
+  const loaded = loadEntries(root)
+  if (!loaded.ok) return { ok: false, code: 'INVALID_ENTRY', message: loaded.message }
+  const entries = loaded.entries
+  const books = []
+  const dir = join(root, '拆解')
+  try {
+    for (const name of readdirSync(dir)) {
+      if (!name.endsWith('.json') || name.endsWith('.wiki.json')) continue  // wiki 是派生档不是世界书
+      const bookId = name.replace(/\.json$/u, '')
+      try {
+        const doc = JSON.parse(readFileSync(join(dir, name), 'utf-8'))
+        const list = Array.isArray(doc?.entries) ? doc.entries : []
+        const count = (layer) => list.filter((entry) => text(entry?.layer).toLowerCase() === layer).length
+        books.push({
+          bookId,
+          title: text(doc?.book?.title) || bookId,
+          total: list.length,
+          worldview: count('worldview'),
+          characters: count('character'),
+          plot: count('plot')
+        })
+      } catch { /* 坏档跳过 */ }
+    }
+  } catch { /* 没有拆解目录 */ }
+  const characters = entries
+    .filter((entry) => text(entry?.layer).toLowerCase() === 'character')
+    .map((entry) => ({
+      name: text(entry?.name).trim(),
+      identity: text(entry?.identity) || text(entry?.definition),
+      archetype: text(entry?.archetype),
+      appearances: Number(entry?.appearances) || 0
+    }))
+    .filter((entry) => entry.name)
+  characters.sort((left, right) => right.appearances - left.appearances)
+  const openings = [
+    { id: 'free', label: '引擎摆局', detail: '不锚定具体剧情——世界按现状摆一个局面，从眼前的动静开始' },
+    ...entries
+      .filter((entry) => text(entry?.layer).toLowerCase() === 'plot' && (text(entry?.definition) || text(entry?.fact)))
+      .slice(0, 12)
+      .map((entry) => ({ id: text(entry.id), label: text(entry.name), detail: text(entry.definition) || text(entry.fact) }))
+  ]
+  return { ok: true, books, characters, openings }
 }
 
 function loadState(root, bookId, sessionId = '') {
@@ -72,7 +124,7 @@ function defaultPov(entries) {
   return chars[0]?.name ?? null
 }
 
-export async function deducePresent({ root, bookId = 'default', pov = '', seed = null, reset = false, peek = false, llmPort = null, sessionId = '' } = {}) {
+export async function deducePresent({ root, bookId = 'default', pov = '', seed = null, reset = false, peek = false, llmPort = null, sessionId = '', seedPrompt = '' } = {}) {
   const loaded = loadEntries(root)
   if (!loaded.ok) return { ok: false, code: 'INVALID_ENTRY', message: loaded.message }
   const entries = loaded.entries
@@ -138,7 +190,11 @@ export async function deducePresent({ root, bookId = 'default', pov = '', seed =
   try {
     // OS-82：llmPort 透传给引擎——「戏剧✦」候选从配置的文本模型来（没配模型时 dramaCandidates
     // 自己返回空数组，必然/命运两层照常跑，推演永远不被模型不可用卡死）。
-    turn = await presentTurn({ state, entries, pov: pov || state.pov || null, seed: useSeed, ...(llmPort ? { llmPort } : {}) })
+    // OS-93：seedPrompt＝玩家选的开头（剧情骨架段）——戏剧候选围绕它锚定。
+    turn = await presentTurn({
+      state, entries, pov: pov || state.pov || null, seed: useSeed,
+      ...(seedPrompt ? { seedPrompt } : {}), ...(llmPort ? { llmPort } : {})
+    })
   } catch (error) {
     return { ok: false, code: text(error?.code || 'INVALID_ENTRY'), message: text(error?.message || error) }
   }
@@ -153,6 +209,24 @@ export async function deducePresent({ root, bookId = 'default', pov = '', seed =
     refs: Array.isArray(candidate.refs) ? candidate.refs : [],
     trace: candidate.trace ?? null
   }))
+  // OS-93 候选保底：命运不进选项，模型缺席＋事实包薄时可见候选可能为 0——
+  // 开局永远有得选：从局面本身（在场/钩子/地点）推确定性分支，标记「眼前」。
+  const visible = mappedCandidates.filter((candidate) => candidate.source !== '命运')
+  if (visible.length < 2) {
+    const card = turn.sceneCard ?? {}
+    const others = (Array.isArray(card.who) ? card.who : []).filter((name) => text(name) && text(name) !== text(state.pov))
+    const where = text(card.where)
+    const pool = [
+      others.length ? { id: `scene-greet-${state.round}`, text: `叫住${others[0]}，先把眼前这个人的来历问清楚`, refs: [others[0]] } : null,
+      text(card.hook) ? { id: `scene-hook-${state.round}`, text: '顺着眼前的动静查下去，看个究竟', refs: [] } : null,
+      { id: `scene-look-${state.round}`, text: where && where !== '未标记地点' ? `在${where}附近转一圈，把周围的环境摸清楚` : '原地观察一会儿，等事情自己露头', refs: [] }
+    ].filter(Boolean)
+    for (const item of pool.slice(0, 2)) {
+      mappedCandidates.push({
+        id: item.id, source: '眼前', text: item.text, refs: item.refs, trace: null
+      })
+    }
+  }
   // 存最后一面（OS-60）：进入推演页时 peek 回放这一面，不额外推进
   state.lastTurn = {
     sceneCard: turn.sceneCard ?? null,

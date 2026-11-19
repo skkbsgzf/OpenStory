@@ -656,8 +656,19 @@ export const ENDPOINTS = Object.freeze({
     path: '/api/deduce/present',
     // 推演引擎（Pinax fact 推演链 vendor 进 core/）：开局/续拍 → 局面卡＋候选。
     // 引擎确定性（种子化 2d6）；LLM 只是「戏剧」候选可选来源。worldview 缺失＝WORLD_EMPTY 如实报。
-    request: { body: { root: 'string', bookId: 'string?', sessionId: 'string?', pov: 'string?', seed: 'integer?', reset: 'boolean?' } },
+    // seedPrompt（OS-93）＝开局选中的开头（剧情条目 definition）——戏剧候选围绕它锚定。
+    request: { body: { root: 'string', bookId: 'string?', sessionId: 'string?', pov: 'string?', seed: 'integer?', seedPrompt: 'string?', reset: 'boolean?' } },
     response: { ok: 'true', round: 'integer', sceneCard: 'object', candidates: 'array', tension: 'object?', fronts: 'array?', budget: 'object?' },
+    errors: ['NO_LIBRARY', 'INVALID_ENTRY']
+  },
+  deduceOpeningGet: {
+    method: 'GET',
+    path: '/api/deduce/opening',
+    // 开局三件套（OS-93，照酒馆：选角色卡 → 选世界书 → 选开头）：
+    // books＝拆解书清单（世界书候选，带各类条目数）；characters＝角色卡；openings＝开头
+    // （引擎摆局＋每条剧情事实一个可进入的开头，对应酒馆 alternate_greetings）。
+    request: { query: { root: 'string' } },
+    response: { ok: 'true', books: 'array', characters: 'array', openings: 'array' },
     errors: ['NO_LIBRARY', 'INVALID_ENTRY']
   },
   deduceSettle: {
