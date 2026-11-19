@@ -199,6 +199,8 @@ export function factToScript(entries, wiki = null) {
 
   const out = []
   let actNo = 0
+  let renderedLines = 0
+  let renderedSketches = 0
   for (const plot of plots) {
     actNo++
     const title = text(plot.name) || `第${actNo}幕`
@@ -217,12 +219,18 @@ export function factToScript(entries, wiki = null) {
       } else {
         out.push(content)
       }
+      renderedLines++
       out.push('')
     }
-    // plot 里没有 events 但有 fact 字段 → 用 fact 当舞台提示
-    if (!events.length && text(plot.fact)) {
-      out.push(`*〔${text(plot.fact)}〕*`)
-      out.push('')
+    // OS-87 修：plot 没有 events 时，按「fact → definition」逐级退——旧实现只看 fact，
+    // 而真实 fact 包里 plot 常常只有 definition（一句完整剧情描述），于是每个幕只剩标题。
+    if (!events.length) {
+      const brief = text(plot.fact) || text(plot.definition)
+      if (brief) {
+        out.push(`*〔${brief}〕*`)
+        out.push('')
+        renderedSketches++
+      }
     }
   }
 
@@ -232,13 +240,43 @@ export function factToScript(entries, wiki = null) {
     out.push('')
     for (const [name, entry] of chars) {
       const speech = entry?.anchors?.speech
-      if (Array.isArray(speech)) for (const s of speech.slice(0, 5)) out.push(`**${name}**：${text(s)}`)
+      if (Array.isArray(speech)) {
+        for (const s of speech.slice(0, 5)) {
+          out.push(`**${name}**：${text(s)}`)
+          renderedLines++
+        }
+      } else if (text(entry?.definition)) {
+        // 没台词池时至少给一条人物速写，别让这一幕空着
+        out.push(`*〔${name}：${text(entry.definition)}〕*`)
+        renderedSketches++
+      }
       out.push('')
     }
   }
 
+  // 出场人物表：只在「剧本没有任何台词」时补——有台词的剧本不需要这份清单占地。
+  // 用纯文本块（# 会被当成幕、〔〕会被当成场景指示，两者都会污染页头统计）。
+  if (!renderedLines && chars.size) {
+    out.push('出场人物')
+    out.push('')
+    for (const [name, entry] of chars) {
+      const brief = text(entry?.definition)
+      out.push(brief ? `${name}——${brief}` : name)
+    }
+    out.push('')
+  }
+
   return {
     text: out.join('\n').replace(/\n{3,}/g, '\n\n').trim() + '\n',
-    stats: { acts: plots.length, cast: chars.size, events: plots.reduce((s, p) => s + (p.events?.length || 0), 0) }
+    stats: {
+      acts: plots.length,
+      cast: chars.size,
+      events: plots.reduce((s, p) => s + (p.events?.length || 0), 0),
+      // OS-87：如实报「这次转出来多少台词／多少概要幕」——全是概要时作者该知道
+      // 这不是完整剧本，而是可供接着写的骨架。
+      lines: renderedLines,
+      sketches: renderedSketches,
+      skeletal: renderedLines === 0 && renderedSketches > 0
+    }
   }
 }
