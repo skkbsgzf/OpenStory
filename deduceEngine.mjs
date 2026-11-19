@@ -23,10 +23,13 @@ function text(value) {
 
 export const DEDUCE_DIR = '.openstory/deduce'
 
-/** 推演会话文件路径（库内，不碰 .pinax）。 */
-export function deduceStatePath(root, bookId) {
+/** 推演会话文件路径（库内，不碰 .pinax）。OS-86：sessionId='main'＝legacy 单文件，
+ *  其余局走 <bookId>@<sid>.json——引擎状态（round/seed/lastCandidates/fronts）跟局走。 */
+export function deduceStatePath(root, bookId, sessionId = '') {
   const safe = text(bookId).replace(/[^\w-]/gu, '_').slice(0, 64) || 'default'
-  return join(root, DEDUCE_DIR, `${safe}.json`)
+  const sid = text(sessionId).trim() || 'main'
+  if (sid === 'main') return join(root, DEDUCE_DIR, `${safe}.json`)
+  return join(root, DEDUCE_DIR, `${safe}@${sid}.json`)
 }
 
 /** 读库内拆解条目（fact 通道，与 /api/entries 同源）。 */
@@ -37,8 +40,8 @@ export function loadEntries(root) {
   return { ok: true, entries: listed.entries ?? [] }
 }
 
-function loadState(root, bookId) {
-  const path = deduceStatePath(root, bookId)
+function loadState(root, bookId, sessionId = '') {
+  const path = deduceStatePath(root, bookId, sessionId)
   if (!existsSync(path)) return null
   try {
     return JSON.parse(readFileSync(path, 'utf-8'))
@@ -47,8 +50,8 @@ function loadState(root, bookId) {
   }
 }
 
-async function saveState(root, bookId, state) {
-  const path = deduceStatePath(root, bookId)
+async function saveState(root, bookId, state, sessionId = '') {
+  const path = deduceStatePath(root, bookId, sessionId)
   await mkdir(dirname(path), { recursive: true })
   const tmp = `${path}.tmp-${Date.now()}`
   await writeFile(tmp, JSON.stringify(state, null, 2), 'utf-8')
@@ -69,14 +72,14 @@ function defaultPov(entries) {
   return chars[0]?.name ?? null
 }
 
-export async function deducePresent({ root, bookId = 'default', pov = '', seed = null, reset = false, peek = false, llmPort = null } = {}) {
+export async function deducePresent({ root, bookId = 'default', pov = '', seed = null, reset = false, peek = false, llmPort = null, sessionId = '' } = {}) {
   const loaded = loadEntries(root)
   if (!loaded.ok) return { ok: false, code: 'INVALID_ENTRY', message: loaded.message }
   const entries = loaded.entries
   if (!entries.length) {
     return { ok: false, code: 'INVALID_ENTRY', message: '这个库还没有拆解条目（worldview/角色/剧情），推演引擎需要事实包才能开局' }
   }
-  let state = reset ? null : loadState(root, bookId)
+  let state = reset ? null : loadState(root, bookId, sessionId)
   // peek（OS-60）：界面进入时只读当前局面，**不推进一拍**。
   if (peek) {
     if (!state) return { ok: false, code: 'NO_DEDUCE_SESSION', message: '这个库还没有推演会话' }
@@ -143,7 +146,7 @@ export async function deducePresent({ root, bookId = 'default', pov = '', seed =
     })),
     tension: turn.tension ?? null
   }
-  await saveState(root, bookId, state)
+  await saveState(root, bookId, state, sessionId)
   // OS-79：present 也带叙事上下文（与 peek 同结构），开局那一次就能看到「我是谁/前情/场景」
   const presentPov = text(state.pov || (turn.sceneCard?.who ?? [])[0] || '').trim()
   const presentWiki = readWikiSafe(root, bookId)
@@ -193,8 +196,8 @@ function summarizeFronts(fronts) {
  * 结算一拍：作者选择某候选（或否决）。
  * 返回 {ok, action, entry?} —— entry 是引擎产出的事件条目（不自动写回库，交由待确认卡/后续批次）。
  */
-export async function deduceSettle({ root, bookId = 'default', candidateId = '', action = 'choose', note = '' } = {}) {
-  const state = loadState(root, bookId)
+export async function deduceSettle({ root, bookId = 'default', candidateId = '', action = 'choose', note = '', sessionId = '' } = {}) {
+  const state = loadState(root, bookId, sessionId)
   if (!state) return { ok: false, code: 'NOT_FOUND', message: '还没有推演会话：先呈现一拍' }
   const loaded = loadEntries(root)
   if (!loaded.ok) return { ok: false, code: 'INVALID_ENTRY', message: loaded.message }
@@ -213,6 +216,6 @@ export async function deduceSettle({ root, bookId = 'default', candidateId = '',
   } catch (error) {
     return { ok: false, code: text(error?.code || 'INVALID_ENTRY'), message: text(error?.message || error) }
   }
-  await saveState(root, bookId, state)
+  await saveState(root, bookId, state, sessionId)
   return { ok: true, action, result: settled ?? null, round: state.round ?? 0 }
 }

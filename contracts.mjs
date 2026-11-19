@@ -656,7 +656,7 @@ export const ENDPOINTS = Object.freeze({
     path: '/api/deduce/present',
     // 推演引擎（Pinax fact 推演链 vendor 进 core/）：开局/续拍 → 局面卡＋候选。
     // 引擎确定性（种子化 2d6）；LLM 只是「戏剧」候选可选来源。worldview 缺失＝WORLD_EMPTY 如实报。
-    request: { body: { root: 'string', bookId: 'string?', pov: 'string?', seed: 'integer?', reset: 'boolean?' } },
+    request: { body: { root: 'string', bookId: 'string?', sessionId: 'string?', pov: 'string?', seed: 'integer?', reset: 'boolean?' } },
     response: { ok: 'true', round: 'integer', sceneCard: 'object', candidates: 'array', tension: 'object?', fronts: 'array?', budget: 'object?' },
     errors: ['NO_LIBRARY', 'INVALID_ENTRY']
   },
@@ -664,7 +664,7 @@ export const ENDPOINTS = Object.freeze({
     method: 'POST',
     path: '/api/deduce/settle',
     // 结算一拍：作者选择候选（或 veto 等导演动作）。产出的条目交回客户端，不自动写库。
-    request: { body: { root: 'string', bookId: 'string?', candidateId: 'string?', action: 'string?', note: 'string?' } },
+    request: { body: { root: 'string', bookId: 'string?', sessionId: 'string?', candidateId: 'string?', action: 'string?', note: 'string?' } },
     response: { ok: 'true', action: 'string', round: 'integer' },
     errors: ['NO_LIBRARY', 'INVALID_ENTRY', 'NOT_FOUND']
   },
@@ -673,8 +673,8 @@ export const ENDPOINTS = Object.freeze({
     path: '/api/deduce/session',
     // 推演会话存储层（OS-61）：读「文游」容器（拍节点＋章缓存区＋归档清单）。
     // 无会话＝session:null（空态合法，不报错）。bookId 缺省＝拆解目录最新一本（与 present 同口径）。
-    request: { query: { root: 'string', bookId: 'string?' } },
-    response: { ok: 'true', session: 'object?' },
+    request: { query: { root: 'string', bookId: 'string?', sessionId: 'string?' } },
+    response: { ok: 'true', session: 'object?', activeId: 'string?' },
     errors: ['NO_LIBRARY']
   },
   deduceSessionPut: {
@@ -691,7 +691,7 @@ export const ENDPOINTS = Object.freeze({
     path: '/api/deduce/archive',
     // 归档一章：缓存区的拍整理成 markdown 写 推演/<bookId>/归档/第N章.md，
     // 记入 archived、清缓存区。无会话＝NOT_FOUND；缓存区空＝INVALID_ENTRY。
-    request: { body: { root: 'string', bookId: 'string?', title: 'string?' } },
+    request: { body: { root: 'string', bookId: 'string?', sessionId: 'string?', title: 'string?' } },
     response: { ok: 'true', path: 'string', words: 'integer' },
     errors: ['NO_LIBRARY', 'INVALID_ENTRY', 'NOT_FOUND', 'WRITE_PROTOCOL_IO_FAILED']
   },
@@ -702,7 +702,7 @@ export const ENDPOINTS = Object.freeze({
     // 直接结算（inject）。结算后生成这一拍的正文草稿（小说叙述体，endpoint/cli/dsh 三路），
     // 拍进会话缓存区。模型不可用＝prose:''＋proseError，不伪造。
     // regenerate:true＝只重写最后一拍的正文（覆盖 node.prose），不结算、不新增节点。
-    request: { body: { root: 'string', bookId: 'string?', choiceId: 'string?', customText: 'string?', regenerate: 'boolean?' } },
+    request: { body: { root: 'string', bookId: 'string?', sessionId: 'string?', choiceId: 'string?', customText: 'string?', regenerate: 'boolean?' } },
     // prose 用 string?：契约语义里空串＝没给，而模型不可用时 prose:'' 正是合法形状
     response: { ok: 'true', node: 'object', session: 'object', prose: 'string?', proseError: 'string?' },
     errors: ['NO_LIBRARY', 'INVALID_ENTRY', 'NOT_FOUND', 'WRITE_PROTOCOL_IO_FAILED']
@@ -713,8 +713,26 @@ export const ENDPOINTS = Object.freeze({
     // 回填闭环（OS-82）：结算产出的 fact 条目先挂会话 pending 队列（待确认卡），
     // 作者确认后这里写进拆解——write 走内核 writeFactFile 单条 upsert（按 id 命中替换、
     // 没有就追加，绝不动别人的条目）；dismiss 只出队不落库。卡不存在＝NOT_FOUND（幂等友好）。
-    request: { body: { root: 'string', bookId: 'string?', pendingId: 'string', action: 'string?' } },
+    request: { body: { root: 'string', bookId: 'string?', sessionId: 'string?', pendingId: 'string', action: 'string?' } },
     response: { ok: 'true', action: 'string', session: 'object', revision: 'integer?' },
+    errors: ['NO_LIBRARY', 'INVALID_ENTRY', 'NOT_FOUND', 'WRITE_PROTOCOL_IO_FAILED']
+  },
+  deduceSessionsGet: {
+    method: 'GET',
+    path: '/api/deduce/sessions',
+    // 多局并存（OS-86）：主线（legacy session.json，哪怕还没有也占位）＋ sessions/ 全部
+    // ＋激活指针。sessionId 缺省＝激活指针的口径与本表所有读端点一致。
+    request: { query: { root: 'string', bookId: 'string?' } },
+    response: { ok: 'true', bookId: 'string', activeId: 'string', sessions: 'array' },
+    errors: ['NO_LIBRARY']
+  },
+  deduceSessionManage: {
+    method: 'POST',
+    path: '/api/deduce/session/manage',
+    // 多局管理（OS-86）：new＝新建空局（title 缺省「第N局」）并激活；switch＝激活已有局；
+    // delete＝非破坏删除（挪 推演/<bookId>/.deleted/sessions/）——最后一局拒删，清空走「重新开局」。
+    request: { body: { root: 'string', bookId: 'string?', action: 'string', sessionId: 'string?', title: 'string?' } },
+    response: { ok: 'true', action: 'string', sessionId: 'string?', session: 'object?', activeId: 'string?', sessions: 'array?' },
     errors: ['NO_LIBRARY', 'INVALID_ENTRY', 'NOT_FOUND', 'WRITE_PROTOCOL_IO_FAILED']
   },
   deduceBranch: {
@@ -722,7 +740,7 @@ export const ENDPOINTS = Object.freeze({
     path: '/api/deduce/branch',
     // 剧情树分支（OS-61 P3）：从某一拍开新分支——新 branchId、cursor 定位到该拍，
     // 分叉溯源记在分叉节点的 forkBranchIds 上。nodes 全量保留，原子写＋.history 备份。
-    request: { body: { root: 'string', bookId: 'string?', fromNodeId: 'string' } },
+    request: { body: { root: 'string', bookId: 'string?', sessionId: 'string?', fromNodeId: 'string' } },
     response: { ok: 'true', session: 'object' },
     errors: ['NO_LIBRARY', 'INVALID_ENTRY', 'NOT_FOUND', 'WRITE_PROTOCOL_IO_FAILED']
   },
