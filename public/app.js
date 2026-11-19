@@ -277,7 +277,7 @@ function render() {
     // 进入推演页自动续上已有局面（OS-60）：以前进来永远是空态，库里推过的拍看不到，
     // 得手动点「开始推演」——但那会额外推一拍，语义是错的。
     const engine = state.deduce.engine
-    if (!engine.data && !engine.busy && !engine.error) {
+    if (!engine.data && !engine.busy && !engine.error && state.current?.path) {
       engine.busy = true
       api('/api/deduce/present', { method: 'POST', body: JSON.stringify({ root: state.current.path, peek: true }) })
         .then((payload) => {
@@ -7947,7 +7947,11 @@ async function boot() {
 }
 
 async function openLibrary(path) {
-  const library = state.libraries.find((item) => item.path === path)
+  // OS-78：路径归一化——库清单里的 path 可能带反斜杠（Windows），调用方可能传正斜杠；
+  // 直接 === 比较会静默找不到库（表现为「点了没反应」）。统一按正斜杠比较。
+  const norm = (p) => text(p).replace(/\x5c/gu, '/').replace(/\/+$/u, '')
+  const wanted = norm(path)
+  const library = state.libraries.find((item) => norm(item.path) === wanted)
   if (!library) return
   // 换库先掐掉还在跑的对话（DSH 一 run 一进程，跨库挂着会把两个库搅在一起）
   if (agent.streaming) {
@@ -8266,7 +8270,8 @@ function go(view) {
     return
   }
   const flowPage = view === 'lib-create' || view === 'lib-import'
-  const globalPage = view === 'settings' || view === 'deduce' || view === 'libraries'
+  // OS-78 修：deduce 需要 state.current.path（peek 会话要 root），不能当无库可进的全局页
+  const globalPage = view === 'settings' || view === 'libraries'
   if (view !== 'libraries' && !flowPage && !globalPage && !state.current) {
     state.view = 'libraries'
     render()
