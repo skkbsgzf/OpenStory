@@ -78,7 +78,7 @@ async function makeFixture() {
 }
 
 test('契约：端点都带 method/path/request/response/errors，路径可反查', () => {
-  assert.equal(Object.keys(ENDPOINTS).length, 64)
+  assert.equal(Object.keys(ENDPOINTS).length, 69)
   for (const [id, endpoint] of Object.entries(ENDPOINTS)) {
     assert.ok(endpoint.method, `${id} 缺 method`)
     assert.ok(endpoint.path.startsWith('/api/'), `${id} 路径不是 /api/`)
@@ -90,6 +90,10 @@ test('契约：端点都带 method/path/request/response/errors，路径可反�
   assert.equal(endpointFor('PUT', '/api/chapter'), 'chapterPut')
   assert.equal(endpointFor('POST', '/api/agent/chat'), 'agentChat')
   assert.equal(endpointFor('GET', '/api/agent/sessions'), 'agentSessions')
+  assert.equal(endpointFor('GET', '/api/config'), 'configGet')
+  assert.equal(endpointFor('PUT', '/api/config'), 'configPut')
+  assert.equal(endpointFor('POST', '/api/config/probe'), 'configProbe')
+  assert.equal(endpointFor('GET', '/api/agent/config'), 'agentConfigGet')
   assert.equal(endpointFor('DELETE', '/api/agent/session'), 'agentSessionDelete')
   assert.equal(endpointFor('GET', '/api/styles'), 'stylesGet')
   assert.equal(endpointFor('GET', '/api/library/diagnose'), 'libraryDiagnose')

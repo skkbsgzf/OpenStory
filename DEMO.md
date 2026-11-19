@@ -40,7 +40,21 @@
   开篇钩子（读者需求铁律）、AI 味四因子。
 - 阈值来自 fanqie-pattern-playbook / de-ai-writing / shuangwen-chapter-check / reader-needs-ironrules。
 
-## 六、MCP（对外输出）
+## 六、故事源（Fact 链的三形态）
+页签「故事源」（磁盘目录仍叫 `拆解/`，页签只换显示名）：
+- **大纲态**：左栏 章 → 段 → 条目 三级树（段＝`provenance.segmentIndex`）；中栏按
+  `layer` 换渲染器——剧情＝事件流、角色＝台词/行为/内心锚点、世界观＝字段表；
+  右栏溯源（`sourceId`＋`segmentId`＋`quote_hash` 缩写）、世界书/人物关联、推演/分析消费点。
+- **表格态**：飞书多维表风格的只读表，列＝名称/层/状态/出场人物/章/段/事件数；
+  左栏层筛选、顶部名称搜索、点行选中（不做拖拽与内联编辑）。
+- **图表态**：ECharts 走本地 vendor 单文件（`public/vendor/echarts.min.js`，进图表态才按需加载）。
+  剧情曲线（张力×事件密度）、伏笔回收（埋/收/未收）、剧情密度热力图（章×段）；
+  图色从 `:root` CSS 令牌取，换皮肤自动重绘。ECharts 加载失败时降级为文字表，不白屏。
+- **双层对齐**：优先用 `provenance.chapters[0]`；缺失时按 `segmentIndex` 均分到 wiki 章，
+  页头标「对齐：精确/近似」。整本条目都标同一章、而 wiki 是多章时（实测短篇样本）
+  自动改走段号均分，避免 291 条全挤进「第 1 章」。
+
+## 七、MCP（对外输出）
 20 个工具覆盖五模块（小说/世界书/习惯/拆解/推演/分析，详见 `mcp/skills/OVERVIEW.md`）。
 读写分级：读自由；写有 .history 备份；absorb 不开；习惯表有 `openstory_habits_read`。
 

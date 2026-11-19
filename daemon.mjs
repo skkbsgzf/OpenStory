@@ -22,7 +22,7 @@
  */
 import { randomUUID } from 'node:crypto'
 import { createReadStream, existsSync, readFileSync, realpathSync, statSync } from 'node:fs'
-import { copyFile, mkdir, readdir, readFile, rename, writeFile } from 'node:fs/promises'
+import { copyFile, mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -38,7 +38,6 @@ import {
 import {
   appendSession,
   buildUpstreamMessages,
-  configPublic,
   createSession,
   createSseDeltaParser,
   defaultAgentConfigPath,
@@ -47,13 +46,12 @@ import {
   fileSnapshot,
   lastSessionId,
   listSessions,
-  loadAgentConfig,
+  maskApiKey,
   newCardId,
   newMessageId,
   patchSessionMeta,
   readSession,
   renameSession,
-  saveAgentConfig,
   snapshotsMatch,
   updateCard
 } from './agentStore.mjs'
@@ -815,6 +813,9 @@ async function handleApi(req, res, url, context) {
   const request = checked.value
 
   // Agent 配置与风格包清单不碰库文件，不做 root 校验。
+  if (endpointId === 'configGet') return handleConfigGet(res, context)
+  if (endpointId === 'configPut') return handleConfigPut(res, request, context)
+  if (endpointId === 'configProbe') return handleConfigProbe(res, request, context)
   if (endpointId === 'agentConfigGet') return handleAgentConfigGet(res, context)
   if (endpointId === 'agentConfigPut') return handleAgentConfigPut(res, request, context)
   if (endpointId === 'agentRuntimesGet') return handleAgentRuntimesGet(res, context)
@@ -895,6 +896,83 @@ async function handleApi(req, res, url, context) {
       chapters,
       books: files.map((name) => name.replace(/\.json$/, ''))
     })
+  }
+
+  // 故事源条目层（S1）：条目本体＋溯源＋层筛选。数据只经内核 createFactFileStore().list() 读，
+  // 不在这里 readdir+JSON.parse 绕过内核（FACT-FIRST 规则 1）；过滤与分页全在服务端。
+  if (endpointId === 'factEntriesGet') {
+    const authorized = authorizeRoot(allowlist, request.root)
+    if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
+    const books = await listFactBooks(authorized.root)
+    const wantedBookId = text(request.bookId).trim()
+    let book = null
+    if (wantedBookId) {
+      book = books.find((item) => item.bookId === wantedBookId) ?? null
+      if (!book) return sendError(res, API_ERROR_CODES.NOT_FOUND, `拆解里没有这本书：${wantedBookId}`)
+    } else {
+      // 缺省书＝mtime 最新的可读一本（坏档不参与兜底，免得兜底到一本永远读不出条目的书）。
+      book = books.filter((item) => !item.error).sort((left, right) => right.mtime - left.mtime)[0] ?? null
+    }
+    const listed = createFactFileStore({ root: authorized.root }).list({})
+    if (!listed.ok) {
+      return sendError(res, API_ERROR_CODES.INVALID_ENTRY, listed?.error?.message ?? '拆解数据读不了', listed?.error?.details)
+    }
+    // 书的身份按文件名算（与 factCurveGet／推演同口径）；条目溯源里 file 是内核透传的原档名，
+    // bookId 可能来自档内 book.id 而与文件名不同——两种都对得上才收进这本书。
+    const scoped = book
+      ? listed.entries.filter((entry) => (entry.sourceFile
+        ? text(entry.sourceFile) === book.file
+        : text(entry.bookId) === book.bookId))
+      : []
+    // layers 是「层/q 过滤前」的全量计数（前端层筛选器的数字来源）。
+    const layers = {}
+    for (const entry of scoped) {
+      const key = text(entry.layer).trim()
+      if (!key) continue
+      layers[key] = (layers[key] ?? 0) + 1
+    }
+    const layer = text(request.layer).trim()
+    const needle = text(request.q).trim().toLowerCase()
+    const filtered = scoped.filter((entry) => {
+      if (layer && text(entry.layer).trim() !== layer) return false
+      if (needle && !text(entry.name).toLowerCase().includes(needle)) return false
+      return true
+    })
+    const offset = factOffsetOf(request.offset)
+    const limit = factLimitOf(request.limit)
+    const payload = {
+      ok: true,
+      bookId: book?.bookId ?? '',
+      ...(isPlainObject(book?.book) ? { book: book.book } : {}),
+      revision: book?.revision ?? 0,
+      total: filtered.length,
+      entries: filtered.slice(offset, offset + limit),
+      layers,
+      ...(listed.warnings?.length ? { warnings: listed.warnings } : {})
+    }
+    const checked = validateResponse('factEntriesGet', payload)
+    if (!checked.ok) return sendError(res, API_ERROR_CODES.INVALID_ENTRY, '条目清单响应形状不符合契约', { errors: checked.errors })
+    return sendJson(res, 200, payload)
+  }
+
+  if (endpointId === 'factBooksGet') {
+    const authorized = authorizeRoot(allowlist, request.root)
+    if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
+    const books = await listFactBooks(authorized.root)
+    const payload = {
+      ok: true,
+      books: books.map((item) => ({
+        bookId: item.bookId,
+        title: item.title,
+        revision: item.revision,
+        entries: item.entries,
+        hasWiki: item.hasWiki,
+        ...(item.error ? { error: item.error } : {})
+      }))
+    }
+    const checked = validateResponse('factBooksGet', payload)
+    if (!checked.ok) return sendError(res, API_ERROR_CODES.INVALID_ENTRY, '书目清单响应形状不符合契约', { errors: checked.errors })
+    return sendJson(res, 200, payload)
   }
 
   if (endpointId === 'habitsGet') {
@@ -985,6 +1063,79 @@ async function handleApi(req, res, url, context) {
     if (!set.ok) return sendError(res, set.code ?? API_ERROR_CODES.INVALID_ENTRY, set.message)
     return sendJson(res, 200, { ok: true, enabled: set.enabled })
   }
+/* ---------- 故事源条目层（S1 工单）：条目本体／书目盘点 ---------- */
+
+/** 拆解目录里可当书的文件名：排除 wiki 派生、操作日志、汇总/索引旁路档。 */
+function isFactBookFileName(name) {
+  const lower = String(name).toLowerCase()
+  if (!lower.endsWith('.json')) return false
+  if (lower.endsWith('.wiki.json')) return false
+  if (lower.includes('.operations')) return false
+  return name !== '拆解汇总.json' && name !== '拆解索引.json'
+}
+
+/**
+ * 书目盘点（factBooksGet／factEntriesGet 共用）：拆解/ 下每本 <id>.json 读顶层
+ * book/revision/entries.length，并查兄弟 <id>.wiki.json 是否存在。
+ * 坏档只在那一本记 error，其余照常返回——「坏档不整体失败」是内核与作者同一口径。
+ */
+async function listFactBooks(root) {
+  const dir = join(root, '拆解')
+  let names = []
+  try {
+    names = (await readdir(dir)).filter(isFactBookFileName).sort()
+  } catch {
+    return []
+  }
+  const books = []
+  for (const name of names) {
+    const bookId = name.replace(/\.json$/u, '')
+    const path = join(dir, name)
+    let mtime = 0
+    try { mtime = statSync(path).mtimeMs } catch { mtime = 0 }
+    let hasWiki = false
+    try { hasWiki = statSync(join(dir, `${bookId}.wiki.json`)).isFile() } catch { hasWiki = false }
+    let document = null
+    try {
+      document = JSON.parse(await readFile(path, 'utf-8'))
+    } catch (error) {
+      books.push({ bookId, file: name, title: bookId, revision: 0, entries: 0, hasWiki, mtime, error: `拆解文件读不了：${String(error?.message || error)}` })
+      continue
+    }
+    if (!isPlainObject(document) || !Array.isArray(document.entries)) {
+      books.push({ bookId, file: name, title: bookId, revision: 0, entries: 0, hasWiki, mtime, error: '拆解文件形状不对：顶层不是对象或 entries 不是数组' })
+      continue
+    }
+    const revision = Number.isSafeInteger(Number(document.revision)) && Number(document.revision) >= 1 ? Number(document.revision) : 1
+    const rawBook = isPlainObject(document.book) ? document.book : null
+    books.push({
+      bookId,
+      file: name,
+      title: text(rawBook?.title).trim() || text(rawBook?.id).trim() || bookId,
+      revision,
+      entries: document.entries.length,
+      hasWiki,
+      mtime,
+      book: rawBook
+    })
+  }
+  return books
+}
+
+/** 分页参数：非法/负数回落默认值（offset 0，limit 100），limit 上限 500（超限 clamp 不报错）。 */
+function factOffsetOf(value) {
+  const number = Number(value)
+  return Number.isSafeInteger(number) && number > 0 ? number : 0
+}
+
+function factLimitOf(value) {
+  const DEFAULT_LIMIT = 100
+  const MAX_LIMIT = 500
+  const number = Number(value)
+  if (!Number.isSafeInteger(number) || number <= 0) return DEFAULT_LIMIT
+  return Math.min(number, MAX_LIMIT)
+}
+
 /**
  * 推演书缺省解析（OS-54）：显式传了 bookId 就用它；没传＝拆解目录里 mtime 最新那份。
  * 与 factCurveGet 的选书口径一致——剔除条目页签后前端不再持有 bookId。
@@ -1206,27 +1357,29 @@ function readLegacyDeduceState(root, bookId) {
   // 剧情树分支（OS-61 P3）：从某一拍开新分支。只动 branchId/cursor 与分叉溯源，
   // nodes 全量保留；缓存区沿用 switchBranch 语义不动（归档仍按缓存区里的拍走）。
   if (endpointId === 'deduceImage') {
-    // 生图（OS-63 预留转正）：调 OpenAI 兼容 /v1/images/generations，产物落
-    // 推演/<bookId>/素材/场景/<name>.png。端点配置在 agent config 的 imageEndpoint
-    // （url/apiKey/model/size）；未配置＝如实报，不假装生成。
+    // 生图（OS-63 预留转正）：调全局配置的 image 块（OpenAI 兼容 images/generations），
+    // 产物落 推演/<bookId>/素材/场景/<name>.png。没开开关/没填端点＝如实报，不假装生成。
     const authorized = authorizeRoot(allowlist, request.root)
     if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
-    const { config } = await loadAgentConfig(context.agentConfigPath)
-    const imageEndpoint = config?.imageEndpoint && typeof config.imageEndpoint === 'object' ? config.imageEndpoint : null
-    if (!imageEndpoint?.url) {
-      return sendError(res, API_ERROR_CODES.AGENT_UPSTREAM_ERROR, '未配置生图端点——设置 · 插件 · 生图端点里填 OpenAI 兼容 images API 的地址与模型后可用')
+    const { config } = await loadConfigV2(context.agentConfigPath)
+    const image = config.image
+    if (!image.enabled) {
+      return sendError(res, API_ERROR_CODES.AGENT_UPSTREAM_ERROR, '生图没启用——设置 · 模型 · 生图里打开开关并填 OpenAI 兼容 images API 的地址与模型后可用')
+    }
+    if (!image.endpoint) {
+      return sendError(res, API_ERROR_CODES.AGENT_UPSTREAM_ERROR, '未配置生图端点——设置 · 模型 · 生图里填 OpenAI 兼容 images API 的地址与模型后可用')
     }
     const name = text(request.name).trim().slice(0, 40)
     const prompt = text(request.prompt).trim()
     if (!name || !prompt) return sendError(res, API_ERROR_CODES.INVALID_ENTRY, 'name 与 prompt 必填')
     if (/[\/]|\.\./u.test(name)) return sendError(res, API_ERROR_CODES.PATH_ESCAPE, 'name 不能含路径分隔符')
     const size = text(request.size).trim() || '1024x1024'
-    const body = JSON.stringify({ model: text(imageEndpoint.model), prompt: `小说场景立绘，无文字：${prompt}`, size, n: 1, response_format: 'b64_json' })
+    const body = JSON.stringify({ model: text(image.model), prompt: `小说场景立绘，无文字：${prompt}`, size, n: 1, response_format: 'b64_json' })
     let payload = null
     try {
-      const response = await fetch(`${text(imageEndpoint.url).replace(/\/$/u, '')}/images/generations`, {
+      const response = await fetch(imagesGenerationsUrl(image.endpoint), {
         method: 'POST',
-        headers: { 'content-type': 'application/json', ...(imageEndpoint.apiKey ? { authorization: `Bearer ${imageEndpoint.apiKey}` } : {}) },
+        headers: { 'content-type': 'application/json', ...(image.apiKey ? { authorization: `Bearer ${image.apiKey}` } : {}) },
         body, signal: AbortSignal.timeout(300_000)
       })
       if (!response.ok) throw new Error(`HTTP ${response.status} · ${(await response.text()).slice(0, 200)}`)
@@ -1616,7 +1769,7 @@ function readLegacyDeduceState(root, bookId) {
     if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
     const bookId = text(request.bookId).trim()
     if (!bookId) return sendError(res, API_ERROR_CODES.INVALID_ENTRY, 'bookId 必填')
-    const { config } = await loadAgentConfig(context.agentConfigPath)
+    const { config } = await loadConfigV2(context.agentConfigPath)
     const upstream = await resolveChatUpstream(config, context)
     if (!upstream.ok) return sendError(res, API_ERROR_CODES.AGENT_UPSTREAM_ERROR, upstream.message)
     // llmPort：把「活动运行时」包成引擎要的 prompt→text 形状（OS-58）。
@@ -1746,7 +1899,7 @@ function readLegacyDeduceState(root, bookId) {
   return sendError(res, API_ERROR_CODES.NOT_FOUND, `端点未实现：${endpointId}`)
 }
 
-const ENDPOINT_HAS_QUERY = new Set(['habitsGet', 'chapterGet', 'agentSessions', 'agentSessionGet', 'agentSessionDelete', 'libraryDiagnose', 'filesGet', 'chaptersGet', 'chapterDelete', 'artifactsGet', 'suiteStateDataGet', 'agentPicksGet', 'briefGet', 'skillsGet', 'skillGet', 'enrichStatus', 'enrichGraph', 'kbStatusGet', 'agentDshModelsGet', 'factCurveGet', 'referenceGet', 'referenceGraphGet', 'referenceNoteGet', 'deduceSessionGet', 'deduceAssets', 'deduceAssetFile'])
+const ENDPOINT_HAS_QUERY = new Set(['habitsGet', 'chapterGet', 'agentSessions', 'agentSessionGet', 'agentSessionDelete', 'libraryDiagnose', 'filesGet', 'chaptersGet', 'chapterDelete', 'artifactsGet', 'suiteStateDataGet', 'agentPicksGet', 'briefGet', 'skillsGet', 'skillGet', 'enrichStatus', 'enrichGraph', 'kbStatusGet', 'agentDshModelsGet', 'factCurveGet', 'factEntriesGet', 'factBooksGet', 'referenceGet', 'referenceGraphGet', 'referenceNoteGet', 'deduceSessionGet', 'deduceAssets', 'deduceAssetFile'])
 
 /** 套件资产 MIME（page 模式自带页同源装载）。 */
 const SUITE_ASSET_MIME = Object.freeze({
@@ -2030,18 +2183,417 @@ async function systemPromptFor(root, libraries, genresDirs, skillsDirs, { canRea
   return { prompt: lines.join('\n'), applied }
 }
 
+/* ---------- 全局配置（S4）：text / image / vision / agent 四块 ---------- */
+
+/**
+ * 配置 v2：四块各管一摊——text（对话）/ image（生图）/ vision（识图）/ agent（默认档）。
+ * 旧格式（顶层 endpoint/model/apiKey）读到即迁移到 text.*，并把新格式写回磁盘；
+ * 旧端点 GET/PUT /api/agent/config 保留，内部转发到 text 块与旧形状（MCP/旧前端还在用）。
+ * apiKey 只在本机文件里；对外一律走 maskApiKey 尾号掩码。
+ */
+const CONFIG_BLOCK_FIELDS = Object.freeze({
+  text: ['endpoint', 'model', 'apiKey', 'runtime', 'reasoningEffort', 'chineseReasoning'],
+  image: ['enabled', 'endpoint', 'model', 'apiKey'],
+  vision: ['enabled', 'endpoint', 'model', 'apiKey'],
+  agent: ['defaultModel', 'subagentModel', 'profile']
+})
+
+function emptyConfigV2() {
+  return {
+    text: { endpoint: '', model: '', apiKey: '', runtime: '', reasoningEffort: '', chineseReasoning: true },
+    image: { enabled: false, endpoint: '', model: '', apiKey: '' },
+    vision: { enabled: false, endpoint: '', model: '', apiKey: '' },
+    agent: { defaultModel: '', subagentModel: '', profile: '' }
+  }
+}
+
+/** 单块规整：只认自己那几个人（未知键丢弃）；enabled 只有明确的 true 才算开。 */
+function normalizeConfigBlock(kind, raw) {
+  const source = isPlainObject(raw) ? raw : {}
+  if (kind === 'text') {
+    return {
+      endpoint: text(source.endpoint).trim(),
+      model: text(source.model).trim(),
+      apiKey: text(source.apiKey).trim(),
+      runtime: text(source.runtime).trim(),
+      reasoningEffort: text(source.reasoningEffort).trim(),
+      chineseReasoning: source.chineseReasoning !== false
+    }
+  }
+  if (kind === 'image' || kind === 'vision') {
+    return {
+      enabled: source.enabled === true,
+      endpoint: text(source.endpoint).trim(),
+      model: text(source.model).trim(),
+      apiKey: text(source.apiKey).trim()
+    }
+  }
+  return {
+    defaultModel: text(source.defaultModel).trim(),
+    subagentModel: text(source.subagentModel).trim(),
+    profile: text(source.profile).trim()
+  }
+}
+
+function normalizeConfigV2(raw) {
+  const source = isPlainObject(raw) ? raw : {}
+  return {
+    text: normalizeConfigBlock('text', source.text),
+    image: normalizeConfigBlock('image', source.image),
+    vision: normalizeConfigBlock('vision', source.vision),
+    agent: normalizeConfigBlock('agent', source.agent)
+  }
+}
+
+/** 旧格式判定：顶层有 endpoint/model/apiKey 且没有 text 块。 */
+function isLegacyConfig(raw) {
+  if (!isPlainObject(raw) || isPlainObject(raw.text)) return false
+  return 'endpoint' in raw || 'model' in raw || 'apiKey' in raw
+}
+
+/** 旧格式 → 新结构。imageEndpoint（旧生图字段）一并迁进 image 块，别的沿用默认。 */
+function migrateLegacyConfig(raw) {
+  const legacyImage = isPlainObject(raw.imageEndpoint)
+    ? { enabled: Boolean(text(raw.imageEndpoint.url).trim()), endpoint: text(raw.imageEndpoint.url), model: text(raw.imageEndpoint.model), apiKey: text(raw.imageEndpoint.apiKey) }
+    : null
+  return {
+    text: {
+      endpoint: raw.endpoint,
+      model: raw.model,
+      apiKey: raw.apiKey,
+      runtime: raw.runtime,
+      reasoningEffort: raw.reasoningEffort,
+      chineseReasoning: raw.chineseReasoning
+    },
+    ...(isPlainObject(raw.image) ? { image: raw.image } : legacyImage ? { image: legacyImage } : {}),
+    ...(isPlainObject(raw.vision) ? { vision: raw.vision } : {}),
+    ...(isPlainObject(raw.agent) ? { agent: raw.agent } : {})
+  }
+}
+
+/** 原子写回（tmp＋rename），带 updatedAt。rename 失败（Windows 上文件被占用）要收掉 tmp，不留垃圾。 */
+async function writeConfigV2(configPath, config) {
+  await mkdir(join(configPath, '..'), { recursive: true })
+  const tmp = `${configPath}.tmp-${randomUUID()}`
+  await writeFile(tmp, JSON.stringify({ ...config, updatedAt: new Date().toISOString() }, null, 2), 'utf-8')
+  try {
+    await rename(tmp, configPath)
+  } catch (error) {
+    await rm(tmp, { force: true }).catch(() => {})
+    throw error
+  }
+}
+
+/** 读配置：缺档＝全默认（不算错）；坏档＝全默认＋warning，不拦启动；旧格式＝迁移并写回。 */
+async function loadConfigV2(configPath) {
+  const empty = { config: emptyConfigV2(), warnings: [], migrated: false }
+  if (!text(configPath).trim()) return empty
+  let raw
+  try {
+    raw = await readFile(configPath, 'utf-8')
+  } catch (error) {
+    if (error?.code === 'ENOENT') return empty
+    return { ...empty, warnings: [{ code: 'AGENT_CONFIG_UNREADABLE', message: `配置读不了：${text(error?.message || error)}` }] }
+  }
+  let parsed
+  try {
+    parsed = JSON.parse(raw)
+  } catch (error) {
+    return { ...empty, warnings: [{ code: 'AGENT_CONFIG_CORRUPT', message: `配置不是有效 JSON：${text(error?.message || error)}` }] }
+  }
+  const legacy = isLegacyConfig(parsed)
+  const config = normalizeConfigV2(legacy ? migrateLegacyConfig(parsed) : parsed)
+  if (!legacy) return { config, warnings: [], migrated: false }
+  try {
+    await writeConfigV2(configPath, config)
+  } catch (error) {
+    return { config, warnings: [{ code: 'AGENT_CONFIG_MIGRATE_FAILED', message: `旧配置迁移写回失败：${text(error?.message || error)}` }], migrated: false }
+  }
+  return { config, warnings: [], migrated: true }
+}
+
+/** 分块写：块内字段缺省＝保留原值；空串＝清除；enabled 必须是布尔。 */
+async function saveConfigV2(configPath, patch = {}) {
+  const { config } = await loadConfigV2(configPath)
+  const next = { ...config }
+  for (const kind of Object.keys(CONFIG_BLOCK_FIELDS)) {
+    if (!isPlainObject(patch[kind])) continue
+    const merged = { ...config[kind] }
+    for (const field of CONFIG_BLOCK_FIELDS[kind]) {
+      if (patch[kind][field] === undefined) continue
+      merged[field] = patch[kind][field]
+    }
+    next[kind] = normalizeConfigBlock(kind, merged)
+  }
+  await writeConfigV2(configPath, next)
+  return next
+}
+
+/** 分块写请求校验：块必须是对象、字段类型必须对；坏值 400（未知键忽略）。 */
+function validateConfigPatch(input) {
+  const errors = []
+  const source = isPlainObject(input) ? input : {}
+  const STRING_FIELDS = new Set(['endpoint', 'model', 'apiKey', 'runtime', 'reasoningEffort', 'defaultModel', 'subagentModel', 'profile'])
+  for (const kind of Object.keys(CONFIG_BLOCK_FIELDS)) {
+    if (source[kind] === undefined) continue
+    if (!isPlainObject(source[kind])) {
+      errors.push({ field: kind, message: `${kind} 必须是对象` })
+      continue
+    }
+    for (const [field, value] of Object.entries(source[kind])) {
+      if (!CONFIG_BLOCK_FIELDS[kind].includes(field)) continue
+      if (value === undefined || value === null) continue
+      if (field === 'enabled') {
+        if (typeof value !== 'boolean') errors.push({ field: `${kind}.${field}`, message: `${kind}.${field} 必须是布尔值` })
+        continue
+      }
+      if (field === 'chineseReasoning') {
+        if (typeof value !== 'boolean') errors.push({ field: `${kind}.${field}`, message: `${kind}.${field} 必须是布尔值` })
+        continue
+      }
+      if (STRING_FIELDS.has(field) && typeof value !== 'string') {
+        errors.push({ field: `${kind}.${field}`, message: `${kind}.${field} 必须是字符串` })
+      }
+    }
+  }
+  return errors
+}
+
+/** 脱敏公开形状（新端点用）：apiKey 只回尾号。 */
+function configPublicV2(config, configPath) {
+  const textBlock = config.text
+  return {
+    ok: true,
+    text: {
+      endpoint: textBlock.endpoint,
+      model: textBlock.model,
+      apiKeyMasked: textBlock.apiKey ? maskApiKey(textBlock.apiKey) : '',
+      runtime: textBlock.runtime,
+      reasoningEffort: textBlock.reasoningEffort,
+      chineseReasoning: textBlock.chineseReasoning,
+      configured: Boolean(textBlock.endpoint || textBlock.runtime)
+    },
+    image: {
+      enabled: config.image.enabled,
+      endpoint: config.image.endpoint,
+      model: config.image.model,
+      apiKeyMasked: config.image.apiKey ? maskApiKey(config.image.apiKey) : '',
+      configured: Boolean(config.image.endpoint)
+    },
+    vision: {
+      enabled: config.vision.enabled,
+      endpoint: config.vision.endpoint,
+      model: config.vision.model,
+      apiKeyMasked: config.vision.apiKey ? maskApiKey(config.vision.apiKey) : '',
+      configured: Boolean(config.vision.endpoint)
+    },
+    agent: {
+      defaultModel: config.agent.defaultModel,
+      subagentModel: config.agent.subagentModel,
+      profile: config.agent.profile
+    },
+    configPath: text(configPath)
+  }
+}
+
+/** 旧端点形状（GET/PUT /api/agent/config）：完全照旧，内部由 text 块供值。 */
+function configPublicLegacy(config, configPath) {
+  const textBlock = config.text
+  return {
+    ok: true,
+    configured: Boolean(textBlock.endpoint || textBlock.runtime),
+    endpoint: textBlock.endpoint,
+    model: textBlock.model,
+    ...(textBlock.apiKey ? { apiKeyMasked: maskApiKey(textBlock.apiKey) } : {}),
+    ...(textBlock.runtime ? { runtime: textBlock.runtime } : {}),
+    ...(textBlock.reasoningEffort ? { reasoningEffort: textBlock.reasoningEffort } : {}),
+    chineseReasoning: textBlock.chineseReasoning,
+    configPath: text(configPath)
+  }
+}
+
+/** 取 text 块（兼容旧扁平形状：万一有调用方塞进来的是旧 config）。 */
+function configTextBlock(config) {
+  if (isPlainObject(config) && isPlainObject(config.text)) return config.text
+  return normalizeConfigBlock('text', config)
+}
+
+/** 取 agent 块（默认档）：text.model 没填时用它兜底。 */
+function configAgentBlock(config) {
+  if (isPlainObject(config) && isPlainObject(config.agent)) return config.agent
+  return normalizeConfigBlock('agent', config)
+}
+
+/* ---------- 可行性校验（probe）：真发一个最小请求，15 秒超时，不抛 ---------- */
+
+const PROBE_TIMEOUT_MS = 15_000
+// 8×8 纯红 PNG（75 字节）——识图探针的内联图，不读磁盘、不联网取图。
+const VISION_PROBE_PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAEklEQVR4nGP4z8CAFWEXHbQSACj/P8Fu7N9hAAAAAElFTkSuQmCC'
+
+/** endpoint → chat/completions 完整地址（容忍已给完整路径、只给 /v1、或只给主机）。 */
+function chatCompletionsUrl(endpoint) {
+  const raw = text(endpoint).trim().replace(/\/+$/u, '')
+  if (!raw) return ''
+  if (/\/chat\/completions$/u.test(raw)) return raw
+  if (/\/v\d+(?:\.\d+)?$/u.test(raw)) return `${raw}/chat/completions`
+  return `${raw}/v1/chat/completions`
+}
+
+/** endpoint → images/generations 完整地址（设置页填到 /v1 为止，也容忍完整路径）。 */
+function imagesGenerationsUrl(endpoint) {
+  const raw = text(endpoint).trim().replace(/\/+$/u, '')
+  if (!raw) return ''
+  if (/\/images\/generations$/u.test(raw)) return raw
+  return `${raw}/images/generations`
+}
+
+function isTimeoutError(error) {
+  return error?.name === 'TimeoutError' || error?.name === 'AbortError' || error?.code === 'ABORT_ERR'
+}
+
+async function readSnippet(response) {
+  try {
+    const raw = await response.text()
+    return raw.slice(0, 200)
+  } catch {
+    return ''
+  }
+}
+
+/**
+ * 真发一个最小请求：
+ *   text   → POST chat/completions，messages:[ping]，max_tokens:1，200 即可达；
+ *   image  → POST images/generations，prompt:'a red dot'，256x256，b64_json 有值即可达（会真花钱）；
+ *   vision → 内联 8×8 红图问颜色，200＋有回复即可达。
+ * 连不上/超时/非 2xx 一律回 reachable:false＋error，绝不抛。
+ */
+async function probeConfigKind(kind, block) {
+  const started = Date.now()
+  const fail = (error, detail) => ({
+    reachable: false,
+    latencyMs: Date.now() - started,
+    error,
+    ...(detail ? { detail: text(detail) } : {}),
+    ...(block.model ? { model: block.model } : {})
+  })
+  if (!text(block.endpoint).trim()) return fail('NOT_CONFIGURED', '还没有填 endpoint')
+
+  const headers = { 'content-type': 'application/json', ...(block.apiKey ? { authorization: `Bearer ${block.apiKey}` } : {}) }
+  let url = ''
+  let body = null
+  if (kind === 'text') {
+    url = chatCompletionsUrl(block.endpoint)
+    if (!url) return fail('NOT_CONFIGURED', 'endpoint 不是有效地址')
+    body = JSON.stringify({ model: block.model, messages: [{ role: 'user', content: 'ping' }], max_tokens: 1, stream: false })
+  } else if (kind === 'image') {
+    url = imagesGenerationsUrl(block.endpoint)
+    if (!url) return fail('NOT_CONFIGURED', 'endpoint 不是有效地址')
+    body = JSON.stringify({ model: block.model, prompt: 'a red dot', size: '256x256', n: 1, response_format: 'b64_json' })
+  } else {
+    url = chatCompletionsUrl(block.endpoint)
+    if (!url) return fail('NOT_CONFIGURED', 'endpoint 不是有效地址')
+    body = JSON.stringify({
+      model: block.model,
+      max_tokens: 16,
+      stream: false,
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'text', text: '这张图是什么颜色？只回答颜色名。' },
+          { type: 'image_url', image_url: { url: `data:image/png;base64,${VISION_PROBE_PNG}` } }
+        ]
+      }]
+    })
+  }
+
+  let response
+  try {
+    // 只发 http/https：file:、data: 一类不进探测（fetch 也会拒，但这里给个人话原因）
+    const parsed = new URL(url)
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      return fail('INVALID_ENDPOINT', 'endpoint 只支持 http/https')
+    }
+  } catch {
+    return fail('INVALID_ENDPOINT', `endpoint 不是有效 URL：${text(block.endpoint)}`)
+  }
+  try {
+    response = await fetch(url, { method: 'POST', headers, body, signal: AbortSignal.timeout(PROBE_TIMEOUT_MS) })
+  } catch (error) {
+    if (isTimeoutError(error)) return fail('TIMEOUT', `${PROBE_TIMEOUT_MS / 1000} 秒内没有响应`)
+    return fail('UNREACHABLE', text(error?.message || error))
+  }
+  if (!response.ok) return fail(`HTTP_${response.status}`, await readSnippet(response))
+
+  if (kind === 'image') {
+    let payload = null
+    try { payload = await response.json() } catch { return fail('BAD_RESPONSE', '返回的不是 JSON') }
+    const b64 = payload?.data?.[0]?.b64_json
+    if (!b64) return fail('NO_IMAGE', '返回里没有 b64_json 图片数据')
+    return { reachable: true, latencyMs: Date.now() - started, model: block.model }
+  }
+
+  let payload = null
+  try { payload = await response.json() } catch { return fail('BAD_RESPONSE', '返回的不是 JSON') }
+  const reply = text(payload?.choices?.[0]?.message?.content).trim()
+  if (!reply) return fail('EMPTY_REPLY', '模型没有回复内容')
+  return { reachable: true, latencyMs: Date.now() - started, model: block.model, detail: kind === 'vision' ? reply.slice(0, 40) : 'ok' }
+}
+
+async function handleConfigGet(res, context) {
+  const { config } = await loadConfigV2(context.agentConfigPath)
+  const payload = configPublicV2(config, context.agentConfigPath)
+  const checked = validateResponse('configGet', payload)
+  if (!checked.ok) return sendError(res, API_ERROR_CODES.INVALID_ENTRY, '配置响应形状不符合契约', { errors: checked.errors })
+  return sendJson(res, 200, payload)
+}
+
+async function handleConfigPut(res, request, context) {
+  const errors = validateConfigPatch(request)
+  if (errors.length) return sendError(res, API_ERROR_CODES.INVALID_ENTRY, '配置不符合契约', { errors })
+  const config = await saveConfigV2(context.agentConfigPath, request)
+  const payload = configPublicV2(config, context.agentConfigPath)
+  const checked = validateResponse('configPut', payload)
+  if (!checked.ok) return sendError(res, API_ERROR_CODES.INVALID_ENTRY, '配置响应形状不符合契约', { errors: checked.errors })
+  return sendJson(res, 200, payload)
+}
+
+async function handleConfigProbe(res, request, context) {
+  const kind = text(request.kind).trim()
+  if (kind !== 'text' && kind !== 'image' && kind !== 'vision') {
+    return sendError(res, API_ERROR_CODES.INVALID_ENTRY, `kind 只能是 text / image / vision：${text(request.kind)}`)
+  }
+  const { config } = await loadConfigV2(context.agentConfigPath)
+  // overrides：用未保存的块值试连（只认同块字段，其余丢弃）
+  const block = normalizeConfigBlock(kind, isPlainObject(request.overrides) ? { ...config[kind], ...request.overrides } : config[kind])
+  const probed = await probeConfigKind(kind, block)
+  const payload = {
+    ok: true,
+    kind,
+    reachable: probed.reachable,
+    latencyMs: probed.latencyMs,
+    ...(probed.model ? { model: probed.model } : {}),
+    ...(probed.detail ? { detail: probed.detail } : {}),
+    ...(probed.error ? { error: probed.error } : {})
+  }
+  const checked = validateResponse('configProbe', payload)
+  if (!checked.ok) return sendError(res, API_ERROR_CODES.INVALID_ENTRY, '探测响应形状不符合契约', { errors: checked.errors })
+  return sendJson(res, 200, payload)
+}
+
 function sseFrame(res, payload) {
   res.write(`data: ${JSON.stringify(payload)}\n\n`)
 }
 
 async function handleAgentConfigGet(res, context) {
-  const { config } = await loadAgentConfig(context.agentConfigPath)
-  return sendJson(res, 200, configPublic(config, context.agentConfigPath))
+  // 旧端点保留（MCP/旧前端还在用）：返回旧形状，值来自 text 块。
+  const { config } = await loadConfigV2(context.agentConfigPath)
+  return sendJson(res, 200, configPublicLegacy(config, context.agentConfigPath))
 }
 
 /** 运行时货架：Pi 兜底（内置伪条目）＋各 kit（内置/本机）。userDir 供设置页展示。 */
 async function handleAgentRuntimesGet(res, context) {
-  const { config } = await loadAgentConfig(context.agentConfigPath)
+  const { config } = await loadConfigV2(context.agentConfigPath)
+  const textBlock = config.text
   const { kits } = loadRuntimeKits(context.runtimesDirs)
   // OS-18：货架三组（native＝Pi/DSH/套件侧车；cli＝CLI 嫁接），CLI 与 DSH 带实测状态
   const enriched = []
@@ -2085,13 +2637,13 @@ async function handleAgentRuntimesGet(res, context) {
       kind: 'pi',
       category: 'native',
       source: '内置',
-      status: text(config.endpoint).trim() ? 'ready' : 'unconfigured',
+      status: text(textBlock.endpoint).trim() ? 'ready' : 'unconfigured',
       description: '直连 OpenAI 兼容端点（下方字段）；没装任何 kit 时的原生兜底，也是默认运行时'
     },
     ...enriched
   ]
   const userDir = Array.isArray(context.runtimesDirs) && context.runtimesDirs[1] ? context.runtimesDirs[1] : ''
-  return sendJson(res, 200, { ok: true, active: text(config.runtime).trim(), runtimes, ...(userDir ? { userDir } : {}) })
+  return sendJson(res, 200, { ok: true, active: text(textBlock.runtime).trim(), runtimes, ...(userDir ? { userDir } : {}) })
 }
 
 async function handleAgentRuntimePut(res, request, context) {
@@ -2102,13 +2654,14 @@ async function handleAgentRuntimePut(res, request, context) {
       return sendError(res, API_ERROR_CODES.INVALID_ENTRY, `货架上没有这个运行时套件：${id}`)
     }
   }
-  const config = await saveAgentConfig(context.agentConfigPath, { runtime: id })
-  return sendJson(res, 200, { ok: true, active: text(config.runtime).trim() })
+  const config = await saveConfigV2(context.agentConfigPath, { text: { runtime: id } })
+  return sendJson(res, 200, { ok: true, active: text(config.text.runtime).trim() })
 }
 
 async function handleAgentConfigPut(res, request, context) {
-  const config = await saveAgentConfig(context.agentConfigPath, request)
-  return sendJson(res, 200, configPublic(config, context.agentConfigPath))
+  // 旧端点保留：请求是旧的扁平字段，写进 text 块，响应回旧形状。
+  const config = await saveConfigV2(context.agentConfigPath, { text: { ...request } })
+  return sendJson(res, 200, configPublicLegacy(config, context.agentConfigPath))
 }
 
 /**
@@ -2116,7 +2669,8 @@ async function handleAgentConfigPut(res, request, context) {
  * 无 kit 或选了 Pi＝走 daemon 本机端点配置。凭据只在本机，不回显。
  */
 function piUpstream(config) {
-  const endpoint = text(config.endpoint).trim()
+  const textBlock = configTextBlock(config)
+  const endpoint = text(textBlock.endpoint).trim()
   if (!endpoint) {
     return { ok: false, code: API_ERROR_CODES.AGENT_NOT_CONFIGURED, message: '还没配置模型端点：点 Agent 列右上角的齿轮，填 OpenAI 兼容端点，或选一个运行时套件' }
   }
@@ -2131,8 +2685,9 @@ function piUpstream(config) {
   return {
     ok: true,
     url: endpoint,
-    headers: config.apiKey ? { authorization: `Bearer ${config.apiKey}` } : {},
-    model: text(config.model).trim(),
+    headers: textBlock.apiKey ? { authorization: `Bearer ${textBlock.apiKey}` } : {},
+    // 模型：对话模型优先，留空回落到 Agent 默认档（「OpenStory 默认模型」）
+    model: text(textBlock.model || configAgentBlock(config).defaultModel).trim(),
     runtimeName: 'Pi 兜底'
   }
 }
@@ -2144,7 +2699,8 @@ function fallbackToPi(config, reason) {
 }
 
 async function resolveChatUpstream(config, context) {
-  const activeKitId = text(config.runtime).trim()
+  const textBlock = configTextBlock(config)
+  const activeKitId = text(textBlock.runtime).trim()
   if (!activeKitId) return piUpstream(config)
   const { kits } = loadRuntimeKits(context.runtimesDirs)
   const kit = kits.find((item) => item.id === activeKitId)
@@ -2165,12 +2721,14 @@ async function resolveChatUpstream(config, context) {
     const run = await resolveDshRun(kit, { env: context.env })
     if (!run.ok) return fallbackToPi(config, `DSH 不可用：${run.message}`)
     // 推理深度（OS-39）：kit manifest / 本机配置里给了才发；不给＝用 DSH 自己的默认档
-    const reasoningEffort = text(kit.reasoningEffort || config.reasoningEffort).trim()
+    const reasoningEffort = text(kit.reasoningEffort || textBlock.reasoningEffort).trim()
+    // 模型（S4）：设置页选的 DSH 模型（provider/id）优先；没选＝用 kit manifest 的缺省档
+    const model = text(textBlock.model || configAgentBlock(config).defaultModel).trim() || kit.model
     if (run.mode === 'cli') {
       // CLI stdio（od 协议）：一 run 一进程
-      return { ok: true, execute: 'dsh-cli', dshRun: run, kit, model: kit.model, reasoningEffort, runtimeName: kit.name }
+      return { ok: true, execute: 'dsh-cli', dshRun: run, kit, model, reasoningEffort, runtimeName: kit.name }
     }
-    return { ok: true, url: run.url, headers, model: kit.model, runtimeName: kit.name }
+    return { ok: true, url: run.url, headers, model, runtimeName: kit.name }
   }
   const up = await ensureSidecar(kit, { env: context.env })
   if (!up.ok) return fallbackToPi(config, `运行时 ${kit.name} 起不来（${up.message}）`)
@@ -2248,7 +2806,7 @@ function turnProsePrompt(node, previousProse) {
 async function generateTurnProse({ context, root, node, previousProse }) {
   let upstream
   try {
-    const { config } = await loadAgentConfig(context.agentConfigPath)
+    const { config } = await loadConfigV2(context.agentConfigPath)
     upstream = await resolveChatUpstream(config, context)
   } catch { upstream = null }
   if (!upstream?.ok) return { prose: '', proseError: '模型不可用' }
@@ -2304,7 +2862,7 @@ async function generateTurnProse({ context, root, node, previousProse }) {
  * 凭据只来自本机配置/kit manifest，不回显、不进日志；上游失败如实报，不伪造回答。
  */
 async function handleAgentChat(req, res, request, context, root, libraries) {
-  const { config } = await loadAgentConfig(context.agentConfigPath)
+  const { config } = await loadConfigV2(context.agentConfigPath)
   const upstream = await resolveChatUpstream(config, context)
   if (!upstream.ok) {
     return sendError(res, upstream.code ?? API_ERROR_CODES.AGENT_UPSTREAM_ERROR, upstream.message)
@@ -2374,7 +2932,7 @@ async function handleAgentChat(req, res, request, context, root, libraries) {
     // DSH 带完整工具链 + cwd=库根：告诉它「你能读，但改正文要走卡」，别再说假话
     const promptBundle = await systemPromptFor(root, libraries, context.genresDirs, context.skillsDirs, {
       canReadFiles: true,
-      chineseReasoning: config.chineseReasoning !== false,
+      chineseReasoning: configTextBlock(config).chineseReasoning !== false,
       suitesDirs: context.suitesDirs,
       suiteStatePath: context.suiteStatePath,
       env: context.env
@@ -2878,6 +3436,11 @@ export function startDaemon({
           if (kbHealthStop) kbHealthStop()
           stopAllSidecars()
           server.close(() => done())
+          // 关停不等客户端把响应读完：本地 daemon 的「停」就是立刻停。
+          // 没读走的大响应（如 350KB 的 app.js）会把 keep-alive 连接留在 busy 态，
+          // 光靠 server.close 会一直等——这里主动收掉空闲与在途连接。
+          server.closeIdleConnections?.()
+          server.closeAllConnections?.()
         })
       })
     })

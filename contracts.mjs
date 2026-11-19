@@ -98,6 +98,49 @@ export const ENDPOINTS = Object.freeze({
     },
     errors: ['INVALID_ENTRY']
   },
+  configGet: {
+    method: 'GET',
+    path: '/api/config',
+    // 全局配置聚合读（S4）：text（对话）/ image（生图）/ vision（识图）/ agent（默认档）四块。
+    // 凭据红线：只回 apiKeyMasked 尾号，完整 key 永不出 daemon。
+    // 读旧格式（顶层 endpoint/model/apiKey）时自动迁移到 text.*，并写回新格式。
+    request: { query: {} },
+    response: {
+      ok: 'true',
+      text: 'object',
+      image: 'object',
+      vision: 'object',
+      agent: 'object',
+      configPath: 'string'
+    },
+    errors: []
+  },
+  configPut: {
+    method: 'PUT',
+    path: '/api/config',
+    // 分块写：body 只传要改的块（text/image/vision/agent），块内字段缺省＝保留原值、空串＝清除。
+    // 未知键丢弃（与套件设置同口径）；坏类型 400。
+    request: { body: { text: 'object?', image: 'object?', vision: 'object?', agent: 'object?' } },
+    response: {
+      ok: 'true',
+      text: 'object',
+      image: 'object',
+      vision: 'object',
+      agent: 'object',
+      configPath: 'string'
+    },
+    errors: ['INVALID_ENTRY']
+  },
+  configProbe: {
+    method: 'POST',
+    path: '/api/config/probe',
+    // 可行性校验：真发一个最小请求（text=chat/completions max_tokens:1；image=images/generations
+    // 一张 256x256 小图——会真花钱；vision=内联 8×8 红色 PNG 问颜色）。
+    // 15 秒超时；连不上/超时都回 reachable:false，不抛。overrides＝用未保存的块值试连。
+    request: { body: { kind: 'string', overrides: 'object?' } },
+    response: { ok: 'true', kind: 'string', reachable: 'boolean', latencyMs: 'number', model: 'string?', detail: 'string?', error: 'string?' },
+    errors: ['INVALID_ENTRY']
+  },
   agentRuntimesGet: {
     method: 'GET',
     path: '/api/agent/runtimes',
@@ -307,8 +350,8 @@ export const ENDPOINTS = Object.freeze({
   deduceImage: {
     method: 'POST',
     path: '/api/deduce/image',
-    // 生图（OS-63 预留转正）：调 agent config 里可选的 imageEndpoint（OpenAI 兼容
-    // images/generations），产物落 推演/<bookId>/素材/场景/<name>.png。未配置如实报。
+    // 生图（OS-63 预留转正）：调全局配置 image.endpoint（OpenAI 兼容 images/generations），
+    // 产物落 推演/<bookId>/素材/场景/<name>.png。未启用/未配置如实报。
     request: { body: { root: 'string', bookId: 'string?', name: 'string', prompt: 'string', size: 'string?' } },
     response: { ok: 'true', name: 'string', path: 'string', size: 'string' },
     errors: ['NO_LIBRARY', 'PATH_ESCAPE', 'INVALID_ENTRY', 'AGENT_UPSTREAM_ERROR']
@@ -425,6 +468,25 @@ export const ENDPOINTS = Object.freeze({
     request: { query: { root: 'string', bookId: 'string?' } },
     response: { ok: 'true', bookId: 'string?', title: 'string?', words: 'number', chapters: 'array', books: 'array' },
     errors: ['INVALID_ENTRY']
+  },
+  factEntriesGet: {
+    method: 'GET',
+    path: '/api/fact/entries',
+    // 条目级读（故事源的数据底座）：条目本体＋溯源，按 bookId/layer/q 过滤，服务端分页。
+    // bookId 缺省＝mtime 最新的可读书（与 factCurveGet 同向）；offset 默认 0，limit 默认 100／上限 500。
+    // layers＝过滤前的层计数表（前端做层筛选器）；坏档在 warnings[] 记一条，不整体失败。
+    request: { query: { root: 'string', bookId: 'string?', layer: 'string?', q: 'string?', offset: 'string?', limit: 'string?' } },
+    response: { ok: 'true', bookId: 'string', book: 'object?', revision: 'number', total: 'number', entries: 'array', layers: 'object', warnings: 'array?' },
+    errors: ['INVALID_ENTRY', 'NOT_FOUND']
+  },
+  factBooksGet: {
+    method: 'GET',
+    path: '/api/fact/books',
+    // 书目列表：拆解/ 下每本 <id>.json 的 bookId/title/revision/条目数/兄弟 wiki 有无。
+    // 单本解析失败只在该书记 error 字段，其余照常返回（坏档不整体失败）。
+    request: { query: { root: 'string' } },
+    response: { ok: 'true', books: 'array' },
+    errors: []
   },
   genresGet: {
     method: 'GET',
