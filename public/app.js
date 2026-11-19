@@ -61,7 +61,9 @@ const state = {
     mode: 'engine', engine: { busy: false, data: null, pov: '', seed: '', error: '', hint: '',
       session: null, sessionLoaded: false, customText: '', draft: null, turnBusy: false, archiveNote: '',
       view: 'scene', treePick: null,
-      assets: null, assetsLoaded: false, assetBookId: '', bgmOn: false } },
+      assets: null, assetsLoaded: false, assetBookId: '', bgmOn: false,
+      // OS-81 叙事流：纸面模式（关掉立绘背景回纯纸面）/ 贴底跟随 / 序章折叠
+      paperMode: false, flowPin: true, introOpen: null } },
   artifacts: { root: '', groups: [], totals: null, loading: false, error: '', previewFile: '', previewText: '', previewLoading: false },
   // 参考载体（OS-44）：索引 / 当前笔记 / 反链 / 筛选标签
   reference: { loaded: false, loading: false, notes: [], tags: [], tagNotes: {}, stats: null, error: '', activePath: '', activeTag: '', note: null, backlinks: { linked: [], unlinked: [] }, draft: '', view: 'graph', q: '', focus: null, absorb: {}, flash: '', tagFilter: '', from: '', noteText: '', fmLen: 0 },
@@ -347,7 +349,9 @@ function render() {
   if (state.view !== 'dir:拆解') disposeStorySourceChart()
   // 正文页自己管滚动（页头吸顶＋纸面/右栏各自滚），外层不再滚动
   // OS-76：剧本页也用沉浸式排版（与正文页同构：铺满视口、左中右三栏）
-  viewEl.classList.toggle('content-locked', state.view === 'write' || state.view === 'dir:剧本')
+  // OS-81：推演叙事流同构——铺满视口、只有流自己滚，外层滚动条退役
+  viewEl.classList.toggle('content-locked', state.view === 'write' || state.view === 'dir:剧本'
+    || (state.view === 'deduce' && state.deduce.mode === 'engine' && state.deduce.engine.view !== 'tree'))
   if (state.view !== 'deduce') dedTypewriterStop()
   if (state.view === 'libraries') viewEl.innerHTML = libraryHtml()
   else if (state.view === 'write') {
@@ -418,7 +422,7 @@ function render() {
         .catch(() => { engine.assets = { characters: [], scenes: [], bgm: [] } })
         .finally(() => { if (state.view === 'deduce') render() })
     }
-    if (state.deduce.mode === 'engine' && engine.view !== 'tree' && engine.data) mountDedTypewriter()
+    if (state.deduce.mode === 'engine' && engine.view !== 'tree') mountDedFlow()
     else dedTypewriterStop()
   }
   else if (state.view === 'settings') viewEl.innerHTML = settingsHtml()
@@ -7254,6 +7258,7 @@ async function deduceEnginePresent(opts) {
     })
     engine.data = payload
     if (Array.isArray(payload.characters)) state.deduce.characters = payload.characters
+    engine.flowPin = true
     engine.hint = opts && opts.hint ? opts.hint : ""
   } catch (error) {
     engine.error = (error && error.code ? error.code + " · " : "") + text((error && error.message) || error)
@@ -7323,6 +7328,7 @@ async function deduceEngineTurn(opts) {
     engine.session = payload.session
     engine.sessionLoaded = true
     engine.draftEdit = false
+    engine.flowPin = true
     engine.draft = {
       nodeId: payload.node.id,
       round: payload.node.round,
@@ -7492,8 +7498,55 @@ function mountDedTypewriter() {
     dedTypewriter.timer = setInterval(() => {
       dedTypewriter.pos = Math.min(full.length, dedTypewriter.pos + 2)
       paint()
+      // OS-81：贴底时正文逐字撑高要把视口跟着往下按，不然读者会被「留在原地」
+      if (engine.flowPin !== false) {
+        const sc = document.getElementById('deduce-flow')
+        if (sc) sc.scrollTop = sc.scrollHeight
+      }
       if (dedTypewriter.pos >= full.length) dedTypewriterStop()
     }, 30)
+  }
+}
+
+/**
+ * OS-81：叙事流挂载——打字机只作用于最新一拍；贴底跟随（用户上滚就放手，
+ * 出「↓ 最新一拍」浮标）；重渲后按记忆的偏移恢复阅读位置。
+ */
+function mountDedFlow() {
+  const engine = state.deduce.engine
+  const sc = document.getElementById('deduce-flow')
+  // 打字机：只挂展示态的最新拍（编辑态是 textarea，不打字）
+  const typing = document.getElementById('deduce-dialog-text')
+  if (typing && !(engine.draft && engine.draftEdit)) {
+    mountDedTypewriter()
+    // 刚收起编辑器＝作者刚改过自己的稿，直接全显不重打
+    if (engine.draftShownFull) { dedTypewriterSkip(); engine.draftShownFull = false }
+  } else {
+    dedTypewriterStop()
+  }
+  if (!sc) return
+  const pill = document.getElementById('deduce-flow-jump')
+  // 程序化贴底会把期望 scrollTop 记下来：滚动事件落在这个值附近＝自己/排版锚定，
+  // 不当成「用户上滚」（否则重渲与打字机撑高都会把贴底误判成离底）
+  const stick = () => {
+    engine.flowStickAt = Math.max(0, sc.scrollHeight - sc.clientHeight)
+    sc.scrollTop = sc.scrollHeight
+  }
+  const syncPin = () => {
+    if (Math.abs(sc.scrollTop - Number(engine.flowStickAt || -1)) < 2) return
+    const gap = sc.scrollHeight - sc.scrollTop - sc.clientHeight
+    engine.flowPin = gap < 90
+    engine.flowOffset = sc.scrollTop
+    if (pill) pill.hidden = engine.flowPin !== false
+  }
+  sc.addEventListener('scroll', syncPin, { passive: true })
+  if (engine.flowPin !== false) {
+    stick()
+    if (pill) pill.hidden = true
+  } else {
+    // 重渲不拽走读者：恢复上次的阅读位置
+    sc.scrollTop = Math.min(Number(engine.flowOffset) || 0, Math.max(0, sc.scrollHeight - sc.clientHeight))
+    if (pill) pill.hidden = false
   }
 }
 
@@ -7681,9 +7734,9 @@ function deduceHtml() {
       <button class="chip${deduce.mode === 'engine' ? ' on' : ''}" data-action="deduce-mode-engine" title="确定性推演引擎（种子化 2d6，不需要模型）">引擎</button>
       <button class="chip${deduce.mode === 'agent' ? ' on' : ''}" data-action="deduce-mode-agent" title="Agent 分支推理（需要模型）">Agent</button>
     </span>`
-  // 视图切换（OS-61 P3）：当前局面 / 剧情树——只在引擎模式下有意义
+  // 视图切换（OS-61 P3）：叙事流 / 剧情树——只在引擎模式下有意义
   const viewTabs = deduce.mode === 'engine' ? `<span class="subtabs">
-      <button class="chip${engine.view !== 'tree' ? ' on' : ''}" data-action="deduce-view-scene" title="局面卡＋候选＋正文草稿">当前局面</button>
+      <button class="chip${engine.view !== 'tree' ? ' on' : ''}" data-action="deduce-view-scene" title="沉浸叙事流：一拍一条消息，候选挂在流末">叙事流</button>
       <button class="chip${engine.view === 'tree' ? ' on' : ''}" data-action="deduce-view-tree" title="二维分支导图：横轴拍号、纵轴分支，点节点可回跳或开新分支">剧情树</button>
     </span>` : ''
   const head = `<div class="doc-head">
@@ -7696,7 +7749,9 @@ function deduceHtml() {
       </div>
     </div>`
   if (deduce.mode === 'agent') return head + deduceAgentHtml()
-  return head + (engine.view === 'tree' ? deduceTreeHtml() : deduceEngineHtml())
+  if (engine.view === 'tree') return head + deduceTreeHtml()
+  // OS-81：叙事流自带工具栏（模式/视图切换也收进去），页头退役——流是唯一主面
+  return deduceEngineHtml()
 }
 
 /**
@@ -7729,123 +7784,246 @@ function dedPackHtml() {
     </section>`
 }
 
-/** 引擎模式（OS-60 打磨）：局面卡＋人话候选＋张力读数＋推演历史。 */
 /**
- * OS-79：galgame 开场三卡——「你是谁」「前情提要」「眼前场景」。
- * 每张卡都能折叠；缺数据如实说缺（不编）。
+ * OS-81：推演页重构＝沉浸叙事流（酒馆模型）＋流末待决回合（RPG 模型）。
+ * 旧 galgame 舞台退役：正文不再挤在底部单框，历史拍全部留在流里可回读；
+ * 场景立绘降为流的暗化背景（可切「纸面」）；局面/设置退为浮层；
+ * 候选作为「待决」挂在流末，输入条常驻底部——页面只有流自己滚。
  */
-function deduceIntroHtml(narrative, data) {
-  // OS-79：默认只展开「你是谁」与「眼前场景」——前情提要太长，默认收起（点标题展开）
-  const openState = state.deduce.engine.introOpen ?? (state.deduce.engine.introOpen = { identity: true, recap: false, scene: true })
-  const card = (key, title, body, badge) => {
-    if (!body) return ''
-    const open = openState[key] !== false
-    return `<section class="gg-card" data-gg="${esc(key)}" data-open="${open ? '1' : '0'}">
-      <div class="gg-head">
-        <button class="gg-toggle" data-action="gg-toggle" data-gg-key="${esc(key)}" aria-expanded="${open ? 'true' : 'false'}">
-          <span class="gg-title">${esc(title)}</span>${badge ? `<span class="gg-badge">${esc(badge)}</span>` : ''}<span class="gg-chev">${open ? '▾' : '▸'}</span>
-        </button>
-      </div>
-      ${open ? `<div class="gg-body">${body}</div>` : ''}
-    </section>`
-  }
 
-  // —— 你是谁 ——
+/** 序章消息：◆ 你是谁 / 眼前场景 默认展开，前情提要默认收起（点开）。缺数据如实说缺。 */
+function deducePrologueHtml(narrative) {
+  const engine = state.deduce.engine
+  const recapOpen = engine.introOpen?.recap === true
+
+  // —— 你是谁（一句话写进序章，不再单开卡） ——
   const id = narrative.identity || null
-  let identityBody = ''
-  if (!id) {
-    identityBody = '<p class="gg-missing">还没选视角人物——上方「以谁的眼睛看」填一个名字，这里会显示你的身份与目标。</p>'
-  } else if (id.missing) {
-    identityBody = `<p class="gg-name">${esc(id.name)}</p>
-      <p class="gg-missing">这个角色还没有档案（去世界书写一条，或跑 enrich 生成人物档）。</p>`
-  } else {
-    identityBody = `<p class="gg-name">你是 <b>${esc(id.name)}</b>${id.archetype ? `<span class="gg-arch">${esc(id.archetype)}</span>` : ''}</p>
-      ${id.identity ? `<p class="gg-line">${esc(id.identity)}</p>` : ''}
-      ${id.goal ? `<p class="gg-line gg-goal"><span>你要</span>${esc(id.goal)}</p>` : ''}
-      ${id.personality && id.personality.length ? `<p class="gg-chips">${id.personality.map((p) => `<span class="gg-chip">${esc(p)}</span>`).join('')}</p>` : ''}`
-  }
-
-  // —— 前情提要 ——
-  const rc = narrative.recap || { story: '', soFar: [], recent: [] }
-  const recapParts = []
-  if (rc.story) recapParts.push(`<p class="gg-line gg-story">${esc(rc.story)}</p>`)
-  if (rc.soFar && rc.soFar.length) {
-    recapParts.push(`<div class="gg-sofar">${rc.soFar.map((c) => `<div class="gg-sofar-row"><b>第${c.chapter}章${c.title ? ` ${esc(c.title)}` : ''}</b><span>${esc(c.summary)}</span></div>`).join('')}</div>`)
-  }
-  if (rc.recent && rc.recent.length) {
-    recapParts.push(`<div class="gg-recent"><div class="gg-recent-head">最近这几拍</div>${rc.recent.map((r) => `<div class="gg-recent-row"><span class="gg-rn">第${r.round}拍</span>${esc(r.excerpt)}…</div>`).join('')}</div>`)
-  }
-  const recapBody = recapParts.length ? recapParts.join('') : '<p class="gg-missing">这本书还没有摘要——跑 enrich 后这里会显示整本书讲了什么、到目前发生了什么。</p>'
+  const idLine = !id
+    ? '<p class="fl-line is-missing">还没选定视角人物——设置里填「以谁的眼睛看」，这里会显示你的身份与目标。</p>'
+    : id.missing
+      ? `<p class="fl-line">你是 <b>${esc(id.name)}</b>。<span class="is-missing">这个角色还没有档案（去世界书写一条，或跑 enrich 生成人物档）。</span></p>`
+      : `<p class="fl-line">你是 <b>${esc(id.name)}</b>${id.archetype ? `<span class="fl-arch">${esc(id.archetype)}</span>` : ''}${id.identity ? `，${esc(id.identity)}` : ''}${id.goal ? `<span class="fl-goal">你要 ${esc(id.goal)}</span>` : ''}</p>
+        ${id.personality && id.personality.length ? `<p class="fl-chips">${id.personality.map((p) => `<span class="fl-chip">${esc(p)}</span>`).join('')}</p>` : ''}`
 
   // —— 眼前场景 ——
   const sc = narrative.scene || { text: '', others: [], where: '' }
-  const othersRows = (sc.others || []).map((o) => `<div class="gg-other"><b>${esc(o.name)}</b>${o.identity ? `<span>${esc(o.identity)}</span>` : ''}</div>`).join('')
-  const sceneBody = `${sc.text ? `<p class="gg-line gg-scene">${esc(sc.text)}</p>` : ''}
-    ${othersRows ? `<div class="gg-others"><div class="gg-others-head">你面前</div>${othersRows}</div>` : ''}
-    ${!sc.where ? '<p class="gg-missing">地点未标注——在世界书里给这个场景写一条地点条目（或 enrich 补），这里会说明你在哪。</p>' : ''}`
+  const othersInline = (sc.others || []).map((o) => `<b>${esc(o.name)}</b>`).join('、')
+  const sceneLine = `${sc.text ? `<p class="fl-line fl-scene">${esc(sc.text)}</p>` : ''}
+    ${othersInline ? `<p class="fl-line">你面前：${othersInline}。</p>` : ''}
+    ${!sc.where ? '<p class="fl-line is-missing">地点未标注——在世界书里给这个场景补一条地点条目，这里会说明你在哪。</p>' : ''}`
+
+  // —— 前情提要（默认收起：序章不必每次都背一遍书） ——
+  const rc = narrative.recap || { story: '', soFar: [], recent: [] }
+  const recapRows = []
+  if (rc.story) recapRows.push(`<p class="fl-line fl-story">${esc(rc.story)}</p>`)
+  if (rc.soFar && rc.soFar.length) {
+    recapRows.push(`<div class="fl-sofar">${rc.soFar.map((c) => `<div class="fl-sofar-row"><b>第${c.chapter}章${c.title ? ` ${esc(c.title)}` : ''}</b><span>${esc(c.summary)}</span></div>`).join('')}</div>`)
+  }
+  if (rc.recent && rc.recent.length) {
+    recapRows.push(`<div class="fl-recent">${rc.recent.map((r) => `<div class="fl-recent-row"><span class="fl-rn-inline">第${r.round}拍</span>${esc(r.excerpt)}…</div>`).join('')}</div>`)
+  }
 
   const missingNote = narrative.missing && narrative.missing.length
-    ? `<div class="gg-missing-note">缺：${narrative.missing.map((m) => ({ pov: '视角人物', 'character-profile': '角色档案', location: '地点', recap: '前情' }[m] || m)).join(' · ')}</div>`
+    ? `<div class="fl-missing-note">缺：${narrative.missing.map((m) => ({ pov: '视角人物', 'character-profile': '角色档案', location: '地点', recap: '前情' }[m] || m)).join(' · ')}</div>`
     : ''
 
-  const allCollapsed = Object.values(openState).every((v) => v === false)
-  return `<div class="gg-intro${allCollapsed ? ' gg-collapsed' : ''}">
-    <div class="gg-bar">
-      <button class="gg-bar-btn" data-action="gg-toggle-all" title="${allCollapsed ? '展开开场三段' : '收起开场（让出画面）'}">${allCollapsed ? '▸ 开场' : '▾ 收起开场'}</button>
+  return `<section class="fl-msg fl-msg-prologue">
+    <span class="fl-rn">序章</span>
+    <div class="fl-prose">
+      <div class="fl-prologue-head"><span class="fl-prologue-mark">◆</span>序章</div>
+      ${idLine}
+      ${sceneLine}
+      <button class="fl-recap-toggle" data-action="gg-toggle" data-gg-key="recap" aria-expanded="${recapOpen ? 'true' : 'false'}">${recapOpen ? '▾ 收起前情提要' : '▸ 前情提要'}</button>
+      ${recapOpen ? `<div class="fl-recap-body">${recapRows.join('') || '<p class="fl-line is-missing">这本书还没有摘要——跑 enrich 后这里会显示整本书讲了什么。</p>'}</div>` : ''}
+      ${missingNote}
     </div>
-    ${allCollapsed ? '' : card('identity', '你是谁', identityBody, id?.name || '')}
-    ${allCollapsed ? '' : card('recap', '前情提要', recapBody)}
-    ${allCollapsed ? '' : card('scene', '眼前场景', sceneBody, sc.where || '')}
-    ${allCollapsed ? '' : missingNote}
+  </section>`
+}
+
+/** 你的回合：这一拍选了哪条候选 / 自己写了什么（choiceId 在会话节点里，回放同源）。 */
+function deduceTurnLineHtml(node) {
+  const chosen = (node.candidates || []).find((candidate) => candidate.id === node.choiceId)
+  if (!node.choiceId || !chosen) return ''
+  return `<div class="fl-you">
+    <span class="fl-you-arrow">▸</span><span class="fl-you-label">你</span>
+    <span class="fl-you-text">${esc(chosen.text)}</span>
+    ${chosen.source ? `<span class="ded-badge">${esc(chosen.source)}</span>` : ''}
   </div>`
 }
 
+/** 本拍正文：历史拍是静态纸卡；最新一拍（草稿）带打字机／编辑态与动作行。 */
+function deduceProseMsgHtml(node, live) {
+  const engine = state.deduce.engine
+  const round = Number(node.round) || 0
+  if (!live) {
+    const prose = text(node.prose).trim()
+    return `<section class="fl-msg">
+      <span class="fl-rn">第 ${round} 拍</span>
+      <div class="fl-prose"><p class="fl-text${prose ? '' : ' is-empty'}">${prose ? esc(prose) : '（这一拍没有正文）'}</p></div>
+    </section>`
+  }
+  const draft = engine.draft
+  const editing = engine.draftEdit === true
+  const head = `<span class="fl-rn">第 ${round} 拍${draft?.prose ? ` · ${text(draft.prose).length} 字` : ''}</span>`
+  const proseError = draft?.proseError ? `<div class="warn-box">${esc(draft.proseError)}——可以直接改，或点「↻ 重写」。</div>` : ''
+  if (editing) {
+    return `<section class="fl-msg is-live">
+      ${head}
+      <div class="fl-prose">
+        ${proseError}
+        <textarea class="fl-draft-input" id="deduce-draft" placeholder="这一拍的正文草稿（200–400 字）">${esc(draft.prose)}</textarea>
+        <div class="fl-actions">
+          <span class="fl-actions-note" id="deduce-draft-chars">${text(draft.prose).length} 字 · 失焦自动保存</span>
+          <button class="fl-btn is-primary" data-action="deduce-engine-next"${engine.turnBusy || engine.busy ? ' disabled' : ''} title="收下这一拍进本章缓冲，推新的局面">下一拍 →</button>
+          <button class="fl-btn" data-action="deduce-engine-regen"${engine.turnBusy ? ' disabled' : ''} title="让模型重写这一拍的正文（覆盖草稿）">${engine.turnBusy ? '成文中…' : '↻ 重写'}</button>
+          <button class="fl-btn" data-action="deduce-draft-edit" title="收起编辑器，回到展示">✓ 收起</button>
+        </div>
+      </div>
+    </section>`
+  }
+  const stageText = text(draft.prose).trim()
+    ? text(draft.prose)
+    : '（这一拍还没有正文——点「✎ 编辑」自己写，或点「↻ 重写」让模型出稿。）'
+  return `<section class="fl-msg is-live">
+    ${head}
+    <div class="fl-prose">
+      ${proseError}
+      <div class="fl-text-body" data-action="deduce-tw-skip" title="点一下立即全显">
+        <span class="fl-text" id="deduce-dialog-text" data-stage-text="${esc(stageText)}"></span><span class="fl-caret" id="deduce-dialog-caret">▍</span>
+      </div>
+      <div class="fl-actions">
+        <span class="fl-actions-note">进本章缓冲 · 「下一拍」后可继续写</span>
+        <button class="fl-btn is-primary" data-action="deduce-engine-next"${engine.turnBusy || engine.busy ? ' disabled' : ''} title="收下这一拍进本章缓冲，推新的局面">下一拍 →</button>
+        <button class="fl-btn" data-action="deduce-engine-regen"${engine.turnBusy ? ' disabled' : ''} title="让模型重写这一拍的正文（覆盖草稿）">${engine.turnBusy ? '成文中…' : '↻ 重写'}</button>
+        <button class="fl-btn" data-action="deduce-draft-edit" title="就地编辑这一拍的正文草稿">✎ 编辑</button>
+      </div>
+    </div>
+  </section>`
+}
+
+/** 在场小头像（立绘有图用图，没有用首字色块）——缩进待决的场景行，不再立右栏。 */
+function deduceWhoChipsHtml(who) {
+  if (!who.length) return '<span class="fl-who-none">这一拍无人在场</span>'
+  const assets = state.deduce.engine.assets || { characters: [] }
+  return who.map((name) => {
+    const asset = assets.characters.find((item) => item.name === name)
+    const hue = [...name].reduce((sum, char) => sum + char.codePointAt(0), 0) % 360
+    return `<span class="fl-who" title="${esc(name)}">
+      ${asset
+        ? `<img src="${dedAssetUrl(asset)}" alt="${esc(name)}">`
+        : `<i style="background:hsl(${hue} 42% 84%);color:hsl(${hue} 45% 30%)">${esc(name.slice(0, 1))}</i>`}
+      ${esc(name)}
+    </span>`
+  }).join('')
+}
+
+/**
+ * 待决回合：流末的候选（必然/命运/戏剧）＋否决。每拍重新生成，选完折叠成「你的回合」。
+ * 候选「人物化」沿用 OS-79：标题＝你打算做什么，副标＝后果预期，骰点收进 roll 小字。
+ */
+function deducePendingHtml(data) {
+  const engine = state.deduce.engine
+  const card = data.sceneCard ?? {}
+  const candidates = Array.isArray(data.candidates) ? data.candidates : []
+  const who = Array.isArray(card.who) ? card.who.filter(Boolean) : []
+  const where = card.where && card.where !== '未标记地点' ? text(card.where) : '地点未标'
+  const hook = card.hook && card.hook !== '……' ? text(card.hook) : ''
+  const sourceNote = { 必然: '从世界事实推出来的', 命运: '这一骰决定走向', 戏剧: '模型提的另一种可能' }
+  const describeCandidate = (candidate) => {
+    const trace = candidate.trace
+    if (candidate.source === '命运' && trace && Number.isFinite(trace.sum)) {
+      const ok = trace.success
+      return {
+        title: ok ? '顺着眼前的事往下走' : '硬闯一次',
+        sub: ok ? '局面顺着你的意思推进——这一拍没有人拦' : '会碰上阻力——事后得收拾代价，或换条路',
+        roll: `${trace.a}＋${trace.b}＝${trace.sum} ${ok ? '顺遂' : '受阻'}`
+      }
+    }
+    if (candidate.source === '必然') {
+      const fact = text(candidate.text).replace(/^剧情检定[^：]*：/u, '').trim()
+      return { title: fact || '按世界的规矩来', sub: '世界事实推出来的走向——不这么做也会发生', roll: '' }
+    }
+    if (candidate.source === '戏剧') {
+      return { title: text(candidate.text) || '换个意外的走向', sub: '另一种可能——需要模型参与', roll: '' }
+    }
+    return { title: candidate.text || '（空候选）', sub: hook ? `牵动：${hook}` : '', roll: '' }
+  }
+  const optRows = candidates.map((candidate) => {
+    const kind = { 必然: 'certain', 命运: 'fate', 戏剧: 'drama' }[candidate.source] || 'other'
+    const info = describeCandidate(candidate)
+    return `<div class="ded-opt-row src-${kind}">
+      <button class="ded-opt" data-action="deduce-engine-choose" data-candidate-id="${esc(candidate.id)}"${engine.turnBusy ? ' disabled' : ''}>
+        <span class="ded-opt-head"><span class="ded-badge">${esc(candidate.source || '候选')}</span><span class="ded-cand-note">${esc(sourceNote[candidate.source] || '')}</span>${info.roll ? `<span class="ded-opt-roll">${esc(info.roll)}</span>` : ''}</span>
+        <span class="ded-opt-title">${esc(info.title)}</span>
+        ${info.sub ? `<span class="ded-opt-sub">${esc(info.sub)}</span>` : ''}
+        ${candidate.refs && candidate.refs.length ? `<span class="ded-opt-refs">引用：${esc(candidate.refs.join('、'))}</span>` : ''}
+      </button>
+      <button class="ded-opt-veto" data-action="deduce-engine-veto" data-candidate-id="${esc(candidate.id)}" title="只记账，不落库">否决</button>
+    </div>`
+  }).join('')
+  const busyNote = engine.busy
+    ? '<div class="fl-typing">推演中——正在摆局面…</div>'
+    : (engine.turnBusy ? '<div class="fl-typing">成文中——这一拍正在落字…</div>' : '')
+  return `<section class="fl-pending">
+    <div class="fl-pending-scene">
+      <span class="fl-pending-rn">第 ${Number(data.round) || 0} 拍</span>
+      <span class="fl-pending-where">${esc(where)}</span>
+      ${deduceWhoChipsHtml(who)}
+    </div>
+    ${busyNote}
+    ${optRows || (engine.busy || engine.turnBusy ? '' : '<p class="fl-no-cand">这一拍没有候选——事实包不够（世界观／角色／剧情条目太少）或预算用尽。点下方自己写一拍，或去设置里重掷。</p>')}
+  </section>`
+}
+
+/** 引擎模式主面（OS-81）：工具栏＋叙事流＋常驻输入条＋局面/设置浮层。 */
 function deduceEngineHtml() {
   const engine = state.deduce.engine
   const data = engine.data
-  /* —— 缓存区进度（OS-61 P2）：本章攒了几拍几字＋归档出口 —— */
-  const buffer = engine.session?.buffer
+  const session = engine.session
+  const buffer = session?.buffer
   const bufferCount = buffer?.nodes?.length || 0
-  const bufferHtml = `<div class="ded-buffer">
-      <span class="ded-buffer-stat">本章缓冲 ${bufferCount} 拍 · ${buffer?.words || 0} 字</span>
-      <button class="btn-ghost" data-action="deduce-archive"${engine.turnBusy || !bufferCount ? ' disabled' : ''} title="把缓存区的拍整理成 markdown 归档（不写正文文件）">归档本章</button>
-      ${engine.archiveNote ? `<span class="ok-note">${esc(engine.archiveNote)}</span>` : ''}
-    </div>`
-  const controls = `<div class="ded-tools">
-      <input class="file-input" id="deduce-pov" list="deduce-pov-list" placeholder="以谁的眼睛看（可选）" value="${esc(engine.pov)}">
-      <datalist id="deduce-pov-list">${(state.deduce.characters || []).map((name) => `<option value="${esc(name)}"></option>`).join('')}</datalist>
-      <input class="file-input" id="deduce-seed" placeholder="种子（留空＝随机）" value="${esc(engine.seed)}" title="同一种子＋同一份事实＝同一拍，可复现">
-      <button class="btn-primary" data-action="deduce-engine-present"${engine.busy || engine.turnBusy ? ' disabled' : ''}>${engine.busy ? '推演中…' : data ? '推下一拍' : '开始推演'}</button>
-      ${data ? '<button class="btn-ghost" data-action="deduce-engine-reset" title="清空会话从第一拍重来">重新开局</button>' : ''}
-    </div>`
-  if (!data) {
-    return `${bufferHtml}${controls}
-      ${flowError(engine.error || '')}
-      ${engine.hint ? `<div class="warn-box">${esc(engine.hint)}</div>` : ''}
-      <div class="ded-empty">
-        <h2>事实推演引擎</h2>
-        <p>读本库的拆解条目（世界观／角色／剧情）作为事实包，推出一拍局面与候选。</p>
-        <div class="ded-empty-types">
-          <div class="ded-type"><b>必然</b><span>世界事实推导出的走向</span></div>
-          <div class="ded-type"><b>命运</b><span>种子化 2d6 检定</span></div>
-          <div class="ded-type"><b>戏剧</b><span>需要模型，可选</span></div>
-        </div>
-        <p class="sub">引擎是确定性的：同一个种子＋同一份事实包＝同一拍。它是「如果世界」的推演，不是替你写正文。</p>
-      </div>`
-  }
-
-  const card = data.sceneCard ?? {}
-  const tension = data.tension ?? {}
-  const candidates = Array.isArray(data.candidates) ? data.candidates : []
-  const fronts = Array.isArray(data.fronts) ? data.fronts : []
-  const budget = data.budget || {}
+  const card = data?.sceneCard ?? {}
+  const tension = data?.tension ?? {}
   const who = Array.isArray(card.who) ? card.who.filter(Boolean) : []
+
+  /* —— 背景：当前场景立绘铺满（暗化），纸面模式整体关掉 —— */
+  const assets = engine.assets || { characters: [], scenes: [], bgm: [] }
+  const sceneName = card.where && card.where !== '未标记地点' ? text(card.where) : ''
+  const sceneAsset = sceneName ? assets.scenes.find((item) => item.name === sceneName) : null
+
+  /* —— 工具栏：进度＋张力＋模式/视图切换＋局面/设置/生图/BGM/纸面/归档 —— */
   const heatLevel = text(tension.level)
   const heatLabel = { low: '平静', medium: '升温', high: '紧迫', critical: '一触即发' }[heatLevel] || ''
   const heatClass = { low: 'h-low', medium: 'h-mid', high: 'h-high', critical: 'h-crit' }[heatLevel] || 'h-low'
+  const pov = session?.pov || data?.pov || engine.pov || ''
+  const bgmAsset = pickDedBgm()
+  const infoVisible = data ? (engine.infoOpen === true || (!data.narrative && engine.infoOpen !== false)) : false
+  const bar = `<header class="fl-bar">
+    <span class="fl-bar-progress">${data ? `第 ${Number(data.round) || 0} 拍` : '未开局'}${pov ? `<span class="ded-bar-sep">·</span>${esc(pov)}视角` : ''}<span class="ded-bar-sep">·</span>本章 ${bufferCount} 拍 ${buffer?.words || 0} 字</span>
+    ${heatLabel ? `<span class="ded-heat ${heatClass}" title="前线时钟读数：张力从平静到一触即发">${esc(heatLabel)}</span>` : ''}
+    <span class="fl-bar-right">
+      <span class="fl-chips">
+        <button class="chip${state.deduce.mode === 'engine' ? ' on' : ''}" data-action="deduce-mode-engine" title="确定性推演引擎（种子化 2d6，不需要模型）">引擎</button>
+        <button class="chip${state.deduce.mode === 'agent' ? ' on' : ''}" data-action="deduce-mode-agent" title="Agent 分支推理（需要模型）">Agent</button>
+      </span>
+      <span class="fl-chips">
+        <button class="chip${engine.view !== 'tree' ? ' on' : ''}" data-action="deduce-view-scene" title="沉浸叙事流">叙事流</button>
+        <button class="chip${engine.view === 'tree' ? ' on' : ''}" data-action="deduce-view-tree" title="二维分支导图：回跳或开新分支">剧情树</button>
+      </span>
+      ${data ? `
+        <button class="fl-btn${infoVisible ? ' on' : ''}" data-action="deduce-info-toggle" title="显示/隐藏左侧的局面卡、前线与事实包">局面</button>
+        <button class="fl-btn${engine.setOpen ? ' on' : ''}" data-action="deduce-tools-toggle" title="推演设置：POV / 种子 / 推进 / 重新开局">⚙ 设置</button>
+        <button class="fl-btn" data-action="deduce-image" title="按本拍局面生成一张场景立绘（需在设置里配生图端点）"${engine.turnBusy ? ' disabled' : ''}>✦ 生图</button>
+        <button class="fl-btn${engine.bgmOn ? ' on' : ''}" data-action="deduce-bgm-toggle"${bgmAsset ? '' : ' disabled'}
+          title="${bgmAsset ? `播放：${esc(bgmAsset.name)}（循环）` : '未配置 BGM——放 推演/…/素材/bgm/<场景或情绪>.mp3 即可启用'}">♪ ${bgmAsset ? (engine.bgmOn ? 'BGM 开' : 'BGM 关') : 'BGM'}</button>
+        <button class="fl-btn${engine.paperMode ? ' on' : ''}" data-action="deduce-paper-toggle" title="纸面模式：关掉立绘背景，纯纸面读文">纸面</button>
+        <button class="fl-btn" data-action="deduce-archive"${engine.turnBusy || !bufferCount ? ' disabled' : ''} title="把本章缓冲的拍整理成 markdown 归档（不写正文文件）">归档本章</button>
+      ` : ''}
+    </span>
+  </header>`
 
-  /* —— 局面卡（OS-70：并进舞台左侧浮层，heat 徽标已在顶栏，卡片只留字段） —— */
-  const sceneHtml = `<section class="ded-card ded-scene">
+  /* —— 局面浮层（局面卡＋前线＋事实包）与设置浮层：不与流争布局 —— */
+  const sceneHtml = data ? `<section class="ded-card ded-scene">
       <div class="ded-card-head"><h3>局面</h3><span class="sub">第 ${Number(data.round) || 0} 拍</span></div>
       <dl class="ded-fields">
         <div><dt>在场</dt><dd>${who.length ? esc(who.join('、')) : '<i class="ded-none">无人</i>'}</dd></div>
@@ -7856,138 +8034,10 @@ function deduceEngineHtml() {
       <div class="ded-meta">
         ${data.seed !== null && data.seed !== undefined ? `<span title="同种子可复现">种子 ${esc(data.seed)}</span>` : ''}
         ${Number.isFinite(Number(tension.active)) ? `<span>活跃前线 ${tension.active}</span>` : ''}
-        ${budget.max ? `<span>AI 预算 ${budget.used || 0}/${budget.max}</span>` : ''}
+        ${data.budget?.max ? `<span>AI 预算 ${data.budget.used || 0}/${data.budget.max}</span>` : ''}
       </div>
-    </section>`
-
-  /* —— 候选：把「2d6=6+2=8：顺遂」翻译成作者看得懂的话 —— */
-  const sourceText = { 必然: '必然', 命运: '命运', 戏剧: '戏剧' }
-  const sourceNote = {
-    必然: '从世界事实推出来的',
-    命运: '这一骰决定走向',
-    戏剧: '模型提的另一种可能'
-  }
-  /**
-   * OS-79：候选「人物化」——引擎给的是「2d6=6+2=8 顺遂」这种骰子话，
-   * 玩家看不懂要做什么。这里翻译成人话行动选项：
-   *   标题＝你打算做什么（行动）
-   *   副标＝这么做的后果预期
-   *   骰子信息收进 roll 小字（想查的能查，不挡视线）
-   */
-  const describeCandidate = (candidate) => {
-    const trace = candidate.trace
-    const hook = card.hook && card.hook !== '……' ? text(card.hook) : ''
-    if (candidate.source === '命运' && trace && Number.isFinite(trace.sum)) {
-      const ok = trace.success
-      // 成功＝「顺着眼前的事往下走」；失败＝「硬来，得付代价」
-      return {
-        title: ok ? '顺着眼前的事往下走' : '硬闯一次',
-        sub: ok
-          ? '局面顺着你的意思推进——这一拍没有人拦'
-          : '会碰上阻力——事后得收拾代价，或换条路',
-        roll: `${trace.a}＋${trace.b}＝${trace.sum} ${ok ? '顺遂' : '受阻'}`
-      }
-    }
-    if (candidate.source === '必然') {
-      const fact = text(candidate.text).replace(/^剧情检定[^：]*：/u, '').trim()
-      return {
-        title: fact || '按世界的规矩来',
-        sub: '世界事实推出来的走向——不这么做也会发生',
-        roll: ''
-      }
-    }
-    if (candidate.source === '戏剧') {
-      return {
-        title: text(candidate.text) || '换个意外的走向',
-        sub: '另一种可能——需要模型参与',
-        roll: ''
-      }
-    }
-    return { title: candidate.text || '（空候选）', sub: hook ? `牵动：${hook}` : '', roll: '' }
-  }
-
-  /* —— 文游舞台（OS-61 P4）：场景立绘＋对话框打字机＋人物头像列＋宽按钮选项 —— */
-  const assets = engine.assets || { characters: [], scenes: [], bgm: [] }
-  const sceneName = card.where && card.where !== '未标记地点' ? text(card.where) : ''
-  const sceneAsset = sceneName ? assets.scenes.find((item) => item.name === sceneName) : null
-  // 场景＝舞台背景（OS-63）：有素材铺真图，没有就渐变氛围；不再单独占一块高度，
-  // 这样对话框与选项能浮在场景上，才是 galgame 的观感。
-  const sceneVisual = `<div class="ded-scene-visual"${sceneAsset ? ` style="background-image:url('${dedAssetUrl(sceneAsset)}')"` : ''}>
-      ${sceneAsset ? '' : '<div class="ded-scene-grain"></div>'}
-      <span class="ded-scene-badge"${sceneAsset ? '' : ' data-action="deduce-image" title="还没有这张场景的立绘——点这里生成一张（需配生图端点）"'}>${esc(sceneName || '未知场景 · 点此生图')}</span>
-    </div>`
-
-  const avatarsHtml = who.map((name) => {
-    const asset = assets.characters.find((item) => item.name === name)
-    const hue = [...name].reduce((sum, char) => sum + char.codePointAt(0), 0) % 360
-    return `<div class="ded-avatar" title="${esc(name)}">
-      ${asset
-        ? `<img src="${dedAssetUrl(asset)}" alt="${esc(name)}">`
-        : `<span class="ded-avatar-ph" style="background:hsl(${hue} 42% 84%);color:hsl(${hue} 45% 30%)">${esc(name.slice(0, 1))}</span>`}
-      <span class="ded-avatar-name">${esc(name)}</span>
-    </div>`
-  }).join('') || '<div class="ded-avatar-none">这一拍无人在场</div>'
-
-  const bgmAsset = pickDedBgm()
-  const bgmBtn = `<button class="ded-bgm${engine.bgmOn ? ' on' : ''}" data-action="deduce-bgm-toggle"${bgmAsset ? '' : ' disabled'}
-      title="${bgmAsset ? `播放：${esc(bgmAsset.name)}（循环）` : '未配置 BGM——放 推演/…/素材/bgm/<场景或情绪>.mp3 即可启用'}">♪ ${bgmAsset ? (engine.bgmOn ? 'BGM 开' : 'BGM 关') : '未配置 BGM'}</button>`
-
-  // 顶部条（OS-70）：左＝进度；右＝张力 + 局面开关 + 设置开关 + 生图 + BGM。
-  const stageTop = `<div class="ded-stage-bar">
-      <span class="ded-stage-progress">第 ${Number(data.round) || 0} 拍<span class="ded-bar-sep">·</span>本章 ${bufferCount} 拍 ${buffer?.words || 0} 字</span>
-      <span class="ded-bar-right">
-        ${heatLabel ? `<span class="ded-heat ${heatClass}" title="前线时钟读数：张力从平静到一触即发">${esc(heatLabel)}</span>` : ''}
-        <button class="ded-bgm${engine.infoOpen === false ? '' : ' on'}" data-action="deduce-info-toggle" title="显示/隐藏左侧的局面卡、前线与事实包">局面</button>
-        <button class="ded-bgm${engine.setOpen ? ' on' : ''}" data-action="deduce-tools-toggle" title="推演设置：POV / 种子 / 推进 / 重新开局">⚙ 设置</button>
-        <button class="ded-bgm" data-action="deduce-image" title="按本拍局面生成一张场景立绘（需在设置里配生图端点）" ${engine.turnBusy ? ' disabled' : ''}>✦ 生图</button>
-        ${bgmBtn}
-      </span>
-    </div>`
-
-  const draft = engine.draft
-  const draftEditing = !!draft && engine.draftEdit === true
-  const stageText = draft
-    ? (text(draft.prose).trim() ? text(draft.prose) : '（这一拍还没有正文——点「✎ 编辑」自己写，或点「↻ 重写」让模型出稿。）')
-    : (card.hook && card.hook !== '……' ? text(card.hook) : `${sceneName ? `${sceneName}。` : ''}${text(card.tension) || '局面已摆好——选一条走向。'}`)
-  // 对话框（OS-70）：草稿唯一面——展示态打字机，编辑态就地 textarea；动作行内嵌右上，
-  // 不再在舞台外重复渲染第二份草稿/重写/下一拍。
-  const draftActions = draft ? `<span class="ded-dialog-actions">
-      <button class="ded-bgm${draftEditing ? ' on' : ''}" data-action="deduce-draft-edit" title="${draftEditing ? '收起编辑器，回到展示' : '就地编辑这一拍的正文草稿'}">${draftEditing ? '✓ 收起' : '✎ 编辑'}</button>
-      <button class="ded-bgm" data-action="deduce-engine-regen"${engine.turnBusy ? ' disabled' : ''} title="让模型重写这一拍的正文（覆盖草稿）">${engine.turnBusy ? '成文中…' : '↻ 重写'}</button>
-      <button class="ded-next" data-action="deduce-engine-next"${engine.turnBusy || engine.busy ? ' disabled' : ''} title="收下这一拍进本章缓冲，推新的局面">下一拍 →</button>
-    </span>` : ''
-  const dialogHtml = draftEditing
-    ? `<div class="ded-dialog editing">
-      <div class="ded-dialog-head">第 ${Number(draft.round) || 0} 拍 · 正文草稿<span class="ded-dialog-tip">失焦自动保存，不直接落正文文件</span>${draftActions}</div>
-      ${draft.proseError ? `<div class="warn-box">${esc(draft.proseError)}——可以直接改，或点「↻ 重写」。</div>` : ''}
-      <textarea class="ded-dialog-input" id="deduce-draft" placeholder="这一拍的正文草稿（200–400 字）">${esc(draft.prose)}</textarea>
-      <div class="ded-dialog-foot"><span id="deduce-draft-chars">${text(draft.prose).length} 字</span><span class="ded-dialog-foot-sub">进本章缓冲 · 「下一拍」后可继续写</span></div>
-    </div>`
-    : `<div class="ded-dialog"${draft ? '' : ' data-action="deduce-tw-skip" title="点一下立即全显"'}>
-      <div class="ded-dialog-head">第 ${Number(data.round) || 0} 拍${draft ? ' · 正文草稿' : ' · 局面'}${draft ? `<span class="ded-dialog-tip" id="deduce-draft-chars">${text(draft.prose).length} 字</span>` : '<span class="ded-dialog-tip">点击全文立显</span>'}${draftActions}</div>
-      ${draft?.proseError ? `<div class="warn-box">${esc(draft.proseError)}——点「✎ 编辑」自己写，或点「↻ 重写」。</div>` : ''}
-      <div class="ded-dialog-body"><span class="ded-dialog-text" id="deduce-dialog-text" data-stage-text="${esc(stageText)}"></span><span class="ded-dialog-caret" id="deduce-dialog-caret">▍</span></div>
-    </div>`
-
-  /* —— 选项区：宽按钮（RPG 对话框风格）；否决/自定义一个不少 —— */
-  const optRows = candidates.map((candidate) => {
-    const kind = { 必然: 'certain', 命运: 'fate', 戏剧: 'drama' }[candidate.source] || 'other'
-    const info = describeCandidate(candidate)
-    return `<div class="ded-opt-row src-${kind}">
-      <button class="ded-opt" data-action="deduce-engine-choose" data-candidate-id="${esc(candidate.id)}"${engine.turnBusy ? ' disabled' : ''}>
-        <span class="ded-opt-head"><span class="ded-badge">${esc(sourceText[candidate.source] || candidate.source || '候选')}</span><span class="ded-cand-note">${esc(sourceNote[candidate.source] || '')}</span>${info.roll ? `<span class="ded-opt-roll">${esc(info.roll)}</span>` : ''}</span>
-        <span class="ded-opt-title">${esc(info.title)}</span>
-        ${info.sub ? `<span class="ded-opt-sub">${esc(info.sub)}</span>` : ''}
-        ${candidate.refs && candidate.refs.length ? `<span class="ded-opt-refs">引用：${esc(candidate.refs.join('、'))}</span>` : ''}
-      </button>
-      <button class="ded-opt-veto" data-action="deduce-engine-veto" data-candidate-id="${esc(candidate.id)}" title="只记账，不落库">否决</button>
-    </div>`
-  }).join('')
-  const customRow = `<div class="ded-custom">
-      <textarea class="ded-custom-input" id="deduce-custom" placeholder="自己写：这一拍发生什么，你说了算">${esc(engine.customText)}</textarea>
-      <button class="btn-primary" data-action="deduce-engine-custom"${engine.busy || engine.turnBusy ? ' disabled' : ''}>按我写的走</button>
-    </div>`
-  /* —— 前线：有才显示（OS-70：并进舞台左侧浮层） —— */
+    </section>` : ''
+  const fronts = Array.isArray(data?.fronts) ? data.fronts : []
   const frontsHtml = fronts.length ? `<section class="ded-card ded-fronts">
       <div class="ded-card-head"><h3>前线 <span class="count">${fronts.length}</span></h3><span class="sub">挂机推进的威胁时钟，满格＝世界动手</span></div>
       ${fronts.map((front) => {
@@ -8000,54 +8050,93 @@ function deduceEngineHtml() {
         </div>`
       }).join('')}
     </section>` : ''
-
-  const optionsHtml = draft
-    ? '' /* 草稿态：动作已内嵌对话框（OS-70），不再渲染宽条 */
-    : `<div class="ded-stage-options">
-        ${optRows || '<p class="sub" style="padding:4px 0">这一拍没有候选——事实包不够（世界观／角色／剧情条目太少）或预算用尽。</p>'}
-        ${customRow}
-      </div>`
-
-  // 舞台（OS-70）：唯一主面——场景铺满、左侧局面/前线/事实包浮层卡、右侧头像、
-  // 底部对话框（草稿唯一面）、右上设置弹层。舞台之下不再有任何割裂的详情区。
-  // OS-79：有叙事开场时，局面/事实包默认收起（两者同位置，避免叠在一起）；
-  // 点顶栏「局面」才切过去看细节。
-  const infoDefaultHidden = Boolean(data.narrative) && engine.infoOpen !== true
-  const infoPanel = `<div class="ded-stage-info"${infoDefaultHidden ? ' hidden' : ''}>
+  const controls = `<div class="ded-tools">
+      <input class="file-input" id="deduce-pov" list="deduce-pov-list" placeholder="以谁的眼睛看（可选）" value="${esc(engine.pov)}">
+      <datalist id="deduce-pov-list">${(state.deduce.characters || []).map((name) => `<option value="${esc(name)}"></option>`).join('')}</datalist>
+      <input class="file-input" id="deduce-seed" placeholder="种子（留空＝随机）" value="${esc(engine.seed)}" title="同一种子＋同一份事实＝同一拍，可复现">
+      <button class="btn-primary" data-action="deduce-engine-present"${engine.busy || engine.turnBusy ? ' disabled' : ''}>${engine.busy ? '推演中…' : data ? '推下一拍' : '开始推演'}</button>
+      ${data ? '<button class="btn-ghost" data-action="deduce-engine-reset" title="清空会话从第一拍重来">重新开局</button>' : ''}
+    </div>`
+  const infoPanel = data ? `<div class="ded-stage-info"${infoVisible ? '' : ' hidden'}>
       ${sceneHtml}
       ${frontsHtml}
       ${dedPackHtml()}
-    </div>`
+    </div>` : ''
   const setPanel = `<div class="ded-set-panel"${engine.setOpen ? '' : ' hidden'}>
       <div class="ded-set-head">推演设置<span class="sub">POV / 种子 / 推进</span></div>
       ${controls}
     </div>`
-  /* —— OS-79：galgame 开场上下文——我是谁 / 前情 / 我看见什么 ——
-   * 作者口径：现在的推演是「裸跑团」——给了局面但没告诉玩家身处什么故事、扮演谁、该做什么。
-   * 这三块从 narrative（deduceNarrative.mjs 构建）来，缺什么如实说缺，不伪造。 */
-  const narrative = data.narrative || null
-  const galgameIntro = narrative ? deduceIntroHtml(narrative, data) : ''
 
-  const stageHtml = `<div class="ded-stage ded-stage-tall">
-      ${sceneVisual}
-      ${stageTop}
-      ${galgameIntro}
-      <div class="ded-stage-side">${avatarsHtml}</div>
-      ${infoPanel}
-      ${setPanel}
-      <div class="ded-stage-bottom">
-        ${optionsHtml}
-        ${dialogHtml}
+  /* —— 空态：还没开局时，流区放说明＋开局控件 —— */
+  if (!data) {
+    return `<div class="ded-flow" data-paper="${engine.paperMode ? 1 : 0}">
+      <div class="ded-flow-tint"></div>
+      ${bar}
+      <div class="fl-scroll-wrap">
+        <div class="fl-scroll" id="deduce-flow">
+          ${flowError(engine.error || '')}
+          <div class="fl-hero">
+            <div class="ded-empty">
+              <h2>事实推演引擎</h2>
+              <p>读本库的拆解条目（世界观／角色／剧情）作为事实包，推出一拍局面与候选。每一拍是一条消息：你选一条走向，世界回你一段正文——像酒馆一样往下读。</p>
+              <div class="ded-empty-types">
+                <div class="ded-type"><b>必然</b><span>世界事实推导出的走向</span></div>
+                <div class="ded-type"><b>命运</b><span>种子化 2d6 检定</span></div>
+                <div class="ded-type"><b>戏剧</b><span>需要模型，可选</span></div>
+              </div>
+              <p class="sub">引擎是确定性的：同一个种子＋同一份事实包＝同一拍。它是「如果世界」的推演，不是替你写正文。</p>
+            </div>
+          </div>
+          ${engine.hint ? `<div class="warn-box">${esc(engine.hint)}</div>` : ''}
+        </div>
       </div>
+      <div class="fl-composer">
+        <div class="fl-composer-row">${controls}</div>
+      </div>
+      ${setPanel}
     </div>`
+  }
 
-  /* —— 历史：本会话已结算的拍（从 lastTurn 之前的 log 拿不到，就用 hint 兜） —— */
-  const historyHtml = engine.hint ? `<div class="ded-hint">${esc(engine.hint)}</div>` : ''
+  /* —— 叙事流：序章 → 历史拍（你的回合＋正文）→ 待决 —— */
+  const draft = engine.draft
+  const branchId = session?.branchId || 'main'
+  const nodes = (session?.nodes || []).filter((node) => (text(node?.branchId) || 'main') === branchId)
+  const msgs = []
+  if (data.narrative) msgs.push(deducePrologueHtml(data.narrative))
+  for (const node of nodes) {
+    const live = !!draft && draft.nodeId === node.id
+    const turnLine = deduceTurnLineHtml(node)
+    if (turnLine) msgs.push(turnLine)
+    msgs.push(deduceProseMsgHtml(node, live))
+  }
+  if (!draft) msgs.push(deducePendingHtml(data))
+  if (engine.hint) msgs.push(`<div class="fl-hint">${esc(engine.hint)}</div>`)
 
-  return `${bufferHtml}
-    ${flowError(engine.error || '')}
-    ${historyHtml}
-    ${stageHtml}`
+  const composer = `<div class="fl-composer">
+    ${engine.error ? flowError(engine.error) : ''}
+    ${engine.archiveNote ? `<div class="fl-note-row"><span class="ok-note">${esc(engine.archiveNote)}</span></div>` : ''}
+    <div class="fl-composer-row">
+      <textarea class="fl-input" id="deduce-custom" rows="1" placeholder="自己写：这一拍发生什么，你说了算（Enter 发送 · Shift+Enter 换行）">${esc(engine.customText)}</textarea>
+      <button class="btn-primary fl-send" data-action="deduce-engine-custom"${engine.busy || engine.turnBusy ? ' disabled' : ''}>按我写的走</button>
+    </div>
+  </div>`
+
+  return `<div class="ded-flow" data-paper="${engine.paperMode ? 1 : 0}">
+    <div class="ded-flow-bg"${sceneAsset ? ` style="background-image:url('${dedAssetUrl(sceneAsset)}')"` : ''}>${sceneAsset ? '' : '<div class="ded-scene-grain"></div>'}</div>
+    <div class="ded-flow-tint"></div>
+    ${bar}
+    <div class="fl-scroll-wrap">
+      <div class="fl-scroll" id="deduce-flow">
+        <div class="fl-inner">
+          ${msgs.join('')}
+        </div>
+      </div>
+      <button class="fl-jump" id="deduce-flow-jump" data-action="deduce-flow-jump" hidden>↓ 最新一拍</button>
+    </div>
+    ${composer}
+    ${infoPanel}
+    ${setPanel}
+  </div>`
 }
 
 /**
@@ -8095,6 +8184,9 @@ async function deduceImageRun() {
     closeModal()
     const engine = state.deduce.engine
     engine.archiveNote = `立绘已生成：${payload.path}（回到当前局面即可见）`
+    // OS-81：立绘落库后重拉素材盘点，流的暗化背景立刻换上新图
+    engine.assetsLoaded = false
+    engine.assets = null
     render()
   } catch (error) {
     const box = document.querySelector('.ded-image-ops')
@@ -8221,7 +8313,8 @@ async function openLibrary(path) {
     engine: { busy: false, data: null, pov: '', seed: '', error: '', hint: '',
       session: null, sessionLoaded: false, customText: '', draft: null, turnBusy: false, archiveNote: '',
       view: 'scene', treePick: null,
-      assets: null, assetsLoaded: false, assetBookId: '', bgmOn: false },
+      assets: null, assetsLoaded: false, assetBookId: '', bgmOn: false,
+      paperMode: false, flowPin: true, introOpen: null },
     characters: []
   }
   deduceBgmStop()
@@ -9025,13 +9118,24 @@ document.addEventListener('click', (event) => {
   } else if (action === 'deduce-engine-choose') {
     deduceEngineTurn({ choiceId: target.dataset.candidateId })
   } else if (action === 'deduce-engine-custom') {
-    const customValue = (document.getElementById('deduce-custom')?.value ?? '').trim()
+    // OS-81：customText 在 input 事件里同步进 engine 状态——重渲不丢作者正在写的字
+    const customValue = (state.deduce.engine.customText ?? '').trim()
     if (!customValue) {
       state.deduce.engine.error = '先写两句「这一拍发生什么」，再按「按我写的走」。'
       render()
     } else {
       deduceEngineTurn({ customText: customValue })
     }
+  } else if (action === 'deduce-paper-toggle') {
+    const engine = state.deduce.engine
+    engine.paperMode = !engine.paperMode
+    render()
+  } else if (action === 'deduce-flow-jump') {
+    const sc = document.getElementById('deduce-flow')
+    state.deduce.engine.flowPin = true
+    if (sc) sc.scrollTo({ top: sc.scrollHeight, behavior: 'smooth' })
+    const pill = document.getElementById('deduce-flow-jump')
+    if (pill) pill.hidden = true
   } else if (action === 'deduce-engine-regen') {
     state.deduce.engine.draftEdit = false
     deduceEngineTurn({ regenerate: true })
@@ -9057,23 +9161,19 @@ document.addEventListener('click', (event) => {
     else renderJobBall()
   } else if (action === 'job-clear') {
     refreshJobsAfter(() => api('/api/jobs/clear', { method: 'POST', body: JSON.stringify({}) }))
-  } else if (action === 'gg-toggle-all') {
-    const engine = state.deduce.engine
-    const cur = engine.introOpen || {}
-    const allCollapsed = Object.values(cur).every((v) => v === false)
-    engine.introOpen = allCollapsed
-      ? { identity: true, recap: false, scene: true }
-      : { identity: false, recap: false, scene: false }
-    render()
   } else if (action === 'gg-toggle') {
+    // OS-81：序章里只剩「前情提要」一个折叠位（其余内容直接入流）
     const engine = state.deduce.engine
     const key = target.dataset.ggKey
     engine.introOpen = engine.introOpen || {}
     engine.introOpen[key] = engine.introOpen[key] === false
     render()
   } else if (action === 'deduce-info-toggle') {
+    // OS-81：正经布尔切换——不管当前是 undefined（默认隐藏/显示）都能一下到位
     const engine = state.deduce.engine
-    engine.infoOpen = engine.infoOpen === false
+    const data = engine.data
+    const visible = data ? (engine.infoOpen === true || (!data.narrative && engine.infoOpen !== false)) : false
+    engine.infoOpen = !visible
     render()
   } else if (action === 'deduce-tools-toggle') {
     const engine = state.deduce.engine
@@ -9082,6 +9182,8 @@ document.addEventListener('click', (event) => {
   } else if (action === 'deduce-draft-edit') {
     const engine = state.deduce.engine
     engine.draftEdit = !engine.draftEdit
+    // 收起编辑器后展示态直接全显（刚改过的稿不重打）
+    if (!engine.draftEdit) engine.draftShownFull = true
     render()
     if (engine.draftEdit) {
       const box = document.getElementById('deduce-draft')
@@ -9364,6 +9466,22 @@ document.addEventListener('change', (event) => {
 
 document.addEventListener('input', (event) => {
   const target = event.target
+  // 推演输入条（OS-81）：自由输入同步进 engine 状态（重渲不丢）＋轻量自适应高度
+  if (target.id === 'deduce-custom') {
+    const engine = state.deduce.engine
+    engine.customText = target.value
+    target.style.height = 'auto'
+    target.style.height = `${Math.min(target.scrollHeight, 132)}px`
+    return
+  }
+  // 推演草稿（OS-81）：逐字同步进 draft——失焦保存才有东西可存（旧实现只挂 blur，编辑内容实际存不进去）
+  if (target.id === 'deduce-draft') {
+    const engine = state.deduce.engine
+    if (engine.draft) engine.draft.prose = target.value
+    const chars = document.getElementById('deduce-draft-chars')
+    if (chars) chars.textContent = `${target.value.length} 字 · 失焦自动保存`
+    return
+  }
   // 故事源表格（S2）：只重渲表体，不打断搜索框焦点
   if (target.id === 'ss-search' && state.view === 'dir:拆解') {
     const fv = state.factView
@@ -9450,6 +9568,14 @@ document.addEventListener('keydown', (event) => {
   if (event.key === 'Enter' && event.target.id === 'agent-input' && !event.shiftKey) {
     event.preventDefault()
     sendAgentMessage()
+    return
+  }
+  // 推演输入条（OS-81）：Enter＝按我写的走，Shift+Enter＝换行
+  if (event.key === 'Enter' && event.target.id === 'deduce-custom' && !event.shiftKey) {
+    event.preventDefault()
+    const engine = state.deduce.engine
+    const customValue = (engine.customText ?? '').trim()
+    if (customValue && !engine.busy && !engine.turnBusy) deduceEngineTurn({ customText: customValue })
     return
   }
   if (event.key === 'Escape') {
