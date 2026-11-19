@@ -805,6 +805,30 @@ html[data-doc-auto-gap="off"] .doc-block { margin-bottom: 0; }
 /* ── 设置 · 模型与能力（S4）：四张配置卡＋probe 徽标 ─────────────── */
 .cfg-card { border: 1px solid var(--line); border-radius: var(--radius-md); padding: 16px 18px; margin-bottom: 14px; background: var(--bg); }
 /* OS-74：生图后端切换的两个表单块（OpenAI 兼容 / ComfyUI），hidden 时不占位 */
+/* OS-81（作者裁定）：世界书详情页——条目名是 H1，上半区 60/40 分栏
+   （左＝摘要正文无卡 / 右＝图片槽＋图谱槽两张卡），下方详情全屏铺开，无「关联说明」 */
+.ref-title { margin: 0; font-family: var(--serif); font-size: 24px; font-weight: 700; letter-spacing: .01em; color: var(--ink); }
+.ref-hero { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 20px; align-items: start; margin: 14px 0 26px; }
+.ref-hero-left { padding-top: 2px; }
+.ref-hero-left .brief-tags { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 10px; }
+.ref-hero-left .brief-text { margin: 0; font-family: var(--serif); font-size: 15px; line-height: 1.95; color: var(--ink-2); }
+.ref-hero-right { display: flex; flex-direction: column; gap: 12px; }
+/* 图片槽（1..N 张） */
+.ref-img-slot { background: var(--surface-card); border-radius: var(--radius-md); padding: 10px 11px 11px; box-shadow: var(--shadow-card); }
+.ref-slot-head { display: flex; align-items: baseline; gap: 6px; font-size: 11.5px; font-weight: 600; color: var(--ink-2); margin-bottom: 8px; }
+.ref-slot-n { font-size: 10.5px; color: var(--meta); font-weight: 400; }
+.ref-slot-cover { border-radius: var(--radius); overflow: hidden; background: var(--soft); }
+.ref-slot-cover img { display: block; width: 100%; aspect-ratio: 16 / 10; object-fit: cover; }
+.ref-slot-thumbs { display: flex; gap: 5px; margin-top: 6px; overflow-x: auto; }
+.ref-slot-thumbs img { width: 46px; height: 46px; object-fit: cover; border-radius: var(--radius-sm); flex: 0 0 auto; }
+.ref-slot-ops { margin-top: 8px; }
+.ref-slot-gen { font-size: 11.5px; color: var(--ink-2); background: var(--bg); border-radius: var(--pill); padding: 3px 12px; box-shadow: var(--shadow-card); }
+.ref-slot-gen:hover { color: var(--accent); }
+.ref-slot-empty-body { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 4px 0 2px; }
+/* 图谱槽 */
+.ref-graph-slot { background: var(--surface-card); border-radius: var(--radius-md); padding: 10px 11px 11px; box-shadow: var(--shadow-card); }
+.ref-graph-slot .graph-box.detail { height: 220px; }
+
 /* OS-80：全局后台任务中心悬浮球（右下角，跨插件共用）
    作者口径：所有插件的长任务都该在一个地方看进度，切走页面不丢状态。 */
 #job-ball-host { position: fixed; right: 18px; bottom: 18px; z-index: 200; }
