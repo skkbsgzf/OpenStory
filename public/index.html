@@ -574,7 +574,9 @@ input, textarea, select { font: inherit; color: inherit; }
 .tab-pick.on { border-color: var(--accent); background: var(--accent-soft); color: var(--ink); }
 .tab-pick .tp-check { width: 12px; flex: 0 0 12px; color: var(--accent); font-size: 11px; }
 .tab-pick b { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.tab-pick .tp-note { margin-left: auto; font-size: 10px; color: var(--meta); }
+.tab-pick .tp-note { margin-left: auto; font-size: 10px; color: var(--meta); white-space: nowrap; flex: 0 0 auto; }
+/* OS-84：已退场旧目录（还压着旧稿）——降级标记，提示该迁去参考/习惯 */
+.tab-pick .tp-note.is-retired { color: var(--warn-ink); }
 .filter { display: flex; gap: 18px; border-bottom: 1px solid var(--hair); margin: 18px 0 6px; flex-wrap: wrap; }
 .filter .f { padding: 10px 2px; color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -1px; }
 .filter .f.on { color: var(--ink); border-bottom-color: var(--ink); font-weight: 600; }

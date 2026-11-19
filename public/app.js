@@ -4226,17 +4226,29 @@ async function loadReferences({ force = false } = {}) {
     ref.stats = payload.stats ?? null
     ref.loaded = true
     // OS-48：顺手探旧目录有没有可迁入的内容（迁入按钮按需显示；目录不存在＝0）
-    ref.absorb = {}
-    await Promise.all(['大纲', '构思', '资料', '约束'].map(async (dir) => {
-      try {
-        const listed = await api(`/api/files?root=${encodeURIComponent(state.current.path)}&dir=${encodeURIComponent(dir)}`)
-        ref.absorb[dir] = Array.isArray(listed.files) ? listed.files.length : 0
-      } catch { ref.absorb[dir] = 0 }
-    }))
+    await probeRetiredDirs()
   } catch (error) {
     ref.error = `${error?.code ? `${error.code} · ` : ''}${text(error?.message || error)}`
   }
   ref.loading = false
+}
+
+/**
+ * OS-84：探已退场旧目录（大纲/构思/资料/约束）还剩多少篇。
+ * 页签栏与「增加页签」面板都靠它决定「空目录彻底不出现 / 有旧稿才降级露出」。
+ * 结果缓存在 state.reference.absorb，按库重置。
+ */
+async function probeRetiredDirs() {
+  if (!state.current?.path) return {}
+  const ref = state.reference
+  ref.absorb = {}
+  await Promise.all(RETIRED_DIRS.map(async (dir) => {
+    try {
+      const listed = await api(`/api/files?root=${encodeURIComponent(state.current.path)}&dir=${encodeURIComponent(dir)}`)
+      ref.absorb[dir] = Array.isArray(listed.files) ? listed.files.length : 0
+    } catch { ref.absorb[dir] = 0 }
+  }))
+  return ref.absorb
 }
 
 /** 打开一篇参考笔记（含反链）。 */
@@ -5912,6 +5924,15 @@ const TAB_HIDE_KEY = (root) => `openstory-tab-hidden::${root || ''}`
  */
 const DEFAULT_HIDDEN_TABS = Object.freeze(['dir:大纲', 'dir:构思', 'dir:资料', 'dir:约束'])
 
+/**
+ * OS-84：已退场的旧目录（作者裁定：定位已被「参考」「习惯」覆盖，标签不再进「增加页签」面板）。
+ *   · 大纲/构思/资料 → 内容迁进「参考」（referenceStore.ABSORBABLE_DIRS，参考页有迁入入口）
+ *   · 约束 → 规则类内容归「习惯」(habits.json)，OS-59 起不再迁入参考
+ * 退场只影响**入口**：目录空着就彻底不出现；还有文件的只降级为「旧·待迁」露出，
+ * 保证老库里的稿子不会因为标签下架变成 UI 里再也打不开的死文件。
+ */
+const RETIRED_DIRS = Object.freeze(['大纲', '构思', '资料', '约束'])
+
 /** 关掉的页签集合（按库分键）。dirsPage 记的是页签名（write/entries/dir:xxx/artifacts/wiki/deduce）。 */
 function hiddenTabs() {
   const root = state.current?.path || ''
@@ -5971,16 +5992,24 @@ function openTabAdd() {
   // 面板里要用同一个 view 键，否则勾选会写进 dir:参考 而页签栏根本不放它。
   const DIR_TO_VIEW = { 参考: 'reference', 习惯: 'habits' }
   const DIR_TO_LABEL = { 参考: '参考', 习惯: '习惯' }
+  // OS-84：已退场的旧目录——空着就彻底不出现（作者裁定：定位已被参考/习惯覆盖）；
+  // 但库里还压着旧稿的，降级成「旧·待迁」露出，避免稿子在 UI 里再也打不开。
+  const absorbCounts = state.reference.absorb || {}
+  const retiredWithFiles = (dir) => RETIRED_DIRS.includes(dir) && Number(absorbCounts[dir] || 0) > 0
   const dirRows = libDirs
     .filter((dir) => dir !== '正文' && dir !== '世界书' && dir !== '推演')
+    .filter((dir) => !RETIRED_DIRS.includes(dir) || retiredWithFiles(dir))
     .sort((left, right) => DIR_ORDER.indexOf(left) - DIR_ORDER.indexOf(right))
     .map((dir) => {
       const view = DIR_TO_VIEW[dir] || `dir:${dir}`
       const off = hidden.has(view)
       const known = Boolean(DIR_LABELS[dir]) || Boolean(DIR_TO_VIEW[dir])
       const label = DIR_TO_LABEL[dir] || DIR_LABELS[dir] || dir
-      return `<button class="tab-pick${off ? '' : ' on'}" data-action="tab-toggle-pick" data-tab-view="${esc(view)}">
-        <span class="tp-check">${off ? '' : '✓'}</span><b>${esc(label)}</b>${known ? '' : '<span class="tp-note">未识别</span>'}</button>`
+      const retired = RETIRED_DIRS.includes(dir)
+      return `<button class="tab-pick${off ? '' : ' on'}" data-action="tab-toggle-pick" data-tab-view="${esc(view)}" data-retired="${retired ? '1' : '0'}" title="${retired ? `${dir}/ 是旧目录：内容该迁进「参考」（规则类归「习惯」）。迁完删掉目录它就不再出现。` : ''}">
+        <span class="tp-check">${off ? '' : '✓'}</span><b>${esc(label)}</b>${retired
+          ? `<span class="tp-note is-retired">旧·待迁 ${Number(absorbCounts[dir]) || 0}</span>`
+          : (known ? '' : '<span class="tp-note">未识别</span>')}</button>`
     }).join('')
   // OS-83：已识别但库里还没建的业务目录（剧本/人物/场景/素材/漫画/视频…）。
   // 以前面板只列磁盘已有的目录，于是「剧本」这种模块在小说库里整块消失——作者以为功能不存在。
@@ -5988,6 +6017,7 @@ function openTabAdd() {
   const creatableRows = DIR_ORDER
     .filter((dir) => Boolean(DIR_LABELS[dir]))
     .filter((dir) => !libDirs.includes(dir))
+    .filter((dir) => !RETIRED_DIRS.includes(dir))
     .filter((dir) => dir !== '正文' && dir !== '世界书' && dir !== '拆解' && dir !== '人物' && dir !== '场景')
     .map((dir) => `<button class="tab-pick" data-action="tab-make-dir" data-dir-name="${esc(dir)}" title="库里还没有 ${esc(dir)}/ 目录——点一下建出来并加页签">
       <span class="tp-check">＋</span><b>${esc(DIR_LABELS[dir])}</b><span class="tp-note">待建</span></button>`)
@@ -6076,6 +6106,9 @@ function renderTabs() {
     const extra = libDirs
       // 作者要求页签可自选：库里任何顶层目录都能出页签（不再只认 DIR_LABELS 里的名单）
       .filter((dir) => dir !== '正文' && dir !== '世界书' && !excluded.has(dir))
+      // OS-84：已退场的旧目录（大纲/构思/资料/约束）只有还压着旧稿时才继续出页签——
+      // 空目录不出；有内容的留着让作者能打开、迁走（参考页有「迁入旧目录」入口，约束看「习惯」）。
+      .filter((dir) => !RETIRED_DIRS.includes(dir) || Number(state.reference.absorb?.[dir] || 0) > 0)
       .sort((left, right) => {
         const li = DIR_ORDER.indexOf(left)
         const ri = DIR_ORDER.indexOf(right)
@@ -8452,6 +8485,8 @@ async function openLibrary(path) {
       api(`/api/chapters?root=${encodeURIComponent(path)}&dir=${encodeURIComponent('正文')}`).catch(() => null)
     ])
     state.libDirs = Array.isArray(topPayload.dirs) ? topPayload.dirs : []
+    // OS-84：探已退场旧目录还剩多少篇——页签栏第一帧就要据此决定藏/露，不能等进参考页
+    await probeRetiredDirs()
     // OS-19：体裁声明后按 excludedPages 裁剪页签（未声明＝不裁剪，保持 OS-8 行为）
     try {
       const briefPayload = await api(`/api/brief?root=${encodeURIComponent(path)}`)
