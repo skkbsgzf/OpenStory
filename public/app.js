@@ -4399,6 +4399,8 @@ function referenceEditorHtml() {
   const excerpt = mdPlain(note.excerpt) || mdPlain(bodySource).slice(0, 120)
   // OS-81（作者裁定）：条目名是 H1；上半区左 60% 摘要正文（无卡）/ 右 40% 图片槽＋图谱槽两张卡；
   // 往下的详情全屏铺开；「关联说明」整块删除——要干净的前端。
+  // OS-81 修：卡片浮在右侧（float），简介+详情在左侧流动——
+  // 卡片结束后正文自然变全宽。不再用 grid 行（右栏比摘要高很多时会留一大截空白）。
   return `<div class="ref-detail">
     <div class="ref-detail-head">
       ${ref.from === 'graph' ? '<button class="btn-ghost" data-action="ref-back-graph" title="回到关系图谱">← 返回图谱</button>' : ''}
@@ -4409,20 +4411,18 @@ function referenceEditorHtml() {
       <span class="count">点正文直接改，失焦自动保存</span>
       <button class="btn-ghost" data-action="ref-to-agent">发给 Agent</button>
     </div>
-    <div class="ref-hero">
-      <div class="ref-hero-left">
-        <div class="brief-tags">${tagChips}</div>
-        <p class="brief-text">${esc(excerpt)}</p>
-      </div>
-      <div class="ref-hero-right">
+    <div class="ref-flow">
+      <aside class="ref-side-cards">
         ${refImagesSlotHtml(note)}
         <div class="ref-graph-slot">
           <div class="ref-slot-head">关系图谱</div>
           <div class="graph-box detail"><canvas id="ref-detail-canvas"></canvas></div>
         </div>
-      </div>
+      </aside>
+      <div class="brief-tags">${tagChips}</div>
+      <p class="brief-text">${esc(excerpt)}</p>
+      <div class="ref-doc">${body}</div>
     </div>
-    <div class="ref-doc">${body}</div>
   </div>`
 }
 
@@ -5941,9 +5941,9 @@ function openTabAdd() {
       return `<button class="tab-pick${off ? '' : ' on'}" data-action="tab-toggle-pick" data-tab-view="${esc(item.view)}">
         <span class="tp-check">${off ? '' : '✓'}</span><b>${esc(item.label)}</b></button>`
     }).join('')
-  // 目录型页签
+  // 目录型页签（已有目录）
   const dirRows = libDirs
-    .filter((dir) => dir !== '正文' && dir !== '世界书')
+    .filter((dir) => dir !== '正文' && dir !== '世界书' && dir !== '推演')
     .sort((left, right) => DIR_ORDER.indexOf(left) - DIR_ORDER.indexOf(right))
     .map((dir) => {
       const view = `dir:${dir}`
@@ -5952,12 +5952,23 @@ function openTabAdd() {
       return `<button class="tab-pick${off ? '' : ' on'}" data-action="tab-toggle-pick" data-tab-view="${esc(view)}">
         <span class="tp-check">${off ? '' : '✓'}</span><b>${esc(DIR_LABELS[dir] || dir)}</b>${known ? '' : '<span class="tp-note">未识别</span>'}</button>`
     }).join('')
+  // OS-83：已识别但库里还没建的业务目录（剧本/人物/场景/素材/漫画/视频…）。
+  // 以前面板只列磁盘已有的目录，于是「剧本」这种模块在小说库里整块消失——作者以为功能不存在。
+  // 这里把它们如实列出来，点一下就建目录并加页签（走同一条 /api/dir 通道）。
+  const creatableRows = DIR_ORDER
+    .filter((dir) => Boolean(DIR_LABELS[dir]))
+    .filter((dir) => !libDirs.includes(dir))
+    .filter((dir) => dir !== '正文' && dir !== '世界书' && dir !== '拆解' && dir !== '人物' && dir !== '场景')
+    .map((dir) => `<button class="tab-pick" data-action="tab-make-dir" data-dir-name="${esc(dir)}" title="库里还没有 ${esc(dir)}/ 目录——点一下建出来并加页签">
+      <span class="tp-check">＋</span><b>${esc(DIR_LABELS[dir])}</b><span class="tp-note">待建</span></button>`)
+    .join('')
   // 磁盘上有、但没在任何页签里的目录（比如「出图」）也列出来——这是「加页签」的主用途之一
   openModal(`
     <h3>增加页签</h3>
     <p class="sub">勾上就会出现在顶栏；取消勾选只是收起页签，磁盘上的文件和稿子不受影响。</p>
     <div class="tab-pick-sec"><h4>常用</h4><div class="tab-pick-grid">${builtinRows}</div></div>
     <div class="tab-pick-sec"><h4>库里已有目录</h4><div class="tab-pick-grid">${dirRows || '<span class="count">没有其它目录</span>'}</div></div>
+    ${creatableRows ? `<div class="tab-pick-sec"><h4>可以新建的业务模块</h4><div class="tab-pick-grid">${creatableRows}</div></div>` : ''}
     <div class="tab-pick-sec"><h4>新建目录</h4>
       <div class="row" style="display:flex;gap:8px;align-items:center">
         <input id="tab-new-dir" placeholder="例如：分镜" style="flex:1">
@@ -5967,6 +5978,25 @@ function openTabAdd() {
     </div>
     <div class="ops"><button class="btn-ghost" data-action="modal-close">关闭</button></div>
   `)
+}
+
+/** OS-83：一键建出已识别的业务目录（剧本/漫画…）并加页签——与「新建目录」同一条通道。 */
+async function makeTabDir(name) {
+  if (!state.current || !name) return
+  const errEl = document.getElementById('tab-add-err')
+  try {
+    const payload = await api('/api/dir', {
+      method: 'POST',
+      body: JSON.stringify({ root: state.current.path, name })
+    })
+    const topPayload = await api(`/api/files?root=${encodeURIComponent(state.current.path)}`)
+    state.libDirs = Array.isArray(topPayload.dirs) ? topPayload.dirs : state.libDirs
+    setTabHidden(`dir:${payload.name || name}`, false)
+    openTabAdd()
+    if (errEl) errEl.textContent = ''
+  } catch (error) {
+    if (errEl) errEl.textContent = `${error?.code ? `${error.code} · ` : ''}${text(error?.message || error)}`
+  }
 }
 
 /** 勾/取消勾选某个页签（面板不关，所见即所得）。 */
@@ -8848,6 +8878,8 @@ document.addEventListener('click', (event) => {
     toggleTabPick(target.dataset.tabView)
   } else if (action === 'tab-create-dir') {
     createTabDir()
+  } else if (action === 'tab-make-dir') {
+    makeTabDir(target.dataset.dirName)
   } else if (action === 'settings-help-toggle') {
     state.settings.helpOpen = !state.settings.helpOpen
     render()
