@@ -86,6 +86,36 @@ export function extractInlineTags(source) {
  * frontmatter 解析（只认最小的 YAML 子集：`key: value`、flow 数组、块状数组）。
  * 不引 yaml 库——本仓零 npm，且参考笔记的 frontmatter 由我们自己写。
  */
+/**
+ * OS-75：把 frontmatter 对象序列化回 YAML（只支持本仓用到的标量/flow 数组/块数组）。
+ * 用于世界书回填图片路径——写盘走既有 writeChapterWithBackup，不另造写协议。
+ */
+export function serializeFrontmatter(data) {
+  const lines = ['---']
+  for (const [key, value] of Object.entries(data || {})) {
+    if (!/^[A-Za-z_][\w-]*$/u.test(key)) continue
+    if (Array.isArray(value)) {
+      const items = value.map((v) => text(v).trim()).filter(Boolean)
+      if (!items.length) continue
+      // 短列表用 flow，长列表用块状
+      if (items.every((x) => !/[,:\x5b\x5d{}]/u.test(x)) && items.join(', ').length < 60) {
+        lines.push(`${key}: [${items.join(', ')}]`)
+      } else {
+        lines.push(`${key}:`)
+        for (const item of items) lines.push(`  - ${item}`)
+      }
+      continue
+    }
+    if (value === null || value === undefined) continue
+    const s2 = text(value).trim()
+    if (!s2) continue
+    // 含冒号/井号等 YAML 敏感字符时加引号
+    lines.push(/[:#\x5b\x5d{}]/u.test(s2) ? `${key}: "${s2.replace(/"/g, '\\"')}"` : `${key}: ${s2}`)
+  }
+  lines.push('---')
+  return lines.join('\n')
+}
+
 export function parseFrontmatter(source) {
   const raw = text(source).replace(/\r\n?/gu, '\n')
   if (!raw.startsWith('---\n')) return { data: {}, body: raw, endLine: 0 }
@@ -204,6 +234,26 @@ function titleOf(frontmatter, body, relPath) {
   return relPath.split('/').pop().replace(/\.(?:md|markdown|txt)$/iu, '')
 }
 
+/**
+ * OS-75：从 frontmatter 提取图片引用（cover / portrait / images[] / refImages[]）。
+ * 返回去重后的字符串数组，保持声明顺序（第一张即封面）。
+ * 只认非空字符串——不解析、不校验可达性（渲染时按站内/外链分派）。
+ */
+function imagesOf(data) {
+  const out = []
+  const push = (value) => {
+    if (Array.isArray(value)) { value.forEach(push); return }
+    const s = text(value).trim()
+    if (s && !out.includes(s)) out.push(s)
+  }
+  push(data.cover)
+  push(data.portrait)
+  push(data.images)
+  push(data.refImages)
+  push(data.ref_images)
+  return out
+}
+
 /** 摘要：取正文第一段非空非标题文字，截 120 字。 */
 function excerptOf(body) {
   const lines = text(body).split('\n')
@@ -246,6 +296,9 @@ export async function scanReferences(root) {
     const tags = [...new Set([...fromMeta, ...inline])]
     const links = extractWikiLinks(body)
     const isTagNote = text(data.kind).trim().toLowerCase() === TAG_NOTE_KIND
+    // OS-75：消费图片字段（cover 单图 / images 多图 / portrait 人物肖像）。
+    // 值可以是站内相对路径（相对库根）或 http(s) URL；空值/非字符串一律丢。
+    const images = imagesOf(data)
     notes.push({
       path: `${REFERENCE_DIR}/${rel}`,
       rel,
@@ -253,6 +306,8 @@ export async function scanReferences(root) {
       tags,
       links,
       frontmatter: data,
+      images,
+      ...(images.length ? { cover: images[0] } : {}),
       excerpt: excerptOf(body),
       mtime: info.mtime.toISOString(),
       chars: body.replace(/\s/gu, '').length,

@@ -1390,13 +1390,15 @@ function readLegacyDeduceState(root, bookId) {
       if (!text(image.comfyUrl).trim()) {
         return sendError(res, API_ERROR_CODES.AGENT_UPSTREAM_ERROR, '未配置 ComfyUI 地址——设置 · 模型 · 生图里切到 ComfyUI 并填端口')
       }
+      // 风格提示词优先级：请求覆盖 > 设置里的 stylePrompt > 内置默认「2D彩漫风格」
+      const stylePrefix = text(request.stylePrompt).trim() || text(image.stylePrompt).trim() || DEFAULT_IMAGE_STYLE
       const comfy = await generateViaComfy({
         comfyUrl: image.comfyUrl,
         workflowPath: image.comfyWorkflow,
         root: authorized.root,
         nodeMap: image.comfyNodeMap,
-        prompt: `小说场景立绘，无文字：${prompt}`,
-        negative: text(request.negative).trim(),
+        prompt: `${stylePrefix}，${prompt}。无文字。`,
+        negative: text(request.negative).trim() || DEFAULT_IMAGE_NEGATIVE,
         size
       })
       if (!comfy.ok) return sendError(res, API_ERROR_CODES.AGENT_UPSTREAM_ERROR, `ComfyUI 生图失败：${comfy.error}`)
@@ -1405,7 +1407,8 @@ function readLegacyDeduceState(root, bookId) {
       if (!image.endpoint) {
         return sendError(res, API_ERROR_CODES.AGENT_UPSTREAM_ERROR, '未配置生图端点——设置 · 模型 · 生图里填 OpenAI 兼容 images API 的地址与模型后可用')
       }
-      const body = JSON.stringify({ model: text(image.model), prompt: `小说场景立绘，无文字：${prompt}`, size, n: 1, response_format: 'b64_json' })
+      const stylePrefix = text(request.stylePrompt).trim() || text(image.stylePrompt).trim() || DEFAULT_IMAGE_STYLE
+      const body = JSON.stringify({ model: text(image.model), prompt: `${stylePrefix}，${prompt}。无文字。`, size, n: 1, response_format: 'b64_json' })
       let payload = null
       try {
         const response = await fetch(imagesGenerationsUrl(image.endpoint), {
@@ -1581,6 +1584,215 @@ function readLegacyDeduceState(root, bookId) {
     } catch { /* 没拆解目录就只有参考节点 */ }
     const graph = buildReferenceGraph(index, { entries })
     return sendJson(res, 200, { ok: true, ...graph })
+  }
+
+  if (endpointId === 'visionDescribe') {
+    // OS-75：识图写作——读库内图片，走 vision provider（OpenAI 兼容多模态），
+    // 产出文学化白描（不是技术描述）。配套 skill: skills/visual-describe。
+    const authorized = authorizeRoot(allowlist, request.root)
+    if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
+    const imageRel = text(request.image).trim().replaceAll('\\', '/')
+    if (!imageRel) return sendError(res, API_ERROR_CODES.INVALID_ENTRY, 'image 必填（库内图片相对路径）')
+    if (!/\.(png|jpe?g|webp|gif|avif)$/iu.test(imageRel)) {
+      return sendError(res, API_ERROR_CODES.INVALID_ENTRY, `不是图片：${imageRel}`)
+    }
+    const resolvedImage = resolveInsideRoot(authorized.root, imageRel, { allowMetadata: false })
+    if (!resolvedImage.ok) return sendError(res, resolvedImage.code ?? API_ERROR_CODES.PATH_ESCAPE, resolvedImage.message)
+
+    const { config } = await loadConfigV2(context.agentConfigPath)
+    const vision = config.vision
+    if (!vision.enabled) {
+      return sendError(res, API_ERROR_CODES.AGENT_UPSTREAM_ERROR, '识图没启用——设置 · 模型 · 识图里打开开关并填 endpoint/模型')
+    }
+    if (!vision.endpoint) {
+      return sendError(res, API_ERROR_CODES.AGENT_UPSTREAM_ERROR, '未配置识图端点')
+    }
+
+    let buf
+    try { buf = await readFile(resolvedImage.path) } catch (error) {
+      return sendError(res, API_ERROR_CODES.INVALID_ENTRY, `图片读不了：${text(error?.message || error)}`)
+    }
+    const ext = imageRel.split('.').pop().toLowerCase()
+    const mime = ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : ext === 'webp' ? 'image/webp' : ext === 'gif' ? 'image/gif' : ext === 'avif' ? 'image/avif' : 'image/png'
+    const dataUrl = `data:${mime};base64,${buf.toString('base64')}`
+
+    // 目标决定白描口径
+    const target = text(request.target).trim() || 'character'
+    const targetGuide = {
+      character: '这是一个角色。写他的外形与气质：身形/衣着的具体质感、面容里最抓人的一处、姿态透出的性格。',
+      scene: '这是一个场景。写氛围：光线从哪来、空气里有什么、什么地方冷、什么地方暖。',
+      creature: '这是一个非人形象（怪物/异兽）。写它的体量与压迫感：尺度对比、不该有的细节、让人不敢直视的那一处。',
+      item: '这是一个道具。写质感与来历感：材质、磨损、拿在手里的分量。'
+    }[target] || '写这个画面的文学白描。'
+    const focus = text(request.focus).trim()
+    const habitContext = text(request.habitContext).trim()
+
+    const systemPrompt = [
+      '你是小说家的眼睛。看一张图，用文学语言写一段可复用的人物/场景白描。',
+      '',
+      '硬规矩：',
+      '1. 只写看得见、能推理的。图上没有的身份/来历/情绪成因不编。',
+      '2. 动词优先于形容词：「袍角扫过门槛」而不是「他穿着很长的袍子」。',
+      '3. 不要写构图（「左侧是…」），换成小说里能出现的说法。',
+      '4. 不要写风格词（「2D彩漫风格」），那是生图提示词不是正文。',
+      '5. 150–300 字，只输出白描正文，不要标题、不要解释、不要 markdown 围栏。',
+      '',
+      targetGuide,
+      focus ? `\n这次特别留意：${focus}` : '',
+      habitContext ? `\n作者习惯（必须遵守）：${habitContext}` : ''
+    ].filter(Boolean).join('\n')
+
+    let payload = null
+    try {
+      const response = await fetch(chatCompletionsUrl(vision.endpoint), {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', ...(vision.apiKey ? { authorization: `Bearer ${vision.apiKey}` } : {}) },
+        body: JSON.stringify({
+          model: text(vision.model),
+          max_tokens: 800,
+          stream: false,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: [
+              { type: 'text', text: '看图，写白描。' },
+              { type: 'image_url', image_url: { url: dataUrl } }
+            ] }
+          ]
+        }),
+        signal: AbortSignal.timeout(180_000)
+      })
+      if (!response.ok) throw new Error(`HTTP ${response.status} · ${(await response.text()).slice(0, 200)}`)
+      payload = await response.json()
+    } catch (error) {
+      return sendError(res, API_ERROR_CODES.AGENT_UPSTREAM_ERROR, `识图端点失败：${text(error?.message || error)}`)
+    }
+    const out = text(payload?.choices?.[0]?.message?.content).trim()
+    if (!out) return sendError(res, API_ERROR_CODES.AGENT_UPSTREAM_ERROR, '识图端点没有返回文本')
+    return sendJson(res, 200, { ok: true, text: out, chars: out.length, ...(vision.model ? { model: vision.model } : {}) })
+  }
+
+  if (endpointId === 'referenceAssetGet') {
+    // OS-75：世界书图片本体（只读，只放行 参考/ 下的图片扩展名）。
+    const authorized = authorizeRoot(allowlist, request.root)
+    if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
+    const assetPath = text(request.path).trim().replaceAll('\x5c', '/')
+    if (!assetPath.startsWith(`${REFERENCE_DIR}/`)) {
+      return sendError(res, API_ERROR_CODES.INVALID_ENTRY, `只放行参考目录下的图片：${assetPath}`)
+    }
+    if (!/\.(png|jpe?g|webp|gif|avif)$/iu.test(assetPath)) {
+      return sendError(res, API_ERROR_CODES.INVALID_ENTRY, `不是图片扩展名：${assetPath}`)
+    }
+    const resolvedAsset = resolveInsideRoot(authorized.root, assetPath, { allowMetadata: false })
+    if (!resolvedAsset.ok) return sendError(res, resolvedAsset.code ?? API_ERROR_CODES.PATH_ESCAPE, resolvedAsset.message)
+    let buf
+    try { buf = await readFile(resolvedAsset.path) } catch (error) {
+      if (error?.code === 'ENOENT') return sendError(res, API_ERROR_CODES.NOT_FOUND, `图片不存在：${assetPath}`)
+      return sendError(res, API_ERROR_CODES.WRITE_PROTOCOL_IO_FAILED, `读图失败：${text(error?.message || error)}`)
+    }
+    const ext = assetPath.split('.').pop().toLowerCase()
+    const mime = ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : ext === 'webp' ? 'image/webp' : ext === 'gif' ? 'image/gif' : ext === 'avif' ? 'image/avif' : 'image/png'
+    res.writeHead(200, { 'content-type': mime, 'cache-control': 'no-cache', 'content-length': buf.length })
+    return res.end(buf)
+  }
+
+  if (endpointId === 'referenceImageGenerate') {
+    // OS-75：世界书条目生图——按条目名＋描述生成设定图，落条目旁 assets/，
+    // 并把相对路径回填进 frontmatter（cover + images）。写盘复用 chapter 的原子写＋备份。
+    const authorized = authorizeRoot(allowlist, request.root)
+    if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
+    const requested = text(request.path).trim().replaceAll('\\', '/')
+    if (!requested.startsWith(`${REFERENCE_DIR}/`)) {
+      return sendError(res, API_ERROR_CODES.INVALID_ENTRY, `只给参考目录下的条目生图：${requested}`)
+    }
+    const resolved = resolveInsideRoot(authorized.root, requested, { allowMetadata: false })
+    if (!resolved.ok) return sendError(res, resolved.code ?? API_ERROR_CODES.PATH_ESCAPE, resolved.message)
+
+    const { config } = await loadConfigV2(context.agentConfigPath)
+    const image = config.image
+    if (!image.enabled) {
+      return sendError(res, API_ERROR_CODES.AGENT_UPSTREAM_ERROR, '生图没启用——设置 · 模型 · 生图里打开开关')
+    }
+
+    // 读条目原文，拿 title / 正文摘要 作为生图描述（作者可显式传 prompt 覆盖）
+    let noteRaw = ''
+    try { noteRaw = await readFile(resolved.path, 'utf-8') } catch (error) {
+      return sendError(res, API_ERROR_CODES.NOT_FOUND, `条目读不了：${text(error?.message || error)}`)
+    }
+    const { parseFrontmatter, serializeFrontmatter } = await import('./referenceStore.mjs')
+    const parsed = parseFrontmatter(noteRaw)
+    const noteTitle = text(parsed.data?.title).trim() || text(requested).split('/').pop().replace(/\.md$/u, '')
+    const noteKind = text(request.kind).trim() || text(parsed.data?.kind).trim() || 'character'
+    const bodyExcerpt = text(parsed.body).split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('#')).slice(0, 3).join(' ').slice(0, 200)
+
+    const describe = text(request.prompt).trim()
+      || `${noteKind === 'scene' ? '场景' : noteKind === 'item' ? '道具' : '人物'}设定图：${noteTitle}。${bodyExcerpt || '（按条目名想象）'}`
+    const stylePrefix = text(request.stylePrompt).trim() || text(image.stylePrompt).trim() || DEFAULT_IMAGE_STYLE
+    const size = text(request.size).trim() || '1024x1024'
+
+    let b64 = ''
+    if (image.backend === 'comfyui') {
+      if (!text(image.comfyUrl).trim()) {
+        return sendError(res, API_ERROR_CODES.AGENT_UPSTREAM_ERROR, '未配置 ComfyUI 地址')
+      }
+      const comfy = await generateViaComfy({
+        comfyUrl: image.comfyUrl,
+        workflowPath: image.comfyWorkflow,
+        root: authorized.root,
+        nodeMap: image.comfyNodeMap,
+        prompt: `${stylePrefix}，${describe}。无文字。`,
+        negative: DEFAULT_IMAGE_NEGATIVE,
+        size
+      })
+      if (!comfy.ok) return sendError(res, API_ERROR_CODES.AGENT_UPSTREAM_ERROR, `ComfyUI 生图失败：${comfy.error}`)
+      b64 = comfy.b64
+    } else {
+      if (!image.endpoint) {
+        return sendError(res, API_ERROR_CODES.AGENT_UPSTREAM_ERROR, '未配置生图端点')
+      }
+      try {
+        const response = await fetch(imagesGenerationsUrl(image.endpoint), {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', ...(image.apiKey ? { authorization: `Bearer ${image.apiKey}` } : {}) },
+          body: JSON.stringify({ model: text(image.model), prompt: `${stylePrefix}，${describe}。无文字。`, size, n: 1, response_format: 'b64_json' }),
+          signal: AbortSignal.timeout(300_000)
+        })
+        if (!response.ok) throw new Error(`HTTP ${response.status} · ${(await response.text()).slice(0, 200)}`)
+        const payload = await response.json()
+        b64 = payload?.data?.[0]?.b64_json
+        if (!b64) throw new Error('端点没返回 b64_json')
+      } catch (error) {
+        return sendError(res, API_ERROR_CODES.AGENT_UPSTREAM_ERROR, `生图端点失败：${text(error?.message || error)}`)
+      }
+    }
+
+    // 落盘：参考/<条目目录>/assets/<条目名>.png（安全名）
+    const safeName = noteTitle.replace(/[\\/:*?"<>|]/gu, '_').slice(0, 40) || 'image'
+    const noteDir = requested.split('/').slice(0, -1).join('/')
+    const imageRel = `${noteDir}/assets/${safeName}.png`
+    const imageAbs = resolveInsideRoot(authorized.root, imageRel, { allowMetadata: false })
+    if (!imageAbs.ok) return sendError(res, imageAbs.code ?? API_ERROR_CODES.PATH_ESCAPE, imageAbs.message)
+    await mkdir(dirname(imageAbs.path), { recursive: true })
+    const tmpImage = `${imageAbs.path}.tmp-${Date.now()}`
+    await writeFile(tmpImage, Buffer.from(b64, 'base64'))
+    await rename(tmpImage, imageAbs.path)
+
+    // 回填 frontmatter：cover 指向新图，images 数组追加（去重，保留最近 6 张）
+    const nextData = { ...parsed.data }
+    const images = Array.isArray(nextData.images) ? nextData.images.map((x) => text(x).trim()).filter(Boolean) : []
+    if (!images.includes(imageRel)) images.unshift(imageRel)
+    nextData.images = images.slice(0, 6)
+    if (!text(nextData.cover).trim()) nextData.cover = imageRel
+    const nextRaw = `${serializeFrontmatter(nextData)}\n${parsed.body}`
+    const written = await writeChapterWithBackup(authorized.root, requested, nextRaw)
+    if (!written.ok) return sendError(res, written.code, written.message, written.details)
+
+    return sendJson(res, 200, {
+      ok: true,
+      path: requested,
+      imagePath: imageRel,
+      frontmatter: nextData,
+      chars: nextRaw.length
+    })
   }
 
   if (endpointId === 'referenceNoteGet') {
@@ -1931,7 +2143,7 @@ function readLegacyDeduceState(root, bookId) {
   return sendError(res, API_ERROR_CODES.NOT_FOUND, `端点未实现：${endpointId}`)
 }
 
-const ENDPOINT_HAS_QUERY = new Set(['habitsGet', 'chapterGet', 'agentSessions', 'agentSessionGet', 'agentSessionDelete', 'libraryDiagnose', 'filesGet', 'chaptersGet', 'chapterDelete', 'artifactsGet', 'suiteStateDataGet', 'agentPicksGet', 'briefGet', 'skillsGet', 'skillGet', 'enrichStatus', 'enrichGraph', 'kbStatusGet', 'agentDshModelsGet', 'factCurveGet', 'factEntriesGet', 'factBooksGet', 'referenceGet', 'referenceGraphGet', 'referenceNoteGet', 'deduceSessionGet', 'deduceAssets', 'deduceAssetFile'])
+const ENDPOINT_HAS_QUERY = new Set(['referenceAssetGet', 'habitsGet', 'chapterGet', 'agentSessions', 'agentSessionGet', 'agentSessionDelete', 'libraryDiagnose', 'filesGet', 'chaptersGet', 'chapterDelete', 'artifactsGet', 'suiteStateDataGet', 'agentPicksGet', 'briefGet', 'skillsGet', 'skillGet', 'enrichStatus', 'enrichGraph', 'kbStatusGet', 'agentDshModelsGet', 'factCurveGet', 'factEntriesGet', 'factBooksGet', 'referenceGet', 'referenceGraphGet', 'referenceNoteGet', 'deduceSessionGet', 'deduceAssets', 'deduceAssetFile'])
 
 /** 套件资产 MIME（page 模式自带页同源装载）。 */
 const SUITE_ASSET_MIME = Object.freeze({
@@ -2223,9 +2435,13 @@ async function systemPromptFor(root, libraries, genresDirs, skillsDirs, { canRea
  * 旧端点 GET/PUT /api/agent/config 保留，内部转发到 text 块与旧形状（MCP/旧前端还在用）。
  * apiKey 只在本机文件里；对外一律走 maskApiKey 尾号掩码。
  */
+/** OS-75：生图默认风格与负向词（作者裁定：默认 2D 彩漫风格，可自定义覆盖）。 */
+const DEFAULT_IMAGE_STYLE = '2D彩漫风格'
+const DEFAULT_IMAGE_NEGATIVE = 'lowres, blurry, watermark, text, 3d render, photorealistic'
+
 const CONFIG_BLOCK_FIELDS = Object.freeze({
   text: ['endpoint', 'model', 'apiKey', 'runtime', 'reasoningEffort', 'chineseReasoning'],
-  image: ['enabled', 'backend', 'endpoint', 'model', 'apiKey', 'comfyUrl', 'comfyWorkflow', 'comfyNodeMap'],
+  image: ['enabled', 'backend', 'endpoint', 'model', 'apiKey', 'comfyUrl', 'comfyWorkflow', 'comfyNodeMap', 'stylePrompt'],
   vision: ['enabled', 'endpoint', 'model', 'apiKey'],
   agent: ['defaultModel', 'subagentModel', 'profile']
 })
@@ -2233,7 +2449,7 @@ const CONFIG_BLOCK_FIELDS = Object.freeze({
 function emptyConfigV2() {
   return {
     text: { endpoint: '', model: '', apiKey: '', runtime: '', reasoningEffort: '', chineseReasoning: true },
-    image: { enabled: false, backend: 'openai', endpoint: '', model: '', apiKey: '', comfyUrl: '', comfyWorkflow: '', comfyNodeMap: {} },
+    image: { enabled: false, backend: 'openai', endpoint: '', model: '', apiKey: '', comfyUrl: '', comfyWorkflow: '', comfyNodeMap: {}, stylePrompt: '' },
     vision: { enabled: false, endpoint: '', model: '', apiKey: '' },
     agent: { defaultModel: '', subagentModel: '', profile: '' }
   }
@@ -2263,7 +2479,10 @@ function normalizeConfigBlock(kind, raw) {
       // ComfyUI：端口（如 http://127.0.0.1:8188）+ 工作流 JSON 相对路径 + 节点映射
       comfyUrl: text(source.comfyUrl).trim(),
       comfyWorkflow: text(source.comfyWorkflow).trim(),
-      comfyNodeMap: isPlainObject(source.comfyNodeMap) ? source.comfyNodeMap : {}
+      comfyNodeMap: isPlainObject(source.comfyNodeMap) ? source.comfyNodeMap : {},
+      // OS-75：默认风格提示词（留空＝用内置「2D彩漫风格」）。用户可在设置里改，
+      // 也可在推演引擎/世界书的单次生图里覆盖（请求体 stylePrompt）。
+      stylePrompt: text(source.stylePrompt).trim()
     }
   }
   if (kind === 'vision') {
@@ -2421,10 +2640,19 @@ function configPublicV2(config, configPath) {
     },
     image: {
       enabled: config.image.enabled,
+      // OS-75：ComfyUI 后端字段一并回显（前端要据此切表单/显示状态）
+      backend: config.image.backend || 'openai',
       endpoint: config.image.endpoint,
       model: config.image.model,
       apiKeyMasked: config.image.apiKey ? maskApiKey(config.image.apiKey) : '',
-      configured: Boolean(config.image.endpoint)
+      comfyUrl: config.image.comfyUrl || '',
+      comfyWorkflow: config.image.comfyWorkflow || '',
+      comfyNodeMap: config.image.comfyNodeMap || {},
+      stylePrompt: config.image.stylePrompt || '',
+      // ComfyUI 后端只要填了地址就算已配置（不要求 endpoint）
+      configured: config.image.backend === 'comfyui'
+        ? Boolean(config.image.comfyUrl)
+        : Boolean(config.image.endpoint)
     },
     vision: {
       enabled: config.vision.enabled,

@@ -343,6 +343,58 @@ const tools = [
     }
   },
 
+  {
+    name: 'openstory_vision_describe',
+    title: '看图写作',
+    description: '读库内一张参考图，用文学语言写一段可复用的人物/场景白描（150–300 字）。给角色写肖像、给场景写氛围、给怪物写道体。**不是**技术性图像描述——产出可直接进世界书正文，也能当生图提示词底稿。配套 skill：skills/visual-describe。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        root: { type: 'string' },
+        image: { type: 'string', description: '库内图片相对路径，如 参考/人物/assets/沈小楼.png' },
+        target: { type: 'string', description: 'character / scene / creature / item' },
+        focus: { type: 'string', description: '这次特别想抓的点，如「手部」「雨中的光」' }
+      },
+      required: ['root', 'image'],
+      additionalProperties: false
+    },
+    async run(args) {
+      const root = requireRoot(args)
+      if (!args.image) throw invalidArgs('image')
+      const payload = await daemon('/api/vision/describe', {
+        method: 'POST',
+        body: { root, image: args.image, target: args.target, focus: args.focus }
+      })
+      return payload
+    }
+  },
+  {
+    name: 'openstory_image_generate',
+    title: '生图（世界书条目）',
+    description: '给世界书条目生成设定图（走设置里的生图后端：OpenAI 兼容 或 ComfyUI）。图片落条目旁 assets/，路径自动回填 frontmatter 的 cover/images。默认风格「2D彩漫风格」，可用 stylePrompt 覆盖。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        root: { type: 'string' },
+        path: { type: 'string', description: '参考/ 下的条目路径，如 参考/人物/沈小楼.md' },
+        prompt: { type: 'string', description: '显式画面描述（留空＝按条目名＋正文摘要自动推）' },
+        stylePrompt: { type: 'string', description: '风格覆盖（留空＝设置里的默认风格）' },
+        size: { type: 'string' }
+      },
+      required: ['root', 'path'],
+      additionalProperties: false
+    },
+    async run(args) {
+      const root = requireRoot(args)
+      if (!args.path) throw invalidArgs('path')
+      const payload = await daemon('/api/reference/image', {
+        method: 'POST',
+        body: { root, path: args.path, prompt: args.prompt, stylePrompt: args.stylePrompt, size: args.size }
+      })
+      return payload
+    }
+  },
+
   /* ===== deduce + enrich + fact ===== */
   {
     name: 'openstory_deduce_present',
