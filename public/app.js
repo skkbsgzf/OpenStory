@@ -4234,8 +4234,8 @@ async function loadReferences({ force = false } = {}) {
 }
 
 /**
- * OS-84：探已退场旧目录（大纲/构思/资料/约束）还剩多少篇。
- * 页签栏与「增加页签」面板都靠它决定「空目录彻底不出现 / 有旧稿才降级露出」。
+ * OS-86：探旧目录还剩多少篇——只服务参考页的「迁入旧目录」按钮（有剩才显示入口）。
+ * 页签栏与「增加页签」面板已统一按 RETIRED_DIRS 无条件过滤，不再依赖这个计数。
  * 结果缓存在 state.reference.absorb，按库重置。
  */
 async function probeRetiredDirs() {
@@ -5992,24 +5992,20 @@ function openTabAdd() {
   // 面板里要用同一个 view 键，否则勾选会写进 dir:参考 而页签栏根本不放它。
   const DIR_TO_VIEW = { 参考: 'reference', 习惯: 'habits' }
   const DIR_TO_LABEL = { 参考: '参考', 习惯: '习惯' }
-  // OS-84：已退场的旧目录——空着就彻底不出现（作者裁定：定位已被参考/习惯覆盖）；
-  // 但库里还压着旧稿的，降级成「旧·待迁」露出，避免稿子在 UI 里再也打不开。
-  const absorbCounts = state.reference.absorb || {}
-  const retiredWithFiles = (dir) => RETIRED_DIRS.includes(dir) && Number(absorbCounts[dir] || 0) > 0
+  // OS-86：已退场的旧目录彻底不出现——不管磁盘上还在不在、有多少篇。
+  // 作者口径：没被官方认证的标签就是要消失，不做「旧·待迁」降级露出；
+  // 内容清理走一次性迁移（大纲/构思/资料→参考，约束→习惯＋参考存档）。
   const dirRows = libDirs
     .filter((dir) => dir !== '正文' && dir !== '世界书' && dir !== '推演')
-    .filter((dir) => !RETIRED_DIRS.includes(dir) || retiredWithFiles(dir))
+    .filter((dir) => !RETIRED_DIRS.includes(dir))
     .sort((left, right) => DIR_ORDER.indexOf(left) - DIR_ORDER.indexOf(right))
     .map((dir) => {
       const view = DIR_TO_VIEW[dir] || `dir:${dir}`
       const off = hidden.has(view)
       const known = Boolean(DIR_LABELS[dir]) || Boolean(DIR_TO_VIEW[dir])
       const label = DIR_TO_LABEL[dir] || DIR_LABELS[dir] || dir
-      const retired = RETIRED_DIRS.includes(dir)
-      return `<button class="tab-pick${off ? '' : ' on'}" data-action="tab-toggle-pick" data-tab-view="${esc(view)}" data-retired="${retired ? '1' : '0'}" title="${retired ? `${dir}/ 是旧目录：内容该迁进「参考」（规则类归「习惯」）。迁完删掉目录它就不再出现。` : ''}">
-        <span class="tp-check">${off ? '' : '✓'}</span><b>${esc(label)}</b>${retired
-          ? `<span class="tp-note is-retired">旧·待迁 ${Number(absorbCounts[dir]) || 0}</span>`
-          : (known ? '' : '<span class="tp-note">未识别</span>')}</button>`
+      return `<button class="tab-pick${off ? '' : ' on'}" data-action="tab-toggle-pick" data-tab-view="${esc(view)}">
+        <span class="tp-check">${off ? '' : '✓'}</span><b>${esc(label)}</b>${known ? '' : '<span class="tp-note">未识别</span>'}</button>`
     }).join('')
   // OS-83：已识别但库里还没建的业务目录（剧本/人物/场景/素材/漫画/视频…）。
   // 以前面板只列磁盘已有的目录，于是「剧本」这种模块在小说库里整块消失——作者以为功能不存在。
@@ -6106,9 +6102,8 @@ function renderTabs() {
     const extra = libDirs
       // 作者要求页签可自选：库里任何顶层目录都能出页签（不再只认 DIR_LABELS 里的名单）
       .filter((dir) => dir !== '正文' && dir !== '世界书' && !excluded.has(dir))
-      // OS-84：已退场的旧目录（大纲/构思/资料/约束）只有还压着旧稿时才继续出页签——
-      // 空目录不出；有内容的留着让作者能打开、迁走（参考页有「迁入旧目录」入口，约束看「习惯」）。
-      .filter((dir) => !RETIRED_DIRS.includes(dir) || Number(state.reference.absorb?.[dir] || 0) > 0)
+      // OS-86：已退场的旧目录（大纲/构思/资料/约束）一律不出页签，不管磁盘上还剩什么
+      .filter((dir) => !RETIRED_DIRS.includes(dir))
       .sort((left, right) => {
         const li = DIR_ORDER.indexOf(left)
         const ri = DIR_ORDER.indexOf(right)
