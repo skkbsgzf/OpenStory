@@ -7619,6 +7619,76 @@ function dedPackHtml() {
 }
 
 /** 引擎模式（OS-60 打磨）：局面卡＋人话候选＋张力读数＋推演历史。 */
+/**
+ * OS-79：galgame 开场三卡——「你是谁」「前情提要」「眼前场景」。
+ * 每张卡都能折叠；缺数据如实说缺（不编）。
+ */
+function deduceIntroHtml(narrative, data) {
+  // OS-79：默认只展开「你是谁」与「眼前场景」——前情提要太长，默认收起（点标题展开）
+  const openState = state.deduce.engine.introOpen ?? (state.deduce.engine.introOpen = { identity: true, recap: false, scene: true })
+  const card = (key, title, body, badge) => {
+    if (!body) return ''
+    const open = openState[key] !== false
+    return `<section class="gg-card" data-gg="${esc(key)}" data-open="${open ? '1' : '0'}">
+      <div class="gg-head">
+        <button class="gg-toggle" data-action="gg-toggle" data-gg-key="${esc(key)}" aria-expanded="${open ? 'true' : 'false'}">
+          <span class="gg-title">${esc(title)}</span>${badge ? `<span class="gg-badge">${esc(badge)}</span>` : ''}<span class="gg-chev">${open ? '▾' : '▸'}</span>
+        </button>
+      </div>
+      ${open ? `<div class="gg-body">${body}</div>` : ''}
+    </section>`
+  }
+
+  // —— 你是谁 ——
+  const id = narrative.identity || null
+  let identityBody = ''
+  if (!id) {
+    identityBody = '<p class="gg-missing">还没选视角人物——上方「以谁的眼睛看」填一个名字，这里会显示你的身份与目标。</p>'
+  } else if (id.missing) {
+    identityBody = `<p class="gg-name">${esc(id.name)}</p>
+      <p class="gg-missing">这个角色还没有档案（去世界书写一条，或跑 enrich 生成人物档）。</p>`
+  } else {
+    identityBody = `<p class="gg-name">你是 <b>${esc(id.name)}</b>${id.archetype ? `<span class="gg-arch">${esc(id.archetype)}</span>` : ''}</p>
+      ${id.identity ? `<p class="gg-line">${esc(id.identity)}</p>` : ''}
+      ${id.goal ? `<p class="gg-line gg-goal"><span>你要</span>${esc(id.goal)}</p>` : ''}
+      ${id.personality && id.personality.length ? `<p class="gg-chips">${id.personality.map((p) => `<span class="gg-chip">${esc(p)}</span>`).join('')}</p>` : ''}`
+  }
+
+  // —— 前情提要 ——
+  const rc = narrative.recap || { story: '', soFar: [], recent: [] }
+  const recapParts = []
+  if (rc.story) recapParts.push(`<p class="gg-line gg-story">${esc(rc.story)}</p>`)
+  if (rc.soFar && rc.soFar.length) {
+    recapParts.push(`<div class="gg-sofar">${rc.soFar.map((c) => `<div class="gg-sofar-row"><b>第${c.chapter}章${c.title ? ` ${esc(c.title)}` : ''}</b><span>${esc(c.summary)}</span></div>`).join('')}</div>`)
+  }
+  if (rc.recent && rc.recent.length) {
+    recapParts.push(`<div class="gg-recent"><div class="gg-recent-head">最近这几拍</div>${rc.recent.map((r) => `<div class="gg-recent-row"><span class="gg-rn">第${r.round}拍</span>${esc(r.excerpt)}…</div>`).join('')}</div>`)
+  }
+  const recapBody = recapParts.length ? recapParts.join('') : '<p class="gg-missing">这本书还没有摘要——跑 enrich 后这里会显示整本书讲了什么、到目前发生了什么。</p>'
+
+  // —— 眼前场景 ——
+  const sc = narrative.scene || { text: '', others: [], where: '' }
+  const othersRows = (sc.others || []).map((o) => `<div class="gg-other"><b>${esc(o.name)}</b>${o.identity ? `<span>${esc(o.identity)}</span>` : ''}</div>`).join('')
+  const sceneBody = `${sc.text ? `<p class="gg-line gg-scene">${esc(sc.text)}</p>` : ''}
+    ${othersRows ? `<div class="gg-others"><div class="gg-others-head">你面前</div>${othersRows}</div>` : ''}
+    ${!sc.where ? '<p class="gg-missing">地点未标注——在世界书里给这个场景写一条地点条目（或 enrich 补），这里会说明你在哪。</p>' : ''}`
+
+  const missingNote = narrative.missing && narrative.missing.length
+    ? `<div class="gg-missing-note">缺：${narrative.missing.map((m) => ({ pov: '视角人物', 'character-profile': '角色档案', location: '地点', recap: '前情' }[m] || m)).join(' · ')}</div>`
+    : ''
+
+  const allCollapsed = Object.values(openState).every((v) => v === false)
+  return `<div class="gg-intro${allCollapsed ? ' gg-collapsed' : ''}">
+    <div class="gg-bar">
+      <button class="gg-bar-btn" data-action="gg-toggle-all" title="${allCollapsed ? '展开开场三段' : '收起开场（让出画面）'}">${allCollapsed ? '▸ 开场' : '▾ 收起开场'}</button>
+    </div>
+    ${allCollapsed ? '' : card('identity', '你是谁', identityBody, id?.name || '')}
+    ${allCollapsed ? '' : card('recap', '前情提要', recapBody)}
+    ${allCollapsed ? '' : card('scene', '眼前场景', sceneBody, sc.where || '')}
+    ${allCollapsed ? '' : missingNote}
+  </div>`
+}
+
 function deduceEngineHtml() {
   const engine = state.deduce.engine
   const data = engine.data
@@ -7686,16 +7756,43 @@ function deduceEngineHtml() {
     命运: '这一骰决定走向',
     戏剧: '模型提的另一种可能'
   }
+  /**
+   * OS-79：候选「人物化」——引擎给的是「2d6=6+2=8 顺遂」这种骰子话，
+   * 玩家看不懂要做什么。这里翻译成人话行动选项：
+   *   标题＝你打算做什么（行动）
+   *   副标＝这么做的后果预期
+   *   骰子信息收进 roll 小字（想查的能查，不挡视线）
+   */
   const describeCandidate = (candidate) => {
     const trace = candidate.trace
+    const hook = card.hook && card.hook !== '……' ? text(card.hook) : ''
     if (candidate.source === '命运' && trace && Number.isFinite(trace.sum)) {
-      const outcome = trace.success ? '顺遂' : '受阻'
-      const flavor = trace.success
-        ? '事情按预想推进——这一拍没人拦住'
-        : '被什么挡了一下——要处理代价或换路'
-      return { title: `命运检定：${trace.a}+${trace.b}=${trace.sum} ${outcome}`, sub: flavor, roll: `${trace.a}＋${trace.b}＝${trace.sum}` }
+      const ok = trace.success
+      // 成功＝「顺着眼前的事往下走」；失败＝「硬来，得付代价」
+      return {
+        title: ok ? '顺着眼前的事往下走' : '硬闯一次',
+        sub: ok
+          ? '局面顺着你的意思推进——这一拍没有人拦'
+          : '会碰上阻力——事后得收拾代价，或换条路',
+        roll: `${trace.a}＋${trace.b}＝${trace.sum} ${ok ? '顺遂' : '受阻'}`
+      }
     }
-    return { title: candidate.text || '（空候选）', sub: '', roll: '' }
+    if (candidate.source === '必然') {
+      const fact = text(candidate.text).replace(/^剧情检定[^：]*：/u, '').trim()
+      return {
+        title: fact || '按世界的规矩来',
+        sub: '世界事实推出来的走向——不这么做也会发生',
+        roll: ''
+      }
+    }
+    if (candidate.source === '戏剧') {
+      return {
+        title: text(candidate.text) || '换个意外的走向',
+        sub: '另一种可能——需要模型参与',
+        roll: ''
+      }
+    }
+    return { title: candidate.text || '（空候选）', sub: hook ? `牵动：${hook}` : '', roll: '' }
   }
 
   /* —— 文游舞台（OS-61 P4）：场景立绘＋对话框打字机＋人物头像列＋宽按钮选项 —— */
@@ -7767,7 +7864,7 @@ function deduceEngineHtml() {
     const info = describeCandidate(candidate)
     return `<div class="ded-opt-row src-${kind}">
       <button class="ded-opt" data-action="deduce-engine-choose" data-candidate-id="${esc(candidate.id)}"${engine.turnBusy ? ' disabled' : ''}>
-        <span class="ded-opt-head"><span class="ded-badge">${esc(sourceText[candidate.source] || candidate.source || '候选')}</span><span class="ded-cand-note">${esc(sourceNote[candidate.source] || '')}</span></span>
+        <span class="ded-opt-head"><span class="ded-badge">${esc(sourceText[candidate.source] || candidate.source || '候选')}</span><span class="ded-cand-note">${esc(sourceNote[candidate.source] || '')}</span>${info.roll ? `<span class="ded-opt-roll">${esc(info.roll)}</span>` : ''}</span>
         <span class="ded-opt-title">${esc(info.title)}</span>
         ${info.sub ? `<span class="ded-opt-sub">${esc(info.sub)}</span>` : ''}
         ${candidate.refs && candidate.refs.length ? `<span class="ded-opt-refs">引用：${esc(candidate.refs.join('、'))}</span>` : ''}
@@ -7802,7 +7899,10 @@ function deduceEngineHtml() {
 
   // 舞台（OS-70）：唯一主面——场景铺满、左侧局面/前线/事实包浮层卡、右侧头像、
   // 底部对话框（草稿唯一面）、右上设置弹层。舞台之下不再有任何割裂的详情区。
-  const infoPanel = `<div class="ded-stage-info"${engine.infoOpen === false ? ' hidden' : ''}>
+  // OS-79：有叙事开场时，局面/事实包默认收起（两者同位置，避免叠在一起）；
+  // 点顶栏「局面」才切过去看细节。
+  const infoDefaultHidden = Boolean(data.narrative) && engine.infoOpen !== true
+  const infoPanel = `<div class="ded-stage-info"${infoDefaultHidden ? ' hidden' : ''}>
       ${sceneHtml}
       ${frontsHtml}
       ${dedPackHtml()}
@@ -7811,9 +7911,16 @@ function deduceEngineHtml() {
       <div class="ded-set-head">推演设置<span class="sub">POV / 种子 / 推进</span></div>
       ${controls}
     </div>`
+  /* —— OS-79：galgame 开场上下文——我是谁 / 前情 / 我看见什么 ——
+   * 作者口径：现在的推演是「裸跑团」——给了局面但没告诉玩家身处什么故事、扮演谁、该做什么。
+   * 这三块从 narrative（deduceNarrative.mjs 构建）来，缺什么如实说缺，不伪造。 */
+  const narrative = data.narrative || null
+  const galgameIntro = narrative ? deduceIntroHtml(narrative, data) : ''
+
   const stageHtml = `<div class="ded-stage ded-stage-tall">
       ${sceneVisual}
       ${stageTop}
+      ${galgameIntro}
       <div class="ded-stage-side">${avatarsHtml}</div>
       ${infoPanel}
       ${setPanel}
@@ -8829,6 +8936,20 @@ document.addEventListener('click', (event) => {
     generateReferenceImage()
   } else if (action === 'deduce-image') {
     deduceImageFlow()
+  } else if (action === 'gg-toggle-all') {
+    const engine = state.deduce.engine
+    const cur = engine.introOpen || {}
+    const allCollapsed = Object.values(cur).every((v) => v === false)
+    engine.introOpen = allCollapsed
+      ? { identity: true, recap: false, scene: true }
+      : { identity: false, recap: false, scene: false }
+    render()
+  } else if (action === 'gg-toggle') {
+    const engine = state.deduce.engine
+    const key = target.dataset.ggKey
+    engine.introOpen = engine.introOpen || {}
+    engine.introOpen[key] = engine.introOpen[key] === false
+    render()
   } else if (action === 'deduce-info-toggle') {
     const engine = state.deduce.engine
     engine.infoOpen = engine.infoOpen === false

@@ -15,6 +15,7 @@ import { openDeduceSession } from './core/pinax/next/fact/usecases/deduce/openin
 import { presentTurn, applyDirectorAction } from './core/pinax/next/fact/usecases/deduce/turn.js'
 import { settleChoice } from './core/pinax/next/fact/usecases/deduce/settle.js'
 import { createFactFileStore } from './core/pinax/next/kernel/factFileStore.mjs'
+import { buildNarrativeContext, readWikiSafe } from './deduceNarrative.mjs'
 
 function text(value) {
   return String(value ?? '')
@@ -80,6 +81,13 @@ export async function deducePresent({ root, bookId = 'default', pov = '', seed =
   if (peek) {
     if (!state) return { ok: false, code: 'NO_DEDUCE_SESSION', message: '这个库还没有推演会话' }
     const last = state.lastTurn || null
+    const pov = text(state.pov || (last?.sceneCard?.who ?? [])[0] || '').trim()
+    // OS-79：peek 也带叙事上下文（前情/身份/场景）——进页面就能看到「我是谁、前面发生了什么」
+    const wiki = readWikiSafe(root, bookId)
+    const narrative = buildNarrativeContext({
+      entries, wiki, session: state, sceneCard: last?.sceneCard ?? null, pov,
+      currentChapter: Number(state.chapter) || 1
+    })
     return {
       ok: true,
       peek: true,
@@ -91,6 +99,8 @@ export async function deducePresent({ root, bookId = 'default', pov = '', seed =
       tension: last?.tension ?? null,
       fronts: summarizeFronts(state.fronts),
       budget: { used: state.aiSpent ?? 0, max: state.budgetMax ?? 8 },
+      pov,
+      narrative,
       characters: entries
         .filter((entry) => text(entry?.layer).trim().toLowerCase() === 'character')
         .map((entry) => text(entry?.name).trim())
@@ -132,6 +142,13 @@ export async function deducePresent({ root, bookId = 'default', pov = '', seed =
     tension: turn.tension ?? null
   }
   await saveState(root, bookId, state)
+  // OS-79：present 也带叙事上下文（与 peek 同结构），开局那一次就能看到「我是谁/前情/场景」
+  const presentPov = text(state.pov || (turn.sceneCard?.who ?? [])[0] || '').trim()
+  const presentWiki = readWikiSafe(root, bookId)
+  const presentNarrative = buildNarrativeContext({
+    entries, wiki: presentWiki, session: state, sceneCard: turn.sceneCard ?? null, pov: presentPov,
+    currentChapter: Number(state.chapter) || 1
+  })
   return {
     ok: true,
     bookId,
@@ -148,6 +165,8 @@ export async function deducePresent({ root, bookId = 'default', pov = '', seed =
     tension: turn.tension ?? null,
     fronts: summarizeFronts(state.fronts),
     budget: { used: state.aiSpent ?? 0, max: state.budgetMax ?? 8 },
+    pov: presentPov,
+    narrative: presentNarrative,
     // POV 候选（OS-54）：条目页签剔除后，角色名单由 present 响应直接带——
     // 前端 datalist 不再依赖 /api/entries 侧通道
     characters: entries
