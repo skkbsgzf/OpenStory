@@ -77,6 +77,10 @@ npm test           # node --test（221 例，零外部依赖）
 
 OpenStory 自 [Pinax-next](https://github.com/skkbsgzf/Pinax-StoryHarness) 的 openstory/ 线独立而来（2026-11-14 起，OS-1→OS-70 批次逐批交付）；底座模块逐字 vendor 自同仓（见 [core/VENDORED.md](./core/VENDORED.md)），后续按底座抽取路线升格为独立包。设计对标 OpenDesign（dsHarness 生态）的插件接入与用户体验口径。
 
+## 发布规范
+
+推送前必过「协议干净 / demo 干净 / 人机双读」检查单——见 [PUBLISHING.md](./PUBLISHING.md)（高优先级规范，优先级仅次于 AGENTS.md 硬规则）。
+
 ## 版本
 
 - **v0.1.0**（2026-11-19）：首个对外版本。工作台全量（参考图谱/实时编辑/推演文游舞台/Agent 选择链/题材风格货架/习惯闭环/MCP server），64 端点契约，221 例测试。路线图见 [docs/plan/](./docs/plan/)。
