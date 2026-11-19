@@ -1586,6 +1586,63 @@ function readLegacyDeduceState(root, bookId) {
     return sendJson(res, 200, { ok: true, ...graph })
   }
 
+  if (endpointId === 'factEntriesImport') {
+    // OS-78：剧本/外部数据 → 拆解条目。走内核 writeFactFile 的唯一写入口
+    // （原子写 + revision 自增 + operationId 幂等 + 写前重读复核）。
+    const authorized = authorizeRoot(allowlist, request.root)
+    if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
+    const bookId = text(request.bookId).trim()
+    if (!bookId) return sendError(res, API_ERROR_CODES.INVALID_ENTRY, 'bookId 必填')
+    const entries = Array.isArray(request.entries) ? request.entries : null
+    if (!entries || !entries.length) return sendError(res, API_ERROR_CODES.INVALID_ENTRY, 'entries 必须是非空数组')
+    // operationId：调用方没给就由 daemon 生成（来源前缀 + bookId + 时间），满足内核幂等键要求
+    const operationId = text(request.operationId).trim() || `screenplay-import-${bookId}-${Date.now().toString(36)}`
+    const { writeFactFile } = await import('./core/pinax/next/kernel/factFileStore.mjs')
+    // 已存在就带 expectedRevision 走乐观并发（避免覆盖别人刚写的）
+    let expectedRevision = null
+    try {
+      const documentPath = join(authorized.root, '拆解', `${bookId}.json`)
+      if (existsSync(documentPath)) {
+        const existing = JSON.parse(await readFile(documentPath, 'utf-8'))
+        const rev = Number(existing?.revision)
+        if (Number.isSafeInteger(rev) && rev >= 1) expectedRevision = rev
+      }
+    } catch { /* 读不到就当新建 */ }
+    // 书元数据：写进 patch 的 book 字段（内核要求 patch 顶层浅合并）
+    const patch = {
+      book: { id: bookId, title: text(request.title).trim() || bookId },
+      entries
+    }
+    const written = await writeFactFile({
+      root: authorized.root,
+      bookId,
+      patch,
+      operationId,
+      ...(expectedRevision !== null ? { expectedRevision } : {})
+    })
+    if (!written.ok) return sendError(res, written.code ?? API_ERROR_CODES.WRITE_PROTOCOL_IO_FAILED, written.message ?? '写入拆解失败', written.details)
+    // 兄弟 wiki 文件（章摘要/角色档/伏笔）——与 fact 主档一起落
+    const wiki = request.wiki
+    if (wiki && typeof wiki === 'object') {
+      try {
+        const wikiPath = join(authorized.root, '拆解', `${bookId}.wiki.json`)
+        const tmpWiki = `${wikiPath}.tmp-${Date.now()}`
+        await writeFile(tmpWiki, JSON.stringify({
+          derivedFrom: { factRevision: Number(written.revision) || 1, schema: 'pinax-wiki-derived@1' },
+          ...wiki
+        }, null, 2), 'utf-8')
+        await rename(tmpWiki, wikiPath)
+      } catch { /* wiki 写失败不影响 fact 主档 */ }
+    }
+    return sendJson(res, 200, {
+      ok: true,
+      bookId,
+      entries: entries.length,
+      ...(Number(written.revision) ? { revision: Number(written.revision) } : {}),
+      ...(written.backup ? { backup: written.backup } : {})
+    })
+  }
+
   if (endpointId === 'visionDescribe') {
     // OS-76：识图走 DSH 子 agent（不是 LLM API）——DSH 有内置 read_image 工具，
     // 子 agent 用「设置里指定的 vision 模型」读图，按预设提示词写文学白描。

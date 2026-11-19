@@ -347,6 +347,25 @@ export const ENDPOINTS = Object.freeze({
     response: { ok: 'true', note: 'object', backlinks: 'object' },
     errors: ['NO_LIBRARY', 'PATH_ESCAPE', 'INVALID_ENTRY', 'NOT_FOUND']
   },
+  factEntriesImport: {
+    method: 'POST',
+    path: '/api/fact/entries/import',
+    // 剧本/外部数据 → 拆解条目（OS-78 首次开放 fact 写通道）。
+    // 走内核 writeFactFile 的 patch.entries 整份替换（原子写＋revision 自增＋operationId 幂等）。
+    // 同时写兄弟 wiki 文件（章摘要/角色档/伏笔）。
+    request: {
+      body: {
+        root: 'string',
+        bookId: 'string',
+        title: 'string?',
+        entries: 'array',
+        wiki: 'object?',
+        operationId: 'string?'
+      }
+    },
+    response: { ok: 'true', bookId: 'string', entries: 'number', revision: 'number?', backup: 'string?' },
+    errors: ['NO_LIBRARY', 'INVALID_ENTRY', 'WRITE_PROTOCOL_IO_FAILED']
+  },
   visionDescribe: {
     method: 'POST',
     path: '/api/vision/describe',
