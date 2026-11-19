@@ -120,8 +120,10 @@ loadAnalysis().catch(() => {})
 let scriptModulePromise = null
 function loadScriptModule() {
   if (!scriptModulePromise) {
-    scriptModulePromise = import('./script.mjs').then((mod) => {
+    scriptModulePromise = Promise.all([import('./script.mjs'), import('./scriptFormat.mjs'), import('./scriptFact.mjs')]).then(([mod, fmt, fact]) => {
       state.scriptModule = mod
+      state.scriptFormat = fmt
+      state.scriptFact = fact
       if (state.view === 'dir:剧本') render()
       return mod
     }).catch(() => null)
@@ -569,7 +571,12 @@ async function commitScriptBlock(blockEl) {
   const nextBlock = scriptBlockToRaw(blockEl)
   const currentRaw = blockEl.dataset.raw ?? ''
   if (nextBlock === currentRaw) return
-  const next = work.text.slice(0, start) + nextBlock + work.text.slice(end)
+  let next = work.text.slice(0, start) + nextBlock + work.text.slice(end)
+  // OS-78：自动排版——保存时把整篇规范化（幂等；已规范的行不动）
+  if (scriptPrefs().autoFormat && state.scriptFormat?.normalizeScript) {
+    const formatted = state.scriptFormat.normalizeScript(next)
+    if (formatted.changes.length) next = formatted.text
+  }
   work.text = next
   blockEl.dataset.raw = nextBlock
   setAutosaveChip('保存中…')
@@ -2955,6 +2962,7 @@ const SETTINGS_SECTIONS = Object.freeze([
   { id: 'plugins', label: '插件', hint: '套件与 Agent 运行时' },
   { id: 'models', label: '模型', hint: '对话 / 生图 / 识图' },
   { id: 'appearance', label: '风格', hint: '皮肤包切换' },
+  { id: 'script', label: '剧本', hint: '自动排版与角色配色' },
   { id: 'modules', label: '工作台模块', hint: '左栏与右栏的分析模块插拔' },
   { id: 'discover', label: '发现与导入', hint: '货架路径与导入稿件' },
   { id: 'data', label: '数据与目录', hint: '库清单与配置位置' },
@@ -2978,6 +2986,205 @@ const WORKBENCH_MODULES = Object.freeze([
 ])
 
 /** 工作台模块插拔（设置页）。 */
+/* ---------- 设置 · 剧本（OS-78）：自动排版与角色配色 ---------- */
+
+/**
+ * 剧本设置项（per-library localStorage，与 hiddenTabs 同 pattern）：
+ *   autoFormat   —— 自动排版（自由文本 → 规范剧本格式）
+ *   castColors   —— 角色专属颜色
+ */
+function scriptPrefs() {
+  const root = state.current?.path || ''
+  const key = `openstory-script-prefs::${root}`
+  try {
+    const raw = JSON.parse(localStorage.getItem(key) || '{}')
+    return {
+      autoFormat: raw.autoFormat !== false,   // 默认开
+      castColors: raw.castColors !== false    // 默认开
+    }
+  } catch {
+    return { autoFormat: true, castColors: true }
+  }
+}
+
+function setScriptPref(name, value) {
+  const root = state.current?.path || ''
+  const key = `openstory-script-prefs::${root}`
+  const next = { ...scriptPrefs(), [name]: value }
+  try { localStorage.setItem(key, JSON.stringify(next)) } catch { /* 存不下就只影响本次 */ }
+  return next
+}
+
+/** 剧本设置弹层（OS-78）：右上「…」打开——自动排版开关 / 角色配色开关 / 剧本↔fact 互转。 */
+function openScriptSettingsModal() {
+  const prefs = scriptPrefs()
+  openModal(`<h3>剧本设置</h3>
+    <p class="sub">这些设置按库保存；自动排版只影响保存时的规范化，不改你输入的原文。</p>
+
+    <div class="field">
+      <label class="cfg-switch">
+        <input type="checkbox" id="sm-autoformat"${prefs.autoFormat ? ' checked' : ''}>
+        <span>自动排版（自由文本 → 规范剧本格式）</span>
+      </label>
+      <span class="cfg-note">「洪信：你来了」→「**洪信**：你来了」；「【场景】山道」→「*〔场景：山道〕*」。已规范的行不会被二次包装。</span>
+    </div>
+
+    <div class="field">
+      <label class="cfg-switch">
+        <input type="checkbox" id="sm-castcolors"${prefs.castColors ? ' checked' : ''}>
+        <span>角色专属颜色</span>
+      </label>
+      <span class="cfg-note">按角色名稳定生成，同名角色在任何库都同色。</span>
+    </div>
+
+    <hr>
+
+    <div class="field">
+      <label>与数据互转</label>
+      <div class="row">
+        <button class="btn-ghost" data-action="script-to-fact">剧本 → 拆解条目</button>
+        <button class="btn-ghost" data-action="fact-to-script">拆解条目 → 剧本</button>
+      </div>
+      <span class="cfg-note">「剧本 → 拆解」把幕/角色/场景抽成 fact 条目（写入 拆解/）；「拆解 → 剧本」按 fact 反向渲染成剧本文本。</span>
+    </div>
+
+    <div class="ded-image-ops">
+      <button class="btn-ghost" data-action="close-modal">取消</button>
+      <button class="btn-primary" data-action="script-pref-save-modal">保存</button>
+    </div>
+    <div class="err" id="sm-err"></div>`)
+}
+
+/** 剧本↔fact 互转（弹层按钮触发）——方向 A：剧本 → 拆解条目。 */
+async function scriptToFactFlow() {
+  const work = dirWork('剧本')
+  if (!work?.text) return
+  const mod = state.scriptFormat
+  const sf = state.scriptFact
+  if (!mod?.normalizeScript || !sf?.scriptToFact) { alert('互转模块还没加载，稍后再试'); return }
+  const errEl = document.getElementById('sm-err')
+  try {
+    const normalized = mod.normalizeScript(work.text).text
+    const { entries, wiki, stats } = await sf.scriptToFact(normalized, { bookId: 'screenplay', domain: '舞台剧' })
+    const bookId = text(work.file || 'screenplay').split('/').pop().replace(/\.md$/u, '') || 'screenplay'
+    const payload = await api('/api/fact/entries/import', {
+      method: 'POST',
+      body: JSON.stringify({
+        root: state.current.path,
+        bookId,
+        title: state.current.name,
+        entries,
+        wiki
+      })
+    })
+    closeModal()
+    state.reference.flash = `已转成 ${payload.entries} 条拆解条目（${bookId}）——去「故事源」看`
+    render()
+  } catch (error) {
+    if (errEl) errEl.textContent = `转失败：${text(error?.message || error)}`
+  }
+}
+
+/** 方向 B：拆解条目 → 剧本。 */
+async function factToScriptFlow() {
+  const sf = state.scriptFact
+  if (!sf?.factToScript) { alert('互转模块还没加载，稍后再试'); return }
+  const errEl = document.getElementById('sm-err')
+  try {
+    const bookId = text(dirWork('剧本').file || '').split('/').pop().replace(/\.md$/u, '') || 'screenplay'
+    const payload = await api(`/api/fact/entries?root=${encodeURIComponent(state.current.path)}&bookId=${encodeURIComponent(bookId)}&limit=500`)
+    if (!payload.ok) throw new Error(payload.error?.message || '读条目失败')
+    const { text: scriptText, stats } = sf.factToScript(payload.entries, payload.wiki)
+    if (!scriptText.trim()) { if (errEl) errEl.textContent = '这部书还没有可用的拆解条目'; return }
+    const work = dirWork('剧本')
+    work.text = scriptText
+    await api('/api/chapter', {
+      method: 'PUT',
+      body: JSON.stringify({ root: state.current.path, file: work.file, text: scriptText })
+    })
+    closeModal()
+    render()
+  } catch (error) {
+    if (errEl) errEl.textContent = `转失败：${text(error?.message || error)}`
+  }
+}
+
+function settingsScriptSectionHtml() {
+  if (!state.current) {
+    return `<div class="step"><h3>剧本</h3><p class="sub">剧本设置是「按库」的——先选一个库。</p></div>`
+  }
+  const prefs = scriptPrefs()
+  const isScriptLib = (state.current.kind || '').includes('script') || (state.libDirs || []).includes('剧本')
+  return `
+    <div class="cfg-card">
+      <div class="cfg-head"><h3>自动排版</h3><span class="cfg-note">把自由输入转成规范剧本格式</span></div>
+      <div class="field">
+        <label class="cfg-switch">
+          <input type="checkbox" id="sc-pref-autoformat"${prefs.autoFormat ? ' checked' : ''}>
+          <span>启用自动排版（保存时自动规范化）</span>
+        </label>
+      </div>
+      <div class="sc-rule-list">
+        <div class="sc-rule"><code>洪信：你来了。</code><span>→</span><code>**洪信**：你来了。</code></div>
+        <div class="sc-rule"><code>洪信（压低声音）：…</code><span>→</span><code>**洪信**（压低声音）：…</code></div>
+        <div class="sc-rule"><code>【场景】山道</code><span>→</span><code>*〔场景：山道〕*</code></div>
+        <div class="sc-rule"><code>（幕落）</code><span>→</span><code>*〔幕落〕*</code></div>
+        <div class="sc-rule"><code>第一幕：雨前</code><span>→</span><code># 第一幕：雨前</code></div>
+      </div>
+      <span class="cfg-note">已是规范格式的行不会被二次包装（幂等）；不确定的行保持原样（保守）。</span>
+    </div>
+
+    <div class="cfg-card">
+      <div class="cfg-head"><h3>角色配色</h3><span class="cfg-note">每个角色一个专属色</span></div>
+      <div class="field">
+        <label class="cfg-switch">
+          <input type="checkbox" id="sc-pref-castcolors"${prefs.castColors ? ' checked' : ''}>
+          <span>给不同角色不同颜色（按名字稳定生成，换个库也一致）</span>
+        </label>
+      </div>
+      <div class="sc-cast-preview">${castColorPreviewHtml()}</div>
+      <span class="cfg-note">颜色由角色名 hash 到固定色相（HSL 42% 饱和度、深色文字），不用手工维护。</span>
+    </div>
+
+    ${isScriptLib ? '' : '<div class="cfg-note" style="padding:8px 0">提示：当前库不是剧本载体，这里的设置会在打开剧本页时生效。</div>'}
+
+    <div class="row">
+      <button class="btn-primary" data-action="script-pref-save">保存剧本设置</button>
+      <span class="cfg-note" id="sc-pref-note"></span>
+    </div>`
+}
+
+/** 角色配色预览：从当前剧本抽取角色，各显示一个色块。 */
+function castColorPreviewHtml() {
+  const work = dirWork('剧本')
+  const mod = state.scriptModule
+  if (!mod?.splitScriptBlocks || !work?.text) return '<span class="cfg-note">当前库没有剧本——打开剧本页后这里会显示角色配色预览。</span>'
+  const cast = [...new Set(mod.splitScriptBlocks(work.text).filter((b) => b.kind === 'line' && b.who).map((b) => b.who))]
+  if (!cast.length) return '<span class="cfg-note">剧本里还没有角色台词。</span>'
+  return cast.slice(0, 12).map((name) => {
+    const c = castColorOf(name)
+    return `<span class="cast-chip" style="background:${c.bg};color:${c.fg}">${esc(name)}</span>`
+  }).join('')
+}
+
+/**
+ * 角色专属色：名字 hash → 稳定色相。
+ * 不用随机、不用手写清单——同名角色在任何库、任何会话都同色。
+ * 色相步进 47°（与 360 互质附近），相邻名字不撞色；饱和度固定，保证深浅一致。
+ */
+function castColorOf(name) {
+  const s = text(name)
+  let h = 0
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.codePointAt(i)) % 360
+  const hue = (h * 47) % 360
+  return {
+    hue,
+    bg: `hsl(${hue} 62% 92%)`,
+    fg: `hsl(${hue} 58% 28%)`,
+    bar: `hsl(${hue} 55% 62%)`
+  }
+}
+
 function settingsModulesSectionHtml() {
   const hidden = hiddenModules()
   const groups = ['左栏', '右栏']
@@ -3559,6 +3766,7 @@ function settingsHtml() {
   const sectionRenderers = {
     plugins: settingsPluginsSectionHtml,
     models: settingsModelsSectionHtml,
+    script: settingsScriptSectionHtml,
     modules: settingsModulesSectionHtml,
     suites: suitesSectionHtml,
     suite: () => suiteDetailHtml(state.settings.suiteId),
@@ -6807,10 +7015,20 @@ function scriptViewHtml() {
         <span class="docline-sep">·</span>
         ${meta}
         <span class="sp"></span>
-        ${work.savedAt ? `<span class="saved-chip">已保存 · ${esc(formatAt(work.savedAt))}</span>` : '<span class="doc-autosave" id="doc-autosave"></span>'}
+        <span class="doc-autosave" id="doc-autosave"></span>
+        <button class="doc-drawer-btn" data-action="refcol-toggle" title="左侧栏（文件/人物/图谱）" aria-label="左侧栏">
+          <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><rect x="2.5" y="2.5" width="11" height="11" rx="1.6" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M2.5 6h11M2.5 10h11" stroke="currentColor" stroke-width="1.4"/></svg>
+        </button>
+        <button class="doc-drawer-btn" data-action="analyze-toggle" title="分析本剧" aria-label="分析">
+          <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><circle cx="8" cy="8" r="5.4" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M8 2.6A5.4 5.4 0 0 1 13.4 8H8z" fill="currentColor"/></svg>
+        </button>
+        <button class="doc-icon" data-action="script-more" title="剧本设置（自动排版 / 角色配色 / 互转）" aria-label="剧本设置">
+          <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><circle cx="3.4" cy="8" r="1.35" fill="currentColor"/><circle cx="8" cy="8" r="1.35" fill="currentColor"/><circle cx="12.6" cy="8" r="1.35" fill="currentColor"/></svg>
+        </button>
       </div>
       <div class="doc-title-row">
         <h1 class="doc-title">${esc(work.file ? work.file.split('/').pop().replace(/\.md$/u, '') : label)}</h1>
+        ${work.savedAt ? `<span class="saved-chip">已保存 · ${esc(formatAt(work.savedAt))}</span>` : ''}
       </div>
     </header>
     <div class="chapter-grid">
@@ -6835,6 +7053,13 @@ function scriptViewHtml() {
   </div>`
 }
 
+/** 角色专属色（OS-78）：跟随「设置 · 剧本 · 角色配色」开关。关掉＝纯墨色。 */
+function castColorStyle(who) {
+  if (!scriptPrefs().castColors) return ''
+  const c = castColorOf(who)
+  return `--sc-cast-bg:${c.bg};--sc-cast-fg:${c.fg};--sc-cast-bar:${c.bar}`
+}
+
 /** 剧本逐块渲染（与 renderDocBody 同构：doc-line + doc-block + 源码偏移）。
  * 唯一区别是块内容按剧本版式渲染，而不是 markdown。 */
 function renderScriptDocBody(source) {
@@ -6844,7 +7069,7 @@ function renderScriptDocBody(source) {
   if (!blocks.length) return `<div class="doc-paper"><div class="sc-empty">还没有内容——写第一幕吧。</div></div>`
   const parts = blocks.map((block) => `<div class="doc-line" data-line="${block.index}">
       <button class="doc-gutter" data-action="gutter-jump" data-block-index="${block.index}" title="第 ${block.index + 1} 块" aria-label="第 ${block.index + 1} 块"></button>
-      <div class="doc-block sc-block" contenteditable="true" spellcheck="false" data-block="${block.index}" data-start="${block.start}" data-end="${block.end}" data-raw="${esc(block.raw)}">${mod.renderScriptBlock(block)}</div>
+      <div class="doc-block sc-block" contenteditable="true" spellcheck="false" data-block="${block.index}" data-start="${block.start}" data-end="${block.end}" data-raw="${esc(block.raw)}"${block.kind === 'line' ? ` style="${castColorStyle(block.who)}"` : ''}>${mod.renderScriptBlock(block)}</div>
     </div>`)
   return `<div class="doc-paper sc-doc" id="doc-reader">${parts.join('')}</div>`
 }
@@ -8494,6 +8719,27 @@ document.addEventListener('click', (event) => {
     rejectCard(target.dataset.cardId)
   } else if (action === 'agent-config-save') {
     saveAgentSettings()
+  } else if (action === 'script-more') {
+    openScriptSettingsModal()
+  } else if (action === 'script-pref-save-modal') {
+    const autoFormat = document.getElementById('sm-autoformat')?.checked === true
+    const castColors = document.getElementById('sm-castcolors')?.checked === true
+    setScriptPref('autoFormat', autoFormat)
+    setScriptPref('castColors', castColors)
+    closeModal()
+    if (state.view === 'dir:剧本') render()
+  } else if (action === 'script-to-fact') {
+    scriptToFactFlow()
+  } else if (action === 'fact-to-script') {
+    factToScriptFlow()
+  } else if (action === 'script-pref-save') {
+    const autoFormat = document.getElementById('sc-pref-autoformat')?.checked === true
+    const castColors = document.getElementById('sc-pref-castcolors')?.checked === true
+    setScriptPref('autoFormat', autoFormat)
+    setScriptPref('castColors', castColors)
+    const note = document.getElementById('sc-pref-note')
+    if (note) note.textContent = '已保存（本库生效）'
+    if (state.view === 'dir:剧本') render()
   } else if (action === 'config-save') {
     saveConfigBlock(target.dataset.block)
   } else if (action === 'config-probe') {
