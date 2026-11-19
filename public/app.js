@@ -54,6 +54,7 @@ const state = {
   write: { chapters: [], listLoading: false, mode: 'read', docPrefs: null },
   sel: { text: '', blockIndex: -1, rect: null, busy: false, preview: null, para: -1 },
   scriptModule: null,
+  jobs: { list: [], active: 0, open: false, loading: false, pollTimer: null },
   analyze: { open: false, result: null, busy: false, dismissed: {}, activePara: -1, expandOthers: false, fact: null, factRoot: '', factTab: 'emotion', modOpen: {},
     enabled: [], enabledRoot: '', pickerOpen: false, work: {}, workRoot: '', workLoaded: false, workLoading: false },
   deduce: { premise: '', variables: '', question: '', sessionId: '', streaming: false, reply: '', controller: null, error: '',
@@ -228,9 +229,115 @@ function rememberError(error) {
   state.loading = false
 }
 
+/* ---------- 全局后台任务中心（OS-80）----------
+ * 作者口径：所有插件的长任务（生图/识图/enrich/导入）都该在一个地方看到进度，
+ * 切走页面回来不丢状态。这里是一个悬浮球 + 可展开面板，跨模块共用。
+ */
+const JOB_KIND_LABEL = { image: '生图', vision: '识图', enrich: '语义富化', import: '导入', screenplay: '剧本' }
+const JOB_STATE_LABEL = { queued: '排队', running: '进行中', done: '完成', failed: '失败', cancelled: '已取消' }
+
+/** 确保轮询在跑（有活跃任务时 3s 一次，全静默时 15s 一次）。 */
+function ensureJobsPolling() {
+  const jobs = state.jobs
+  if (jobs.pollTimer) return
+  const tick = async () => {
+    jobs.pollTimer = null
+    try {
+      const payload = await api('/api/jobs?limit=30')
+      if (payload?.ok) {
+        const prev = jobs.list || []
+        jobs.list = payload.jobs || []
+        jobs.active = payload.active || 0
+        renderJobBall()
+        // OS-80：生图任务完成 → 自动重载对应笔记（图墙读 frontmatter.images）
+        for (const job of jobs.list) {
+          if (job.state !== 'done') continue
+          const prevSame = prev.find((p) => p.id === job.id)
+          if (prevSame?.state === 'done') continue
+          const wait = jobs.waitingNotes?.[job.id]
+          if (!wait) continue
+          delete jobs.waitingNotes[job.id]
+          if (state.current?.path === wait.root && state.reference?.activePath === wait.path) {
+            openReference(wait.path).catch(() => null)
+          }
+        }
+      }
+    } catch { /* 轮询失败静默 */ }
+    const interval = state.jobs.active > 0 ? 3000 : 15000
+    state.jobs.pollTimer = setTimeout(tick, interval)
+  }
+  state.jobs.pollTimer = setTimeout(tick, 800)
+}
+
+/** 执行一个动作后刷新任务列表（取消/清空共用）。 */
+function refreshJobsAfter(action) {
+  Promise.resolve()
+    .then(() => action())
+    .catch(() => null)
+    .then(() => new Promise((r) => setTimeout(r, 350)))
+    .then(() => api('/api/jobs?limit=30'))
+    .then((payload) => {
+      if (payload?.ok) {
+        state.jobs.list = payload.jobs || []
+        state.jobs.active = payload.active || 0
+      }
+    })
+    .catch(() => null)
+    .then(() => renderJobBall())
+}
+
+/** 悬浮球本体＋展开面板（挂到 body，不随页面重绘丢）。 */
+function renderJobBall() {
+  let host = document.getElementById('job-ball-host')
+  if (!host) {
+    host = document.createElement('div')
+    host.id = 'job-ball-host'
+    document.body.appendChild(host)
+  }
+  const jobs = state.jobs
+  const active = jobs.active || 0
+  const list = jobs.list || []
+  const hasAny = list.length > 0
+  if (!hasAny && !active) { host.innerHTML = ''; return }
+  const dot = active > 0 ? `<span class="jb-count">${active}</span>` : ''
+  const running = list.filter((j) => j.state === 'running' || j.state === 'queued')
+  const settled = list.filter((j) => ['done', 'failed', 'cancelled'].includes(j.state))
+  const row = (job) => {
+    const pct = job.state === 'running' ? '<span class="jb-spin"></span>' : job.state === 'done' ? '<span class="jb-ok">✓</span>' : job.state === 'failed' ? '<span class="jb-fail">✕</span>' : '<span class="jb-cancel">–</span>'
+    const lastMsg = job.progress?.length ? job.progress[job.progress.length - 1].message : ''
+    return `<div class="jb-row" data-job-id="${esc(job.id)}">
+      <div class="jb-row-head">
+        ${pct}
+        <span class="jb-kind">${esc(JOB_KIND_LABEL[job.kind] || job.kind)}</span>
+        <span class="jb-label">${esc(job.label)}</span>
+        <span class="jb-state ${esc(job.state)}">${esc(JOB_STATE_LABEL[job.state] || job.state)}</span>
+        ${['running', 'queued'].includes(job.state) ? `<button class="jb-x" data-action="job-cancel" data-job-id="${esc(job.id)}" title="取消">×</button>` : ''}
+      </div>
+      ${lastMsg ? `<div class="jb-msg">${esc(lastMsg)}</div>` : ''}
+      ${job.error ? `<div class="jb-err">${esc(job.error)}</div>` : ''}
+    </div>`
+  }
+  host.innerHTML = `<div class="job-ball-wrap${jobs.open ? ' open' : ''}">
+    <button class="job-ball${active > 0 ? ' busy' : ''}" data-action="job-ball-toggle" title="后台任务（${active} 进行中 / ${list.length} 总计）">
+      <span class="jb-ic">◱</span>${dot}
+    </button>
+    ${jobs.open ? `<div class="job-panel">
+      <div class="jb-head">
+        <b>后台任务</b><span class="jb-sub">${active} 进行中 · ${settled.length} 已结束</span>
+        <button class="jb-clear" data-action="job-clear" title="清空已结束">清空已完成</button>
+      </div>
+      <div class="jb-list">
+        ${running.length ? `<div class="jb-group">进行中</div>${running.map(row).join('')}` : '<div class="jb-empty">没有进行中的任务</div>'}
+        ${settled.length ? `<div class="jb-group">已结束</div>${settled.slice(0, 10).map(row).join('')}` : ''}
+      </div>
+    </div>` : ''}
+  </div>`
+}
+
 /* ---------- 渲染 ---------- */
 
 function render() {
+  ensureJobsPolling()
   const current = state.current
   const switchName = document.getElementById('lib-switch-name')
   if (switchName) switchName.textContent = current ? current.name : (state.libraries.length ? '选择库' : '还没有库')
@@ -4250,20 +4357,25 @@ async function generateReferenceImage() {
   const ref = state.reference
   const note = ref?.note
   if (!state.current || !note?.path) return
-  const btn = document.querySelector('[data-action="ref-gen-image"]')
-  if (btn) { btn.disabled = true; btn.textContent = '生成中…（ComfyUI 约 2–3 分钟）' }
+  const notePath = note.path
   try {
+    // OS-80：提交到后台任务中心，立刻返回——切走页面/换库都不影响它继续跑。
+    // 进度与完成在右下角悬浮球里看；完成后再回来看图墙（前端轮询发现 done 会自动重载笔记）。
     const payload = await api('/api/reference/image', {
       method: 'POST',
-      body: JSON.stringify({ root: state.current.path, path: note.path })
+      body: JSON.stringify({ root: state.current.path, path: notePath, async: true })
     })
-    ref.flash = `设定图已生成：${payload.imagePath}`
-    // 重载笔记拿新 frontmatter（图墙读 note.images）
-    await openReference(note.path)
+    ref.flash = `已提交后台生成（任务 ${payload.jobId}）——进度看右下角任务中心`
+    // 记录「这张图完成后要重载哪个笔记」，任务中心轮询到 done 时处理
+    state.jobs.waitingNotes = state.jobs.waitingNotes || {}
+    state.jobs.waitingNotes[payload.jobId] = { root: state.current.path, path: notePath }
+    // 立刻刷一次任务列表，让悬浮球出现
+    await new Promise((r) => setTimeout(r, 400))
+    const snap = await api('/api/jobs?limit=30').catch(() => null)
+    if (snap?.ok) { state.jobs.list = snap.jobs || []; state.jobs.active = snap.active || 0; renderJobBall() }
   } catch (error) {
     ref.flash = ''
     ref.error = text(error?.message || error)
-    if (btn) { btn.disabled = false; btn.textContent = '✦ 生成设定图' }
   }
   render()
 }
@@ -8936,6 +9048,16 @@ document.addEventListener('click', (event) => {
     generateReferenceImage()
   } else if (action === 'deduce-image') {
     deduceImageFlow()
+  } else if (action === 'job-ball-toggle') {
+    state.jobs.open = !state.jobs.open
+    renderJobBall()
+  } else if (action === 'job-cancel') {
+    const id = target.dataset.jobId
+    state.jobs.open = true
+    if (id) refreshJobsAfter(() => api('/api/jobs/cancel', { method: 'POST', body: JSON.stringify({ id }) }))
+    else renderJobBall()
+  } else if (action === 'job-clear') {
+    refreshJobsAfter(() => api('/api/jobs/clear', { method: 'POST', body: JSON.stringify({}) }))
   } else if (action === 'gg-toggle-all') {
     const engine = state.deduce.engine
     const cur = engine.introOpen || {}

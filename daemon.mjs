@@ -138,10 +138,15 @@ import {
 import { factHealth } from './factGuard.mjs'
 import { enrichBook, enrichGraph } from './enrichEngine.mjs'
 import { generateViaComfy, probeComfy } from './comfyEngine.mjs'
+import { activeCount, cancelJob, clearSettled, getJob, listJobs, submitJob } from './jobCenter.mjs'
 
 const enrichJobs = new Map()
 const HERE = dirname(fileURLToPath(import.meta.url))
 export const DEFAULT_PORT = 8807
+/** OS-80：当前监听的真实端口（port=0 时由系统分配）——handler 里要拼回环 URL 用。
+ * 由 startDaemon 的 listen 回调写，handler 读。 */
+let __currentPort = DEFAULT_PORT
+function currentPort() { return __currentPort }
 export const DEFAULT_PUBLIC_DIR = join(HERE, 'public')
 const MAX_JSON_BODY = 16 * 1024 * 1024
 const MAX_STATIC_BYTES = 8 * 1024 * 1024
@@ -816,6 +821,28 @@ async function handleApi(req, res, url, context) {
   // Agent 配置与风格包清单不碰库文件，不做 root 校验。
   if (endpointId === 'configGet') return handleConfigGet(res, context)
   if (endpointId === 'configPut') return handleConfigPut(res, request, context)
+  // OS-80：全局后台任务中心（跨插件共用）
+  if (endpointId === 'jobsGet') {
+    const root = text(request.root).trim()
+    const jobs = listJobs({
+      root,
+      kind: text(request.kind).trim(),
+      state: text(request.state).trim(),
+      limit: request.limit
+    })
+    return sendJson(res, 200, { ok: true, jobs, active: activeCount({ root }) })
+  }
+  if (endpointId === 'jobCancel') {
+    const id = text(request.id).trim()
+    if (!id) return sendError(res, API_ERROR_CODES.INVALID_ENTRY, 'id 必填')
+    const result = cancelJob(id)
+    if (!result.ok) return sendError(res, result.code ?? API_ERROR_CODES.NOT_FOUND, result.message)
+    return sendJson(res, 200, { ok: true })
+  }
+  if (endpointId === 'jobsClear') {
+    const result = clearSettled({ root: text(request.root).trim() })
+    return sendJson(res, 200, result)
+  }
   if (endpointId === 'configProbe') return handleConfigProbe(res, request, context)
   if (endpointId === 'agentConfigGet') return handleAgentConfigGet(res, context)
   if (endpointId === 'agentConfigPut') return handleAgentConfigPut(res, request, context)
@@ -1747,8 +1774,38 @@ function readLegacyDeduceState(root, bookId) {
   }
 
   if (endpointId === 'referenceImageGenerate') {
-    // OS-75：世界书条目生图——按条目名＋描述生成设定图，落条目旁 assets/，
-    // 并把相对路径回填进 frontmatter（cover + images）。写盘复用 chapter 的原子写＋备份。
+    // OS-80：生图改异步——先提交到全局任务中心（立刻返回 jobId），任务后台跑。
+    // 作者口径：「切走再回来不应丢状态」，进度要能跨页面看到。
+    // async:true 时走任务中心；不带 async 保留原同步行为（MCP / 兼容用）。
+    if (request.async === true) {
+      const authorized0 = authorizeRoot(allowlist, request.root)
+      if (!authorized0.ok) return sendError(res, authorized0.code, authorized0.message, authorized0.details)
+      const reqPath = text(request.path).trim()
+      const title = reqPath.split('/').pop().replace(/\.md$/u, '')
+      const port = context.port || DEFAULT_PORT
+      const job = submitJob({
+        kind: 'image',
+        label: `生成设定图：${title}`,
+        root: authorized0.root,
+        run: async ({ update, signal }) => {
+          update('正在生图（ComfyUI 约 2–3 分钟）…')
+          // 同进程回环调用同步端点：逻辑与 MCP/界面点「生成」完全一致，只有一份实现
+          const resp = await fetch(`http://127.0.0.1:${port}/api/reference/image`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ ...request, async: undefined }),
+            signal: signal ?? undefined
+          })
+          const payload = await resp.json().catch(() => null)
+          if (!resp.ok || payload?.ok === false) {
+            throw new Error(payload?.error?.message || `生图失败（HTTP ${resp.status}）`)
+          }
+          update(`已生成：${payload.imagePath}`)
+          return payload
+        }
+      })
+      return sendJson(res, 200, { ok: true, jobId: job.id, async: true })
+    }
     const authorized = authorizeRoot(allowlist, request.root)
     if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
     const requested = text(request.path).trim().replaceAll('\\', '/')
@@ -3703,7 +3760,7 @@ export function createOpenStoryHandler({
         return await serveSuiteAsset(req, res, resolvedSuitesDirs, decodeURIComponent(suiteId), decodeURIComponent(relPath))
       }
       if (url.pathname === '/api' || url.pathname.startsWith('/api/')) {
-        return await handleApi(req, res, url, { preferencesPath, extraRoots, defaultRoot, agentConfigPath: resolvedConfigPath, agentSessionsDir: resolvedSessionsDir, stylesDirs: resolvedStylesDirs, runtimesDirs: resolvedRuntimesDirs, suitesDirs: resolvedSuitesDirs, suiteStatePath: resolvedSuiteStatePath, genresDirs: resolvedGenresDirs, skillsDirs: resolvedSkillsDirs, env })
+        return await handleApi(req, res, url, { port: currentPort(), preferencesPath, extraRoots, defaultRoot, agentConfigPath: resolvedConfigPath, agentSessionsDir: resolvedSessionsDir, stylesDirs: resolvedStylesDirs, runtimesDirs: resolvedRuntimesDirs, suitesDirs: resolvedSuitesDirs, suiteStatePath: resolvedSuiteStatePath, genresDirs: resolvedGenresDirs, skillsDirs: resolvedSkillsDirs, env })
       }
       if (req.method !== 'GET' && req.method !== 'HEAD') {
         return sendError(res, API_ERROR_CODES.NOT_FOUND, `静态托管只支持 GET/HEAD：${req.method}`)
@@ -3762,6 +3819,7 @@ export function startDaemon({
     server.once('error', rejectPromise)
     server.listen(port, bindHost, () => {
       const actualPort = server.address().port
+      __currentPort = actualPort
       if (logger?.log) {
         logger.log(`OpenStory daemon → http://127.0.0.1:${actualPort}`)
         if (root) logger.log(`直接进入库：${resolve(root)}`)

@@ -805,6 +805,47 @@ html[data-doc-auto-gap="off"] .doc-block { margin-bottom: 0; }
 /* ── 设置 · 模型与能力（S4）：四张配置卡＋probe 徽标 ─────────────── */
 .cfg-card { border: 1px solid var(--line); border-radius: var(--radius-md); padding: 16px 18px; margin-bottom: 14px; background: var(--bg); }
 /* OS-74：生图后端切换的两个表单块（OpenAI 兼容 / ComfyUI），hidden 时不占位 */
+/* OS-80：全局后台任务中心悬浮球（右下角，跨插件共用）
+   作者口径：所有插件的长任务都该在一个地方看进度，切走页面不丢状态。 */
+#job-ball-host { position: fixed; right: 18px; bottom: 18px; z-index: 200; }
+.job-ball-wrap { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+.job-ball { position: relative; width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--bg); box-shadow: var(--shadow-float); border: 1px solid var(--hair); color: var(--ink-2); transition: transform .12s ease, box-shadow .12s ease; }
+.job-ball:hover { transform: translateY(-1px); box-shadow: 0 4px 16px rgba(var(--shadow-base), .16); }
+.job-ball.busy { border-color: var(--accent); color: var(--accent); }
+.jb-ic { font-size: 17px; line-height: 1; }
+.jb-count { position: absolute; top: -3px; right: -3px; min-width: 17px; height: 17px; padding: 0 4px; border-radius: var(--pill);
+  background: var(--accent); color: var(--on-accent); font-size: 10.5px; font-weight: 700; display: grid; place-items: center; }
+.job-panel { width: 380px; max-height: 60vh; overflow-y: auto; background: var(--bg); border-radius: var(--radius-md);
+  box-shadow: var(--shadow-float); border: 1px solid var(--hair); }
+.jb-head { display: flex; align-items: baseline; gap: 8px; padding: 11px 13px; border-bottom: 1px solid var(--hair); position: sticky; top: 0; background: var(--bg); }
+.jb-head b { font-size: 13px; }
+.jb-sub { font-size: 11px; color: var(--meta); }
+.jb-clear { margin-left: auto; font-size: 11px; color: var(--muted); padding: 2px 8px; border-radius: var(--pill); background: var(--surface-card); }
+.jb-clear:hover { color: var(--ink); }
+.jb-list { padding: 6px 0; }
+.jb-group { font-size: 10.5px; color: var(--meta); padding: 6px 13px 3px; }
+.jb-empty { font-size: 11.5px; color: var(--meta); padding: 10px 13px; font-style: italic; }
+.jb-row { padding: 7px 13px; border-top: 1px dashed var(--hair); }
+.jb-row:first-child { border-top: 0; }
+.jb-row-head { display: flex; align-items: center; gap: 6px; }
+.jb-kind { font-size: 10px; background: var(--surface-card); color: var(--ink-2); padding: 1px 6px; border-radius: var(--radius-sm); flex: 0 0 auto; }
+.jb-label { font-size: 12px; color: var(--ink); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.jb-state { font-size: 10.5px; flex: 0 0 auto; }
+.jb-state.running { color: var(--accent); }
+.jb-state.done { color: var(--ok); }
+.jb-state.failed { color: var(--danger); }
+.jb-state.cancelled { color: var(--meta); }
+.jb-x { width: 18px; height: 18px; border-radius: 50%; display: grid; place-items: center; color: var(--meta); font-size: 12px; flex: 0 0 auto; }
+.jb-x:hover { background: color-mix(in srgb, var(--ink) 9%, transparent); color: var(--ink); }
+.jb-msg { font-size: 11px; color: var(--muted); margin-top: 3px; padding-left: 2px; }
+.jb-err { font-size: 11px; color: var(--danger); margin-top: 3px; }
+.jb-spin { width: 11px; height: 11px; border-radius: 50%; border: 1.6px solid var(--accent); border-top-color: transparent; animation: jb-spin .8s linear infinite; flex: 0 0 auto; }
+.jb-ok { color: var(--ok); font-size: 12px; flex: 0 0 auto; }
+.jb-fail { color: var(--danger); font-size: 12px; flex: 0 0 auto; }
+.jb-cancel { color: var(--meta); font-size: 12px; flex: 0 0 auto; }
+@keyframes jb-spin { to { transform: rotate(360deg); } }
+
 /* OS-79：推演 galgame 开场三卡（你是谁 / 前情提要 / 眼前场景）
    作者口径：先告诉玩家「我是谁、身处什么故事、眼前看见什么」，再给决策选项——
    不能像裸跑团那样只丢一个局面卡。三卡浮在舞台左上，可与局面/事实包并存。 */
