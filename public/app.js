@@ -53,7 +53,8 @@ const state = {
   dirWork: {},
   write: { chapters: [], listLoading: false, mode: 'read', docPrefs: null },
   sel: { text: '', blockIndex: -1, rect: null, busy: false, preview: null, para: -1 },
-  analyze: { open: false, result: null, busy: false, dismissed: {}, activePara: -1, expandOthers: false, fact: null, factRoot: '', factTab: 'emotion', modOpen: {} },
+  analyze: { open: false, result: null, busy: false, dismissed: {}, activePara: -1, expandOthers: false, fact: null, factRoot: '', factTab: 'emotion', modOpen: {},
+    enabled: [], enabledRoot: '', pickerOpen: false, work: {}, workRoot: '', workLoaded: false, workLoading: false },
   deduce: { premise: '', variables: '', question: '', sessionId: '', streaming: false, reply: '', controller: null, error: '',
     mode: 'engine', engine: { busy: false, data: null, pov: '', seed: '', error: '', hint: '',
       session: null, sessionLoaded: false, customText: '', draft: null, turnBusy: false, archiveNote: '',
@@ -67,6 +68,7 @@ const state = {
   settings: { userDir: '', section: 'plugins', suiteId: '', open: false, prevView: '', helpOpen: false },
   kbStatus: null,
   tabHidden: {},
+  ssJump: null,
   // 产物驳回记录（OS-51）：msgHtml index → true。会话级，不落档
   rejectedMsgs: {},
   suites: [],
@@ -78,6 +80,10 @@ const state = {
     configPath: '',
     runtime: '',
     runtimeList: [],
+    // 全局配置四块（S4）：GET /api/config 的脱敏结果；probes＝每张卡的测试结果
+    config: null,
+    dshModels: [],
+    probes: {},
     notices: [],
     sessions: [],
     sessionId: '',
@@ -108,6 +114,19 @@ async function loadAnalysis() {
   return analysisModule
 }
 loadAnalysis().catch(() => {})
+
+// S3：分析模块注册表（纯数据＋纯函数；work 级模块的数据口径来自 storySource）
+let analysisModules = null
+async function loadAnalysisModules() {
+  if (!analysisModules) analysisModules = await import('./analysisModules.mjs')
+  return analysisModules
+}
+loadAnalysisModules()
+  .then(() => {
+    if (state.view === 'write' && state.analyze.open) renderAnalyzePanel()
+    if (state.view === 'dir:拆解') render()
+  })
+  .catch(() => {})
 
 let mdReady = false
 loadMd().then(() => { mdReady = true; if (state.view === 'write') render() }).catch(() => {})
@@ -201,6 +220,8 @@ function render() {
   if (switchName) switchName.textContent = current ? current.name : (state.libraries.length ? '选择库' : '还没有库')
   renderLibSwitchPanel()
   renderTabs()
+  // 故事源图表实例只属于图表态；换页/换形态先释放，避免画布挂在已卸的 DOM 上
+  if (state.view !== 'dir:拆解') disposeStorySourceChart()
   // 正文页自己管滚动（页头吸顶＋纸面/右栏各自滚），外层不再滚动
   viewEl.classList.toggle('content-locked', state.view === 'write')
   if (state.view !== 'deduce') dedTypewriterStop()
@@ -278,7 +299,11 @@ function render() {
   }
   else if (state.view === 'settings') viewEl.innerHTML = settingsHtml()
   else if (state.view === 'artifacts') viewEl.innerHTML = artifactsHtml()
-  else if (state.view?.startsWith('dir:')) viewEl.innerHTML = dirViewHtml(state.view.slice(4))
+  else if (state.view?.startsWith('dir:')) {
+    const dir = state.view.slice(4)
+    viewEl.innerHTML = dirViewHtml(dir)
+    if (dir === '拆解') mountStorySourceChart()
+  }
 }
 
 function errorHtml() {
@@ -931,6 +956,7 @@ function chapterNoFromFile(file) {
 async function runAnalysis() {
   if (!state.chapterLoaded) return
   await loadAnalysis()
+  await loadAnalysisModules()
   await loadCharts()
   loadFactCurve()
   state.analyze.busy = true
@@ -938,7 +964,13 @@ async function runAnalysis() {
   try {
     const paragraphs = analysisParagraphs()
     await loadHabits()
-    state.analyze.result = analysisModule.analyzeChapter(state.chapterText, { paragraphs, habits: state.habits })
+    // S3：本章分析走模块注册表（引擎经 context 注入，保持与 analysis.mjs 的松耦合）
+    state.analyze.result = await analysisModules.runModule('chapter-editorial', {
+      text: state.chapterText,
+      paragraphs,
+      habits: state.habits,
+      analyze: analysisModule.analyzeChapter
+    })
   } catch (error) {
     state.analyze.result = null
     rememberAgentError(error)
@@ -946,6 +978,7 @@ async function runAnalysis() {
   state.analyze.busy = false
   renderAnalyzePanel()
   paintDocAnnotations()
+  if (analyzeEnabled().some((id) => analyzeModuleById(id)?.scope === 'work')) loadWorkAnalysis()
 }
 
 /**
@@ -1050,239 +1083,216 @@ function barRow(factor) {
   return '<div class="bar-row"><span class="bar-label">' + esc(factor.label) + '</span><span class="bar-track"><span class="bar-fill" style="width:' + width + '%"></span></span><span class="bar-score">' + factor.score + '</span><span class="bar-detail">' + esc(factor.detail) + "</span></div>"
 }
 
+/* ---------- 分析模块选装（S3）：注册表在 public/analysisModules.mjs ---------- */
+
+const ANALYZE_ENABLED_KEY = (root) => `openstory-analysis-enabled::${root || ''}`
+const ANALYZE_DEFAULT_MODULES = Object.freeze(['chapter-editorial'])
+
+/** 注册表里的模块（未装载时返回空——调用方按「装载中」降级）。 */
+function analyzeModulesFor(scope) {
+  return analysisModules ? analysisModules.modulesFor(scope) : []
+}
+
+function analyzeModuleById(id) {
+  return analysisModules ? analysisModules.moduleById(id) : null
+}
+
 /**
- * 分析面板（OS-33 重做）。
- *
- * 作者要的体验：「右侧每个具体注释问题，都像向上悬浮吸顶——滚到那个组件的位置时，
- * 自动与左侧有标注的段落平齐」。右栏有 40 条问题时把它们全平铺、再靠滚右栏去对齐，
- * 物理上做不到（内容比视口长，scrollTop 顶到头就没了）。
- *
- * 所以按「聚焦」重排：
- *   · 顶部概览（字数/段/句/对白 + 两张曲线 + AI 味）——位置固定，永远看得见；
- *   · 「本段批注」区＝**当前视口那一段**的问题，永远紧贴概况下面（天然吸顶，条数少）；
- *   · 其下是「全章问题」＋「其它段落的问题」折叠列表，需要时再展开。
- * 这样右栏的内容长度与视口无关，滚动正文时它只是换内容，不会滚丢。
+ * 已启用的分析模块（per-library localStorage，照 hiddenTabs 的键模式）。
+ * 键不存在＝作者从未表态 → 只开「本章编辑总评」（保持改造前的默认体验）。
+ */
+function analyzeEnabled() {
+  const root = state.current?.path || ''
+  if (state.analyze.enabledRoot !== root) {
+    let saved = null
+    try {
+      const raw = localStorage.getItem(ANALYZE_ENABLED_KEY(root))
+      if (raw !== null) saved = JSON.parse(raw)
+    } catch { saved = null }
+    state.analyze.enabled = Array.isArray(saved)
+      ? saved.filter((id) => typeof id === 'string')
+      : [...ANALYZE_DEFAULT_MODULES]
+    state.analyze.enabledRoot = root
+  }
+  return state.analyze.enabled
+}
+
+function toggleAnalyzeModule(id) {
+  const mod = analyzeModuleById(id)
+  if (!mod) return
+  const enabled = [...analyzeEnabled()]
+  const at = enabled.indexOf(id)
+  if (at >= 0) enabled.splice(at, 1)
+  else enabled.push(id)
+  state.analyze.enabled = enabled
+  const root = state.current?.path || ''
+  try { localStorage.setItem(ANALYZE_ENABLED_KEY(root), JSON.stringify(enabled)) } catch { /* 隐私模式 */ }
+  state.analyze.pickerOpen = false
+  if (mod.scope === 'chapter') {
+    if (at < 0 && !state.analyze.result) runAnalysis()
+  } else if (at < 0) {
+    delete state.analyze.work[id]
+    state.analyze.workLoaded = false
+    loadWorkAnalysis()
+  }
+  renderAnalyzePanel()
+}
+
+/** 「＋ 分析」选择器：本章模块 + 整部作品模块，勾选即启用。 */
+function analyzePickerHtml() {
+  const enabled = analyzeEnabled()
+  const row = (mod) => {
+    const on = enabled.includes(mod.id)
+    return `<button class="am-row${on ? ' on' : ''}" data-action="analyze-module-toggle" data-module-id="${esc(mod.id)}">
+      <span class="am-check">${on ? '✓' : ''}</span>
+      <span class="am-row-main"><b>${esc(mod.label)}</b><span class="am-row-hint">${esc(mod.hint || '')}</span></span>
+    </button>`
+  }
+  const chapter = analyzeModulesFor('chapter')
+  const work = analyzeModulesFor('work')
+  const menu = state.analyze.pickerOpen
+    ? `<div class="am-menu">
+        ${chapter.length ? `<div class="am-group"><h5>本章</h5>${chapter.map(row).join('')}</div>` : ''}
+        ${work.length ? `<div class="am-group"><h5>整部作品</h5>${work.map(row).join('')}</div>` : ''}
+        ${!chapter.length && !work.length ? '<p class="sub">分析模块还没装载。</p>' : ''}
+      </div>`
+    : ''
+  return `<div class="am-bar"><button class="am-add${state.analyze.pickerOpen ? ' on' : ''}" data-action="analyze-picker" title="选择要跑的分析模块">＋ 分析</button><span class="am-bar-note">${enabled.length} 个已启用</span></div>${menu}`
+}
+
+/** 正文右栏的 work 模块卡：取数→结论，头部带「在故事源中查看」。 */
+function analyzeWorkCardHtml(mod) {
+  const entry = state.analyze.work?.[mod.id]
+  let body
+  if (!entry) body = '<div class="am-empty">正在取数…</div>'
+  else if (entry.error) body = `<div class="warn-box">${esc(entry.error)}</div>`
+  else body = mod.render(entry.result, {})
+  return `<section class="analyze-sec am-card">
+    <div class="am-card-head"><h4>${esc(mod.label)}</h4>
+      <button class="am-goto" data-action="analyze-to-source" data-module-id="${esc(mod.id)}">在故事源中查看</button></div>
+    ${body}
+  </section>`
+}
+
+/** 本章模块需要的外部状态（注册表不读全局 state——由这里注入）。 */
+function analyzeChapterView() {
+  return {
+    dismissed: state.analyze.dismissed,
+    activePara: state.analyze.activePara,
+    expandOthers: state.analyze.expandOthers,
+    modOpen: state.analyze.modOpen,
+    hidden: [...hiddenModules()],
+    charts: chartsModule,
+    fact: state.analyze.fact,
+    factTab: state.analyze.factTab,
+    chapterNo: chapterNoFromFile(state.chapterFile)
+  }
+}
+
+/**
+ * 分析面板（S3 封装化）：模块选择器 + 已选模块渲染。
+ * 本章模块吃 analyzeChapter 的结果；work 模块吃 loadWorkAnalysis 拉来的整书数据。
+ * 默认只启用 chapter-editorial —— 与改造前的整块面板完全一致。
  */
 function analyzePanelHtml() {
-  const result = state.analyze.result
-  if (state.analyze.busy) return '<div class="analyze-body"><div class="loading">正在分析…</div></div>'
-  if (!result) {
-    return '<div class="analyze-body"><button class="btn-primary" data-action="analyze-run">开始分析本章</button></div>'
-  }
-  const stats = result.stats
-
-  const rhythmValues = result.rhythm.map((item) => item.chars)
-  const openIssues = result.issues.filter((issue) => !state.analyze.dismissed[issue.id])
-  // 每条问题可能落在多段（重复用词/套话）：paragraphs 是全集，paragraph 只是首段
-  const parasOf = (issue) => {
-    const list = Array.isArray(issue.paragraphs) && issue.paragraphs.length
-      ? issue.paragraphs
-      : [Number(issue.paragraph)]
-    return list.filter((n) => Number.isInteger(n) && n >= 0)
-  }
-  const located = openIssues.filter((issue) => parasOf(issue).length > 0)
-  const global = openIssues.filter((issue) => parasOf(issue).length === 0)
-  const viewPara = Number.isInteger(state.analyze.activePara) ? state.analyze.activePara : -1
-  // 「本段批注」＝离视口最近的有批注的那一段（视口这一段没批注时，退到上/下一段有批注的）
-  const issueParas = [...new Set(located.flatMap(parasOf))].sort((a, b) => a - b)
-  const pickPara = (() => {
-    if (!issueParas.length) return -1
-    if (issueParas.includes(viewPara)) return viewPara
-    const passed = issueParas.filter((n) => n <= viewPara)
-    if (passed.length) return passed[passed.length - 1]
-    return issueParas[0]
-  })()
-  const here = pickPara >= 0 ? located.filter((issue) => parasOf(issue).includes(pickPara)) : []
-  // 同一段里同类的重复问题（比如十几个「反复出现」的套话）聚成一条，避免右栏被刷屏
-  const groupHere = (list) => {
-    const groups = new Map()
-    for (const issue of list) {
-      const key = `${issue.type || ''}::${(issue.label || '').replace(/「.*」$/u, '')}`
-      if (!groups.has(key)) groups.set(key, [])
-      groups.get(key).push(issue)
+  const enabled = analyzeEnabled()
+  const parts = [analyzePickerHtml()]
+  let cards = 0
+  for (const id of enabled) {
+    const mod = analyzeModuleById(id)
+    if (!mod) continue
+    cards += 1
+    if (mod.scope === 'chapter') {
+      if (state.analyze.busy) {
+        parts.push('<div class="analyze-sec"><div class="loading">正在分析…</div></div>')
+      } else if (!state.analyze.result) {
+        parts.push(`<div class="analyze-sec"><button class="btn-primary" data-action="analyze-run">${esc(mod.emptyLabel || '开始分析')}</button></div>`)
+      } else {
+        parts.push(mod.render(state.analyze.result, analyzeChapterView()))
+      }
+      continue
     }
-    return [...groups.values()].map((items) => items.length === 1 ? items[0] : {
-      merged: true,
-      id: items[0].id,
-      type: items[0].type,
-      severity: items.some((it) => it.severity === 'high') ? 'high' : items[0].severity,
-      label: `${items.length} 处${(items[0].label || '').replace(/「.*」$/u, '')}`,
-      detail: items.map((it) => it.label.replace(/^.*?「(.*)」$/u, '「$1」')).join(' ')
-        + '——都可以换成具体动作，或直接删掉。',
-      paragraph: items[0].paragraph,
-      paragraphs: items[0].paragraphs,
-      items
-    })
+    parts.push(analyzeWorkCardHtml(mod))
   }
-  const hereShown = groupHere(here)
-  const atView = pickPara === viewPara
-  const elsewhere = located.filter((issue) => !here.includes(issue))
-    .sort((a, b) => (parasOf(a)[0] ?? 0) - (parasOf(b)[0] ?? 0))
-  const spanOf = (issue) => {
-    const ps = parasOf(issue)
-    if (!ps.length) return '全章'
-    if (ps.length === 1) return `第 ${ps[0] + 1} 段`
-    return `${ps.length} 段`
+  if (!cards) {
+    parts.push(`<div class="am-empty">${analysisModules ? '还没有选装分析模块——点「＋ 分析」挑一个。' : '正在装载分析模块…'}</div>`)
   }
-  const card = (issue) => {
-    const ps = parasOf(issue)
-    return `<div class="issue-card sev-${esc(issue.severity)}" data-issue-id="${esc(issue.id)}" data-para="${ps[0] ?? ''}">
-      <div class="ic-head"><span class="ic-tag">${esc(issue.label)}</span><span class="ic-para">${spanOf(issue)}</span></div>
-      <div class="ic-detail">${esc(issue.detail)}</div>
-      <div class="ic-ops">
-        ${ps.length ? `<button class="issue-act" data-action="analyze-goto" data-paragraph="${ps[0]}">定位</button>` : ''}
-        <button class="issue-act" data-action="analyze-fix" data-issue-id="${esc(issue.id)}">让 Agent 改</button>
-        <button class="issue-act" data-action="analyze-dismiss" data-issue-id="${esc(issue.id)}">解决</button>
-      </div>
-    </div>`
-  }
-  const aiClass = result.aiSmell.score >= 50 ? "bad" : result.aiSmell.score >= 25 ? "mid" : "good"
-  const expandOpen = state.analyze.expandOthers === true
-  // OS-41 剧情曲线区（对齐拆解线算法）：fact 可用＝章级语义曲线（点峰值跳章）；否则本地词典近似（点段定位）
-  const charts = chartsModule
-  const fact = state.analyze.fact
-  const activeNo = chapterNoFromFile(state.chapterFile)
-  let curveSection = ''
-  if (charts && fact && (fact.chapters?.length ?? 0) >= 2) {
-    const tab = state.analyze.factTab === 'events' ? 'events' : 'emotion'
-    const chart = tab === 'events'
-      ? charts.renderEventArea(fact.chapters, { activeNo })
-      : charts.renderEmotionCurve(fact.chapters, { activeNo })
-    const ribbon = charts.renderFunctionRibbon(fact.chapters, { activeNo })
-    curveSection = '<div class="chart-tabs"><button class="chart-tab' + (tab === 'emotion' ? ' on' : '') + '" data-action="analyze-chart" data-tab="emotion">情绪曲线</button>' +
-      '<button class="chart-tab' + (tab === 'events' ? ' on' : '') + '" data-action="analyze-chart" data-tab="events">事件密度</button></div>' +
-      chart + ribbon +
-      '<p class="sub">图上的点/柱/彩带都可以点——跳到对应章；正文切章或滚动，当前章在这里高亮回看。</p>'
-  } else if (charts) {
-    curveSection = charts.renderLocalCurve(result.emotion, { activePara: viewPara }) +
-      '<p class="sub">本库还没有拆解 fact——曲线只是词典近似。跑一次「拆解 → enrich」后，这里会换成语义级剧情曲线：峰值标情绪、可点击跳章。</p>'
-  }
-  // OS-44：面板改为模块化装配——每个分析是一个独立卡片，可在设置里插拔
-  // OS-56：模块卡改「折叠＋人话结论」——summary 行是编辑结论，展开才是数据（详有略）。
-  // annotations 是活卡（跟正文滚动），保持原样不折叠。
-  const modules = [
-    { id: 'plotCurve', title: '情绪曲线', body: curveSection },
-    { id: 'style', title: '文风', body: styleSectionHtml(result) },
-    { id: 'rhythm', title: '节奏（逐段字数）', body: sparkline(rhythmValues, { color: 'var(--ok)' }) },
-    { id: 'aiSmell', title: `AI 味 ${result.aiSmell.score}`, body: result.aiSmell.factors.map(barRow).join('') },
-    {
-      id: 'annotations',
-      // 空态（OS-50）：以前只剩一行灰字 + 大片留白（作者截图指出）。现在空态也给信息与出路：
-      //   · 说清「这一段干净」还是「还没滚动」，给出全章条数与最近的批注段，可一键跳过去看
-      // raw＝活卡原样渲染（跟正文滚动对齐），不进折叠（OS-56）
-      raw: true,
-      html: '<section class="analyze-sec analyze-here" id="analyze-here">' +
-        '<h4>本段批注 <span class="count">' +
-        (pickPara < 0 ? '滚动正文即对齐'
-          : `第 ${pickPara + 1} 段${atView ? '' : '（最近）'} · ${hereShown.length} 条`) +
-        '</span></h4>' +
-        (hereShown.length
-          ? hereShown.map(card).join('')
-          : `<div class="ann-empty">
-              <p class="ann-empty-main">${viewPara >= 0 ? `第 ${viewPara + 1} 段没有批注——这一段是干净的。` : '往下滚，这里会跟着你正在看的段落走。'}</p>
-              ${issueParas.length
-                ? `<p class="ann-empty-sub">本章 ${new Set(issueParas).size} 段有批注，共 ${located.length} 条${global.length ? `（另有 ${global.length} 条章级）` : ''}。</p>
-                   <div class="ann-empty-ops">
-                     ${issueParas.slice(0, 3).map((n) => `<button class="ann-jump" data-action="analyze-goto" data-paragraph="${n}">跳到第 ${n + 1} 段</button>`).join('')}
-                     ${issueParas.length > 3 ? `<span class="ann-more">还有 ${issueParas.length - 3} 段…</span>` : ''}
-                   </div>`
-                : '<p class="ann-empty-sub">全章暂时没有发现问题。改完再点下面「重新分析」看看。</p>'}
-            </div>`) +
-        '</section>' +
-        (global.length ? '<section class="analyze-sec"><h4>全章 <span class="count">' + global.length + '</span></h4>' + global.map(card).join('') + '</section>' : '') +
-        (elsewhere.length
-          ? `<section class="analyze-sec"><h4><button class="sec-toggle" data-action="analyze-expand">其它段落 ${elsewhere.length} 条<span class="caret">${expandOpen ? '▾' : '▸'}</span></button></h4>${expandOpen ? elsewhere.map(card).join('') : ''}</section>`
-          : '')
-    }
-  ]
-  const hiddenMods = hiddenModules()
-  // OS-56 编辑 verdict：每个模块的「一句话结论」——有问题先显问题，没问题显亮点，都没有给中性位
-  const ed = result.editorial || { headline: '', goods: [], problems: [] }
-  const verdictFor = (id) => {
-    const bad = ed.problems.find((item) => item.module === id)
-    if (bad) return { icon: '⚠', tone: 'warn', text: bad.verdict }
-    const ok = ed.goods.find((item) => item.module === id)
-    if (ok) return { icon: '✓', tone: 'good', text: ok.verdict }
-    return null
-  }
-  const wrapMod = (mod, verdict) => {
-    const open = state.analyze.modOpen?.[mod.id] === true
-    const line = verdict
-      ? `<span class="mod-verdict ${verdict.tone}">${verdict.icon} ${esc(verdict.text)}</span>`
-      : '<span class="mod-verdict neutral">详见展开</span>'
-    return `<details class="analyze-sec mod${open ? ' open' : ''}" data-mod-card="${esc(mod.id)}"${open ? ' open' : ''}>
-      <summary data-action="mod-toggle" data-mod-id="${esc(mod.id)}">
-        <span class="mod-v-head">${mod.title}</span>${line}<span class="mod-caret">›</span>
-      </summary>
-      <div class="mod-v-body">${mod.body}</div>
-    </details>`
-  }
-
-  const live = modules.filter((mod) => !hiddenMods.has(mod.id) && (mod.body || mod.html))
-  // 总评卡（OS-56）：结论优先——一句话总评＋好在哪＋问题在哪（可定位、可跳详情）
-  const edCard = '<section class="analyze-sec ed-card">' +
-    '<h4>编辑总评</h4>' +
-    '<p class="ed-headline">' + esc(ed.headline || '还没有结论——点「重新分析」。') + '</p>' +
-    (ed.goods.length ? '<div class="ed-goods">' + ed.goods.slice(0, 3).map((item) =>
-      '<div class="ed-line good"><span class="ed-ic">✓</span><span>' + esc(item.verdict) + '</span></div>').join('') + '</div>' : '') +
-    (ed.problems.length ? '<div class="ed-problems">' + ed.problems.slice(0, 4).map((item) => {
-      const goto = item.paras && item.paras.length
-        ? '<button class="ed-act" data-action="analyze-goto" data-paragraph="' + item.paras[0] + '">定位第 ' + (item.paras[0] + 1) + ' 段</button>' : ''
-      const jump = item.module && !hiddenMods.has(item.module)
-        ? '<button class="ed-act" data-action="ed-jump" data-module="' + esc(item.module) + '">详情 ↘</button>' : ''
-      return '<div class="ed-line warn"><span class="ed-ic">⚠</span><span class="ed-text"><b>' + esc(item.verdict) + '</b>' +
-        (item.action ? '<i class="ed-action">改法：' + esc(item.action) + '</i>' : '') +
-        (item.detail ? '<i class="ed-why">' + esc(item.detail) + '</i>' : '') +
-        (item.source ? '<i class="ed-source">依据：' + esc(item.source) + '</i>' : '') +
-        '</span><span class="ed-ops">' + goto + jump + '</span></div>'
-    }).join('') + '</div>' : '') +
-    '</section>'
-  return '<div class="analyze-body">' +
-    '<div class="analyze-kpis"><span><b>' + stats.chars + "</b> 字</span><span><b>" + stats.paragraphs +
-    "</b> 段</span><span><b>" + stats.avgSentenceLen + "</b> 字/句</span><span><b>" + stats.dialogueRatio +
-    "%</b> 对白</span></div>" +
-    (result.confidence === "low" ? '<div class="warn-box">本章偏短，指标仅供参考。</div>' : "") +
-    edCard +
-    live.map((mod) => {
-      if (mod.raw) return mod.html
-      return wrapMod({ id: mod.id, body: mod.body, title: mod.title }, verdictFor(mod.id))
-    }).join('') +
-    '<div class="ops"><button class="btn-ghost" data-action="analyze-run">重新分析</button></div></div>'
+  return `<div class="analyze-body">${parts.join('')}</div>`
 }
 
 /**
- * 文风模块（OS-44）——analysis.mjs 一直算出 style 但从未渲染，这批用起来。
- * 句子长度变异系数（sentenceCv）与段落变异系数（paraCv）是「是否像人写」的两个硬指标：
- * 人写的句子长短参差，模板文则异常整齐。
+ * work 级模块的数据（S3）：/api/fact/entries ＋ /api/fact/curve → storySource layout → 模块 run。
+ * 论证口径与故事源完全同源（stats.charts 是单一真源），右栏不另算一套。
  */
-function styleSectionHtml(result) {
-  const style = result?.style
-  if (!style) return '<p class="sub">这一章还没有文风数据。</p>'
-  const cv = (value) => (Number.isFinite(value) ? value.toFixed(2) : '—')
-  const verdict = (value, good, mid) => {
-    const num = Number(value)
-    if (!Number.isFinite(num)) return ['—', '']
-    if (num >= good) return ['参差自然', 'good']
-    if (num >= mid) return ['偏整齐', 'mid']
-    return ['过于均匀', 'bad']
+async function loadWorkAnalysis(force = false) {
+  if (!state.chapterLoaded || !state.current) return
+  const enabledWork = analyzeEnabled().map(analyzeModuleById).filter((mod) => mod && mod.scope === 'work')
+  if (!enabledWork.length) return
+  const root = state.current.path
+  const sameRoot = state.analyze.workRoot === root
+  if (!force && sameRoot && (state.analyze.workLoaded || state.analyze.workLoading)) return
+  state.analyze.workRoot = root
+  if (!sameRoot || force) {
+    state.analyze.work = {}
+    state.analyze.workLoaded = false
   }
-  const [sentVerdict, sentClass] = verdict(style.sentenceCv, 0.55, 0.35)
-  const [paraVerdict, paraClass] = verdict(style.paraCv, 0.5, 0.3)
-  const cliches = Array.isArray(style.cliches) ? style.cliches : []
-  const connectives = Array.isArray(style.connectives) ? style.connectives : []
-  const chip = (item, kind) => `<span class="style-chip ${kind}" title="${esc(item.word)} 出现 ${item.count} 次">${esc(item.word)}<b>${item.count}</b></span>`
-  return `<div class="style-grid">
-      <div class="style-kpi"><span class="sk-label">句长变异</span><b class="sk-val ${sentClass}">${cv(style.sentenceCv)}</b><span class="sk-note">${sentVerdict}</span></div>
-      <div class="style-kpi"><span class="sk-label">段长变异</span><b class="sk-val ${paraClass}">${cv(style.paraCv)}</b><span class="sk-note">${paraVerdict}</span></div>
-    </div>
-    ${cliches.length ? `<div class="style-block"><h5>套话 <span class="count">${cliches.length}</span></h5><div class="style-chips">${cliches.slice(0, 10).map((item) => chip(item, 'cliche')).join('')}</div></div>` : ''}
-    ${connectives.length ? `<div class="style-block"><h5>连接词 <span class="count">${connectiveCount(connectives)}</span></h5><div class="style-chips">${connectives.slice(0, 10).map((item) => chip(item, 'connective')).join('')}</div></div>` : ''}
-    ${!cliches.length && !connectives.length ? '<p class="sub">没检出套话与连接词堆砌——文风干净。</p>' : ''}`
+  state.analyze.workLoading = true
+  for (const mod of enabledWork) state.analyze.work[mod.id] = null
+  renderAnalyzePanel()
+  try {
+    const [ss, am] = await Promise.all([ensureStorySourceModule(), loadAnalysisModules()])
+    const q = `root=${encodeURIComponent(root)}`
+    const [curvePayload, entriesPayload] = await Promise.all([
+      api(`/api/fact/curve?${q}`).catch(() => null),
+      api(`/api/fact/entries?${q}&limit=500`).catch(() => null)
+    ])
+    const entries = Array.isArray(entriesPayload?.entries) ? entriesPayload.entries : []
+    const wiki = {
+      chapterSummaries: (curvePayload?.chapters || []).map((chapter) => ({
+        chapter: chapter.no,
+        title: chapter.title,
+        summary: chapter.summary,
+        function: chapter.function,
+        emotion: chapter.emotion,
+        beats: chapter.beats,
+        events: chapter.events,
+        foreshadows: chapter.foreshadows
+      }))
+    }
+    const layout = entries.length ? ss.layoutStorySource({ entries, wiki, view: 'chart' }) : null
+    const focus = state.sel.text ? { text: state.sel.text.slice(0, 200), paragraph: state.analyze.activePara } : null
+    for (const mod of enabledWork) {
+      try {
+        state.analyze.work[mod.id] = { result: await am.runModule(mod.id, { entries, wiki, layout, focus }) }
+      } catch (error) {
+        state.analyze.work[mod.id] = { error: text(error?.message || error) }
+      }
+    }
+    state.analyze.workLoaded = true
+  } catch (error) {
+    for (const mod of enabledWork) state.analyze.work[mod.id] = { error: text(error?.message || error) }
+  }
+  state.analyze.workLoading = false
+  if (state.analyze.open) renderAnalyzePanel()
 }
 
-function connectiveCount(list) {
-  return (Array.isArray(list) ? list : []).reduce((sum, item) => sum + (Number(item.count) || 0), 0)
+/** 「在故事源中查看」：跳故事源 → 图表形态 → 切到同一个模块。 */
+function openStorySourceModule(moduleId) {
+  const id = analyzeModulesFor('work').some((mod) => mod.id === moduleId) ? moduleId : 'plot-curve'
+  state.ssJump = { module: id }
+  go('dir:拆解')
 }
+
+/** 故事源条目 → 正文：先切页，等章节清单回来再按章号挑文件（P1 只定位到章）。 */
+async function jumpToWriteChapter(no) {
+  const chapterNo = Number(no)
+  if (!chapterNo || !state.current) return
+  go('write')
+  await loadWriteChapters()
+  const file = (state.write.chapters || []).find((chapter) => chapterNoFromFile(chapter.file) === chapterNo)?.file
+  if (file) loadChapter(file)
+}
+
 
 function renderAnalyzePanel() {
   const panel = document.getElementById("analyze-panel")
@@ -1376,6 +1386,7 @@ function toggleAnalyzePanel() {
   if (state.analyze.open) {
     loadCharts().then(() => { if (state.analyze.open) renderAnalyzePanel() }).catch(() => {})
     loadFactCurve()
+    loadWorkAnalysis()
     if (!state.analyze.result) runAnalysis()
   }
 }
@@ -1967,6 +1978,26 @@ async function bootAgentConfig() {
   } catch { /* 读不到就按未配置摆，不拦工作台 */ }
   updateAgentChip()
   updateComposerState()
+}
+
+/**
+ * 全局配置聚合读（S4）：text/image/vision/agent 四块。旧字段同时镜像到 agent.*，
+ * 让 chip / 输入区这些既有调用点不用改。
+ */
+async function loadGlobalConfig() {
+  try {
+    const payload = await api('/api/config')
+    agent.config = payload
+    const textBlock = payload.text ?? {}
+    agent.configured = textBlock.configured === true
+    agent.endpoint = text(textBlock.endpoint)
+    agent.model = text(textBlock.model)
+    agent.apiKeyMasked = text(textBlock.apiKeyMasked)
+    agent.runtime = text(textBlock.runtime)
+    agent.reasoningEffort = text(textBlock.reasoningEffort)
+    agent.chineseReasoning = textBlock.chineseReasoning !== false
+    agent.configPath = text(payload.configPath)
+  } catch { /* 读不到就按未配置摆，不拦工作台 */ }
 }
 
 async function loadSessions() {
@@ -2844,6 +2875,7 @@ function closeModal() {
 
 const SETTINGS_SECTIONS = Object.freeze([
   { id: 'plugins', label: '插件', hint: '套件与 Agent 运行时' },
+  { id: 'models', label: '模型', hint: '对话 / 生图 / 识图' },
   { id: 'appearance', label: '风格', hint: '皮肤包切换' },
   { id: 'modules', label: '工作台模块', hint: '左栏与右栏的分析模块插拔' },
   { id: 'discover', label: '发现与导入', hint: '货架路径与导入稿件' },
@@ -2896,6 +2928,7 @@ function settingsModulesSectionHtml() {
  */
 const SETTINGS_HELP = Object.freeze({
   plugins: '插件分成两类：一类给写作能力（比如写作套件、编剧套件），一类给 Agent 一条能对话的模型通道。它们都可以随时启用或停用，停用只是让效果回到默认，你设过的值不会丢。点「设置 →」进各自的设置页。',
+  models: '这里配四样东西：对话模型（Agent 平时用的那条通道）、生图、识图、以及 Agent 的默认档。填完可以先点「测试连接」——它会真的发一个最小请求试连，没保存的值也能测。生图的测试会真生成一张小图、消耗额度，所以会先问你一次。',
   discover: '插件不用安装：往本机的这几个文件夹里丢一个目录或一个 JSON 文件，刷新就出现在列表里。同名时你本机放的那份优先，内置的退到后面。文件坏掉只会跳过它，不会影响别的。',
   data: '你的稿子始终是磁盘上的文件夹，这个工作台不另建数据库，删掉这个软件稿子也还在。下面是各项配置存在哪儿——都只在这台机器上。',
   kb: '知识库给 Agent 供弹药：技法配方、文风指纹、题材套路、读者信号、同型案例分库存放。写东西时 Agent 会自动取用，这里只看连接是否健康、每个库装了多少，不用做任何操作。',
@@ -2981,6 +3014,281 @@ function dshDepthFieldHtml() {
   </div>`
 }
 
+/* ---------- 设置 · 模型与能力（S4）：对话 / 生图 / 识图 / Agent 默认档 ---------- */
+
+function settingRuntimeKind(id) {
+  const key = text(id).trim()
+  if (!key) return 'pi'
+  const kit = (agent.runtimeList || []).find((item) => item.id === key)
+  return kit?.kind ?? 'pi'
+}
+
+const cfgValue = (id) => text(document.getElementById(id)?.value).trim()
+const cfgRawValue = (id) => text(document.getElementById(id)?.value)
+const cfgChecked = (id) => document.getElementById(id)?.checked === true
+
+/** probe 徽标文案：未测试 / 测试中 / ✓ 可达 (312ms) / ✗ 不可达（原因）。 */
+function probeBadgeLabel(probe) {
+  if (!probe) return '未测试'
+  if (probe.state === 'running') return '测试中…'
+  if (probe.state === 'ok') return `✓ 可达 (${Number(probe.latencyMs) || 0}ms)`
+  if (probe.state === 'fail') return `✗ 不可达（${probe.detail || probe.error || '原因未知'}）`
+  return '未测试'
+}
+
+function cfgBadgeHtml(kind) {
+  const probe = agent.probes[kind]
+  const state = probe?.state ? ` ${probe.state}` : ''
+  const label = probeBadgeLabel(probe)
+  return `<span class="cfg-badge${state}" data-probe-badge="${esc(kind)}" title="${esc(label)}">${esc(label)}</span>`
+}
+
+/** 只重画徽标——不在测试过程中整页重渲，免得把还没保存的输入抹掉。 */
+function paintProbeBadge(kind) {
+  const el = document.querySelector(`[data-probe-badge="${kind}"]`)
+  if (!el) return
+  const probe = agent.probes[kind]
+  const label = probeBadgeLabel(probe)
+  el.textContent = label
+  el.title = label
+  el.className = `cfg-badge${probe?.state ? ` ${probe.state}` : ''}`
+}
+
+/** DSH 模型值的传法：provider/id（dsh-cli 认这个形状），没 provider 就裸 id。 */
+function dshModelValue(model) {
+  return model.provider ? `${model.provider}/${model.id}` : model.id
+}
+
+function dshModelOptionsHtml(current, emptyLabel) {
+  const models = agent.dshModels || []
+  const value = text(current)
+  const rows = [`<option value=""${value ? '' : ' selected'}>${esc(emptyLabel)}</option>`]
+  let known = false
+  for (const model of models) {
+    const id = dshModelValue(model)
+    if (id === value) known = true
+    rows.push(`<option value="${esc(id)}"${id === value ? ' selected' : ''}>${esc(model.name)}${model.providerName ? `（${esc(model.providerName)}）` : ''}</option>`)
+  }
+  if (value && !known) rows.push(`<option value="${esc(value)}" selected>${esc(value)}（当前值，不在清单里）</option>`)
+  return rows.join('')
+}
+
+function dshModelFieldHtml(id, label, current, emptyLabel) {
+  const models = agent.dshModels || []
+  if (!models.length) {
+    return `<div class="field"><label>${esc(label)}</label>
+      <select class="select" id="${esc(id)}">${dshModelOptionsHtml(current, emptyLabel)}</select>
+      <span class="cfg-note">DSH 模型清单没取到（DSH 没装或 profile 没就绪）——先在「插件 · 运行时」里修好，这里才能选。</span>
+    </div>`
+  }
+  return `<div class="field"><label>${esc(label)}</label>
+    <select class="select" id="${esc(id)}">${dshModelOptionsHtml(current, emptyLabel)}</select>
+  </div>`
+}
+
+function settingsModelsSectionHtml() {
+  const config = agent.config
+  if (!config) {
+    return `<div class="step"><h3>模型</h3><p class="sub">配置还没读到——确认 daemon 在跑，再回到设置重进这一节。</p></div>`
+  }
+  const runtime = text(agent.runtime)
+  const isDsh = settingRuntimeKind(runtime) === 'dsh'
+  const textBlock = config.text ?? {}
+  const image = config.image ?? {}
+  const vision = config.vision ?? {}
+  const agentBlock = config.agent ?? {}
+
+  const runtimeOptions = [
+    `<option value=""${runtime ? '' : ' selected'}>Pi（默认兜底）</option>`,
+    ...(agent.runtimeList || []).filter((item) => item.id).map((item) => `<option value="${esc(item.id)}"${item.id === runtime ? ' selected' : ''}>${esc(item.name)}${item.source ? `（${esc(item.source)}）` : ''}</option>`)
+  ].join('')
+
+  const textFields = isDsh
+    ? `${dshModelFieldHtml('mcfg-text-model', '主模型（对话）', textBlock.model, '用运行时自己的默认模型')}
+       ${dshModelFieldHtml('mcfg-subagent-model-a', '子 agent 模型', agentBlock.subagentModel, '跟主模型一样')}
+       ${dshDepthFieldHtml()}
+       <div class="field">
+         <label class="cfg-switch">
+           <input type="checkbox" id="mcfg-chinese"${agent.chineseReasoning !== false ? ' checked' : ''}>
+           <span>用中文推理（推荐）</span>
+         </label>
+         <span class="cfg-note">中文写作讨论用中文思考更贴题，代价是可能损失一部分形式化推理性能。</span>
+       </div>`
+    : `<div class="field"><label>Endpoint（OpenAI 兼容 chat/completions）</label>
+         <input id="mcfg-endpoint" placeholder="https://api.deepseek.com/v1/chat/completions" value="${esc(text(textBlock.endpoint))}">
+       </div>
+       <div class="field"><label>模型</label>
+         <input id="mcfg-model" placeholder="deepseek-chat" value="${esc(text(textBlock.model))}">
+       </div>
+       <div class="field"><label>API Key${textBlock.apiKeyMasked ? `（已设置 ${esc(textBlock.apiKeyMasked)}）` : ''}</label>
+         <input id="mcfg-key" type="password" placeholder="${textBlock.apiKeyMasked ? '留空保留原 key' : 'sk-…'}">
+       </div>`
+
+  return `
+    <div class="cfg-card" data-cfg-card="text">
+      <div class="cfg-head"><h3>对话模型</h3>${cfgBadgeHtml('text')}</div>
+      <div class="field"><label>运行时</label>
+        <select class="select" id="mcfg-runtime">${runtimeOptions}</select>
+        <span class="cfg-note">运行时决定 Agent 走哪条通道；选 DSH 时下面改选模型，选 Pi 时直连端点。</span>
+      </div>
+      ${textFields}
+      <div class="row">
+        <button class="btn-primary" data-action="config-save" data-block="text">保存</button>
+        <button class="btn-ghost" data-action="config-probe" data-probe-kind="text">测试连接</button>
+        <span class="cfg-note" id="mcfg-text-note"></span>
+      </div>
+      ${isDsh ? '<span class="cfg-note">测试连接测的是 Pi 兜底端点；DSH 自身的连通性看「插件 · 运行时」的状态灯。</span>' : ''}
+      <div class="err" id="mcfg-text-err"></div>
+    </div>
+
+    <div class="cfg-card" data-cfg-card="image">
+      <div class="cfg-head"><h3>生图</h3>${cfgBadgeHtml('image')}</div>
+      <div class="field">
+        <label class="cfg-switch">
+          <input type="checkbox" id="mcfg-image-enabled"${image.enabled === true ? ' checked' : ''}>
+          <span>启用生图（推演里生成场景图时会用到）</span>
+        </label>
+      </div>
+      <div class="field"><label>Endpoint（OpenAI 兼容，填到 /v1 为止）</label>
+        <input id="mcfg-image-endpoint" placeholder="https://api.openai.com/v1" value="${esc(text(image.endpoint))}">
+      </div>
+      <div class="field"><label>模型</label>
+        <input id="mcfg-image-model" placeholder="gpt-image-1" value="${esc(text(image.model))}">
+      </div>
+      <div class="field"><label>API Key${image.apiKeyMasked ? `（已设置 ${esc(image.apiKeyMasked)}）` : ''}</label>
+        <input id="mcfg-image-key" type="password" placeholder="${image.apiKeyMasked ? '留空保留原 key' : 'sk-…'}">
+      </div>
+      <div class="row">
+        <button class="btn-primary" data-action="config-save" data-block="image">保存</button>
+        <button class="btn-ghost" data-action="config-probe" data-probe-kind="image">测试连接</button>
+        <span class="cfg-note" id="mcfg-image-note"></span>
+      </div>
+      <span class="cfg-note">测试会真生成一张 256×256 的小图（消耗额度），点按钮后还会再确认一次。</span>
+      <div class="err" id="mcfg-image-err"></div>
+    </div>
+
+    <div class="cfg-card" data-cfg-card="vision">
+      <div class="cfg-head"><h3>识图</h3>${cfgBadgeHtml('vision')}</div>
+      <div class="field">
+        <label class="cfg-switch">
+          <input type="checkbox" id="mcfg-vision-enabled"${vision.enabled === true ? ' checked' : ''}>
+          <span>启用识图（把图片交给模型看）</span>
+        </label>
+      </div>
+      <div class="field"><label>Endpoint（OpenAI 兼容，填到 /v1 为止）</label>
+        <input id="mcfg-vision-endpoint" placeholder="https://api.openai.com/v1" value="${esc(text(vision.endpoint))}">
+      </div>
+      <div class="field"><label>模型</label>
+        <input id="mcfg-vision-model" placeholder="gpt-4o-mini" value="${esc(text(vision.model))}">
+      </div>
+      <div class="field"><label>API Key${vision.apiKeyMasked ? `（已设置 ${esc(vision.apiKeyMasked)}）` : ''}</label>
+        <input id="mcfg-vision-key" type="password" placeholder="${vision.apiKeyMasked ? '留空保留原 key' : 'sk-…'}">
+      </div>
+      <div class="row">
+        <button class="btn-primary" data-action="config-save" data-block="vision">保存</button>
+        <button class="btn-ghost" data-action="config-probe" data-probe-kind="vision">测试连接</button>
+        <span class="cfg-note" id="mcfg-vision-note"></span>
+      </div>
+      <span class="cfg-note">测试会发一张 8×8 的纯红小图，问模型「什么颜色」。</span>
+      <div class="err" id="mcfg-vision-err"></div>
+    </div>
+
+    <div class="cfg-card" data-cfg-card="agent">
+      <div class="cfg-head"><h3>Agent 默认档</h3></div>
+      ${dshModelFieldHtml('mcfg-default-model', 'OpenStory 默认模型（对话模型留空时用它）', agentBlock.defaultModel, '不指定')}
+      ${dshModelFieldHtml('mcfg-subagent-model', '默认子 agent 模型', agentBlock.subagentModel, '跟主模型一样')}
+      <div class="field"><label>Profile 名（可选）</label>
+        <input id="mcfg-profile" placeholder="openstory" value="${esc(text(agentBlock.profile))}">
+        <span class="cfg-note">DSH 的 profile 名；留空＝用 DSH 自己的默认 profile。</span>
+      </div>
+      <div class="row">
+        <button class="btn-primary" data-action="config-save" data-block="agent">保存</button>
+        <span class="cfg-note" id="mcfg-agent-note"></span>
+      </div>
+      <div class="err" id="mcfg-agent-err"></div>
+    </div>`
+}
+
+/** 保存一块配置：PUT /api/config 只传这一块，其余块原样不动。 */
+async function saveConfigBlock(block) {
+  const errEl = document.getElementById(`mcfg-${block}-err`)
+  if (errEl) errEl.textContent = ''
+  const body = {}
+  if (block === 'text') {
+    const isDsh = settingRuntimeKind(text(agent.runtime)) === 'dsh'
+    body.text = {}
+    if (isDsh) {
+      body.text.model = cfgValue('mcfg-text-model')
+      body.agent = { subagentModel: cfgValue('mcfg-subagent-model-a') }
+      const reasoningEl = document.getElementById('cfg-reasoning')
+      if (reasoningEl) body.text.reasoningEffort = reasoningEl.value.trim()
+      const chineseEl = document.getElementById('mcfg-chinese')
+      if (chineseEl) body.text.chineseReasoning = chineseEl.checked
+    } else {
+      body.text.endpoint = cfgValue('mcfg-endpoint')
+      body.text.model = cfgValue('mcfg-model')
+      const key = cfgRawValue('mcfg-key')
+      if (key.trim()) body.text.apiKey = key
+    }
+  } else if (block === 'image' || block === 'vision') {
+    body[block] = {
+      enabled: cfgChecked(`mcfg-${block}-enabled`),
+      endpoint: cfgValue(`mcfg-${block}-endpoint`),
+      model: cfgValue(`mcfg-${block}-model`)
+    }
+    const key = cfgRawValue(`mcfg-${block}-key`)
+    if (key.trim()) body[block].apiKey = key
+  } else {
+    body.agent = {
+      defaultModel: cfgValue('mcfg-default-model'),
+      subagentModel: cfgValue('mcfg-subagent-model'),
+      profile: cfgValue('mcfg-profile')
+    }
+  }
+  try {
+    const payload = await api('/api/config', { method: 'PUT', body: JSON.stringify(body) })
+    agent.config = payload
+    // 改了配置，上一次的测试结论不再代表这一份，徽标回到「未测试」
+    agent.probes[block] = null
+    await bootAgentConfig()
+    render()
+    const noteEl = document.getElementById(`mcfg-${block}-note`)
+    if (noteEl) noteEl.textContent = '已保存'
+  } catch (error) {
+    const box = document.getElementById(`mcfg-${block}-err`)
+    if (box) box.textContent = `${error?.code ? `${error.code} · ` : ''}${text(error?.message || error)}`
+  }
+}
+
+/** 可行性校验：拿当前输入（可能还没保存）当 overrides 试连；生图必须先确认。 */
+async function runConfigProbe(kind) {
+  if (kind === 'image' && !globalThis.confirm?.('这会真生成一张图（消耗额度），继续？')) return
+  const overrides = {}
+  if (kind === 'text') {
+    const isDsh = settingRuntimeKind(text(agent.runtime)) === 'dsh'
+    overrides.endpoint = isDsh ? text(agent.config?.text?.endpoint) : cfgValue('mcfg-endpoint')
+    overrides.model = isDsh ? cfgValue('mcfg-text-model') : cfgValue('mcfg-model')
+    const key = isDsh ? '' : cfgRawValue('mcfg-key')
+    if (key.trim()) overrides.apiKey = key
+  } else {
+    overrides.endpoint = cfgValue(`mcfg-${kind}-endpoint`)
+    overrides.model = cfgValue(`mcfg-${kind}-model`)
+    const key = cfgRawValue(`mcfg-${kind}-key`)
+    if (key.trim()) overrides.apiKey = key
+  }
+  agent.probes[kind] = { state: 'running' }
+  paintProbeBadge(kind)
+  try {
+    const payload = await api('/api/config/probe', { method: 'POST', body: JSON.stringify({ kind, overrides }) })
+    agent.probes[kind] = payload.reachable
+      ? { state: 'ok', latencyMs: payload.latencyMs }
+      : { state: 'fail', detail: payload.detail || '', error: payload.error || '' }
+  } catch (error) {
+    agent.probes[kind] = { state: 'fail', detail: `${error?.code ? `${error.code} · ` : ''}${text(error?.message || error)}` }
+  }
+  paintProbeBadge(kind)
+}
+
 function settingsAppearanceSectionHtml() {
   const styleCards = state.styles.map((pack) => `
     <button class="big-opt${pack.id === state.skin ? ' on' : ''}" data-skin="${esc(pack.id)}">
@@ -3012,27 +3320,13 @@ function settingsPluginsSectionHtml() {
 }
 
 /**
- * 生图接口预留（OS-61 P4）：只读说明块，暂未启用——不保存、不发起任何调用。
- * 未来接 OpenAI 兼容 /v1/images/generations，为推演自动生成角色立绘/场景图，
- * 生成结果落 推演/<bookId>/素材/ 约定路径，前端零改动换真图。
+ * 生图接口（S4）：真配置面在「设置 · 模型 · 生图」——这里只留一句指路，
+ * 免得两处各摆一套字段、改了一边另一边不生效。
  */
 function settingsImageGenSectionHtml() {
   return `<div class="step">
-    <h3>生图接口 <span class="pill">暂未启用</span></h3>
-    <p class="sub">未来接 OpenAI 兼容的 /v1/images/generations，为推演自动生成角色立绘与场景图。现在只是字段占位说明——不保存、不发起任何调用；立绘/BGM 先手工放进库内 推演/&lt;bookId&gt;/素材/ 目录即可上屏。</p>
-    <div class="field"><label>Endpoint（占位）</label>
-      <input value="" placeholder="https://api.example.com/v1/images/generations" disabled>
-    </div>
-    <div class="field"><label>Model（占位）</label>
-      <input value="" placeholder="gpt-image-1" disabled>
-    </div>
-    <div class="field"><label>尺寸（占位）</label>
-      <select class="select" disabled>
-        <option>1024x1024（头像/立绘方图）</option>
-        <option>1536x1024（场景横图）</option>
-        <option>1024x1536（立绘竖图）</option>
-      </select>
-    </div>
+    <h3>生图接口</h3>
+    <p class="sub">端点、模型、key 与开关都在「设置 · 模型 · 生图」里配；配好并测试可达后，推演里就能直接生成场景图。</p>
   </div>`
 }
 
@@ -3115,6 +3409,7 @@ function settingsKbSectionHtml() {
 function settingsHtml() {
   const sectionRenderers = {
     plugins: settingsPluginsSectionHtml,
+    models: settingsModelsSectionHtml,
     modules: settingsModulesSectionHtml,
     suites: suitesSectionHtml,
     suite: () => suiteDetailHtml(state.settings.suiteId),
@@ -3178,7 +3473,11 @@ async function selectRuntime(id) {
   try {
     const payload = await api('/api/agent/runtime', { method: 'PUT', body: JSON.stringify({ id }) })
     agent.runtime = text(payload.active)
+    // 换了通道，上一次「测试连接」的结论就不再代表当前配置
+    agent.probes.text = null
     await loadAgentRuntimes()
+    // 切到 DSH 时要把模型下拉填满（清单缺失＝空下拉＋提示，不摆假选项）
+    await loadDshReasoningOptions()
     updateAgentChip()
     updateComposerState()
     render()
@@ -4472,6 +4771,7 @@ async function saveAgentSettings() {
 async function loadDshReasoningOptions() {
   try {
     const payload = await api('/api/agent/dsh/models')
+    agent.dshModels = Array.isArray(payload.models) ? payload.models : []
     const options = []
     for (const model of payload.models || []) {
       for (const option of model.reasoningOptions || []) {
@@ -4482,6 +4782,7 @@ async function loadDshReasoningOptions() {
     }
     agent.dshReasoningOptions = options
   } catch {
+    agent.dshModels = []
     agent.dshReasoningOptions = []
   }
 }
@@ -5010,7 +5311,9 @@ async function refreshLibraries() {
 const DIR_LABELS = {
   正文: '正文', 世界书: '世界书', 大纲: '大纲', 构思: '构思', 资料: '资料', 约束: '约束',
   剧本: '剧本', 人物: '人物', 场景: '场景', 素材: '素材', 漫画: '漫画', 视频: '视频',
-  体验: '体验', 联机: '联机', 日志: '日志', 文档: '文档'
+  体验: '体验', 联机: '联机', 日志: '日志', 文档: '文档',
+  // S2：拆解目录承载故事源（Fact 链可视化）——目录名不动，页签改叫故事源
+  拆解: '故事源'
 }
 const DIR_ORDER = ['正文', '世界书', '大纲', '构思', '资料', '约束', '剧本', '人物', '场景', '素材', '漫画', '视频', '体验', '联机', '日志', '文档']
 const READONLY_DIRS = new Set(['日志'])
@@ -5318,26 +5621,92 @@ async function createDirFile(dir) {
   }
 }
 
-/** ---------- 拆解视图（OS-66）：fact 数据的知识化呈现 ----------
- * 数据源：/api/fact/curve（章级摘要/功能/情绪/beats/事件/伏笔）
- *        ＋ /api/enrich/graph（六槽位/因果图/台账/需求层级）
- * 都只读——fact 的写入端在 enrich 与抽取管线，不在这里。 */
+/** ---------- 故事源（S2）：Fact 链的三形态 ----------
+ * 数据源：/api/fact/entries（条目＋provenance）＋ /api/fact/curve（wiki 章纲＋计数）
+ *        ＋ /api/enrich/graph（因果/台账，右栏辐射的旁证）
+ * 纯函数层在 public/storySource.mjs（浏览器/Node 双用）；这里只做装配与渲染。
+ * 全部只读——fact 的写入端仍在 enrich 与抽取管线。 */
 
-async function loadFactViewData() {
+let ssModule = null
+let ssModulePromise = null
+let ssChartInstance = null
+let ssChartResize = null
+let ssEchartsPromise = null
+let ssChartToken = 0
+
+function ensureStorySourceModule() {
+  if (ssModule) return Promise.resolve(ssModule)
+  if (!ssModulePromise) {
+    ssModulePromise = import('./storySource.mjs')
+      .then((module) => { ssModule = module; return module })
+      .catch((error) => { ssModulePromise = null; throw error })
+  }
+  return ssModulePromise
+}
+
+function freshFactView() {
+  return {
+    root: '', bookId: '', pickBookId: '', book: null, revision: 0,
+    loaded: false, loading: false, error: '', entriesError: '',
+    curve: null, graph: null, books: [], entries: [], layers: {}, total: 0,
+    warnings: [], truncated: false, layout: null,
+    ss: {
+      view: 'outline', layer: 'all', q: '', entryId: '', chapter: 0,
+      chart: 'plot-curve', openChapters: {}, folded: {}, closed: {},
+      chartError: ''
+    }
+  }
+}
+
+async function loadFactViewData(force = false, nextBookId) {
   if (!state.current) return
-  const fv = state.factView || (state.factView = { bookId: '', loaded: false, loading: false, curve: null, graph: null })
-  // 两道闸都要有：loaded 挡重复加载，loading 挡「加载中 render 又触发自己」的递归
-  // （OS-66 补：漏了 loading 闸会无限 render 循环，页面卡死）
+  const fv = state.factView || (state.factView = freshFactView())
+  if (!fv.ss) fv.ss = freshFactView().ss
+  const root = state.current.path
+  // 换库＝换数据源：整块状态重置，免得拿上本书的条目当这本书的
+  if (fv.root && fv.root !== root) Object.assign(fv, freshFactView())
+  if (nextBookId !== undefined) {
+    fv.pickBookId = text(nextBookId)
+    fv.ss.entryId = ''
+    fv.ss.chapter = 0
+  }
+  // 两道闸：loading 挡递归 render；loaded 挡重复拉取（换书/换库走 force）
   if (fv.loading) return
-  if (fv.loaded && fv.bookId === (state.factBookId || '')) return
+  if (!force && fv.loaded && fv.root === root) return
   fv.loading = true
   fv.error = ''
+  fv.entriesError = ''
+  fv.layout = null
   render()
   try {
-    const q = `root=${encodeURIComponent(state.current.path)}`
-    fv.curve = await api(`/api/fact/curve?${q}&bookId=${encodeURIComponent(state.factBookId || '')}`).catch(() => null)
-    fv.bookId = fv.curve?.bookId || state.factBookId || ''
-    fv.graph = await api(`/api/enrich/graph?${q}&bookId=${encodeURIComponent(fv.bookId)}`).catch(() => null)
+    const q = `root=${encodeURIComponent(root)}`
+    const pick = text(fv.pickBookId).trim()
+    const booksPayload = await api(`/api/fact/books?${q}`).catch(() => null)
+    if (Array.isArray(booksPayload?.books)) fv.books = booksPayload.books
+    fv.curve = await api(`/api/fact/curve?${q}${pick ? `&bookId=${encodeURIComponent(pick)}` : ''}`).catch(() => null)
+    fv.bookId = fv.curve?.bookId || pick || ''
+    const bookQuery = fv.bookId ? `&bookId=${encodeURIComponent(fv.bookId)}` : ''
+    const [entriesPayload, graphPayload] = await Promise.all([
+      api(`/api/fact/entries?${q}${bookQuery}&limit=500`).catch((error) => ({ __error: error })),
+      fv.bookId ? api(`/api/enrich/graph?${q}&bookId=${encodeURIComponent(fv.bookId)}`).catch(() => null) : Promise.resolve(null)
+    ])
+    fv.graph = graphPayload
+    if (entriesPayload?.__error) {
+      fv.entries = []
+      fv.total = 0
+      fv.layers = {}
+      fv.warnings = []
+      fv.entriesError = text(entriesPayload.__error?.message || entriesPayload.__error)
+    } else {
+      fv.entries = Array.isArray(entriesPayload?.entries) ? entriesPayload.entries : []
+      fv.total = Number(entriesPayload?.total) || fv.entries.length
+      fv.layers = entriesPayload?.layers && typeof entriesPayload.layers === 'object' ? entriesPayload.layers : {}
+      fv.warnings = Array.isArray(entriesPayload?.warnings) ? entriesPayload.warnings : []
+      fv.book = entriesPayload?.book && typeof entriesPayload.book === 'object' ? entriesPayload.book : null
+      fv.revision = Number(entriesPayload?.revision) || 0
+      fv.truncated = fv.total > fv.entries.length
+    }
+    fv.root = root
     fv.loaded = true
   } catch (error) {
     fv.error = text(error?.message || error)
@@ -5359,94 +5728,822 @@ function fvFlatten(value, depth = 0) {
   return text(value)
 }
 
+/** 故事源数据装配：storySource.mjs 的纯函数只认 entries ＋ wiki 章纲。 */
+function ssWikiOf(fv) {
+  return {
+    chapterSummaries: (fv?.curve?.chapters || []).map((chapter) => ({
+      chapter: chapter.no,
+      title: chapter.title,
+      summary: chapter.summary,
+      function: chapter.function,
+      emotion: chapter.emotion,
+      beats: chapter.beats,
+      events: chapter.events,
+      foreshadows: chapter.foreshadows
+    }))
+  }
+}
+
+function ssLayoutOf(fv) {
+  if (!fv || !ssModule) return null
+  return ssModule.layoutStorySource({ entries: fv.entries, wiki: ssWikiOf(fv), view: fv.ss.view })
+}
+
+/* ---------- 故事源「图表」＝分析模块容器（S3）---------- */
+
+/** 模块 id → ECharts 图种（注册表只管数据与结论，挂图在 app.js 这层做）。 */
+const SS_CHART_KIND = Object.freeze({ 'plot-curve': 'curve', 'foreshadow-audit': 'foreshadow', 'plot-density': 'heatmap' })
+
+function ssChartKind(id) {
+  if (SS_CHART_KIND[id]) return SS_CHART_KIND[id]
+  return ['curve', 'foreshadow', 'heatmap'].includes(id) ? id : 'curve'
+}
+
+/** 当前选中的 work 模块（旧值 'curve'/'foreshadow'/'heatmap' 自动落到对应模块）。 */
+function ssChartModule(ss) {
+  const mods = analyzeModulesFor('work')
+  return mods.find((mod) => mod.id === ss?.chart) || mods[0] || null
+}
+
+function ssSelectedEntry(layout, ss) {
+  if (!layout || !ss?.entryId) return null
+  return layout.tree.byKey?.[ss.entryId] || null
+}
+
+/** 条目短名：剧情条目用「段N · 首事件」；其余用 name。 */
+function ssEntryLabel(entry) {
+  const name = text(entry?.name).trim()
+  if (text(entry?.layer) === 'plot') {
+    const segment = Number(entry?.provenance?.segmentIndex) || 0
+    const first = text(entry?.events?.[0]?.content).replace(/\s+/gu, ' ').trim()
+    if (segment) return first ? `段${segment} · ${truncate(first, 20)}` : `段${segment}`
+  }
+  return name || '(未命名)'
+}
+
+function ssLayerLabel(value) {
+  const key = text(value).trim().toLowerCase()
+  return ssModule?.STORY_LAYER_LABELS?.[key] || (key || '其他')
+}
+
+function ssLayerClass(value) {
+  const key = text(value).trim().toLowerCase()
+  return ['plot', 'character', 'worldview'].includes(key) ? key : 'other'
+}
+
+function ssAlignLabel(alignment) {
+  return alignment === 'approximate' ? '对齐近似' : '对齐精确'
+}
+
+function ssFilteredRows(layout, ss) {
+  const q = text(ss.q).trim().toLowerCase()
+  return layout.board.rows.filter((row) => {
+    if (ss.layer !== 'all' && row.layer !== ss.layer) return false
+    if (!q) return true
+    return text(row.name).toLowerCase().includes(q) || text(row.cast).toLowerCase().includes(q)
+  })
+}
+
+function ssTableHtml(layout, ss) {
+  const rows = ssFilteredRows(layout, ss)
+  if (!rows.length) {
+    return `<div class="ss-empty">${layout.board.rows.length ? '没有匹配的条目——换个层或搜索词。' : '这本书还没有可读条目。'}</div>`
+  }
+  const columns = layout.board.columns
+  const head = columns
+    .map((column) => `<th${column.align === 'right' ? ' class="num"' : ''}>${esc(column.label)}</th>`)
+    .join('')
+  const body = rows.map((row) => {
+    const cells = columns.map((column) => {
+      let value
+      if (column.key === 'name') value = ssEntryLabel(row.entry)
+      else if (column.key === 'cast') value = row.cast || '—'
+      else if (column.key === 'status') value = row.status || '—'
+      else if (column.key === 'layerLabel') value = row.layerLabel
+      else if (column.key === 'chapter') value = row.chapter || '—'
+      else if (column.key === 'segment') value = row.segment || '—'
+      else value = row.events
+      const classes = [column.align === 'right' ? 'num' : '', column.key === 'name' ? 'name' : ''].filter(Boolean).join(' ')
+      return `<td${classes ? ` class="${classes}"` : ''}>${esc(value)}</td>`
+    }).join('')
+    return `<tr data-ss-entry="${esc(row.id)}"${row.id === ss.entryId ? ' class="on"' : ''} title="${esc(row.entry?.name || row.name)}">${cells}</tr>`
+  }).join('')
+  return `<div class="table-responsive"><table class="table"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`
+}
+
+function ssOutlineSideHtml(layout, ss) {
+  const tree = layout.tree
+  const rows = tree.chapters.map((chapter) => {
+    const open = ss.openChapters[chapter.chapter] === true
+    const chapterOn = Number(ss.chapter) === chapter.chapter && !ss.entryId
+    const beats = open ? `<div class="ss-beats">${chapter.beats.map((beat) => `
+      <div class="ss-beat">
+        <span class="ss-beat-label">${esc(beat.label)}</span>
+        <span class="ss-beat-n">${beat.eventCount} 事件</span>
+      </div>
+      ${beat.entries.map((entry) => `<button class="ss-entry${entry._storyKey === ss.entryId ? ' on' : ''}" data-ss-entry="${esc(entry._storyKey)}" title="${esc(entry.name)}">${esc(ssEntryLabel(entry))}<span class="n">${(entry.events || []).length}</span></button>`).join('')}
+    `).join('')}</div>` : ''
+    return `<div class="ss-ch">
+      <button class="ss-ch-head rm-toggle${chapterOn ? ' on' : ''}" data-ss-chapter="${chapter.chapter}" title="第${chapter.chapter}章 · ${esc(chapter.title || '未命名')}">
+        <span class="rm-chev">${open ? '▾' : '▸'}</span>
+        <span class="ss-ch-no">${String(chapter.chapter).padStart(2, '0')}</span>
+        <span class="ss-ch-title">${esc(chapter.title || `第${chapter.chapter}章`)}</span>
+        <span class="ss-ch-n">${chapter.beats.length}</span>
+      </button>
+      ${beats}
+    </div>`
+  }).join('')
+  const note = tree.alignment === 'exact'
+    ? '章号来自 provenance.chapters，精确对齐。'
+    : (tree.chapterCount <= 1
+      ? '没读到 wiki 章纲，条目暂归首章；跑 enrich 后再按段号铺到叙事章。'
+      : 'fact 章号不可靠时按段号均分到 wiki 章——页头已标「近似」。')
+  return `<section class="surface-card ss-card">
+    <div class="ss-card-head"><h3>章 → 段 → 条目</h3><span class="sub">${tree.chapterCount} 章 · ${tree.beatCount} 段</span></div>
+    ${rows ? `<div class="ss-tree">${rows}</div>` : '<div class="ss-empty">这本书还没有可排进章树的条目。</div>'}
+    <p class="ss-side-note">${esc(note)}</p>
+  </section>`
+}
+
+function ssLayerSideHtml(layout, ss) {
+  const layers = layout.stats.layers
+  const entries = [{ key: 'all', label: '全部', n: layout.stats.entries }]
+  for (const key of ['plot', 'character', 'worldview', 'other']) {
+    if (!layers[key]) continue
+    entries.push({ key, label: ssLayerLabel(key), n: layers[key] })
+  }
+  const rows = entries.map((item) => `<button class="ss-layer${ss.layer === item.key ? ' on' : ''}" data-ss-layer="${item.key}">
+    <span class="ss-layer-dot ${item.key}"></span>
+    <span>${esc(item.label)}</span>
+    <span class="n">${item.n}</span>
+  </button>`).join('')
+  return `<section class="surface-card ss-card">
+    <div class="ss-card-head"><h3>按层筛选</h3><span class="sub">${layout.stats.entries} 条</span></div>
+    <div class="ss-layers">${rows}</div>
+  </section>`
+}
+
+function ssChartSideHtml(layout, ss) {
+  const mods = analyzeModulesFor('work')
+  const current = ssChartModule(ss)
+  const rows = mods.map((mod) => `<button class="ss-chart-btn${current?.id === mod.id ? ' on' : ''}" data-ss-chart="${esc(mod.id)}">
+    ${esc(mod.label)}<span class="sub">${esc(mod.hint || '')}</span>
+  </button>`).join('')
+  return `<section class="surface-card ss-card">
+    <div class="ss-card-head"><h3>分析模块</h3><span class="sub">${mods.length} 个 · 可插拔</span></div>
+    <div class="ss-chart-list">${rows || '<p class="ss-side-note">分析模块装载中…</p>'}</div>
+    <p class="ss-side-note">列表来自分析模块注册表；图色取自 :root 令牌，换皮肤后重绘。</p>
+  </section>`
+}
+
+/** 图表形态的主体：模块切换条 + 选中模块的 render()。 */
+function ssModuleBodyHtml(layout, ss) {
+  const fv = state.factView
+  const mods = analyzeModulesFor('work')
+  if (!mods.length) {
+    return `<section class="surface-card ss-card ss-main-card">
+      <div class="ss-card-head"><h3>分析模块</h3><span class="sub">装载中…</span></div>
+      <div class="loading">正在装载分析模块…</div>
+    </section>`
+  }
+  const mod = ssChartModule(ss)
+  if (!mod) return '<section class="surface-card ss-card ss-main-card"><div class="ss-empty">没有可用的作品级分析模块。</div></section>'
+  if (ss.chart !== mod.id) ss.chart = mod.id
+  const tabs = mods.map((item) => `<button class="ss-tab${item.id === mod.id ? ' on' : ''}" data-ss-chart="${esc(item.id)}">${esc(item.label)}</button>`).join('')
+  let body
+  try {
+    // work 模块是同步纯计算（注册表注释里写明）；数据口径与 storySource 的 stats.charts 同源。
+    const result = mod.run({ entries: fv?.entries || [], wiki: ssWikiOf(fv), layout })
+    body = mod.render(result, { plot: true })
+  } catch (error) {
+    body = `<div class="ss-empty">${esc(text(error?.message || error))}</div>`
+  }
+  return `<section class="surface-card ss-card ss-main-card">
+    <div class="ss-card-head"><h3>${esc(mod.label)}</h3><span class="sub">${esc(mod.hint || '')}</span></div>
+    <div class="ss-tabs ss-module-tabs">${tabs}</div>
+    <div class="ss-module-body">${body}</div>
+  </section>`
+}
+
+function ssPlotBody(entry) {
+  const events = Array.isArray(entry.events) ? entry.events : []
+  const list = events.map((event, index) => `<article class="ss-event">
+    <div class="ss-event-head">
+      <span class="ss-event-no">#${esc(event.index ?? index + 1)}</span>
+      ${text(event.who).trim() ? `<span class="ss-event-who">${esc(event.who)}</span>` : ''}
+      ${text(event.channel).trim() ? `<span class="ss-event-channel">${esc(event.channel)}</span>` : ''}
+    </div>
+    <p class="ss-event-text">${esc(event.content)}</p>
+  </article>`).join('')
+  return list || '<div class="ss-empty">这条剧情条目还没有事件流。</div>'
+}
+
+function ssCharacterBody(entry) {
+  const anchors = entry.anchors && typeof entry.anchors === 'object' ? entry.anchors : {}
+  const traits = Array.isArray(entry.traits) ? entry.traits : []
+  const aliases = Array.isArray(entry.aliases) ? entry.aliases : []
+  const lines = (title, values) => {
+    const list = Array.isArray(values) ? values.filter(Boolean) : []
+    if (!list.length) return ''
+    return `<h4 class="ss-subhead">${esc(title)} <span>${list.length}</span></h4>
+      <div class="ss-anchor-list">${list.map((value) => `<blockquote class="ss-anchor">${esc(value)}</blockquote>`).join('')}</div>`
+  }
+  return `${text(entry.identity).trim() ? `<p class="ss-prose">${esc(entry.identity)}</p>` : ''}
+    ${traits.length ? `<div class="ss-chip-row"><span class="ss-field-k">特质</span>${traits.map((trait) => `<span class="ss-chip">${esc(trait)}</span>`).join('')}</div>` : ''}
+    ${text(entry.personality).trim() ? `<p class="ss-prose">${esc(entry.personality)}</p>` : ''}
+    ${aliases.length ? `<div class="ss-chip-row"><span class="ss-field-k">别名</span>${aliases.map((alias) => `<span class="ss-chip">${esc(alias)}</span>`).join('')}</div>` : ''}
+    ${lines('台词锚点', anchors.speech)}
+    ${lines('行为锚点', anchors.behavior)}
+    ${lines('内心锚点', anchors.inner)}
+    ${!anchors.speech?.length && !anchors.behavior?.length && !anchors.inner?.length ? '<div class="ss-empty">这位角色还没有台词/行为锚点。</div>' : ''}`
+}
+
+function ssFieldBody(entry) {
+  const skip = new Set(['schema', 'id', 'layer', 'name', 'status', 'domain', 'sources', 'provenance', 'fingerprint', 'events', 'relations', 'anchors', 'aliases', 'notes'])
+  const fields = Object.entries(entry).filter(([key, value]) => {
+    if (skip.has(key) || key === '_storyKey') return false
+    if (value === null || value === undefined || value === '') return false
+    if (Array.isArray(value) && !value.length) return false
+    return true
+  })
+  if (!fields.length) return '<div class="ss-empty">这条条目还没有可展示的字段。</div>'
+  return `<div class="ss-fields">${fields.map(([key, value]) => `<div class="ss-field">
+    <span class="ss-field-k">${esc(key)}</span>
+    <span class="ss-field-v">${esc(fvFlatten(value))}</span>
+  </div>`).join('')}</div>`
+}
+
+function ssEntryDetailHtml(entry, layout) {
+  const meta = layout.tree.entryIndex[entry._storyKey] || {}
+  const layer = text(entry.layer)
+  const notes = text(entry.notes).trim()
+  const body = layer === 'plot' ? ssPlotBody(entry) : (layer === 'character' ? ssCharacterBody(entry) : ssFieldBody(entry))
+  return `<div class="ss-detail-head">
+      <span class="ss-chip layer-${ssLayerClass(layer)}">${esc(ssLayerLabel(layer))}</span>
+      <h2>${esc(ssEntryLabel(entry))}</h2>
+      <span class="ss-align ${meta.alignment === 'approximate' ? 'approximate' : ''}">${esc(ssAlignLabel(meta.alignment))}</span>
+    </div>
+    <div class="ss-meta-line">
+      <span>第 ${meta.chapter || '—'} 章${meta.chapterTitle ? `「${esc(meta.chapterTitle)}」` : ''}</span>
+      <span>${esc(meta.beat || '—')}</span>
+      <span>状态 ${esc(entry.status || '—')}</span>
+      <span>${(entry.sources || []).length} 条溯源</span>
+      <span>${(entry.events || []).length} 事件</span>
+    </div>
+    ${body}
+    ${notes ? `<div class="ss-note"><b>备注</b>${esc(notes)}</div>` : ''}`
+}
+
+function ssChapterOverviewHtml(chapter) {
+  return `<div class="ss-detail-head">
+      <span class="ss-chip">第 ${chapter.chapter} 章</span>
+      <h2>${esc(chapter.title || `第${chapter.chapter}章`)}</h2>
+      ${chapter.function ? `<span class="ss-tag">${esc(chapter.function)}</span>` : ''}
+      ${chapter.emotion ? `<span class="ss-tag emo">${esc(chapter.emotion)}</span>` : ''}
+    </div>
+    <div class="ss-meta-line">
+      <span>${chapter.beats.length} 段</span>
+      <span>${chapter.entries.length} 条目</span>
+      <span>${chapter.eventCount} 事件</span>
+      <span>${chapter.exact} 条精确 · ${chapter.approximate} 条近似</span>
+    </div>
+    ${chapter.summary ? `<p class="ss-ch-summary">${esc(chapter.summary)}</p>` : '<p class="ss-ch-summary empty">这一章还没有摘要——跑 enrich 会补。</p>'}
+    <div class="ss-callout">左侧点一条条目，中栏换成它的详情（剧情=事件流 / 角色=台词·行为锚点 / 世界观=字段表）。</div>`
+}
+
+function ssBookOverviewHtml(fv, layout) {
+  const title = fv.book?.title || fv.curve?.title || fv.bookId || '这本书'
+  return `<div class="ss-detail-head"><h2>《${esc(title)}》</h2><span class="ss-align ${layout.stats.alignment === 'approximate' ? 'approximate' : ''}">${esc(ssAlignLabel(layout.stats.alignment))}</span></div>
+    <p class="ss-prose">这是 Fact 链的可视化工作面：左栏按章／层／图切换，中栏读条目，右栏看溯源、世界书关联与推演/分析消费点。</p>
+    <div class="ss-stat-grid">
+      <div class="ss-stat"><b>${layout.stats.entries}</b><span>条目</span></div>
+      <div class="ss-stat"><b>${layout.stats.events}</b><span>事件</span></div>
+      <div class="ss-stat"><b>${layout.stats.chapters}</b><span>章</span></div>
+      <div class="ss-stat"><b>${layout.stats.sources}</b><span>溯源</span></div>
+    </div>
+    <div class="ss-callout">${layout.stats.approximate ? `有 ${layout.stats.approximate} 条只能按段号近似归章——页头标了「对齐近似」。` : '章号来自 provenance.chapters，全部精确对齐。'} 左侧选一章或一条条目开始。</div>`
+}
+
+function ssCardShell(key, title, badge, body, ss) {
+  if (ss.closed?.[key]) return ''
+  const folded = ss.folded?.[key] === true
+  return `<section class="surface-card ss-card ss-trace-card">
+    <div class="ss-card-head">
+      <button class="rm-toggle" data-ss-fold="${key}" title="${folded ? '展开' : '折叠'}">
+        <span class="rm-chev">${folded ? '▸' : '▾'}</span>
+        <span class="rm-title">${esc(title)}</span>
+        <span class="rm-badge">${esc(badge)}</span>
+      </button>
+      <button class="rm-x" data-ss-close="${key}" title="收起这张卡">×</button>
+    </div>
+    ${folded ? '' : `<div class="ss-card-body">${body}</div>`}
+  </section>`
+}
+
+function ssTraceHtml(entry, layout, ss) {
+  const sources = Array.isArray(entry?.sources) ? entry.sources : []
+  const sourceRows = sources.slice(0, 14).map((source) => {
+    const hash = text(source.quote_hash || source.quoteHash).slice(0, 8)
+    return `<div class="ss-src">
+      <div class="ss-src-id" title="${esc(source.sourceId)}">${esc(source.sourceId || '—')}</div>
+      <div class="ss-src-meta">${esc(source.segmentId || '—')}${hash ? ` · ${esc(hash)}…` : ''}</div>
+    </div>`
+  }).join('')
+  // 溯源 → 正文：条目所属章若在正文里有对应文件，给一个「去正文」入口（P1 只跳页面）
+  const entryChapter = entry && layout?.tree?.entryIndex?.[entry._storyKey]?.chapter
+    ? Number(layout.tree.entryIndex[entry._storyKey].chapter)
+    : (Number(entry?.provenance?.chapters?.[0]) || 0)
+  const jumpRow = entryChapter
+    ? `<div class="ss-src-jump"><button data-ss-goto-write="${entryChapter}">去正文第 ${entryChapter} 章</button></div>`
+    : ''
+  const sourceBody = jumpRow + (sourceRows || `<div class="ss-empty-sm">${entry ? '这条条目没有溯源记录。' : '先选一条条目，右栏显示它的来源。'}</div>`)
+
+  const relations = Array.isArray(entry?.relations) ? entry.relations : []
+  const targets = []
+  const pushTarget = (name, type) => {
+    const value = text(name).trim()
+    if (!value) return
+    if (targets.some((item) => item.name === value)) return
+    targets.push({ name: value, type: text(type).trim() })
+  }
+  relations.forEach((relation) => pushTarget(relation.to ?? relation.target, relation.type))
+  if (Array.isArray(entry?.who)) entry.who.forEach((name) => pushTarget(name, '出场'))
+  const relationBody = targets.length
+    ? `<div class="ss-rel-list">${targets.slice(0, 24).map((item) => `<button class="ss-rel" data-ss-ref="${esc(item.name)}" title="${esc(item.name)}${item.type ? ` · ${esc(item.type)}` : ''}">${esc(item.name)}${item.type ? `<i>${esc(item.type)}</i>` : ''}</button>`).join('')}</div>
+       <p class="ss-side-note">点名字去世界书；找不到同名条目会落到世界书搜索。</p>`
+    : `<div class="ss-empty-sm">${entry ? '这条条目没有关联记录。' : '选中条目后显示世界书/人物关联。'}</div>`
+
+  const graph = state.factView?.graph
+  const causalNodes = graph?.causalGraph?.nodes?.length || 0
+  const causalEdges = graph?.causalGraph?.edges?.length || 0
+  const ledgerRows = (graph?.ledger?.knowledgeLedger?.length || 0) + (graph?.ledger?.stateLedger?.length || 0)
+  const graphLine = graph
+    ? `<p class="ss-side-note">enrich 旁证：因果图 ${causalNodes} 节点 / ${causalEdges} 边 · 台账 ${ledgerRows} 条${graph.failures?.length ? ` · ${graph.failures.length} 处缺口` : ''}</p>`
+    : ''
+  const radiateBody = `${graphLine}<div class="ss-radiate">
+      <button data-ss-radiate="chart">剧情曲线<span class="sub">切到图表形态，看这条所在章的张力与密度</span></button>
+      <button data-ss-radiate="deduce">推演事实包<span class="sub">推演按 layer 读取拆解条目，往下一拍</span></button>
+      <button data-ss-radiate="analysis">正文分析<span class="sub">跳正文页，分析面板按章看写作问题</span></button>
+    </div>`
+
+  const cards = [
+    ssCardShell('sources', '溯源', `${sources.length} 条`, sourceBody, ss),
+    ssCardShell('relations', '关联', `${targets.length} 个`, relationBody, ss),
+    ssCardShell('radiate', '辐射', '消费点', radiateBody, ss)
+  ].join('')
+  const labels = { sources: '溯源', relations: '关联', radiate: '辐射' }
+  const restored = ['sources', 'relations', 'radiate'].filter((key) => ss.closed?.[key])
+  const restore = restored.length
+    ? `<div class="ss-restore">已收起 ${restored.map((key) => `<button data-ss-open="${key}">＋${labels[key]}</button>`).join('')}</div>`
+    : ''
+  return cards + restore
+}
+
+
 function factViewHtml() {
   const fv = state.factView
+  const headKick = `<div class="kick">${esc(state.current?.name || '')} / 故事源</div>`
   if (!state.current) return needLibraryHtml()
-  if (!fv) return '<div class="loading">…</div>'
-  const head = `<div class="doc-head">
-      <div class="kick">${esc(state.current.name)} / 拆解</div>
-      <h1>拆解数据</h1>
-      <div class="doc-meta"><span class="b">fact 链</span><span>拆解/推演/富化的底座——这里只读，写入走 enrich 与抽取</span></div>
-    </div>`
-  if (fv.error) return head + flowError(fv.error)
-  const curve = fv.curve
-  if (!curve?.bookId) {
-    return head + `<div class="empty-state"><h2>还没有拆解数据</h2>
-      <p>拆解/ 目录下没有可读的 fact 文件。先在「条目」页或通过抽取管线产出条目（worldview/角色/剧情），再跑 enrich。</p></div>`
-  }
-  const chapters = curve.chapters || []
-  const graph = fv.graph || {}
-
-  // —— 章级序列：功能/情绪/beats/事件/伏笔，一格一章 ——
-  const chapterRows = chapters.map((c) => `<div class="fv-ch">
-      <div class="fv-ch-head">
-        <span class="fv-ch-no">第 ${c.no} ${c.no && c.title ? '· ' : ''}${esc(c.title || '')}</span>
-        ${c.function ? `<span class="fv-tag">${esc(c.function)}</span>` : ''}
-        ${c.emotion ? `<span class="fv-tag emo">${esc(c.emotion)}</span>` : ''}
-        <span class="fv-ch-n">${c.beats || 0} 拍 · ${c.events || 0} 事件 · ${c.foreshadows || 0} 伏笔</span>
-      </div>
-      ${c.summary ? `<p class="fv-ch-summary">${esc(c.summary)}</p>` : '<p class="fv-ch-summary empty">（这一章还没有摘要——跑 enrich 会补）</p>'}
-    </div>`).join('') || '<p class="empty">还没有章级摘要——跑 enrich 后出现。</p>'
-
-  // —— 六槽位（gimmick/plotDesign/intro/style）——
-  const slots = graph.slots || {}
-  const slotRows = Object.entries(slots).map(([key, slot]) => {
-    const label = { gimmick: '噱头', plotDesign: '剧情设计', intro: '开篇', style: '文风九维' }[key] || key
-    const rows = Object.entries(slot || {})
-      .map(([k, v]) => {
-        // 结构类字段（structure/stages/turningPoints）是嵌套对象——拍平成可读文本，别 [object Object]
-        const render = (value) => {
-          if (Array.isArray(value)) return value.map((item) => (typeof item === 'object' && item ? fvFlatten(item) : text(item))).filter(Boolean).join('；')
-          if (value && typeof value === 'object') return fvFlatten(value)
-          return text(value)
-        }
-        return `<div class="fv-slot-row"><span class="fv-slot-k">${esc(k)}</span><span class="fv-slot-v">${esc(render(v))}</span></div>`
+  if (!ssModule) {
+    ensureStorySourceModule()
+      .then(() => { if (state.view === 'dir:拆解') render() })
+      .catch((error) => {
+        if (state.factView) state.factView.error = text(error?.message || error)
+        if (state.view === 'dir:拆解') render()
       })
-      .join('')
-    return rows ? `<div class="fv-slot"><h4>${esc(label)}</h4>${rows}</div>` : ''
-  }).join('')
+    return `<div class="doc-head">${headKick}<h1>故事源</h1></div><div class="loading">正在装载故事源…</div>`
+  }
+  if (!fv) return `<div class="doc-head">${headKick}<h1>故事源</h1></div><div class="loading">…</div>`
+  if (fv.loading && !fv.loaded) {
+    return `<div class="doc-head">${headKick}<h1>故事源</h1><div class="doc-meta"><span class="b">Fact 链</span><span>正在读条目与章纲…</span></div></div><div class="loading">正在读 Fact 链…</div>`
+  }
+  if (fv.error && !fv.loaded) {
+    return `<div class="doc-head">${headKick}<h1>故事源</h1></div>${flowError(fv.error)}`
+  }
+  if (fv.entriesError) {
+    return `<div class="doc-head">${headKick}<h1>故事源</h1><div class="doc-meta"><span class="b">Fact 链</span><span>条目读不了</span></div></div>${flowError(`条目读不了：${fv.entriesError}`)}`
+  }
+  if (!fv.loaded) return `<div class="doc-head">${headKick}<h1>故事源</h1></div><div class="loading">…</div>`
+  if (!fv.entries.length) {
+    return `<div class="doc-head">${headKick}<h1>故事源</h1><div class="doc-meta"><span class="b">Fact 链</span><span>还没有条目</span></div></div>
+      <div class="empty-state"><h2>还没有故事源</h2>
+      <p>拆解/ 目录下没有可读的 fact 条目（或这本书只有章纲没有条目）。先在「世界书/条目」侧产出条目，跑一次 enrich，再回来。</p></div>`
+  }
 
-  // —— 因果图：节点/边 ——
-  const cg = graph.causalGraph || {}
-  const causalNodes = cg.nodes || []
-  const causalEdges = cg.edges || []
-  const causalHtml = causalNodes.length
-    ? `<div class="fv-causal">
-        <div class="fv-causal-nodes">${causalNodes.map((node) => `<span class="fv-node">${esc(node.name || node.id)}</span>`).join('')}</div>
-        ${causalEdges.length ? `<div class="fv-causal-edges">${causalEdges.map((edge) => {
-          const from = causalNodes.find((node) => node.id === (edge.from ?? edge.source))
-          const to = causalNodes.find((node) => node.id === (edge.to ?? edge.target))
-          return `<span class="fv-edge">${esc(from?.name || from?.id || edge.from)} → <i>${esc(edge.type || '因果')}</i> ${esc(to?.name || to?.id || edge.to)}</span>`
-        }).join('')}</div>` : ''}
-      </div>`
-    : '<p class="empty">因果图还没有数据（一章以内撑不起跨章因果——多写几章再跑 enrich）。</p>'
-
-  // —— 台账：知情/状态 ——
-  const ledger = graph.ledger || {}
-  const knowRows = (ledger.knowledgeLedger || []).map((row) => `<div class="fv-led-row"><b>${esc(row.character)}</b><span>${esc(row.knows)}${row.chapter ? `（第${row.chapter}拍）` : ''}</span></div>`).join('')
-  const stateRows = (ledger.stateLedger || []).map((row) => `<div class="fv-led-row"><b>${esc(row.character)}</b><span>${esc(row.state)}</span></div>`).join('')
-
-  return `${head}
-    <div class="fv-wrap">
-      <section class="fv-card">
-        <div class="fv-card-head"><h3>章级序列 <span class="count">${chapters.length} 章</span></h3>
-          <span class="sub">fact/curve · 功能/情绪/拍数/事件/伏笔</span></div>
-        ${chapterRows}
-      </section>
-      ${slotRows ? `<section class="fv-card"><div class="fv-card-head"><h3>六槽位</h3><span class="sub">enrich 产出的结构化设计信息</span></div>${slotRows}</section>` : ''}
-      <section class="fv-card">
-        <div class="fv-card-head"><h3>因果图 <span class="count">${causalNodes.length} 节点 ${causalEdges.length} 边</span></h3>
-          <span class="sub">跨章因果链（多章才有结构）</span></div>
-        ${causalHtml}
-      </section>
-      ${knowRows || stateRows ? `<section class="fv-card"><div class="fv-card-head"><h3>状态台账</h3><span class="sub">谁在什么时候知道什么、处在什么状态</span></div>
-        ${knowRows ? `<div class="fv-led-block"><h5>知情</h5>${knowRows}</div>` : ''}
-        ${stateRows ? `<div class="fv-led-block"><h5>状态</h5>${stateRows}</div>` : ''}
-      </section>` : ''}
-      ${graph.failures?.length ? `<section class="fv-card"><div class="fv-card-head"><h3>富化缺口</h3></div>
-        ${graph.failures.map((f) => `<div class="fv-led-row"><b>${esc(f.stage || f)}</b><span>${esc(f.reason || '')}</span></div>`).join('')}
-      </section>` : ''}
+  const layout = ssLayoutOf(fv)
+  if (!layout) return `<div class="doc-head">${headKick}<h1>故事源</h1></div><div class="loading">正在排版…</div>`
+  fv.layout = layout
+  const ss = fv.ss
+  // 正文页「在故事源中查看」的落点：数据就绪后切到图表形态的指定模块（跨库重置也不丢）
+  if (state.ssJump?.module) {
+    ss.view = 'chart'
+    ss.chart = state.ssJump.module
+    ss.chartError = ''
+    state.ssJump = null
+  }
+  const stats = layout.stats
+  const title = fv.book?.title || fv.curve?.title || fv.bookId || '未命名'
+  const bookOptions = (fv.books || []).map((book) => `<option value="${esc(book.bookId)}"${book.bookId === fv.bookId ? ' selected' : ''}>${esc(book.title || book.bookId)}${book.error ? '（坏档）' : ''}</option>`).join('')
+  const currentListed = (fv.books || []).some((book) => book.bookId === fv.bookId)
+  const currentOption = fv.bookId && !currentListed ? `<option value="${esc(fv.bookId)}" selected>${esc(fv.bookId)}</option>` : ''
+  const pickOptions = `<option value=""${fv.bookId ? '' : ' selected'}>最新（自动）</option>${currentOption}${bookOptions}`
+  const views = [['outline', '大纲'], ['board', '表格'], ['chart', '图表']]
+  const viewTabs = views.map(([key, label]) => `<button class="ss-tab${ss.view === key ? ' on' : ''}" data-ss-view="${key}">${label}</button>`).join('')
+  const head = `<div class="doc-head ss-doc-head">
+      ${headKick}
+      <h1>故事源</h1>
+      <div class="doc-meta">
+        <span class="b">Fact 链</span>
+        <span>《${esc(title)}》${fv.revision ? ` · revision ${fv.revision}` : ''}</span>
+        <select class="select" id="ss-book" title="换一本拆解数据">${pickOptions}</select>
+        <span class="ss-align ${stats.alignment === 'approximate' ? 'approximate' : ''}">${esc(ssAlignLabel(stats.alignment))}</span>
+        <span class="count">${stats.entries} 条目 · ${stats.chapters} 章 · ${stats.events} 事件</span>
+        ${fv.truncated ? `<span class="count">只读了前 ${fv.entries.length} / ${fv.total} 条</span>` : ''}
+        ${fv.warnings.length ? `<span class="count">${fv.warnings.length} 条读档警告</span>` : ''}
+      </div>
     </div>`
+
+  // 默认展开第一段有内容的章；选中条目所在章保持展开
+  if (!Object.keys(ss.openChapters).length) {
+    const first = layout.tree.chapters.find((chapter) => chapter.beats.length) || layout.tree.chapters[0]
+    if (first) ss.openChapters[first.chapter] = true
+  }
+  const selected = ssSelectedEntry(layout, ss)
+  if (selected) {
+    const meta = layout.tree.entryIndex[selected._storyKey]
+    if (meta) ss.openChapters[meta.chapter] = true
+  } else if (ss.chapter) {
+    ss.openChapters[ss.chapter] = true
+  }
+
+  const left = `<aside class="ss-col ss-left">
+    <section class="surface-card ss-card">
+      <div class="ss-card-head"><h3>形态</h3><span class="sub">Fact 链的三种读法</span></div>
+      <div class="ss-tabs">${viewTabs}</div>
+    </section>
+    ${ss.view === 'outline' ? ssOutlineSideHtml(layout, ss) : ''}
+    ${ss.view === 'board' ? ssLayerSideHtml(layout, ss) : ''}
+    ${ss.view === 'chart' ? ssChartSideHtml(layout, ss) : ''}
+  </aside>`
+
+  let middle
+  if (ss.view === 'board') {
+    const count = ssFilteredRows(layout, ss).length
+    const layerTabs = ['all', 'plot', 'character', 'worldview', 'other']
+      .filter((key) => key === 'all' || layout.stats.layers[key])
+      .map((key) => `<button class="ss-tab${ss.layer === key ? ' on' : ''}" data-ss-layer="${key}">${key === 'all' ? '全部' : esc(ssLayerLabel(key))} ${key === 'all' ? layout.stats.entries : layout.stats.layers[key]}</button>`)
+      .join('')
+    middle = `<section class="surface-card ss-card ss-main-card">
+      <div class="ss-card-head"><h3>条目表</h3><span class="sub" id="ss-board-count">${count} / ${stats.entries} 条</span></div>
+      <div class="ss-tabs ss-layer-tabs">${layerTabs}</div>
+      <div class="ss-board-toolbar">
+        <input id="ss-search" class="ss-search" value="${esc(ss.q)}" placeholder="按名称搜索…" autocomplete="off" spellcheck="false">
+        <span class="ss-board-hint">只读 · 点行选中</span>
+      </div>
+      <div id="ss-table-region">${ssTableHtml(layout, ss)}</div>
+    </section>`
+  } else if (ss.view === 'chart') {
+    middle = ssModuleBodyHtml(layout, ss)
+  } else if (selected) {
+    middle = `<section class="surface-card ss-card ss-main-card">${ssEntryDetailHtml(selected, layout)}</section>`
+  } else {
+    const chapter = ss.chapter ? layout.tree.chapters.find((item) => item.chapter === Number(ss.chapter)) : null
+    middle = `<section class="surface-card ss-card ss-main-card">${chapter ? ssChapterOverviewHtml(chapter) : ssBookOverviewHtml(fv, layout)}</section>`
+  }
+
+  const right = `<aside class="ss-col ss-right">${ssTraceHtml(selected, layout, ss)}</aside>`
+
+  return `<div class="ss-wrap">${head}
+    <div class="ss-grid">${left}${middle}${right}</div>
+  </div>`
+}
+
+/* ---------- 故事源图表态：ECharts 按需加载＋CSS 令牌主题 ---------- */
+
+function disposeStorySourceChart() {
+  // 令牌递增：取消还在等 ECharts 脚本的挂载，避免同一 host 上 init 两次
+  ssChartToken += 1
+  if (ssChartResize) {
+    window.removeEventListener('resize', ssChartResize)
+    ssChartResize = null
+  }
+  if (ssChartInstance) {
+    try { ssChartInstance.dispose() } catch { /* DOM 已换掉，实例自会失效 */ }
+    ssChartInstance = null
+  }
+}
+
+/** 本地 vendor 按需加载：只有进图表态才拉 1MB 的包，其它页签零负担。 */
+function loadEcharts() {
+  if (window.echarts) return Promise.resolve(window.echarts)
+  if (ssEchartsPromise) return ssEchartsPromise
+  ssEchartsPromise = new Promise((resolve, reject) => {
+    const script = document.createElement('script')
+    script.src = '/vendor/echarts.min.js'
+    script.async = true
+    script.onload = () => {
+      if (window.echarts) resolve(window.echarts)
+      else { ssEchartsPromise = null; reject(new Error('ECharts 脚本已加载，但全局对象缺失')) }
+    }
+    script.onerror = () => {
+      ssEchartsPromise = null
+      reject(new Error('ECharts 本地文件加载失败（public/vendor/echarts.min.js）'))
+    }
+    document.head.appendChild(script)
+  })
+  return ssEchartsPromise
+}
+
+/** 主题从 :root 令牌取值——皮肤一换，重挂图表就跟着变（不在这里写死任何色值）。 */
+function ssChartTheme() {
+  const style = getComputedStyle(document.documentElement)
+  const token = (name) => style.getPropertyValue(name).trim()
+  return {
+    bg: token('--bg'),
+    // ECharts 的调色器不认 color-mix 表达式——热力图低端取 --soft（实色令牌）
+    card: token('--soft'),
+    ink: token('--ink'),
+    ink2: token('--ink-2'),
+    muted: token('--muted'),
+    meta: token('--meta'),
+    line: token('--line'),
+    hair: token('--hair'),
+    accent: token('--accent'),
+    ok: token('--ok'),
+    warn: token('--warn'),
+    danger: token('--danger'),
+    font: token('--sans') || 'sans-serif'
+  }
+}
+
+function ssChartOption(layout, chart, theme) {
+  const data = layout.stats.charts
+  const axis = {
+    axisLine: { lineStyle: { color: theme.line } },
+    axisTick: { show: false },
+    axisLabel: { color: theme.muted },
+    splitLine: { lineStyle: { color: theme.hair } }
+  }
+  const base = {
+    backgroundColor: 'transparent',
+    textStyle: { color: theme.ink, fontFamily: theme.font },
+    animationDuration: 260,
+    tooltip: {
+      trigger: 'axis',
+      backgroundColor: theme.bg,
+      borderColor: theme.line,
+      textStyle: { color: theme.ink }
+    }
+  }
+
+  if (chart === 'foreshadow') {
+    const foreshadow = data.foreshadows
+    if (!foreshadow.detail && !foreshadow.counts.some((item) => item.planted > 0)) return null
+    if (foreshadow.detail) {
+      const points = foreshadow.points.slice(0, 90)
+      const lastChapter = foreshadow.maxChapter || (data.curve.length ? data.curve[data.curve.length - 1].chapter : 1)
+      const unresolved = points.filter((point) => !point.resolved)
+      return {
+        ...base,
+        tooltip: {
+          ...base.tooltip,
+          trigger: 'item',
+          formatter: (params) => {
+            const item = params?.data
+            if (!item || !item.text) return ''
+            const tail = item.payoffChapter ? ` · 第${item.payoffChapter}章回收` : ' · 未收'
+            return `第${item.chapter}章${tail}<br>${esc(item.text)}`
+          }
+        },
+        grid: { left: 40, right: 24, top: 34, bottom: 34 },
+        legend: { data: ['埋', '收'], top: 2, textStyle: { color: theme.muted } },
+        xAxis: { type: 'value', min: 1, max: lastChapter, ...axis },
+        yAxis: {
+          type: 'value',
+          min: -1,
+          max: Math.max(1, points.length),
+          name: '伏笔线',
+          nameTextStyle: { color: theme.meta },
+          axisLabel: { show: false },
+          splitLine: { show: false },
+          axisLine: { show: false }
+        },
+        series: [
+          {
+            name: '埋',
+            type: 'scatter',
+            symbolSize: 8,
+            data: points.map((point) => ({ value: [point.chapter, point.index], chapter: point.chapter, text: point.text })),
+            itemStyle: { color: theme.accent }
+          },
+          {
+            name: '收',
+            type: 'scatter',
+            symbol: 'circle',
+            symbolSize: 10,
+            data: points.filter((point) => point.resolved).map((point) => ({
+              value: [point.payoffChapter || point.chapter, point.index],
+              chapter: point.payoffChapter || point.chapter,
+              text: point.text,
+              payoffChapter: point.payoffChapter
+            })),
+            itemStyle: { color: theme.bg, borderColor: theme.ok, borderWidth: 2 }
+          },
+          {
+            name: '未收',
+            type: 'lines',
+            coordinateSystem: 'cartesian2d',
+            silent: true,
+            polyline: false,
+            lineStyle: { color: theme.meta, width: 1, type: 'dashed', opacity: 0.55 },
+            data: unresolved.map((point) => ({ coords: [[point.chapter, point.index], [lastChapter, point.index]] }))
+          }
+        ]
+      }
+    }
+    return {
+      ...base,
+      grid: { left: 42, right: 24, top: 34, bottom: 34 },
+      legend: { data: ['埋（条）', '累计未收'], top: 2, textStyle: { color: theme.muted } },
+      xAxis: { type: 'category', data: foreshadow.counts.map((item) => item.chapter), ...axis },
+      yAxis: { type: 'value', name: '伏笔', nameTextStyle: { color: theme.meta }, ...axis },
+      series: [
+        {
+          name: '埋（条）',
+          type: 'bar',
+          barMaxWidth: 18,
+          data: foreshadow.counts.map((item) => ({ value: item.planted, chapter: item.chapter })),
+          itemStyle: { color: theme.accent, borderRadius: [3, 3, 0, 0] }
+        },
+        {
+          name: '累计未收',
+          type: 'line',
+          smooth: true,
+          showSymbol: false,
+          data: foreshadow.counts.map((item) => ({ value: item.cumulative, chapter: item.chapter })),
+          lineStyle: { color: theme.warn, width: 1.5, type: 'dashed' },
+          itemStyle: { color: theme.warn }
+        }
+      ]
+    }
+  }
+
+  if (chart === 'heatmap') {
+    const heatmap = data.heatmap
+    if (!heatmap.data.length) return null
+    return {
+      ...base,
+      tooltip: {
+        ...base.tooltip,
+        trigger: 'item',
+        formatter: (params) => {
+          const value = params?.value || []
+          const chapter = heatmap.xChapters[value[0]] ?? '—'
+          return `第${chapter}章 · 第${Number(value[1]) + 1}段<br>${value[2]} 事件`
+        }
+      },
+      grid: { left: 52, right: 24, top: 24, bottom: 58 },
+      xAxis: { type: 'category', data: heatmap.xLabels, ...axis },
+      yAxis: { type: 'category', data: heatmap.yLabels, ...axis },
+      visualMap: {
+        min: 0,
+        max: Math.max(1, heatmap.max),
+        calculable: true,
+        orient: 'horizontal',
+        left: 'center',
+        bottom: 6,
+        itemWidth: 140,
+        itemHeight: 10,
+        textStyle: { color: theme.muted },
+        inRange: { color: [theme.card, theme.accent] }
+      },
+      series: [{
+        name: '事件数',
+        type: 'heatmap',
+        data: heatmap.data,
+        itemStyle: { borderColor: theme.bg, borderWidth: 1 },
+        emphasis: { itemStyle: { shadowBlur: 6, shadowColor: theme.line } }
+      }]
+    }
+  }
+
+  if (!data.curve.length) return null
+  return {
+    ...base,
+    grid: { left: 44, right: 48, top: 38, bottom: 32 },
+    legend: { data: ['张力', '事件密度'], top: 2, textStyle: { color: theme.muted } },
+    xAxis: { type: 'category', boundaryGap: false, data: data.curve.map((item) => item.chapter), ...axis },
+    yAxis: [
+      { type: 'value', name: '张力', min: 0, max: 100, nameTextStyle: { color: theme.meta }, ...axis },
+      {
+        type: 'value',
+        name: '事件',
+        nameTextStyle: { color: theme.meta },
+        axisLine: { show: false },
+        axisTick: { show: false },
+        axisLabel: { color: theme.muted },
+        splitLine: { show: false }
+      }
+    ],
+    series: [
+      {
+        name: '张力',
+        type: 'line',
+        smooth: true,
+        showSymbol: false,
+        data: data.curve.map((item) => item.tension),
+        lineStyle: { color: theme.accent, width: 2 },
+        itemStyle: { color: theme.accent },
+        areaStyle: { color: theme.accent, opacity: 0.12 }
+      },
+      {
+        name: '事件密度',
+        type: 'line',
+        yAxisIndex: 1,
+        smooth: true,
+        showSymbol: false,
+        data: data.curve.map((item) => item.density),
+        lineStyle: { color: theme.ok, width: 1.5, type: 'dashed' },
+        itemStyle: { color: theme.ok },
+        areaStyle: { color: theme.ok, opacity: 0.08 }
+      }
+    ]
+  }
+}
+
+function ssChartFallbackHtml(layout, chart, message) {
+  const charts = layout.stats.charts
+  let headers = []
+  let rows = []
+  if (chart === 'foreshadow') {
+    headers = ['章', '埋', '累计未收']
+    rows = charts.foreshadows.counts.filter((item) => item.planted > 0).slice(0, 14)
+      .map((item) => [`第${item.chapter}章`, item.planted, item.cumulative])
+  } else if (chart === 'heatmap') {
+    headers = ['章', '段', '事件']
+    rows = charts.heatmap.data.slice(0, 14)
+      .map((cell) => [`第${charts.heatmap.xChapters[cell[0]]}章`, `第${cell[1] + 1}段`, cell[2]])
+  } else {
+    headers = ['章', '张力', '事件']
+    rows = charts.curve.slice(0, 14).map((item) => [`第${item.chapter}章`, item.tension, item.density])
+  }
+  const table = rows.length
+    ? `<div class="table-responsive"><table class="table"><thead><tr>${headers.map((header) => `<th>${esc(header)}</th>`).join('')}</tr></thead><tbody>
+        ${rows.map((row) => `<tr>${row.map((cell, index) => `<td${index ? ' class="num"' : ''}>${esc(cell)}</td>`).join('')}</tr>`).join('')}
+      </tbody></table></div>`
+    : '<div class="ss-empty">这张图还没有数据。</div>'
+  return `<div class="ss-chart-fallback">
+    <h4>图表没加载出来</h4>
+    <p>${esc(message)}</p>
+    <p class="sub">先用文字把数据摆出来——不白屏。</p>
+    ${table}
+    <button class="btn-ghost" data-ss-retry-chart>重试加载图表</button>
+  </div>`
+}
+
+async function mountStorySourceChart() {
+  disposeStorySourceChart()
+  const token = ++ssChartToken
+  const host = document.getElementById('ss-chart')
+  if (!host) return
+  const fv = state.factView
+  if (!fv?.layout || fv.ss?.view !== 'chart') return
+  const kind = ssChartKind(fv.ss.chart)
+  if (fv.ss.chartError) {
+    host.innerHTML = ssChartFallbackHtml(fv.layout, kind, fv.ss.chartError)
+    return
+  }
+  try {
+    const echarts = await loadEcharts()
+    if (token !== ssChartToken || !host.isConnected || state.view !== 'dir:拆解' || state.factView !== fv) return
+    const option = ssChartOption(fv.layout, kind, ssChartTheme())
+    if (!option) {
+      host.innerHTML = '<div class="ss-empty">这张图还没有数据——entry 事件流或章纲还没铺开。</div>'
+      return
+    }
+    host.innerHTML = ''
+    ssChartInstance = echarts.init(host, null, { renderer: 'canvas' })
+    ssChartInstance.setOption(option)
+    ssChartInstance.on('click', (params) => {
+      const layout = fv.layout
+      if (!layout) return
+      const charts = layout.stats.charts
+      let chapter = 0
+      if (kind === 'curve') chapter = charts.curve[params.dataIndex]?.chapter
+      else if (kind === 'foreshadow') chapter = Number(params.data?.chapter ?? params.value?.[0])
+      else if (kind === 'heatmap') chapter = charts.heatmap.xChapters[params.value?.[0]]
+      if (!chapter) return
+      fv.ss.chapter = chapter
+      fv.ss.openChapters[chapter] = true
+      // 让 ECharts 先把 click 事件走完，再换 DOM（避免在自己的事件里 dispose 自己）
+      setTimeout(() => { if (state.view === 'dir:拆解') render() }, 0)
+    })
+    ssChartResize = () => { ssChartInstance?.resize() }
+    window.addEventListener('resize', ssChartResize)
+  } catch (error) {
+    fv.ss.chartError = text(error?.message || error)
+    host.innerHTML = ssChartFallbackHtml(fv.layout, kind, fv.ss.chartError)
+  }
 }
 
 function dirViewHtml(dir) {
@@ -6298,7 +7395,7 @@ function deduceAgentHtml() {
 
 async function boot() {
   // 运行时清单与 config 一起拉：chip 要能显示「DSH 原生」这类具体名字，不能等进设置页才加载
-  await Promise.all([bootAgentConfig(), loadAgentRuntimes()])
+  await Promise.all([bootAgentConfig(), loadGlobalConfig(), loadAgentRuntimes()])
   updateAgentChip()
   loadSuites()
   try {
@@ -6526,6 +7623,110 @@ function closeSettingsTab() {
   render()
 }
 
+/** 故事源的右栏关联点击：先在世界书索引里找同名条目，找不到就落到搜索词。 */
+function ssOpenReference(name) {
+  const wanted = text(name).trim()
+  if (!wanted) return
+  const jump = () => {
+    const hit = findReferenceByRef(wanted)
+    if (hit) {
+      state.reference.activePath = hit.path
+      if (state.view !== 'reference') go('reference')
+      openReference(hit.path)
+      return
+    }
+    state.reference.q = wanted
+    if (state.view !== 'reference') go('reference')
+    else render()
+  }
+  if (state.reference.loaded) jump()
+  else loadReferences().then(jump).catch(() => {})
+}
+
+/** 故事源内部的全部点击（形态/层/条/章/图/折叠/关联/辐射）。 */
+function handleSsClick(target) {
+  const fv = state.factView
+  if (!fv?.ss) return
+  const ss = fv.ss
+  const ds = target.dataset || {}
+  if (ds.ssView !== undefined) {
+    ss.view = ds.ssView
+    ss.chartError = ''
+    if (ss.view !== 'chart') disposeStorySourceChart()
+    render()
+    return
+  }
+  if (ds.ssLayer !== undefined) {
+    ss.layer = ds.ssLayer
+    render()
+    return
+  }
+  if (ds.ssChapter !== undefined) {
+    const chapter = Number(ds.ssChapter)
+    ss.chapter = chapter
+    ss.entryId = ''
+    ss.openChapters[chapter] = ss.openChapters[chapter] !== true
+    render()
+    return
+  }
+  if (ds.ssEntry !== undefined) {
+    ss.entryId = ds.ssEntry
+    const meta = fv.layout?.tree?.entryIndex?.[ds.ssEntry]
+    if (meta) {
+      ss.chapter = meta.chapter
+      ss.openChapters[meta.chapter] = true
+    }
+    render()
+    return
+  }
+  if (ds.ssChart !== undefined) {
+    ss.chart = ds.ssChart
+    ss.chartError = ''
+    render()
+    return
+  }
+  if (ds.ssGotoWrite !== undefined) {
+    jumpToWriteChapter(Number(ds.ssGotoWrite))
+    return
+  }
+  if (ds.ssFold !== undefined) {
+    ss.folded[ds.ssFold] = ss.folded[ds.ssFold] !== true
+    render()
+    return
+  }
+  if (ds.ssClose !== undefined) {
+    ss.closed[ds.ssClose] = true
+    render()
+    return
+  }
+  if (ds.ssOpen !== undefined) {
+    ss.closed[ds.ssOpen] = false
+    render()
+    return
+  }
+  if (ds.ssRef !== undefined) {
+    ssOpenReference(ds.ssRef)
+    return
+  }
+  if (ds.ssRadiate !== undefined) {
+    if (ds.ssRadiate === 'chart') {
+      ss.view = 'chart'
+      ss.chart = 'plot-curve'
+      ss.chartError = ''
+      render()
+    } else if (ds.ssRadiate === 'deduce') {
+      go('deduce')
+    } else {
+      go('write')
+    }
+    return
+  }
+  if (ds.ssRetryChart !== undefined) {
+    ss.chartError = ''
+    mountStorySourceChart()
+  }
+}
+
 function go(view) {
   if (view === 'habits') loadHabits().then(() => { if (state.view === 'habits') render() })
   state.error = ''
@@ -6546,7 +7747,7 @@ function go(view) {
   render()
   if (view === 'settings') {
     // 先并行拉数据，全部回来再渲染一次（否则先完成的 render 会用旧 state 覆盖）
-    Promise.all([loadAgentRuntimes(), loadStyles(), loadSuites(), loadKbStatus(), loadDshReasoningOptions()])
+    Promise.all([loadGlobalConfig(), loadAgentRuntimes(), loadStyles(), loadSuites(), loadKbStatus(), loadDshReasoningOptions()])
       .then(() => { if (state.view === 'settings') render() })
       .catch(() => render())
     return
@@ -6583,6 +7784,12 @@ function go(view) {
 }
 
 document.addEventListener('click', (event) => {
+  // 故事源（S2）：形态/层/条/章/图/折叠/关联/辐射都在页内切换，不碰全局路由
+  const ssTarget = event.target.closest?.('[data-ss-view], [data-ss-layer], [data-ss-entry], [data-ss-chapter], [data-ss-chart], [data-ss-fold], [data-ss-close], [data-ss-open], [data-ss-ref], [data-ss-radiate], [data-ss-retry-chart], [data-ss-goto-write]')
+  if (ssTarget && state.view === 'dir:拆解') {
+    handleSsClick(ssTarget)
+    return
+  }
   // 消息内路径 code（OS-51）：点「参考/约束/写作纪律」＝打开这篇参考；
   // 点「正文/001-xxx.md」＝打开这一章。之前没这个入口，点路径会误弹「新建笔记」。
   const pathCode = event.target.closest?.('.msg.assistant code, .msg.assistant .tool-target')
@@ -6972,6 +8179,10 @@ document.addEventListener('click', (event) => {
     rejectCard(target.dataset.cardId)
   } else if (action === 'agent-config-save') {
     saveAgentSettings()
+  } else if (action === 'config-save') {
+    saveConfigBlock(target.dataset.block)
+  } else if (action === 'config-probe') {
+    runConfigProbe(target.dataset.probeKind)
   } else if (action === 'modal-close') {
     closeModal()
   } else if (action === 'flow-create') {
@@ -7202,6 +8413,13 @@ document.addEventListener('click', (event) => {
     startPolishRequest()
   } else if (action === 'analyze-toggle') {
     toggleAnalyzePanel()
+  } else if (action === 'analyze-picker') {
+    state.analyze.pickerOpen = !state.analyze.pickerOpen
+    renderAnalyzePanel()
+  } else if (action === 'analyze-module-toggle') {
+    toggleAnalyzeModule(target.dataset.moduleId || '')
+  } else if (action === 'analyze-to-source') {
+    openStorySourceModule(target.dataset.moduleId || '')
   } else if (action === 'mod-toggle') {
     const id = target.dataset.modId
     if (!state.analyze.modOpen) state.analyze.modOpen = {}
@@ -7283,6 +8501,16 @@ document.addEventListener('click', (event) => {
 
 document.addEventListener('change', (event) => {
   const target = event.target
+  // 设置 · 模型：运行时下拉＝立刻切活动运行时（与插件节的运行时卡同一口径）
+  if (target.id === 'mcfg-runtime') {
+    selectRuntime(text(target.value))
+    return
+  }
+  // 故事源换书（S2）：force 重拉 entries/curve/graph
+  if (target.id === 'ss-book' && state.view === 'dir:拆解') {
+    loadFactViewData(true, target.value)
+    return
+  }
   // 工作台模块插拔（OS-44）：勾选＝显示，取消＝隐藏
   if (target.dataset?.action === 'module-toggle' && target.dataset.moduleId) {
     setModuleHidden(target.dataset.moduleId, target.checked !== true)
@@ -7305,6 +8533,17 @@ document.addEventListener('change', (event) => {
 
 document.addEventListener('input', (event) => {
   const target = event.target
+  // 故事源表格（S2）：只重渲表体，不打断搜索框焦点
+  if (target.id === 'ss-search' && state.view === 'dir:拆解') {
+    const fv = state.factView
+    if (!fv?.layout || !fv.ss) return
+    fv.ss.q = target.value
+    const region = document.getElementById('ss-table-region')
+    if (region) region.innerHTML = ssTableHtml(fv.layout, fv.ss)
+    const count = document.getElementById('ss-board-count')
+    if (count) count.textContent = `${ssFilteredRows(fv.layout, fv.ss).length} / ${fv.layout.stats.entries} 条`
+    return
+  }
   if (target.dataset?.docpref) {
     const key = target.dataset.docpref
     setDocPref(key, Number(target.value))
@@ -7523,6 +8762,8 @@ function setSkin(id) {
       else mountRefGraph()
     })
   }
+  // 故事源图表用令牌取色：换皮后重挂一次，轴/线/热力才跟上新色板（OS-49 同口径）
+  if (state.view === 'dir:拆解' && state.factView?.ss?.view === 'chart') mountStorySourceChart()
 }
 
 async function loadStyles() {
