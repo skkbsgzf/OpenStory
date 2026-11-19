@@ -540,13 +540,29 @@ function deliverableLabel(deliverable) { return deliverable === 'novel' ? '小�
 
 
 /* ---------- 写作偏好（OS-21：字号/行高/段距/缩进/自动隔行 → CSS 变量）---------- */
+/* OS-94 并行批垫片（防全页崩）：并行会话把 localStorage 迁库内 ui-state 时调用了 uiGet/uiSet，
+ * 但实现还没落地——缺定义会让 loadDocPrefs 等 boot 早期调用抛 ReferenceError，click 分发
+ * 根本绑不上（作者看到的「卡片全点不了」就是它）。先用 localStorage 顶住签名，落地后整体替换。 */
+function uiGet(key, fallback = null) {
+  try {
+    const raw = localStorage.getItem('openstory-ui:' + key)
+    return raw === null ? fallback : JSON.parse(raw)
+  } catch { return fallback }
+}
+function uiSet(key, value) {
+  try {
+    if (value === null || value === undefined) localStorage.removeItem('openstory-ui:' + key)
+    else localStorage.setItem('openstory-ui:' + key, JSON.stringify(value))
+  } catch { /* 隐私模式 */ }
+}
+
 const DOC_PREF_DEFAULTS = { fontSize: 17, lineHeight: 1.9, paraGap: 1, indent: 2, autoGap: true }
 
 function loadDocPrefs() {
   if (state.write.docPrefs) return state.write.docPrefs
-  let saved = {}
-  try { saved = JSON.parse(localStorage.getItem('openstory-doc-prefs') || '{}') } catch { saved = {} }
-  state.write.docPrefs = { ...DOC_PREF_DEFAULTS, ...saved }
+  // OS-89：写作偏好落库内 ui-state（不用 localStorage）——换机器/清缓存后仍能复原
+  const saved = uiGet('docPrefs', {})
+  state.write.docPrefs = { ...DOC_PREF_DEFAULTS, ...(saved && typeof saved === 'object' ? saved : {}) }
   return state.write.docPrefs
 }
 
@@ -563,7 +579,7 @@ function applyDocPrefs() {
 function setDocPref(key, value) {
   const prefs = loadDocPrefs()
   prefs[key] = value
-  try { localStorage.setItem('openstory-doc-prefs', JSON.stringify(prefs)) } catch { /* 隐私模式 */ }
+  uiSet('docPrefs', { ...prefs }) // OS-89：落库内
   applyDocPrefs()
 }
 
@@ -597,6 +613,8 @@ function formatBytes(size) {
  */
 async function loadWriteChapters({ force = false } = {}) {
   if (!state.current) return
+  // OS-89：模块加载时检索自己的 log
+  void loadModuleLog('正文', { limit: 20 })
   if (state.write.chapters.length && !force) return
   const firstLoad = state.write.chapters.length === 0
   if (firstLoad) {
@@ -990,8 +1008,8 @@ function getTempMode() {
   const root = state.current?.path || ''
   if (!agent.tempModes) agent.tempModes = {}
   if (!(root in agent.tempModes)) {
-    let saved = 'fixed'
-    try { saved = text(localStorage.getItem(TEMP_MODE_KEY(root))) || 'fixed' } catch { saved = 'fixed' }
+    // OS-89：落库内 ui-state（同库同机同值，换机器也能复原）
+    const saved = text(uiGet('agentTempMode', 'fixed')) || 'fixed'
     agent.tempModes[root] = saved === 'current' ? 'current' : 'fixed'
   }
   return agent.tempModes[root]
@@ -1001,9 +1019,7 @@ function setTempMode(mode) {
   const root = state.current?.path || ''
   if (!agent.tempModes) agent.tempModes = {}
   agent.tempModes[root] = mode === 'current' ? 'current' : 'fixed'
-  try {
-    localStorage.setItem(TEMP_MODE_KEY(root), agent.tempModes[root])
-  } catch { /* 隐私模式 */ }
+  uiSet('agentTempMode', agent.tempModes[root])
 }
 
 /** 临时需求路由：fixed 模式先切到固定临时会话，current 模式原地不动。 */
@@ -1015,9 +1031,7 @@ function getTempSessionId() {
   const root = state.current?.path || ''
   if (!agent.tempSessions) agent.tempSessions = {}
   if (!(root in agent.tempSessions)) {
-    let saved = ''
-    try { saved = text(localStorage.getItem(TEMP_SESSION_KEY(root))) } catch { saved = '' }
-    agent.tempSessions[root] = saved
+    agent.tempSessions[root] = text(uiGet('agentTempSession', ''))
   }
   // 显式钉过就返回钉的那条；没钉过则动态认「临时需求」会话（自动模式也要在面板上标出来）
   const explicit = agent.tempSessions[root]
@@ -1030,10 +1044,7 @@ function setTempSessionId(id) {
   const root = state.current?.path || ''
   if (!agent.tempSessions) agent.tempSessions = {}
   agent.tempSessions[root] = id || ''
-  try {
-    if (id) localStorage.setItem(TEMP_SESSION_KEY(root), id)
-    else localStorage.removeItem(TEMP_SESSION_KEY(root))
-  } catch { /* 隐私模式 */ }
+  uiSet('agentTempSession', id ? id : null)
 }
 
 /** 切到（必要时创建）默认临时会话。失败如实抛。 */
@@ -1325,11 +1336,8 @@ function analyzeModuleById(id) {
 function analyzeEnabled() {
   const root = state.current?.path || ''
   if (state.analyze.enabledRoot !== root) {
-    let saved = null
-    try {
-      const raw = localStorage.getItem(ANALYZE_ENABLED_KEY(root))
-      if (raw !== null) saved = JSON.parse(raw)
-    } catch { saved = null }
+    // OS-89：启用的分析模块落库内 ui-state
+    const saved = uiGet('analyzeEnabled', null)
     state.analyze.enabled = Array.isArray(saved)
       ? saved.filter((id) => typeof id === 'string')
       : [...ANALYZE_DEFAULT_MODULES]
@@ -1347,7 +1355,7 @@ function toggleAnalyzeModule(id) {
   else enabled.push(id)
   state.analyze.enabled = enabled
   const root = state.current?.path || ''
-  try { localStorage.setItem(ANALYZE_ENABLED_KEY(root), JSON.stringify(enabled)) } catch { /* 隐私模式 */ }
+  uiSet('analyzeEnabled', [...enabled]) // OS-89：落库内
   state.analyze.pickerOpen = false
   if (mod.scope === 'chapter') {
     if (at < 0 && !state.analyze.result) runAnalysis()
@@ -2262,16 +2270,13 @@ function isTempSession(id) {
 
 function rememberSession(id) {
   const root = state.current?.path || ''
-  try {
-    // 临时会话不进「上次会话」槽：它由 TEMP_SESSION_KEY 单独记
-    if (id && !isTempSession(id)) localStorage.setItem(AGENT_SESSION_KEY(root), id)
-    else if (!id) localStorage.removeItem(AGENT_SESSION_KEY(root))
-  } catch { /* 隐私模式 */ }
+  // 临时会话不进「上次会话」槽：它由 ui 键 agentTempSession 单独记
+  if (id && !isTempSession(id)) uiSet('agentSession', id)
+  else if (!id) uiSet('agentSession', null)
 }
 
 function recallSession() {
-  const root = state.current?.path || ''
-  try { return localStorage.getItem(AGENT_SESSION_KEY(root)) || '' } catch { return '' }
+  return text(uiGet('agentSession', ''))
 }
 
 async function openSession(id) {
@@ -3132,24 +3137,16 @@ const WORKBENCH_MODULES = Object.freeze([
  *   castColors   —— 角色专属颜色
  */
 function scriptPrefs() {
-  const root = state.current?.path || ''
-  const key = `openstory-script-prefs::${root}`
-  try {
-    const raw = JSON.parse(localStorage.getItem(key) || '{}')
-    return {
-      autoFormat: raw.autoFormat !== false,   // 默认开
-      castColors: raw.castColors !== false    // 默认开
-    }
-  } catch {
-    return { autoFormat: true, castColors: true }
+  const raw = uiGet('scriptPrefs', {})
+  return {
+    autoFormat: raw?.autoFormat !== false,   // 默认开
+    castColors: raw?.castColors !== false    // 默认开
   }
 }
 
 function setScriptPref(name, value) {
-  const root = state.current?.path || ''
-  const key = `openstory-script-prefs::${root}`
   const next = { ...scriptPrefs(), [name]: value }
-  try { localStorage.setItem(key, JSON.stringify(next)) } catch { /* 存不下就只影响本次 */ }
+  uiSet('scriptPrefs', next) // OS-89：落库内 ui-state
   return next
 }
 
@@ -4257,6 +4254,8 @@ async function loadReferences({ force = false } = {}) {
     ref.tagNotes = payload.tagNotes && typeof payload.tagNotes === 'object' ? payload.tagNotes : {}
     ref.stats = payload.stats ?? null
     ref.loaded = true
+    // OS-89：模块加载时自己检索自己的 log（AGENTS.md 第 10 条）
+    await loadModuleLog('参考', { limit: 20 })
     // OS-48：顺手探旧目录有没有可迁入的内容（迁入按钮按需显示；目录不存在＝0）
     await probeRetiredDirs()
   } catch (error) {
@@ -4500,6 +4499,7 @@ function referenceEditorHtml() {
 
 async function loadHabits({ force = false } = {}) {
   if (!state.current) return
+  void loadModuleLog('习惯', { limit: 20 }) // OS-89
   if (state.habits && !force) return
   try {
     const payload = await api(`/api/habits?root=${encodeURIComponent(state.current.path)}`)
@@ -4877,7 +4877,9 @@ function scriptCastHtml() {
 const REF_MODULES = Object.freeze([
   { id: 'chapters', label: '章节', hint: '卷/章两级', render: () => chapterTreeHtml(), badge: () => String((state.write.chapters || []).length) },
   { id: 'graph', label: '世界书图谱', hint: '世界书与产物的关系', render: () => graphModuleHtml(), badge: () => String(state.refCol.graph?.stats?.nodes ?? 0) },
-  { id: 'summary', label: '世界书摘要', hint: 'AI 基于图谱总结本章', render: () => refSummaryHtml(), badge: () => '' }
+  { id: 'summary', label: '世界书摘要', hint: 'AI 基于图谱总结本章', render: () => refSummaryHtml(), badge: () => '' },
+  // OS-89：模块自己的修改日志——作者要能看见「这个模块最近改了什么」
+  { id: 'changelog', label: '本模块修改', hint: '每次保存的 diff 与时间', render: () => moduleLogHtml('正文', { title: '正文修改记录' }), badge: () => String(moduleLogOf('正文')?.entries?.length ?? 0) }
 ])
 
 /**
@@ -4974,8 +4976,7 @@ function hiddenModules() {
   const root = state.current?.path || ''
   if (!state.moduleHidden) state.moduleHidden = {}
   if (!state.moduleHidden[root]) {
-    let saved = []
-    try { saved = JSON.parse(localStorage.getItem(MODULE_HIDE_KEY(root)) || '[]') } catch { saved = [] }
+    const saved = uiGet('moduleHidden', null)
     state.moduleHidden[root] = Array.isArray(saved) ? saved : []
   }
   return new Set(state.moduleHidden[root])
@@ -4988,7 +4989,7 @@ function setModuleHidden(id, hidden) {
   else set.delete(id)
   if (!state.moduleHidden) state.moduleHidden = {}
   state.moduleHidden[root] = [...set]
-  try { localStorage.setItem(MODULE_HIDE_KEY(root), JSON.stringify([...set])) } catch { /* 隐私模式 */ }
+  uiSet('moduleHidden', [...set]) // OS-89：落库内
   // 在正文/参考页上就地重排左栏（不整页重绘：正文滚动位置不该因为开关卡片被重置）；
   // 设置页等其它页面走常规 render，才能同步勾选态。
   const host = document.getElementById('ref-col')
@@ -5985,12 +5986,8 @@ function hiddenTabs() {
   const root = state.current?.path || ''
   if (!state.tabHidden) state.tabHidden = {}
   if (!state.tabHidden[root]) {
-    let saved = null
-    try {
-      const raw = localStorage.getItem(TAB_HIDE_KEY(root))
-      if (raw !== null) saved = JSON.parse(raw)
-    } catch { saved = [] }
-    // 键不存在＝作者从未表态 → 用默认种子（不写回，尊重作者后续选择）
+    // OS-89：页签开关落库内 ui-state；键不存在＝作者从未表态 → 用默认种子
+    const saved = uiGet('tabHidden', null)
     state.tabHidden[root] = Array.isArray(saved) ? saved : [...DEFAULT_HIDDEN_TABS]
   }
   return new Set(state.tabHidden[root])
@@ -6003,7 +6000,7 @@ function setTabHidden(view, hidden) {
   else set.delete(view)
   if (!state.tabHidden) state.tabHidden = {}
   state.tabHidden[root] = [...set]
-  try { localStorage.setItem(TAB_HIDE_KEY(root), JSON.stringify([...set])) } catch { /* 隐私模式 */ }
+  uiSet('tabHidden', [...set]) // OS-89：落库内
   // 关掉当前正在看的页签 → 退到第一个还开着的
   if (hidden && state.view === view) {
     const next = state.current ? 'write' : 'libraries'
@@ -6217,6 +6214,7 @@ function dirWork(dir) {
 
 async function openDirWork(dir) {
   state.view = `dir:${dir}`
+  void loadModuleLog(dir, { limit: 20 }) // OS-89：模块加载时检索自己的 log
   const work = dirWork(dir)
   if (work.files.length && (work.loaded || READONLY_DIRS.has(dir))) {
     render()
@@ -8645,6 +8643,9 @@ async function openLibrary(path) {
       api(`/api/chapters?root=${encodeURIComponent(path)}&dir=${encodeURIComponent('正文')}`).catch(() => null)
     ])
     state.libDirs = Array.isArray(topPayload.dirs) ? topPayload.dirs : []
+    // OS-89：拉库内界面状态（页签/模块开关等）——必须在 render() 之前灌满，
+    // 否则第一帧会用默认值渲染再跳一下。这就是「不用浏览器缓存」的落地。
+    await loadUiState()
     // OS-84：探已退场旧目录还剩多少篇——页签栏第一帧就要据此决定藏/露，不能等进参考页
     await probeRetiredDirs()
     // OS-19：体裁声明后按 excludedPages 裁剪页签（未声明＝不裁剪，保持 OS-8 行为）
