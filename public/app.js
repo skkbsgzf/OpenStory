@@ -3036,6 +3036,20 @@ function probeBadgeLabel(probe) {
   return '未测试'
 }
 
+/* OS-74：ComfyUI 节点映射的文本互转（"positive:6,negative:7" ⇄ {positive:"6",negative:"7"}） */
+function comfyNodeMapText(map) {
+  if (!map || typeof map !== 'object') return ''
+  return Object.entries(map).filter(([k, v]) => k && v).map(([k, v]) => `${k}:${v}`).join(',')
+}
+function parseNodeMapText(value) {
+  const out = {}
+  for (const part of text(value).split(',')) {
+    const [k, v] = part.split(':').map((x) => text(x).trim())
+    if (k && v) out[k] = v
+  }
+  return out
+}
+
 function cfgBadgeHtml(kind) {
   const probe = agent.probes[kind]
   const state = probe?.state ? ` ${probe.state}` : ''
@@ -3103,6 +3117,10 @@ function settingsModelsSectionHtml() {
     ...(agent.runtimeList || []).filter((item) => item.id).map((item) => `<option value="${esc(item.id)}"${item.id === runtime ? ' selected' : ''}>${esc(item.name)}${item.source ? `（${esc(item.source)}）` : ''}</option>`)
   ].join('')
 
+  const runtimeKind = settingRuntimeKind(runtime)
+  const activeKit = (agent.runtimeList || []).find((item) => item.id === runtime)
+  const kitModels = Array.isArray(activeKit?.models) ? activeKit.models : []
+  // OS-74：三种运行时三种表单——DSH（模型从 /models 选）/ CLI（模型从 kit.models 选，凭据走 CLI 自己）/ Pi（直连端点）
   const textFields = isDsh
     ? `${dshModelFieldHtml('mcfg-text-model', '主模型（对话）', textBlock.model, '用运行时自己的默认模型')}
        ${dshModelFieldHtml('mcfg-subagent-model-a', '子 agent 模型', agentBlock.subagentModel, '跟主模型一样')}
@@ -3114,7 +3132,21 @@ function settingsModelsSectionHtml() {
          </label>
          <span class="cfg-note">中文写作讨论用中文思考更贴题，代价是可能损失一部分形式化推理性能。</span>
        </div>`
-    : `<div class="field"><label>Endpoint（OpenAI 兼容 chat/completions）</label>
+    : runtimeKind === 'cli'
+      ? `<div class="field"><label>模型（走 ${esc(activeKit?.name || 'CLI')} 自己的模型清单）</label>
+           <select class="select" id="mcfg-cli-model">
+             <option value=""${textBlock.model ? '' : ' selected'}>用 kit 缺省（${esc(activeKit?.defaultModel || '未声明')}）</option>
+             ${kitModels.map((m) => `<option value="${esc(m)}"${textBlock.model === m ? ' selected' : ''}>${esc(m)}</option>`).join('')}
+           </select>
+           <span class="cfg-note">CLI 用自己登录的凭据；本仓不存 key、不直连 LLM API——跑动记录因此一致。</span>
+         </div>
+         <div class="field"><label>子 agent 模型（可选）</label>
+           <select class="select" id="mcfg-cli-subagent-model">
+             <option value=""${agentBlock.subagentModel ? '' : ' selected'}>跟主模型一样</option>
+             ${kitModels.map((m) => `<option value="${esc(m)}"${agentBlock.subagentModel === m ? ' selected' : ''}>${esc(m)}</option>`).join('')}
+           </select>
+         </div>`
+      : `<div class="field"><label>Endpoint（OpenAI 兼容 chat/completions）</label>
          <input id="mcfg-endpoint" placeholder="https://api.deepseek.com/v1/chat/completions" value="${esc(text(textBlock.endpoint))}">
        </div>
        <div class="field"><label>模型</label>
@@ -3146,17 +3178,40 @@ function settingsModelsSectionHtml() {
       <div class="field">
         <label class="cfg-switch">
           <input type="checkbox" id="mcfg-image-enabled"${image.enabled === true ? ' checked' : ''}>
-          <span>启用生图（推演里生成场景图时会用到）</span>
+          <span>启用生图（推演/世界书生成场景图时会用到）</span>
         </label>
       </div>
-      <div class="field"><label>Endpoint（OpenAI 兼容，填到 /v1 为止）</label>
-        <input id="mcfg-image-endpoint" placeholder="https://api.openai.com/v1" value="${esc(text(image.endpoint))}">
+      <div class="field"><label>后端</label>
+        <select class="select" id="mcfg-image-backend">
+          <option value="openai"${(image.backend ?? 'openai') !== 'comfyui' ? ' selected' : ''}>OpenAI 兼容 API（云端）</option>
+          <option value="comfyui"${image.backend === 'comfyui' ? ' selected' : ''}>ComfyUI（本机）</option>
+        </select>
+        <span class="cfg-note">OpenAI 兼容：填 endpoint＋模型＋key，一次请求直接出图。ComfyUI：填本地端口＋工作流 JSON，走提交→轮询→取图。</span>
       </div>
-      <div class="field"><label>模型</label>
-        <input id="mcfg-image-model" placeholder="gpt-image-1" value="${esc(text(image.model))}">
+      <div class="cfg-sub" id="mcfg-image-openai"${image.backend === 'comfyui' ? ' hidden' : ''}>
+        <div class="field"><label>Endpoint（OpenAI 兼容，填到 /v1 为止）</label>
+          <input id="mcfg-image-endpoint" placeholder="https://api.openai.com/v1" value="${esc(text(image.endpoint))}">
+        </div>
+        <div class="field"><label>模型</label>
+          <input id="mcfg-image-model" placeholder="gpt-image-1" value="${esc(text(image.model))}">
+        </div>
+        <div class="field"><label>API Key${image.apiKeyMasked ? `（已设置 ${esc(image.apiKeyMasked)}）` : ''}</label>
+          <input id="mcfg-image-key" type="password" placeholder="${image.apiKeyMasked ? '留空保留原 key' : 'sk-…'}">
+        </div>
       </div>
-      <div class="field"><label>API Key${image.apiKeyMasked ? `（已设置 ${esc(image.apiKeyMasked)}）` : ''}</label>
-        <input id="mcfg-image-key" type="password" placeholder="${image.apiKeyMasked ? '留空保留原 key' : 'sk-…'}">
+      <div class="cfg-sub" id="mcfg-image-comfy"${image.backend === 'comfyui' ? '' : ' hidden'}>
+        <div class="field"><label>ComfyUI 地址（端口）</label>
+          <input id="mcfg-comfy-url" placeholder="http://127.0.0.1:8188" value="${esc(text(image.comfyUrl))}">
+          <span class="cfg-note">ComfyUI 默认 8188；启动后浏览器打开同地址可确认。</span>
+        </div>
+        <div class="field"><label>工作流 JSON（API 格式导出的那份）</label>
+          <input id="mcfg-comfy-workflow" placeholder="参考/素材/comfy/scene.json 或绝对路径" value="${esc(text(image.comfyWorkflow))}">
+          <span class="cfg-note">在 ComfyUI 里用「Save (API Format)」导出。相对路径按库根解析。</span>
+        </div>
+        <div class="field"><label>节点映射（可选，逗号分隔 key:节点id）</label>
+          <input id="mcfg-comfy-nodemap" placeholder="positive:6,negative:7,seed:3" value="${esc(comfyNodeMapText(image.comfyNodeMap))}">
+          <span class="cfg-note">留空＝按节点标题自动猜（Positive/Negative/KSampler/EmptyLatentImage）。</span>
+        </div>
       </div>
       <div class="row">
         <button class="btn-primary" data-action="config-save" data-block="image">保存</button>
@@ -3224,20 +3279,38 @@ async function saveConfigBlock(block) {
       if (reasoningEl) body.text.reasoningEffort = reasoningEl.value.trim()
       const chineseEl = document.getElementById('mcfg-chinese')
       if (chineseEl) body.text.chineseReasoning = chineseEl.checked
+    } else if (settingRuntimeKind(text(agent.runtime)) === 'cli') {
+      body.text.model = cfgValue('mcfg-cli-model')
+      body.agent = { subagentModel: cfgValue('mcfg-cli-subagent-model') }
     } else {
       body.text.endpoint = cfgValue('mcfg-endpoint')
       body.text.model = cfgValue('mcfg-model')
       const key = cfgRawValue('mcfg-key')
       if (key.trim()) body.text.apiKey = key
     }
-  } else if (block === 'image' || block === 'vision') {
-    body[block] = {
-      enabled: cfgChecked(`mcfg-${block}-enabled`),
-      endpoint: cfgValue(`mcfg-${block}-endpoint`),
-      model: cfgValue(`mcfg-${block}-model`)
+  } else if (block === 'image') {
+    const backend = text(document.getElementById('mcfg-image-backend')?.value).trim() === 'comfyui' ? 'comfyui' : 'openai'
+    body.image = {
+      enabled: cfgChecked('mcfg-image-enabled'),
+      backend,
+      endpoint: cfgValue('mcfg-image-endpoint'),
+      model: cfgValue('mcfg-image-model')
     }
-    const key = cfgRawValue(`mcfg-${block}-key`)
-    if (key.trim()) body[block].apiKey = key
+    const key = cfgRawValue('mcfg-image-key')
+    if (key.trim()) body.image.apiKey = key
+    if (backend === 'comfyui') {
+      body.image.comfyUrl = cfgValue('mcfg-comfy-url')
+      body.image.comfyWorkflow = cfgValue('mcfg-comfy-workflow')
+      body.image.comfyNodeMap = parseNodeMapText(cfgValue('mcfg-comfy-nodemap'))
+    }
+  } else if (block === 'vision') {
+    body.vision = {
+      enabled: cfgChecked('mcfg-vision-enabled'),
+      endpoint: cfgValue('mcfg-vision-endpoint'),
+      model: cfgValue('mcfg-vision-model')
+    }
+    const key = cfgRawValue('mcfg-vision-key')
+    if (key.trim()) body.vision.apiKey = key
   } else {
     body.agent = {
       defaultModel: cfgValue('mcfg-default-model'),
@@ -5740,7 +5813,9 @@ function ssWikiOf(fv) {
       beats: chapter.beats,
       events: chapter.events,
       foreshadows: chapter.foreshadows
-    }))
+    })),
+    // OS-74：伏笔明细（含 plantedAt/payoffAt/status）——伏笔回收图靠它画埋-收连线
+    foreshadows: Array.isArray(fv?.curve?.foreshadows) ? fv.curve.foreshadows : []
   }
 }
 
@@ -8504,6 +8579,15 @@ document.addEventListener('change', (event) => {
   // 设置 · 模型：运行时下拉＝立刻切活动运行时（与插件节的运行时卡同一口径）
   if (target.id === 'mcfg-runtime') {
     selectRuntime(text(target.value))
+    return
+  }
+  // 设置 · 模型：生图后端切换＝两套表单显隐（OpenAI 兼容 / ComfyUI）
+  if (target.id === 'mcfg-image-backend') {
+    const comfy = text(target.value) === 'comfyui'
+    const openaiBox = document.getElementById('mcfg-image-openai')
+    const comfyBox = document.getElementById('mcfg-image-comfy')
+    if (openaiBox) openaiBox.hidden = comfy
+    if (comfyBox) comfyBox.hidden = !comfy
     return
   }
   // 故事源换书（S2）：force 重拉 entries/curve/graph

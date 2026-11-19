@@ -361,7 +361,7 @@ function boardRowOf(entry, meta) {
   }
 }
 
-function buildCharts(chapters, wiki) {
+function buildCharts(chapters, wiki, entries = []) {
   const curve = chapters.map((chapter) => ({
     chapter: chapter.chapter,
     title: chapter.title || `第${chapter.chapter}章`,
@@ -373,15 +373,36 @@ function buildCharts(chapters, wiki) {
   const maxChapter = chapters.length ? chapters[chapters.length - 1].chapter : 0
 
   // 伏笔：wiki 有明细就用明细（埋/收/未收），只有计数就退到「累计未收」。
+  // OS-74：兼容两种数据形态——
+  //   ① 章级：{ chapter, payoffChapter }（老数据）
+  //   ② 段级：{ chapter, plantedAt, payoffAt, status }（OS-74 起 enrich/手写都按这个）
+  // 段级字段要经「段号→章序」映射，才能和章轴对齐。
+  const segMaxForHooks = Math.max(0, ...listOf(entries)
+    .map((entry) => num(entry?.provenance?.segmentIndex) ?? 0))
+  const segmentToChapterNo = (segment) => {
+    if (!segment) return null
+    const index = chapterIndexForSegment(segment, Math.max(segMaxForHooks, segment), chapters.length)
+    const chapterObj = chapters[index]
+    return chapterObj ? chapterObj.chapter : null
+  }
   const points = listOf(wiki?.foreshadows).map((hook, index) => {
     const chapter = num(hook?.chapter)
     if (!chapter) return null
+    // 优先章级字段（已是章号），其次段级字段（要映射），最后看 status
     const payoffChapter = num(hook?.payoffChapter ?? hook?.payoff ?? hook?.resolvedAt)
+      ?? segmentToChapterNo(num(hook?.payoffAt))
+    const status = text(hook?.status).toLowerCase()
+    const resolved = Boolean(payoffChapter) || hook?.resolved === true || status === 'paid' || status === 'resolved'
     return {
       index,
+      id: text(hook?.id) || `f-${index}`,
       chapter,
       text: text(hook?.text ?? hook?.summary),
-      resolved: Boolean(payoffChapter) || hook?.resolved === true,
+      plantedAt: num(hook?.plantedAt) ?? null,
+      payoffAt: num(hook?.payoffAt) ?? null,
+      status: status || (resolved ? 'paid' : 'unresolved'),
+      note: text(hook?.note),
+      resolved,
       payoffChapter: payoffChapter || null
     }
   }).filter(Boolean)
@@ -472,7 +493,7 @@ export function layoutStorySource({ entries, wiki, view } = {}) {
     approximate: grouped.approximateCount,
     unassigned: grouped.unassigned
   }
-  stats.charts = buildCharts(grouped.chapters, wiki)
+  stats.charts = buildCharts(grouped.chapters, wiki, items)
 
   return {
     tree: {

@@ -137,6 +137,7 @@ import {
 } from './deduceSession.mjs'
 import { factHealth } from './factGuard.mjs'
 import { enrichBook, enrichGraph } from './enrichEngine.mjs'
+import { generateViaComfy, probeComfy } from './comfyEngine.mjs'
 
 const enrichJobs = new Map()
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -856,7 +857,7 @@ async function handleApi(req, res, url, context) {
       : files.map((name) => ({ path: join(dir, name), mtime: statSync(join(dir, name)).mtimeMs }))
         .sort((left, right) => right.mtime - left.mtime)[0]?.path ?? null
     if (!pickPath) {
-      return sendJson(res, 200, { ok: true, bookId: '', title: '', words: 0, chapters: [], books: files.map((name) => name.replace(/\.json$/, '')) })
+      return sendJson(res, 200, { ok: true, bookId: '', title: '', words: 0, chapters: [], foreshadows: [], books: files.map((name) => name.replace(/\.json$/, '')) })
     }
     const bookId = basename(pickPath).replace(/\.json$/, '')
     let document = null
@@ -888,12 +889,24 @@ async function handleApi(req, res, url, context) {
       events: eventsByChapter.get(Number(c.chapter ?? 0)) ?? 0,
       foreshadows: foreshadowsByChapter.get(Number(c.chapter ?? 0)) ?? 0
     }))
+    // OS-74：伏笔明细透传（埋/收/未收）——前端「伏笔回收」图需要 plantedAt/payoffAt 才能画点，
+    // 只有每章计数画不出埋-收连线。字段宽松：老数据没有 plantedAt 就只用 chapter 归章。
+    const foreshadowList = (wiki?.foreshadows ?? []).map((f, index) => ({
+      id: text(f.id) || `f-${index}`,
+      text: text(f.text),
+      chapter: Number(f.chapter ?? 0) || null,
+      plantedAt: Number.isFinite(Number(f.plantedAt)) ? Number(f.plantedAt) : null,
+      payoffAt: Number.isFinite(Number(f.payoffAt)) ? Number(f.payoffAt) : null,
+      status: text(f.status) || 'unresolved',
+      note: text(f.note)
+    }))
     return sendJson(res, 200, {
       ok: true,
       bookId,
       title: text(document.book?.title ?? ''),
       words: Number(document.book?.word_count ?? 0),
       chapters,
+      foreshadows: foreshadowList,
       books: files.map((name) => name.replace(/\.json$/, ''))
     })
   }
@@ -1366,29 +1379,48 @@ function readLegacyDeduceState(root, bookId) {
     if (!image.enabled) {
       return sendError(res, API_ERROR_CODES.AGENT_UPSTREAM_ERROR, '生图没启用——设置 · 模型 · 生图里打开开关并填 OpenAI 兼容 images API 的地址与模型后可用')
     }
-    if (!image.endpoint) {
-      return sendError(res, API_ERROR_CODES.AGENT_UPSTREAM_ERROR, '未配置生图端点——设置 · 模型 · 生图里填 OpenAI 兼容 images API 的地址与模型后可用')
-    }
     const name = text(request.name).trim().slice(0, 40)
     const prompt = text(request.prompt).trim()
     if (!name || !prompt) return sendError(res, API_ERROR_CODES.INVALID_ENTRY, 'name 与 prompt 必填')
     if (/[\/]|\.\./u.test(name)) return sendError(res, API_ERROR_CODES.PATH_ESCAPE, 'name 不能含路径分隔符')
     const size = text(request.size).trim() || '1024x1024'
-    const body = JSON.stringify({ model: text(image.model), prompt: `小说场景立绘，无文字：${prompt}`, size, n: 1, response_format: 'b64_json' })
-    let payload = null
-    try {
-      const response = await fetch(imagesGenerationsUrl(image.endpoint), {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', ...(image.apiKey ? { authorization: `Bearer ${image.apiKey}` } : {}) },
-        body, signal: AbortSignal.timeout(300_000)
+    // OS-74：双后端——openai（同步 images/generations）或 comfyui（提交→轮询→取图）
+    let b64 = ''
+    if (image.backend === 'comfyui') {
+      if (!text(image.comfyUrl).trim()) {
+        return sendError(res, API_ERROR_CODES.AGENT_UPSTREAM_ERROR, '未配置 ComfyUI 地址——设置 · 模型 · 生图里切到 ComfyUI 并填端口')
+      }
+      const comfy = await generateViaComfy({
+        comfyUrl: image.comfyUrl,
+        workflowPath: image.comfyWorkflow,
+        root: authorized.root,
+        nodeMap: image.comfyNodeMap,
+        prompt: `小说场景立绘，无文字：${prompt}`,
+        negative: text(request.negative).trim(),
+        size
       })
-      if (!response.ok) throw new Error(`HTTP ${response.status} · ${(await response.text()).slice(0, 200)}`)
-      payload = await response.json()
-    } catch (error) {
-      return sendError(res, API_ERROR_CODES.AGENT_UPSTREAM_ERROR, `生图端点失败：${text(error?.message || error)}`)
+      if (!comfy.ok) return sendError(res, API_ERROR_CODES.AGENT_UPSTREAM_ERROR, `ComfyUI 生图失败：${comfy.error}`)
+      b64 = comfy.b64
+    } else {
+      if (!image.endpoint) {
+        return sendError(res, API_ERROR_CODES.AGENT_UPSTREAM_ERROR, '未配置生图端点——设置 · 模型 · 生图里填 OpenAI 兼容 images API 的地址与模型后可用')
+      }
+      const body = JSON.stringify({ model: text(image.model), prompt: `小说场景立绘，无文字：${prompt}`, size, n: 1, response_format: 'b64_json' })
+      let payload = null
+      try {
+        const response = await fetch(imagesGenerationsUrl(image.endpoint), {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', ...(image.apiKey ? { authorization: `Bearer ${image.apiKey}` } : {}) },
+          body, signal: AbortSignal.timeout(300_000)
+        })
+        if (!response.ok) throw new Error(`HTTP ${response.status} · ${(await response.text()).slice(0, 200)}`)
+        payload = await response.json()
+      } catch (error) {
+        return sendError(res, API_ERROR_CODES.AGENT_UPSTREAM_ERROR, `生图端点失败：${text(error?.message || error)}`)
+      }
+      b64 = payload?.data?.[0]?.b64_json
+      if (!b64) return sendError(res, API_ERROR_CODES.AGENT_UPSTREAM_ERROR, '生图端点没有返回图片数据（b64_json 为空）')
     }
-    const b64 = payload?.data?.[0]?.b64_json
-    if (!b64) return sendError(res, API_ERROR_CODES.AGENT_UPSTREAM_ERROR, '生图端点没有返回图片数据（b64_json 为空）')
     const dir = join(authorized.root, '推演', safeDeduceBookId(bookId), '素材', '场景')
     await mkdir(dir, { recursive: true })
     const path = join(dir, `${name}.png`)
@@ -1782,7 +1814,7 @@ function readLegacyDeduceState(root, bookId) {
     const llmPort = async ({ prompt, maxTokens = 2000 }) => {
       const strict = `${prompt}\n\n【输出约束】只输出符合要求的 JSON，不要 markdown 代码围栏，不要任何解释文字。`
       if (upstream.execute === 'cli') {
-        const run = await runCliChat(upstream.kit, [{ role: 'user', content: strict }])
+        const run = await runCliChat(upstream.kit, [{ role: 'user', content: strict }], { model: upstream.model })
         if (!run.ok) throw new Error(`CLI 子 agent 失败：${run.message}`)
         return { text: text(run.text) }
       }
@@ -2193,7 +2225,7 @@ async function systemPromptFor(root, libraries, genresDirs, skillsDirs, { canRea
  */
 const CONFIG_BLOCK_FIELDS = Object.freeze({
   text: ['endpoint', 'model', 'apiKey', 'runtime', 'reasoningEffort', 'chineseReasoning'],
-  image: ['enabled', 'endpoint', 'model', 'apiKey'],
+  image: ['enabled', 'backend', 'endpoint', 'model', 'apiKey', 'comfyUrl', 'comfyWorkflow', 'comfyNodeMap'],
   vision: ['enabled', 'endpoint', 'model', 'apiKey'],
   agent: ['defaultModel', 'subagentModel', 'profile']
 })
@@ -2201,7 +2233,7 @@ const CONFIG_BLOCK_FIELDS = Object.freeze({
 function emptyConfigV2() {
   return {
     text: { endpoint: '', model: '', apiKey: '', runtime: '', reasoningEffort: '', chineseReasoning: true },
-    image: { enabled: false, endpoint: '', model: '', apiKey: '' },
+    image: { enabled: false, backend: 'openai', endpoint: '', model: '', apiKey: '', comfyUrl: '', comfyWorkflow: '', comfyNodeMap: {} },
     vision: { enabled: false, endpoint: '', model: '', apiKey: '' },
     agent: { defaultModel: '', subagentModel: '', profile: '' }
   }
@@ -2220,7 +2252,21 @@ function normalizeConfigBlock(kind, raw) {
       chineseReasoning: source.chineseReasoning !== false
     }
   }
-  if (kind === 'image' || kind === 'vision') {
+  if (kind === 'image') {
+    const backend = text(source.backend).trim() === 'comfyui' ? 'comfyui' : 'openai'
+    return {
+      enabled: source.enabled === true,
+      backend,
+      endpoint: text(source.endpoint).trim(),
+      model: text(source.model).trim(),
+      apiKey: text(source.apiKey).trim(),
+      // ComfyUI：端口（如 http://127.0.0.1:8188）+ 工作流 JSON 相对路径 + 节点映射
+      comfyUrl: text(source.comfyUrl).trim(),
+      comfyWorkflow: text(source.comfyWorkflow).trim(),
+      comfyNodeMap: isPlainObject(source.comfyNodeMap) ? source.comfyNodeMap : {}
+    }
+  }
+  if (kind === 'vision') {
     return {
       enabled: source.enabled === true,
       endpoint: text(source.endpoint).trim(),
@@ -2476,6 +2522,17 @@ async function probeConfigKind(kind, block) {
     ...(detail ? { detail: text(detail) } : {}),
     ...(block.model ? { model: block.model } : {})
   })
+  // OS-74：生图后端是 ComfyUI 时，probe 走 /system_stats（不走 OpenAI 兼容路径）
+  if (kind === 'image' && block.backend === 'comfyui') {
+    if (!text(block.comfyUrl).trim()) return fail('NOT_CONFIGURED', '还没有填 ComfyUI 地址（如 http://127.0.0.1:8188）')
+    const comfy = await probeComfy(block.comfyUrl)
+    return {
+      reachable: comfy.reachable,
+      latencyMs: comfy.latencyMs,
+      ...(comfy.detail ? { detail: comfy.detail } : {}),
+      ...(comfy.error ? { error: comfy.error } : {})
+    }
+  }
   if (!text(block.endpoint).trim()) return fail('NOT_CONFIGURED', '还没有填 endpoint')
 
   const headers = { 'content-type': 'application/json', ...(block.apiKey ? { authorization: `Bearer ${block.apiKey}` } : {}) }
@@ -2627,6 +2684,9 @@ async function handleAgentRuntimesGet(res, context) {
           ? (probeResult.installed ? 'ready' : 'missing')
           : 'ready',
       description: kit.description,
+      // OS-74：CLI kit 的模型清单透传给设置页（下拉选项来源）
+      ...(Array.isArray(kit.models) && kit.models.length ? { models: kit.models } : {}),
+      ...(kit.defaultModel ? { defaultModel: kit.defaultModel } : {}),
       ...(probeResult ? { probe: probeResult } : {})
     })
   }
@@ -2814,7 +2874,7 @@ async function generateTurnProse({ context, root, node, previousProse }) {
   try {
     let raw = ''
     if (upstream.execute === 'cli') {
-      const run = await runCliChat(upstream.kit, [{ role: 'user', content: `${DEDUCE_PROSE_SYSTEM}\n\n${prompt}` }])
+      const run = await runCliChat(upstream.kit, [{ role: 'user', content: `${DEDUCE_PROSE_SYSTEM}\n\n${prompt}` }], { model: upstream.model })
       if (!run.ok) throw new Error(run.message)
       raw = text(run.text)
     } else if (upstream.execute === 'dsh-cli') {
@@ -3133,7 +3193,7 @@ async function handleAgentChat(req, res, request, context, root, libraries) {
     })
     sseFrame(res, { type: 'start', sessionId, runtime: upstream.runtimeName })
     if (upstream.notice) sseFrame(res, { type: 'notice', text: upstream.notice })
-    const cli = await runCliChat(upstream.kit, upstreamMessages)
+    const cli = await runCliChat(upstream.kit, upstreamMessages, { model: upstream.model })
     if (cli.ok) {
       sseFrame(res, { type: 'delta', text: cli.text })
       if (!ephemeral) {

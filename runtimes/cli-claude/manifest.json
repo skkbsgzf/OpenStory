@@ -4,8 +4,24 @@
   "name": "Claude Code CLI",
   "kind": "cli",
   "category": "cli",
-  "description": "把 Claude Code CLI 当一次性模型用（嫁接：每次对话跑一次子进程）。凭据走 CLI 自身配置，本仓不存。",
-  "probe": { "cmd": "claude", "args": ["--version"] },
-  "cliArgs": ["-p", "{prompt}"],
-  "timeoutMs": 180000
+  "description": "把 Claude Code CLI 当一次性模型用（嫁接：每次对话跑一次子进程）。凭据走 CLI 自身配置，本仓不存、不直连 LLM API。",
+  "probe": {
+    "cmd": "claude",
+    "args": [
+      "--version"
+    ]
+  },
+  "cliArgs": [
+    "-p",
+    "{prompt}",
+    "--model",
+    "{model}"
+  ],
+  "timeoutMs": 180000,
+  "models": [
+    "sonnet",
+    "opus",
+    "haiku"
+  ],
+  "defaultModel": "sonnet"
 }
