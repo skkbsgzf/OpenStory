@@ -8142,7 +8142,8 @@ function deducePendingHtml(data) {
   const candidates = (Array.isArray(data.candidates) ? data.candidates : []).filter((candidate) => candidate.source !== '命运')
   const who = Array.isArray(card.who) ? card.who.filter(Boolean) : []
   const where = card.where && card.where !== '未标记地点' ? text(card.where) : '地点未标'
-  const hook = card.hook && card.hook !== '……' ? text(card.hook) : ''
+  // OS-92：hook（上一拍的世界提示）对「你」说话——存量 sceneCard 是第三人称，显示层转人称
+  const hook = card.hook && card.hook !== '……' ? text(card.hook).split(text(data.pov)).join('你') : ''
   const sourceNote = { 必然: '世界规矩', 戏剧: '另一种可能' }
   const describeCandidate = (candidate) => {
     if (candidate.source === '必然') {
@@ -8170,7 +8171,7 @@ function deducePendingHtml(data) {
     <div class="fl-pending-scene">
       <span class="fl-pending-rn">第 ${Number(data.round) || 0} 拍</span>
       <span class="fl-pending-where">${esc(where)}</span>
-      ${deduceWhoChipsHtml(who)}
+      ${deduceWhoChipsHtml(who.filter((name) => name !== data.pov))}
     </div>
     <p class="fl-prompt">轮到你了——这一拍怎么走由你决定：选一条，或在下面自己说</p>
     ${busyNote}

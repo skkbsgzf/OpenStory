@@ -3306,7 +3306,7 @@ function turnNodeWords(node) {
 }
 
 /** 成文 system 提示：小说叙述体——与推演提议体（DEDUCE_DRAMA_SYSTEM_PROMPT）绝不共用。 */
-const DEDUCE_PROSE_SYSTEM = '你是小说家，用小说叙述体写作：跟随视角人物的感官与行动推进场景，细节具体，对话自然贴人物。只输出这一拍的正文（200–400 字），不要标题、不要候选列表、不要解释、不要 markdown 围栏。'
+const DEDUCE_PROSE_SYSTEM = '你是世界本身——推演主持人的叙述声。用小说叙述体对玩家说话：玩家就是 POV 角色本人，一律称「你」——写你看到什么、听到什么、身体有什么感受，其他角色做了什么、说了什么，世界发生了什么变化（OS-92：文字是世界给玩家的反馈，不是角色的第一人称自述）。玩家刚拍板的行动照写过程与直接后果，但不要替玩家决定下一步行动或内心盘算。细节具体，对话自然贴人物。只输出这一拍的反馈（200–400 字），不要标题、不要候选列表、不要解释、不要 markdown 围栏。'
 
 function turnProsePrompt(node, previousProse) {
   const scene = node?.scene ?? {}
