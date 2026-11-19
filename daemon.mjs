@@ -3414,7 +3414,10 @@ async function buildDeduceLlmPort({ context }) {
   if (!upstream) return null
   return {
     complete: async ({ system = '', maxTokens = 400 } = {}) => {
-      const out = await chatCompleteViaUpstream({ upstream, system, maxTokens })
+      // OS-90 游玩口径：vendor 提议器产出第三人称剧情走向，玩家要的是「我这个角色
+      // 现在怎么做」的第一人称行动选项。本 port 只服务戏剧候选，追加游玩指令。
+      const playSystem = `${system}\n游玩口径：每条 text 一律写成 POV 角色第一人称的行动选择（「我现在怎么做」），动作要具体、当下、可执行，以动词开头；不要第三人称剧情梗概，不要替世界写结果——世界怎么回应由下一拍决定。`
+      const out = await chatCompleteViaUpstream({ upstream, system: playSystem, maxTokens })
       if (out.error) throw new Error(out.error)
       return { text: out.text ?? '' }
     }
