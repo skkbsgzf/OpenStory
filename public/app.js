@@ -237,7 +237,8 @@ function render() {
   // 故事源图表实例只属于图表态；换页/换形态先释放，避免画布挂在已卸的 DOM 上
   if (state.view !== 'dir:拆解') disposeStorySourceChart()
   // 正文页自己管滚动（页头吸顶＋纸面/右栏各自滚），外层不再滚动
-  viewEl.classList.toggle('content-locked', state.view === 'write')
+  // OS-76：剧本页也用沉浸式排版（与正文页同构：铺满视口、左中右三栏）
+  viewEl.classList.toggle('content-locked', state.view === 'write' || state.view === 'dir:剧本')
   if (state.view !== 'deduce') dedTypewriterStop()
   if (state.view === 'libraries') viewEl.innerHTML = libraryHtml()
   else if (state.view === 'write') {
@@ -317,6 +318,11 @@ function render() {
     const dir = state.view.slice(4)
     viewEl.innerHTML = dirViewHtml(dir)
     if (dir === '拆解') mountStorySourceChart()
+    // OS-76：剧本页 fork 正文页——同样的左右栏挂载（图谱/摘要/分析面板）
+    if (dir === '剧本') {
+      renderAnalyzePanel()
+      afterRefColMount()
+    }
   }
 }
 
@@ -4455,6 +4461,27 @@ function refSummaryHtml() {
  * 左栏三个模块（OS-44）。
  * 每个模块可单独关闭（设置里插拔），全关则整栏隐藏。
  */
+/** OS-76：剧本页的左栏模块组——没有「章节」（剧本用幕），换成「出场人物」。
+ * 世界书图谱/摘要与正文页共用同一套实现。 */
+const SCRIPT_REF_MODULES = Object.freeze([
+  { id: 'cast', label: '出场人物', hint: '本剧出现过的角色', render: () => scriptCastHtml(), badge: () => String((state.scriptModule?.scriptStats?.(dirWork('剧本').text || '')?.cast || []).length) },
+  { id: 'graph', label: '世界书图谱', hint: '世界书与产物的关系', render: () => graphModuleHtml(), badge: () => String(state.refCol.graph?.stats?.nodes ?? 0) },
+  { id: 'summary', label: '世界书摘要', hint: 'AI 基于图谱总结本剧', render: () => refSummaryHtml(), badge: () => '' }
+])
+
+/** 剧本出场人物卡：从角色台词里统计谁说了多少句。 */
+function scriptCastHtml() {
+  const work = dirWork('剧本')
+  const mod = state.scriptModule
+  if (!mod?.splitScriptBlocks || !work?.text) return '<div class="nav-empty">还没有内容</div>'
+  const blocks = mod.splitScriptBlocks(work.text).filter((b) => b.kind === 'line' && b.who)
+  const counts = new Map()
+  for (const b of blocks) counts.set(b.who, (counts.get(b.who) || 0) + 1)
+  if (!counts.size) return '<div class="nav-empty">还没有台词</div>'
+  return [...counts.entries()].sort((a, b) => b[1] - a[1])
+    .map(([who, n]) => `<div class="cast-row"><span class="cast-name">${esc(who)}</span><span class="cast-n">${n} 句</span></div>`).join('')
+}
+
 const REF_MODULES = Object.freeze([
   { id: 'chapters', label: '章节', hint: '卷/章两级', render: () => chapterTreeHtml(), badge: () => String((state.write.chapters || []).length) },
   { id: 'graph', label: '世界书图谱', hint: '世界书与产物的关系', render: () => graphModuleHtml(), badge: () => String(state.refCol.graph?.stats?.nodes ?? 0) },
@@ -4470,13 +4497,14 @@ const REF_MODULES = Object.freeze([
  * OS-48：左栏是浮层附庸（绝对定位，不占正文流），正文纸面永远居中不被挤压；
  * 三张卡片共用一套头（标题＋计数＋折叠箭头＋关闭 ×），与右栏分析卡同构。
  */
-function refColHtml() {
+/** 左栏模块卡（章节树/世界书图谱/世界书摘要）——抽出来供正文页与剧本页共用。 */
+function refModulesHtml({ prepend = '', modules = null } = {}) {
   if (!state.current) return ''
   const hidden = hiddenModules()
-  const visible = REF_MODULES.filter((mod) => !hidden.has(mod.id))
-  if (!visible.length) return ''
+  const source = Array.isArray(modules) ? modules : REF_MODULES
+  const visible = source.filter((mod) => !hidden.has(mod.id))
   const openState = state.refCol.open ?? (state.refCol.open = {})
-  return `<aside class="ref-col" id="ref-col">${visible.map((mod) => {
+  const cards = visible.map((mod) => {
     const open = openState[mod.id] !== false
     const badge = mod.badge()
     const body = open ? mod.render() : ''
@@ -4491,7 +4519,13 @@ function refColHtml() {
       </div>
       ${body ? `<div class="ref-mod-body">${body}</div>` : ''}
     </section>`
-  }).join('')}</aside>`
+  }).join('')
+  return prepend + cards
+}
+
+function refColHtml() {
+  const inner = refModulesHtml()
+  return inner ? `<aside class="ref-col" id="ref-col">${inner}</aside>` : ''
 }
 
 /** 题材页渲染完后统一挂图谱（各页只负责插 refColHtml()）。 */
@@ -6749,18 +6783,21 @@ function scriptViewHtml() {
   const dir = '剧本'
   const work = dirWork(dir)
   const label = DIR_LABELS[dir] || dir
-  const options = work.files
-    .map((item) => `<option value="${esc(item.file)}"${item.file === work.file ? ' selected' : ''}>${esc(item.name)}（${item.size} B）</option>`)
-    .join('')
   const sc = work.loaded && state.scriptModule?.scriptStats ? state.scriptModule.scriptStats(work.text) : null
   const meta = sc
     ? `<span class="b">${sc.acts} 幕</span><span class="docline-sep">·</span><span>${sc.scenes} 场</span><span class="docline-sep">·</span><span>${sc.lines} 句台词</span><span class="docline-sep">·</span><span id="dir-chars">${sc.chars} 字</span>${sc.cast.length ? `<span class="docline-sep">·</span><span class="count">出场：${esc(sc.cast.join('、'))}</span>` : ''}`
     : `<span id="dir-chars">${work.text.length} 字</span>`
   // OS-76：与正文页同构——逐块 contenteditable + data-start/end/raw 偏移，
   // 保存走同一套 commitDocBlock（只是渲染器换成剧本版式）。
+  // 文件列表像正文页章节列表一样放左栏，不再占顶部横栏。
   const body = work.loaded
     ? renderScriptDocBody(work.text)
-    : `<div class="empty-state"><h2>${esc(label)}</h2><p>还没有剧本——选一个文件开始，或新建一个。</p></div>`
+    : `<div class="empty-state"><h2>${esc(label)}</h2><p>还没有剧本——左侧新建一个，或选已有文件。</p></div>`
+  const fileRows = work.files.map((item) => `<button class="ch-row${item.file === work.file ? ' on' : ''}" data-dirfile-pick="${esc(item.file)}" title="${esc(item.file)}">
+      <span class="no">${esc(String(item.name || '').slice(0, 2))}</span>
+      <span class="tt">${esc(String(item.name || '').replace(/\.md$/u, ''))}</span>
+      <span class="sz">${formatBytes(item.size)}</span>
+    </button>`).join('')
   return `<div class="doc-workspace doc-workspace-sticky">
     <header class="doc-head doc-head-immersive">
       <div class="docline">
@@ -6776,14 +6813,25 @@ function scriptViewHtml() {
         <h1 class="doc-title">${esc(work.file ? work.file.split('/').pop().replace(/\.md$/u, '') : label)}</h1>
       </div>
     </header>
-    ${flowError(work.error)}
-    <div class="doc-toolbar">
-      ${options ? `<select class="select" id="dirfile-select">${options}</select>` : ''}
-      <input class="file-input" id="dirfile-new-name" placeholder="新剧本.md" value=""><button class="btn-ghost" data-action="dirfile-new">新建</button>
-      <span class="sp"></span>
-      <span class="count">点内容直接改，失焦自动保存</span>
+    <div class="chapter-grid">
+    <aside class="ref-col sc-side" id="ref-col">
+      ${refModulesHtml({ modules: SCRIPT_REF_MODULES, prepend: `<section class="ref-mod">
+        <div class="ref-mod-head"><span class="rm-toggle">剧本<span class="count">${work.files.length}</span></span></div>
+        <div class="sc-file-list">
+          ${fileRows || '<div class="nav-empty">还没有剧本</div>'}
+          <div class="sc-new-row">
+            <input class="file-input" id="dirfile-new-name" placeholder="新剧本.md" value="">
+            <button class="btn-ghost" data-action="dirfile-new">新建</button>
+          </div>
+        </div>
+      </section>` })}
+    </aside>
+      ${flowError(work.error)}
+      <div class="doc-scroll" id="doc-scroll">
+        <div class="chapter-editor-col">${work.loading && !work.loaded ? '<div class="loading">正在读取…</div>' : body}</div>
+      </div>
+      <aside class="analyze-panel" id="analyze-panel"></aside>
     </div>
-    ${work.loading && !work.loaded ? '<div class="loading">正在读取…</div>' : body}
   </div>`
 }
 
@@ -8089,7 +8137,7 @@ document.addEventListener('click', (event) => {
       if (state.libDirs.includes(dir)) { go(`dir:${dir}`); return }
     }
   }
-  const target = event.target.closest('[data-view], [data-go], [data-action], [data-skin], [data-lib-path], [data-kind], [data-session-id], [data-session-del], [data-create-primary], [data-create-genre], [data-runtime-id], [data-chapter-file], [data-settings-section], [data-ref-path], [data-ref-tag], [data-ref-view], a.wl[data-ref]')
+  const target = event.target.closest('[data-view], [data-go], [data-action], [data-skin], [data-lib-path], [data-kind], [data-session-id], [data-session-del], [data-create-primary], [data-create-genre], [data-runtime-id], [data-chapter-file], [data-dirfile-pick], [data-settings-section], [data-ref-path], [data-ref-tag], [data-ref-view], a.wl[data-ref]')
   // 点在菜单/按钮之外：收起输入区菜单（OS-51）——注意这不 return，
   // 后面消息内路径 code 的点击不携带任何 data-*，必须继续往下走
   if (!event.target.closest?.('.composer-pop, .c-tool')) closeComposerMenus()
@@ -8161,6 +8209,15 @@ document.addEventListener('click', (event) => {
     state.reference.focus = null
     if (state.reference.view === 'graph' && !state.refCol.graph) loadRefGraph()
     render()
+    return
+  }
+  // OS-76：剧本左侧文件列表点选（与正文页章节列表同构）
+  if (target.dataset.dirfilePick) {
+    const file = target.dataset.dirfilePick
+    if (state.view === 'dir:剧本') {
+      dirWork('剧本').file = file
+      loadDirFile('剧本', file)
+    }
     return
   }
   if (target.dataset.chapterFile) {

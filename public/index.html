@@ -805,6 +805,15 @@ html[data-doc-auto-gap="off"] .doc-block { margin-bottom: 0; }
 /* ── 设置 · 模型与能力（S4）：四张配置卡＋probe 徽标 ─────────────── */
 .cfg-card { border: 1px solid var(--line); border-radius: var(--radius-md); padding: 16px 18px; margin-bottom: 14px; background: var(--bg); }
 /* OS-74：生图后端切换的两个表单块（OpenAI 兼容 / ComfyUI），hidden 时不占位 */
+/* OS-76：剧本左侧文件列表（与正文页章节列表同构，顶部横栏退役） */
+.sc-side { width: 236px; }
+.sc-side .cast-row { display: flex; align-items: baseline; gap: 8px; padding: 3px 0; font-size: 12px; }
+.sc-side .cast-name { color: var(--ink-2); flex: 1; min-width: 0; }
+.sc-side .cast-n { color: var(--meta); font-size: 11px; flex: 0 0 auto; }
+.sc-file-list { display: flex; flex-direction: column; gap: 2px; padding: 4px 0; }
+.sc-new-row { display: flex; gap: 4px; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--hair); }
+.sc-new-row .file-input { flex: 1; min-width: 0; font-size: 11.5px; padding: 4px 8px; }
+
 /* OS-75：剧本原生渲染——幕/场景指示/角色台词各有版式（与小说同一套排版基线） */
 .sc-doc { max-width: var(--doc-max); margin: 0 auto; padding: 8px 0 60px; font-family: var(--serif);
   font-size: 15px; line-height: 1.85; color: var(--ink); outline: none; }
