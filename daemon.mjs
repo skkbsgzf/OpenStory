@@ -124,7 +124,7 @@ import {
 } from './libraryManage.mjs'
 import { createFactFileStore } from './core/pinax/next/kernel/factFileStore.mjs'
 import { absorbLegacyDirs, backlinksOf, buildReferenceGraph, REFERENCE_DIR, scanReferences } from './referenceStore.mjs'
-import { deducePresent, deduceSettle, deduceStatePath } from './deduceEngine.mjs'
+import { deduceOpening, deducePresent, deduceSettle, deduceStatePath } from './deduceEngine.mjs'
 import { safeDeduceBookId } from './deduceSession.mjs'
 import {
   appendNode,
@@ -1230,6 +1230,15 @@ async function listDeduceAssets(root, bookId) {
   return result
 }
 
+  if (endpointId === 'deduceOpeningGet') {
+    // OS-93 开局三件套（照酒馆：选角色卡 → 选世界书 → 选开头）
+    const authorized = authorizeRoot(allowlist, request.root)
+    if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
+    const result = deduceOpening({ root: authorized.root })
+    if (!result.ok) return sendError(res, result.code ?? API_ERROR_CODES.INVALID_ENTRY, result.message)
+    return sendJson(res, 200, result)
+  }
+
   if (endpointId === 'deducePresent') {
     const authorized = authorizeRoot(allowlist, request.root)
     if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
@@ -1240,6 +1249,8 @@ async function listDeduceAssets(root, bookId) {
       seed: Number.isSafeInteger(request.seed) ? request.seed : null,
       reset: request.reset === true,
       peek: request.peek === true,
+      // OS-93：选中的开头（剧情骨架段 definition）——戏剧候选围绕它锚定
+      seedPrompt: text(request.seedPrompt),
       sessionId: text(request.sessionId).trim() || readActiveSessionId(authorized.root, await resolveFactBookId(authorized.root, request.bookId)),
       // OS-82：戏剧候选接全局文本模型（没配模型＝null，必然/命运照常）
       llmPort: await buildDeduceLlmPort({ context })
@@ -2380,7 +2391,7 @@ function readLegacyDeduceState(root, bookId) {
   return sendError(res, API_ERROR_CODES.NOT_FOUND, `端点未实现：${endpointId}`)
 }
 
-const ENDPOINT_HAS_QUERY = new Set(['referenceAssetGet', 'habitsGet', 'chapterGet', 'agentSessions', 'agentSessionGet', 'agentSessionDelete', 'libraryDiagnose', 'filesGet', 'chaptersGet', 'chapterDelete', 'artifactsGet', 'suiteStateDataGet', 'agentPicksGet', 'briefGet', 'skillsGet', 'skillGet', 'enrichStatus', 'enrichGraph', 'kbStatusGet', 'agentDshModelsGet', 'factCurveGet', 'factEntriesGet', 'factBooksGet', 'referenceGet', 'referenceGraphGet', 'referenceNoteGet', 'deduceSessionGet', 'deduceSessionsGet', 'deduceAssets', 'deduceAssetFile'])
+const ENDPOINT_HAS_QUERY = new Set(['referenceAssetGet', 'habitsGet', 'chapterGet', 'agentSessions', 'agentSessionGet', 'agentSessionDelete', 'libraryDiagnose', 'filesGet', 'chaptersGet', 'chapterDelete', 'artifactsGet', 'suiteStateDataGet', 'agentPicksGet', 'briefGet', 'skillsGet', 'skillGet', 'enrichStatus', 'enrichGraph', 'kbStatusGet', 'agentDshModelsGet', 'factCurveGet', 'factEntriesGet', 'factBooksGet', 'referenceGet', 'referenceGraphGet', 'referenceNoteGet', 'deduceSessionGet', 'deduceSessionsGet', 'deduceOpeningGet', 'deduceAssets', 'deduceAssetFile'])
 
 /** 套件资产 MIME（page 模式自带页同源装载）。 */
 const SUITE_ASSET_MIME = Object.freeze({

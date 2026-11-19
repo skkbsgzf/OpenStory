@@ -62,6 +62,8 @@ const state = {
       session: null, sessionLoaded: false, customText: '', draft: null, turnBusy: false, archiveNote: '',
       // OS-86 多局：当前局 id（='main'＝legacy 主线）＋局清单缓存（设置浮层切换/新建/删除用）
       sessionId: 'main', sessions: null,
+      // OS-93 开局向导：角色卡/世界书/开头三件套（照酒馆：选人 → 选世界 → 选开头）
+      opening: { loaded: false, loading: false, books: [], characters: [], openings: [], selPov: '', selBook: '', selOpen: 'free' },
       view: 'scene', treePick: null,
       assets: null, assetsLoaded: false, assetBookId: '', bgmOn: false,
       // OS-81 叙事流：纸面模式（关掉立绘背景回纯纸面）/ 贴底跟随 / 序章折叠
@@ -420,6 +422,16 @@ function render() {
       api(`/api/deduce/sessions?root=${encodeURIComponent(state.current.path)}`)
         .then((payload) => { engine.sessions = { activeId: payload.activeId, sessions: payload.sessions ?? [] } })
         .catch(() => { engine.sessions = null })
+      // OS-93 开局三件套：未开局时拉一次（向导用）
+      if (!engine.opening.loaded && !engine.opening.loading) {
+        engine.opening.loading = true
+        api(`/api/deduce/opening?root=${encodeURIComponent(state.current.path)}`)
+          .then((payload) => {
+            engine.opening = { loaded: true, loading: false, ...payload, selPov: payload.characters?.[0]?.name ?? '', selBook: payload.books?.[0]?.bookId ?? '', selOpen: 'free' }
+          })
+          .catch(() => { engine.opening.loading = false })
+          .finally(() => { if (state.view === 'deduce') render() })
+      }
     }
     // 剧情树（OS-61 P3）：树视图挂 SVG 导图；离开树视图就清理（mode 在 state.deduce 上，不在 engine 上）
     if (state.deduce.mode === 'engine' && engine.view === 'tree') mountDeduceTree()
@@ -7369,6 +7381,8 @@ async function deduceEnginePresent(opts) {
   const seedInput = document.getElementById('deduce-seed')
   if (povInput) engine.pov = povInput.value.trim()
   if (seedInput) engine.seed = seedInput.value.trim()
+  // OS-93：向导开局时把选的角色卡写进 POV
+  if (options.pov) engine.pov = options.pov
   engine.busy = true
   engine.error = ""
   render()
@@ -7380,6 +7394,9 @@ async function deduceEnginePresent(opts) {
         // OS-86：局跟 sessionId 走（peek 也带——切局后用 peek 回放那局的最后一面）
         sessionId: engine.sessionId || undefined,
         peek: options.peek === true || undefined,
+        // OS-93：向导选的世界书与开头
+        bookId: options.bookId || undefined,
+        seedPrompt: options.seedPrompt || undefined,
         pov: engine.pov || undefined,
         seed: engine.seed === "" ? undefined : Number(engine.seed),
         reset: options.reset === true
@@ -8155,7 +8172,7 @@ function deducePendingHtml(data) {
   const where = card.where && card.where !== '未标记地点' ? text(card.where) : '地点未标'
   // OS-92：hook（上一拍的世界提示）对「你」说话——存量 sceneCard 是第三人称，显示层转人称
   const hook = card.hook && card.hook !== '……' ? text(card.hook).split(text(data.pov)).join('你') : ''
-  const sourceNote = { 必然: '世界规矩', 戏剧: '另一种可能' }
+  const sourceNote = { 必然: '世界规矩', 戏剧: '另一种可能', 眼前: '从这个局面直接走' }
   const describeCandidate = (candidate) => {
     if (candidate.source === '必然') {
       const fact = text(candidate.text).replace(/^剧情检定[^：]*：/u, '').trim()
@@ -8164,7 +8181,7 @@ function deducePendingHtml(data) {
     return { title: text(candidate.text) || '（空候选）', sub: hook ? `牵动：${hook}` : '', roll: '' }
   }
   const optRows = candidates.map((candidate) => {
-    const kind = { 必然: 'certain', 命运: 'fate', 戏剧: 'drama' }[candidate.source] || 'other'
+    const kind = { 必然: 'certain', 命运: 'fate', 戏剧: 'drama', 眼前: 'scene' }[candidate.source] || 'other'
     const info = describeCandidate(candidate)
     return `<div class="ded-opt-row src-${kind}">
       <button class="ded-opt" data-action="deduce-engine-choose" data-candidate-id="${esc(candidate.id)}"${engine.turnBusy ? ' disabled' : ''}>
@@ -8324,8 +8341,22 @@ function deduceEngineHtml() {
     </div>`
   }
 
-  /* —— 空态：还没开局时，流区放说明＋开局控件 —— */
+  /* —— 空态＝开局向导（OS-93 照酒馆：选角色卡 → 选世界书 → 选开头）—— */
   if (!data) {
+    const ow = engine.opening
+    const owCard = (sel, body) => `<div class="ow-card${sel ? ' on' : ''}">${body}</div>`
+    const povCards = (ow.characters ?? []).map((c, i) => owCard(ow.selPov === c.name, `
+        <button class="ow-pick" data-action="ow-pov" data-name="${esc(c.name)}">
+          <b>${esc(c.name)}</b>${c.archetype ? `<i>${esc(c.archetype)}</i>` : ''}
+          ${c.identity ? `<span>${esc(c.identity.slice(0, 56))}${c.identity.length > 56 ? '…' : ''}</span>` : ''}
+        </button>`)).join('')
+    const bookRows = (ow.books ?? []).map((b) => `<button class="ow-pick ow-book${ow.selBook === b.bookId ? ' on' : ''}" data-action="ow-book" data-id="${esc(b.bookId)}">
+          <b>${esc(b.title)}</b><span class="ow-book-meta">世界观 ${b.worldview} · 角色 ${b.characters} · 剧情 ${b.plot}</span>
+        </button>`).join('')
+    const openRows = (ow.openings ?? []).map((o) => `<button class="ow-pick ow-open${ow.selOpen === o.id ? ' on' : ''}" data-action="ow-open" data-id="${esc(o.id)}">
+          <b>${esc(o.label)}</b>${o.detail ? `<span>${esc(o.detail.slice(0, 70))}${o.detail.length > 70 ? '…' : ''}</span>` : ''}
+        </button>`).join('')
+    const step = (no, title, sub, body) => `<section class="ow-step"><h3><span class="no">${no}</span>${title}<span class="sub">${sub}</span></h3>${body}</section>`
     return `<div class="ded-flow" data-paper="${engine.paperMode ? 1 : 0}">
       <div class="ded-flow-tint"></div>
       ${bar}
@@ -8333,22 +8364,23 @@ function deduceEngineHtml() {
         <div class="fl-scroll" id="deduce-flow">
           ${flowError(engine.error || '')}
           <div class="fl-hero">
-            <div class="ded-empty">
-              <h2>事实推演引擎</h2>
-              <p>读本库的拆解条目（世界观／角色／剧情）作为事实包，推出一拍局面与候选。每一拍是一条消息：你选一条走向，世界回你一段正文——像酒馆一样往下读。</p>
-              <div class="ded-empty-types">
-                <div class="ded-type"><b>眼前分支</b><span>基于你面前的情境：进山还是绕行，搭话还是观察</span></div>
-                <div class="ded-type"><b>世界的暗手</b><span>命运骰在幕后掷——顺逆体现在世界的回应里，不用你掷</span></div>
-                <div class="ded-type"><b>你自己说</b><span>任何时候都能自己写这一拍怎么走</span></div>
-              </div>
-              <p class="sub">引擎是确定性的：同一个种子＋同一份事实包＝同一拍。它是「如果世界」的推演，不是替你写正文。</p>
+            <div class="ow-wizard">
+              <h2>开局</h2>
+              <p class="ow-sub">选好这三样，推演就开始——像酒馆一样往下读。</p>
+              ${ow.loaded ? 
+                step(1, '选角色卡', '你扮演谁', `<div class="ow-card">${povCards || '<p class="ds-empty">这个库还没有角色条目——去世界书写一条再回来</p>'}</div>`) +
+                ((ow.books ?? []).length > 1 ? step(2, '选世界书', '哪一份事实包', `<div class="ow-card">${bookRows}</div>`) : '') +
+                step(3, '选开头', '从哪里开始', `<div class="ow-card">${openRows}</div>`)
+                : '<p class="ow-loading">正在盘点角色卡与开局…</p>'}
             </div>
           </div>
           ${engine.hint ? `<div class="warn-box">${esc(engine.hint)}</div>` : ''}
         </div>
       </div>
       <div class="fl-composer">
-        <div class="fl-composer-row">${controls}</div>
+        <div class="fl-composer-row">
+          <button class="btn-primary fl-send" data-action="ow-start"${ow.loaded && ow.selPov ? '' : ' disabled'} title="按选好的角色卡＋世界书＋开头开局">就这样开始推演</button>
+        </div>
       </div>
       ${setPanel}
     </div>`
@@ -8587,6 +8619,7 @@ async function openLibrary(path) {
     engine: { busy: false, data: null, pov: '', seed: '', error: '', hint: '',
       session: null, sessionLoaded: false, customText: '', draft: null, turnBusy: false, archiveNote: '',
       sessionId: 'main', sessions: null,
+      opening: { loaded: false, loading: false, books: [], characters: [], openings: [], selPov: '', selBook: '', selOpen: 'free' },
       view: 'scene', treePick: null,
       assets: null, assetsLoaded: false, assetBookId: '', bgmOn: false,
       paperMode: false, flowPin: true, introOpen: null },
@@ -9400,6 +9433,20 @@ document.addEventListener('click', (event) => {
   } else if (action === 'deduce-engine-reset') {
     state.deduce.engine.draft = null
     deduceEnginePresent({ reset: true, hint: '本局已清空从第一拍重来' })
+  } else if (action === 'ow-pov') {
+    state.deduce.engine.opening.selPov = target.dataset.name
+    render()
+  } else if (action === 'ow-book') {
+    state.deduce.engine.opening.selBook = target.dataset.id
+    render()
+  } else if (action === 'ow-open') {
+    state.deduce.engine.opening.selOpen = target.dataset.id
+    render()
+  } else if (action === 'ow-start') {
+    // OS-93：按向导选择开局——角色卡→POV，开头→seedPrompt 锚定
+    const ow = state.deduce.engine.opening
+    const open = (ow.openings ?? []).find((o) => o.id === ow.selOpen)
+    deduceEnginePresent({ pov: ow.selPov, bookId: ow.selBook, seedPrompt: open && open.id !== 'free' ? open.detail : '', hint: '开局——选一条走向，世界回你一段正文' })
   } else if (action === 'deduce-sess-new') {
     deduceSessionManage('new', '')
   } else if (action === 'deduce-sess-switch') {

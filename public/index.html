@@ -1191,6 +1191,31 @@ html[data-doc-auto-gap="off"] .doc-block { margin-bottom: 0; }
 .ded-empty { max-width: 640px; }
 .ded-empty h2 { font-size: 17px; margin: 0 0 8px; }
 .ded-empty p { font-size: 13px; color: var(--muted); line-height: 1.75; margin: 0 0 10px; }
+/* 开局向导（OS-93 照酒馆：选角色卡 → 选世界书 → 选开头） */
+.ow-wizard { max-width: 640px; background: color-mix(in srgb, var(--bg) 90%, transparent);
+  border: 1px solid var(--hair); border-radius: var(--radius-md); padding: 18px 20px 16px;
+  backdrop-filter: blur(8px); }
+.ow-wizard h2 { font-size: 17px; margin: 0 0 4px; color: var(--ink); }
+.ow-sub { margin: 0 0 14px; font-size: 12.5px; color: var(--muted); }
+.ow-loading { margin: 20px 0; font-size: 13px; color: var(--meta); font-style: italic; }
+.ow-step { margin-bottom: 14px; }
+.ow-step h3 { display: flex; align-items: baseline; gap: 8px; margin: 0 0 8px; font-size: 13px; color: var(--ink); }
+.ow-step .no { display: inline-grid; place-items: center; width: 20px; height: 20px;
+  border-radius: 50%; background: var(--accent); color: var(--on-accent); font-size: 11px; }
+.ow-step .sub { font-size: 11px; color: var(--meta); font-weight: 400; }
+.ow-card { display: flex; flex-wrap: wrap; gap: 8px; }
+.ow-card .ow-pick { display: flex; flex-direction: column; align-items: flex-start; gap: 3px;
+  flex: 1 1 200px; min-width: 0; text-align: left; border: 1px solid var(--hair);
+  background: color-mix(in srgb, var(--bg) 70%, transparent); border-radius: var(--radius-sm);
+  padding: 9px 12px; cursor: pointer; }
+.ow-card .ow-pick.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.ow-card .ow-pick b { font-size: 13px; color: var(--ink); }
+.ow-card .ow-pick i { font-style: normal; font-size: 10px; color: var(--meta);
+  border: 1px solid var(--hair); padding: 0 6px; border-radius: var(--pill); }
+.ow-card .ow-pick span { font-size: 11px; line-height: 1.6; color: var(--meta); }
+.ow-book { flex-direction: row; align-items: baseline; gap: 10px; }
+.ow-book-meta { font-size: 10.5px; }
+.ow-open { flex: 1 1 100%; }
 .ded-empty-types { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 12px 0; }
 .ded-type { background: var(--surface-card); border-radius: var(--radius); padding: 10px 12px; display: flex; flex-direction: column; gap: 3px; box-shadow: var(--shadow-card); }
 .ded-type b { font-size: 12.5px; }
