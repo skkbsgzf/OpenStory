@@ -7404,6 +7404,38 @@ async function deduceEngineTurn(opts) {
   render()
 }
 
+/** 待确认事实卡结算（OS-82 回填闭环）：write＝写进拆解（单条 upsert），dismiss＝只出队。 */
+async function deducePendingSettle(pendingId, action) {
+  const engine = state.deduce.engine
+  if (!state.current || !pendingId) return
+  // 写入可能要过一次文件协议，禁用本卡按钮防连点
+  const card = document.querySelector(`.ded-factcard[data-pending-id="${pendingId}"]`)
+  if (card) for (const btn of card.querySelectorAll('button')) btn.disabled = true
+  try {
+    const payload = await api('/api/deduce/pending', {
+      method: 'POST',
+      body: JSON.stringify({ root: state.current.path, pendingId, action })
+    })
+    engine.session = payload.session
+    engine.hint = action === 'write'
+      ? `事实已写入拆解${payload.revision ? `（revision ${payload.revision}）` : ''}——下一拍推演就能引用它`
+      : '已忽略这张事实卡（不落库）'
+  } catch (error) {
+    const message = (error && error.code ? error.code + ' · ' : '') + text((error && error.message) || error)
+    if (String(error?.code || '') === 'NOT_FOUND') {
+      // 卡已被另一处写入/忽略：拉一次最新会话即可，不当错误
+      engine.hint = message
+      try {
+        const fresh = await api(`/api/deduce/session?root=${encodeURIComponent(state.current.path)}`)
+        engine.session = fresh.session ?? null
+      } catch { /* 读不到就保持现状 */ }
+    } else {
+      engine.error = message
+    }
+  }
+  render()
+}
+
 /** 草稿写回会话（PUT 整存）：textarea 失焦或离开草稿区前调。字数按新正文重算。 */
 async function deduceSaveDraft() {
   const engine = state.deduce.engine
@@ -7890,6 +7922,26 @@ function deduceTurnLineHtml(node) {
   </div>`
 }
 
+/** 待确认事实卡（OS-82 回填闭环）：这一拍结算产出的 fact 条目——写进拆解前的最后一道闸。
+ *  「写入拆解」走 writeFactFile 单条 upsert（只进这一条，不动其他条目）；「忽略」只出队不落库。 */
+function deducePendingFactHtml(item) {
+  const entry = item?.entry ?? {}
+  const decidedBy = text(item?.decidedBy)
+  const decidedLabel = decidedBy === 'author' ? '作者裁定' : decidedBy === 'fate' ? '命运之笔' : decidedBy || '推演产出'
+  return `<section class="fl-msg ded-factcard" data-pending-id="${esc(text(item?.id))}">
+    <div class="ded-factcard-head">
+      <span class="ded-factcard-badge">事实待确认</span>
+      <span class="ded-factcard-meta">${esc(text(entry.layer || 'plot'))} · 第 ${Number(item?.round) || 0} 拍 · ${esc(decidedLabel)}</span>
+    </div>
+    <p class="ded-factcard-name">${esc(text(entry.name))}</p>
+    <p class="ded-factcard-def">${esc(text(entry.definition))}</p>
+    <div class="ded-factcard-ops">
+      <button class="fl-btn is-primary" data-action="deduce-pending-write" data-id="${esc(text(item?.id))}" title="写入库内拆解文件（单条追加，不动其他条目）">写入拆解</button>
+      <button class="fl-btn" data-action="deduce-pending-dismiss" data-id="${esc(text(item?.id))}" title="不落库，把这张卡移出队列">忽略</button>
+    </div>
+  </section>`
+}
+
 /** 本拍正文：历史拍是静态纸卡；最新一拍（草稿）带打字机／编辑态与动作行。 */
 function deduceProseMsgHtml(node, live) {
   const engine = state.deduce.engine
@@ -8154,11 +8206,23 @@ function deduceEngineHtml() {
   const nodes = (session?.nodes || []).filter((node) => (text(node?.branchId) || 'main') === branchId)
   const msgs = []
   if (data.narrative) msgs.push(deducePrologueHtml(data.narrative))
+  // OS-82 回填闭环：结算产出的条目卡按 nodeId 挂在对应拍后面；对不上拍的兜底挂流尾，不吞卡
+  const pendingAll = Array.isArray(session?.pending) ? session.pending : []
+  const pendingLeft = new Set(pendingAll.map((item) => text(item?.id)))
   for (const node of nodes) {
     const live = !!draft && draft.nodeId === node.id
     const turnLine = deduceTurnLineHtml(node)
     if (turnLine) msgs.push(turnLine)
     msgs.push(deduceProseMsgHtml(node, live))
+    for (const item of pendingAll) {
+      if (text(item?.nodeId) === text(node.id)) {
+        msgs.push(deducePendingFactHtml(item))
+        pendingLeft.delete(text(item?.id))
+      }
+    }
+  }
+  for (const item of pendingAll) {
+    if (pendingLeft.has(text(item?.id))) msgs.push(deducePendingFactHtml(item))
   }
   if (!draft) msgs.push(deducePendingHtml(data))
   if (engine.hint) msgs.push(`<div class="fl-hint">${esc(engine.hint)}</div>`)
@@ -9200,6 +9264,10 @@ document.addEventListener('click', (event) => {
     deduceEngineTurn({ regenerate: true })
   } else if (action === 'deduce-engine-next') {
     deduceEngineNext()
+  } else if (action === 'deduce-pending-write') {
+    deducePendingSettle(target.dataset.id, 'write')
+  } else if (action === 'deduce-pending-dismiss') {
+    deducePendingSettle(target.dataset.id, 'dismiss')
   } else if (action === 'deduce-archive') {
     deduceArchiveChapter()
   } else if (action === 'deduce-engine-veto') {

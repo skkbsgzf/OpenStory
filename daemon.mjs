@@ -1234,7 +1234,9 @@ async function listDeduceAssets(root, bookId) {
       pov: text(request.pov),
       seed: Number.isSafeInteger(request.seed) ? request.seed : null,
       reset: request.reset === true,
-      peek: request.peek === true
+      peek: request.peek === true,
+      // OS-82：戏剧候选接全局文本模型（没配模型＝null，必然/命运照常）
+      llmPort: await buildDeduceLlmPort({ context })
     })
     // peek 且无会话：不是错误——前端维持空态
     if (!result.ok && result.code === 'NO_DEDUCE_SESSION') return sendJson(res, 200, { ok: false, code: 'NO_DEDUCE_SESSION', message: result.message })
@@ -1358,6 +1360,9 @@ function readLegacyDeduceState(root, bookId) {
       settled = await deduceSettle({ root, bookId, candidateId: choiceId, action: 'choose' })
     }
     if (!settled.ok) return sendError(res, settled.code ?? API_ERROR_CODES.INVALID_ENTRY, settled.message)
+    // OS-82 回填闭环：结算产出的 fact 条目不自动落库——挂会话 pending 队列（待确认卡），
+    // 作者点「写入拆解」才走 writeFactFile 单条 upsert；点「忽略」只出队。
+    const settledEntry = settled.result?.entry ?? null
 
     // 局面与候选取自引擎最后一面（present 存的 lastTurn）；自定义拍补一条「作者」候选
     let lastTurn = null
@@ -1389,9 +1394,75 @@ function readLegacyDeduceState(root, bookId) {
     const gen = await generateTurnProse({ context, root, node: draft, previousProse: previous?.prose })
     draft.prose = gen.prose
     const node = appendNode(session, draft)
+    if (settledEntry) {
+      session.pending = Array.isArray(session.pending) ? session.pending : []
+      session.pending.push({
+        id: `pd-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+        nodeId: text(node.id),
+        round: Number(settled.round) || 0,
+        decidedBy: text(settledEntry.provenance?.decidedBy),
+        entry: settledEntry,
+        addedAt: new Date().toISOString()
+      })
+    }
     const saved = await saveDeduceSession(root, bookId, session)
     if (!saved.ok) return sendError(res, saved.code ?? API_ERROR_CODES.WRITE_PROTOCOL_IO_FAILED, saved.message)
     return sendJson(res, 200, { ok: true, node, session, prose: node.prose, ...(gen.proseError ? { proseError: gen.proseError } : {}) })
+  }
+
+  if (endpointId === 'deducePendingSettle') {
+    // OS-82 回填闭环：待确认卡落库（write）/丢弃（dismiss）。写走内核 writeFactFile 的
+    // 单条 upsert（entry 形态：按 id 命中替换、没有就追加）——推演一拍只进一条事件，
+    // 绝不动拆解文件里其他条目（与 factEntriesImport 的整份替换是两回事）。
+    const authorized = authorizeRoot(allowlist, request.root)
+    if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
+    const root = authorized.root
+    const bookId = await resolveFactBookId(root, request.bookId)
+    const pendingId = text(request.pendingId).trim()
+    const action = text(request.action || 'write')
+    if (!pendingId) return sendError(res, API_ERROR_CODES.INVALID_ENTRY, 'pendingId 必填')
+    const session = loadDeduceSession(root, bookId)
+    if (!session) return sendError(res, API_ERROR_CODES.NOT_FOUND, '这个库还没有推演会话')
+    const index = (Array.isArray(session.pending) ? session.pending : []).findIndex((item) => text(item?.id) === pendingId)
+    if (index < 0) return sendError(res, API_ERROR_CODES.NOT_FOUND, '这条待确认卡已不存在（可能已写入或已忽略）——刷新会话即可')
+    const item = session.pending[index]
+    if (action === 'dismiss') {
+      session.pending.splice(index, 1)
+      const saved = await saveDeduceSession(root, bookId, session)
+      if (!saved.ok) return sendError(res, saved.code ?? API_ERROR_CODES.WRITE_PROTOCOL_IO_FAILED, saved.message)
+      return sendJson(res, 200, { ok: true, action: 'dismiss', session })
+    }
+    if (action !== 'write' || !item.entry || typeof item.entry !== 'object') {
+      return sendError(res, API_ERROR_CODES.INVALID_ENTRY, 'action 只认 write/dismiss，卡上要有结算产出的条目')
+    }
+    // 写前重读 revision 走乐观并发（与 factEntriesImport 同口径），避免覆盖别人刚写的拆解
+    let expectedRevision = null
+    try {
+      const factPath = join(root, '拆解', `${bookId}.json`)
+      if (existsSync(factPath)) {
+        const existing = JSON.parse(await readFile(factPath, 'utf-8'))
+        const rev = Number(existing?.revision)
+        if (Number.isSafeInteger(rev) && rev >= 1) expectedRevision = rev
+      }
+    } catch { /* 读不到就当新建 */ }
+    const { writeFactFile } = await import('./core/pinax/next/kernel/factFileStore.mjs')
+    const written = await writeFactFile({
+      root,
+      bookId,
+      entry: item.entry,
+      operationId: `deduce-backfill-${pendingId}`,
+      ...(expectedRevision !== null ? { expectedRevision } : {})
+    })
+    if (!written.ok) return sendError(res, written.code ?? API_ERROR_CODES.WRITE_PROTOCOL_IO_FAILED, written.message ?? '写入拆解失败', written.details)
+    session.pending.splice(index, 1)
+    const saved = await saveDeduceSession(root, bookId, session)
+    if (!saved.ok) return sendError(res, saved.code ?? API_ERROR_CODES.WRITE_PROTOCOL_IO_FAILED, saved.message)
+    return sendJson(res, 200, {
+      ok: true,
+      action: 'write',
+      session,
+      ...(Number(written.revision) ? { revision: Number(written.revision) } : {})
+    })
   }
 
   // 剧情树分支（OS-61 P3）：从某一拍开新分支。只动 branchId/cursor 与分叉溯源，
@@ -3204,18 +3275,16 @@ function turnProsePrompt(node, previousProse) {
  * 都收敛到单发单收。模型不可用/调用失败/回空＝{ prose:'', proseError:'模型不可用' }，
  * 绝不伪造正文。
  */
-async function generateTurnProse({ context, root, node, previousProse }) {
-  let upstream
-  try {
-    const { config } = await loadConfigV2(context.agentConfigPath)
-    upstream = await resolveChatUpstream(config, context)
-  } catch { upstream = null }
-  if (!upstream?.ok) return { prose: '', proseError: '模型不可用' }
-  const prompt = turnProsePrompt(node, previousProse)
+/** 三通道对话补全（cli / dsh-cli / http）——返回 { text } 或 { error }，不抛。
+ *  OS-82：从 generateTurnProse 抽出来共用——推演「戏剧」候选（llmPort.complete）与
+ *  成文走同一份上游解析与通道，不引入第二套模型配置。剥代码围栏对 prose 与 JSON 提议都无害。 */
+async function chatCompleteViaUpstream({ upstream, system, user = '', maxTokens = 1500, temperature = 0.7, cwd = '' }) {
+  if (!upstream?.ok) return { error: '模型不可用' }
+  const prompt = user ? `${system}\n\n${user}` : system
   try {
     let raw = ''
     if (upstream.execute === 'cli') {
-      const run = await runCliChat(upstream.kit, [{ role: 'user', content: `${DEDUCE_PROSE_SYSTEM}\n\n${prompt}` }], { model: upstream.model })
+      const run = await runCliChat(upstream.kit, [{ role: 'user', content: prompt }], { model: upstream.model })
       if (!run.ok) throw new Error(run.message)
       raw = text(run.text)
     } else if (upstream.execute === 'dsh-cli') {
@@ -3223,8 +3292,8 @@ async function generateTurnProse({ context, root, node, previousProse }) {
       const result = await runDshStdio({
         dshCmd: upstream.dshRun.dshCmd,
         profile: upstream.dshRun.profile,
-        cwd: root,
-        prompt: `${DEDUCE_PROSE_SYSTEM}\n\n${prompt}`,
+        ...(cwd ? { cwd } : {}),
+        prompt,
         ...(upstream.reasoningEffort ? { reasoningEffort: upstream.reasoningEffort } : {}),
         inactivityMs: 180_000,
         timeoutMs: 600_000,
@@ -3238,9 +3307,9 @@ async function generateTurnProse({ context, root, node, previousProse }) {
         headers: { 'content-type': 'application/json', ...upstream.headers },
         body: JSON.stringify({
           model: upstream.model,
-          messages: [{ role: 'system', content: DEDUCE_PROSE_SYSTEM }, { role: 'user', content: prompt }],
-          max_tokens: 1500,
-          temperature: 0.7,
+          messages: [{ role: 'system', content: system }, ...(user ? [{ role: 'user', content: user }] : [])],
+          max_tokens: maxTokens,
+          temperature,
           stream: false
         }),
         signal: AbortSignal.timeout(180_000)
@@ -3249,11 +3318,48 @@ async function generateTurnProse({ context, root, node, previousProse }) {
       const data = await response.json()
       raw = text(data.choices?.[0]?.message?.content ?? '')
     }
-    const prose = raw.replace(/^```[^\n]*\n/u, '').replace(/\n```$/u, '').trim()
-    if (!prose) return { prose: '', proseError: '模型不可用' }
-    return { prose, proseError: '' }
-  } catch {
-    return { prose: '', proseError: '模型不可用' }
+    const out = raw.replace(/^```[^\n]*\n/u, '').replace(/\n```$/u, '').trim()
+    if (!out) return { error: '模型返回为空' }
+    return { text: out }
+  } catch (error) {
+    return { error: text(error?.message || error) || '模型不可用' }
+  }
+}
+
+/** 解析全局文本模型上游（读不到/没配返回 null）。 */
+async function resolveUpstreamSafe({ context }) {
+  try {
+    const { config } = await loadConfigV2(context.agentConfigPath)
+    const upstream = await resolveChatUpstream(config, context)
+    return upstream?.ok ? upstream : null
+  } catch { return null }
+}
+
+async function generateTurnProse({ context, root, node, previousProse }) {
+  const upstream = await resolveUpstreamSafe({ context })
+  const out = await chatCompleteViaUpstream({
+    upstream,
+    system: DEDUCE_PROSE_SYSTEM,
+    user: turnProsePrompt(node, previousProse),
+    maxTokens: 1500,
+    temperature: 0.7,
+    cwd: root
+  })
+  if (out.error || !out.text) return { prose: '', proseError: '模型不可用' }
+  return { prose: out.text, proseError: '' }
+}
+
+/** OS-82：推演戏剧候选的 llmPort——从全局文本模型配置构建；没配模型返回 null
+ *  （vendor 的 dramaCandidates 对 null/异常自己兜底：戏剧层缺席不阻塞必然/命运）。 */
+async function buildDeduceLlmPort({ context }) {
+  const upstream = await resolveUpstreamSafe({ context })
+  if (!upstream) return null
+  return {
+    complete: async ({ system = '', maxTokens = 400 } = {}) => {
+      const out = await chatCompleteViaUpstream({ upstream, system, maxTokens })
+      if (out.error) throw new Error(out.error)
+      return { text: out.text ?? '' }
+    }
   }
 }
 

@@ -707,6 +707,16 @@ export const ENDPOINTS = Object.freeze({
     response: { ok: 'true', node: 'object', session: 'object', prose: 'string?', proseError: 'string?' },
     errors: ['NO_LIBRARY', 'INVALID_ENTRY', 'NOT_FOUND', 'WRITE_PROTOCOL_IO_FAILED']
   },
+  deducePendingSettle: {
+    method: 'POST',
+    path: '/api/deduce/pending',
+    // 回填闭环（OS-82）：结算产出的 fact 条目先挂会话 pending 队列（待确认卡），
+    // 作者确认后这里写进拆解——write 走内核 writeFactFile 单条 upsert（按 id 命中替换、
+    // 没有就追加，绝不动别人的条目）；dismiss 只出队不落库。卡不存在＝NOT_FOUND（幂等友好）。
+    request: { body: { root: 'string', bookId: 'string?', pendingId: 'string', action: 'string?' } },
+    response: { ok: 'true', action: 'string', session: 'object', revision: 'integer?' },
+    errors: ['NO_LIBRARY', 'INVALID_ENTRY', 'NOT_FOUND', 'WRITE_PROTOCOL_IO_FAILED']
+  },
   deduceBranch: {
     method: 'POST',
     path: '/api/deduce/branch',

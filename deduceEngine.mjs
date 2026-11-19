@@ -69,7 +69,7 @@ function defaultPov(entries) {
   return chars[0]?.name ?? null
 }
 
-export async function deducePresent({ root, bookId = 'default', pov = '', seed = null, reset = false, peek = false } = {}) {
+export async function deducePresent({ root, bookId = 'default', pov = '', seed = null, reset = false, peek = false, llmPort = null } = {}) {
   const loaded = loadEntries(root)
   if (!loaded.ok) return { ok: false, code: 'INVALID_ENTRY', message: loaded.message }
   const entries = loaded.entries
@@ -125,7 +125,9 @@ export async function deducePresent({ root, bookId = 'default', pov = '', seed =
   state.seed = useSeed
   let turn
   try {
-    turn = await presentTurn({ state, entries, pov: pov || state.pov || null, seed: useSeed })
+    // OS-82：llmPort 透传给引擎——「戏剧✦」候选从配置的文本模型来（没配模型时 dramaCandidates
+    // 自己返回空数组，必然/命运两层照常跑，推演永远不被模型不可用卡死）。
+    turn = await presentTurn({ state, entries, pov: pov || state.pov || null, seed: useSeed, ...(llmPort ? { llmPort } : {}) })
   } catch (error) {
     return { ok: false, code: text(error?.code || 'INVALID_ENTRY'), message: text(error?.message || error) }
   }
