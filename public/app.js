@@ -5914,17 +5914,25 @@ async function refreshLibraries() {
 
 /* ---------- 业务页扩展（OS-8：动态页签＋目录工作面＋推演页）---------- */
 
-// 目录名 → 页签标签（与 Pinax 载体骨架同源；认不出的目录不上页签——不谎报工作面）。
+/**
+ * 目录名 → 页签标签。
+ * OS-88（作者裁定）：demo 只做三种载体——长篇、短篇、剧本。**只保留有真实实现的标签**，
+ * 其余（素材/漫画/视频/体验/联机/文档/人物/场景/大纲/构思/资料/约束）一律不进词表：
+ * 它们没有专属页面，点进去只是一个裸 textarea，等于凭空许诺。
+ * 已实现的真实页面：正文 / 世界书(参考载体) / 剧本 / 习惯 / 故事源(拆解) / 推演 / 日志(只读)。
+ */
 const DIR_LABELS = {
-  正文: '正文', 世界书: '世界书', 大纲: '大纲', 构思: '构思', 资料: '资料', 约束: '约束',
-  剧本: '剧本', 人物: '人物', 场景: '场景', 素材: '素材', 漫画: '漫画', 视频: '视频',
-  体验: '体验', 联机: '联机', 日志: '日志', 文档: '文档',
+  正文: '正文',
+  世界书: '世界书',
+  剧本: '剧本',
+  日志: '日志',
   // S2：拆解目录承载故事源（Fact 链可视化）——目录名不动，页签改叫故事源
   拆解: '故事源'
 }
-const DIR_ORDER = ['正文', '世界书', '大纲', '构思', '资料', '约束', '剧本', '人物', '场景', '素材', '漫画', '视频', '体验', '联机', '日志', '文档']
+const DIR_ORDER = ['正文', '世界书', '剧本', '日志']
 const READONLY_DIRS = new Set(['日志'])
-const PAGE_TO_DIR_LOCAL = Object.freeze({ write: '正文', entries: '世界书', worldbook: '世界书', outline: '大纲', notes: '构思', material: '资料', dossier: '资料', script: '剧本', comic: '漫画', wiki: '世界书' })
+// 只留真正有 view 的映射；其余载体在 Pinax 主程序里，不在本 demo。
+const PAGE_TO_DIR_LOCAL = Object.freeze({ write: '正文', entries: '世界书', worldbook: '世界书', script: '剧本' })
 
 /**
  * 页签栏（OS-36）。
@@ -8032,13 +8040,8 @@ function deduceTurnLineHtml(node) {
   if (!node.choiceId || !chosen) return ''
   // OS-88：命运候选历史拍是黑话文本——渲染时翻人话；新档已是人话（正则不中）原样
   const chosenText = chosen.source === '命运' ? (fateHumanFromLegacy(chosen) || chosen.text) : chosen.text
-  // OS-89：这行不是叙述，是那一拍拍板的走向——标签语义化：候选＝「你的选择」，作者自写＝「你写」
-  const choiceLabel = chosen.id === 'custom' || chosen.source === '作者' ? '你写' : '你的选择'
-  return `<div class="fl-you" title="这一拍拍板的走向（从当时的候选里选的，或作者自己写的）">
-    <span class="fl-you-arrow">▸</span><span class="fl-you-label">${choiceLabel}</span>
-    <span class="fl-you-text">${esc(chosenText)}</span>
-    ${chosen.source ? `<span class="ded-badge">${esc(chosen.source)}</span>` : ''}
-  </div>`
+  // OS-91：酒馆式——你拍板的行动就是右侧气泡里那句话，不挂任何元标签
+  return `<div class="fl-you"><span class="fl-you-text">${esc(chosenText)}</span></div>`
 }
 
 /** 待确认事实卡（OS-82 回填闭环）：这一拍结算产出的 fact 条目——写进拆解前的最后一道闸。
@@ -8134,39 +8137,28 @@ function deduceWhoChipsHtml(who) {
 function deducePendingHtml(data) {
   const engine = state.deduce.engine
   const card = data.sceneCard ?? {}
-  const candidates = Array.isArray(data.candidates) ? data.candidates : []
+  // OS-91：命运是世界的暗手（骰点体现在世界的回应里），不进玩家的选项——
+  // 玩家面前只有基于眼前情境的分支（戏剧＝模型提的分支，必然＝世界规矩推的分支）
+  const candidates = (Array.isArray(data.candidates) ? data.candidates : []).filter((candidate) => candidate.source !== '命运')
   const who = Array.isArray(card.who) ? card.who.filter(Boolean) : []
   const where = card.where && card.where !== '未标记地点' ? text(card.where) : '地点未标'
   const hook = card.hook && card.hook !== '……' ? text(card.hook) : ''
-  const sourceNote = { 必然: '从世界事实推出来的', 命运: '掷骰定顺逆：顺＝世界放行，逆＝世界设坎', 戏剧: '模型提的另一种可能' }
+  const sourceNote = { 必然: '世界规矩', 戏剧: '另一种可能' }
   const describeCandidate = (candidate) => {
-    const trace = candidate.trace
-    if (candidate.source === '命运' && trace && Number.isFinite(trace.sum)) {
-      const ok = trace.success
-      return {
-        title: ok ? '顺着眼前的事往下走' : '硬闯一次',
-        sub: ok ? '局面顺着你的意思推进——这一拍没有人拦' : '会碰上阻力——事后得收拾代价，或换条路',
-        roll: `${trace.a}＋${trace.b}＝${trace.sum} ${ok ? '顺遂' : '受阻'}`
-      }
-    }
     if (candidate.source === '必然') {
       const fact = text(candidate.text).replace(/^剧情检定[^：]*：/u, '').trim()
-      return { title: fact || '按世界的规矩来', sub: '世界事实推出来的走向——不这么做也会发生', roll: '' }
+      return { title: fact || '按世界的规矩来', sub: '从世界事实推出来的——不这么做也会发生', roll: '' }
     }
-    if (candidate.source === '戏剧') {
-      return { title: text(candidate.text) || '换个意外的走向', sub: '另一种可能——需要模型参与', roll: '' }
-    }
-    return { title: candidate.text || '（空候选）', sub: hook ? `牵动：${hook}` : '', roll: '' }
+    return { title: text(candidate.text) || '（空候选）', sub: hook ? `牵动：${hook}` : '', roll: '' }
   }
   const optRows = candidates.map((candidate) => {
     const kind = { 必然: 'certain', 命运: 'fate', 戏剧: 'drama' }[candidate.source] || 'other'
     const info = describeCandidate(candidate)
     return `<div class="ded-opt-row src-${kind}">
       <button class="ded-opt" data-action="deduce-engine-choose" data-candidate-id="${esc(candidate.id)}"${engine.turnBusy ? ' disabled' : ''}>
-        <span class="ded-opt-head"><span class="ded-badge">${esc(candidate.source || '候选')}</span><span class="ded-cand-note">${esc(sourceNote[candidate.source] || '')}</span>${info.roll ? `<span class="ded-opt-roll">${esc(info.roll)}</span>` : ''}</span>
+        <span class="ded-opt-head"><span class="ded-badge">${esc(candidate.source || '候选')}</span><span class="ded-cand-note">${esc(sourceNote[candidate.source] || '')}</span></span>
         <span class="ded-opt-title">${esc(info.title)}</span>
         ${info.sub ? `<span class="ded-opt-sub">${esc(info.sub)}</span>` : ''}
-        ${candidate.refs && candidate.refs.length ? `<span class="ded-opt-refs">引用：${esc(candidate.refs.join('、'))}</span>` : ''}
       </button>
       <button class="ded-opt-veto" data-action="deduce-engine-veto" data-candidate-id="${esc(candidate.id)}" title="只记账，不落库">否决</button>
     </div>`
@@ -8180,10 +8172,49 @@ function deducePendingHtml(data) {
       <span class="fl-pending-where">${esc(where)}</span>
       ${deduceWhoChipsHtml(who)}
     </div>
-    <p class="fl-prompt">轮到你了——选一条走向（这一拍怎么走由你拍板），或者在下面自己写</p>
+    <p class="fl-prompt">轮到你了——这一拍怎么走由你决定：选一条，或在下面自己说</p>
     ${busyNote}
     ${optRows || (engine.busy || engine.turnBusy ? '' : '<p class="fl-no-cand">这一拍没有候选——事实包不够（世界观／角色／剧情条目太少）或预算用尽。点下方自己写一拍，或去设置里重掷。</p>')}
   </section>`
+}
+
+/** 已知信息牌（OS-91）：剧本杀式的左栏——你扮演谁／谁在你面前／这里是什么地方／
+ *  你经历过了什么／世界的暗流。全部来自 present 的叙事上下文，第二人称，不摆 fact 术语。 */
+function deduceSideHtml(data) {
+  const n = data?.narrative
+  if (!n) return ''
+  const id = n.identity || null
+  const sc = n.scene || { others: [], where: '', text: '', tension: '' }
+  const rc = n.recap || {}
+  const sec = (title, body) => body ? `<section class="ds-sec"><h4>${title}</h4>${body}</section>` : ''
+  const whoYouAre = !id
+    ? '<p class="ds-empty">还没选定视角——⚙ 设置里选「以谁的眼睛看」</p>'
+    : `<p class="ds-name">${esc(id.name)}${id.archetype ? `<i>${esc(id.archetype)}</i>` : ''}</p>
+      ${id.identity ? `<p class="ds-line">${esc(id.identity)}</p>` : ''}
+      ${id.goal ? `<p class="ds-goal">你要 ${esc(id.goal)}</p>` : ''}
+      ${id.personality && id.personality.length ? `<p class="ds-tags">${id.personality.map((p) => `<span>${esc(p)}</span>`).join('')}</p>` : ''}`
+  const others = Array.isArray(sc.others) ? sc.others : []
+  const beforeYou = others.length
+    ? others.map((o) => `<div class="ds-person"><b>${esc(o.name)}</b>${o.identity ? `<span>${esc(o.identity)}</span>` : ''}${o.archetype ? `<i>${esc(o.archetype)}</i>` : ''}</div>`).join('')
+    : '<p class="ds-empty">眼前没有别人——只有你和这个地方</p>'
+  const whereSec = `<p class="ds-line">${sc.text ? esc(sc.text) : (sc.where ? `你在${esc(sc.where)}。` : '还没人知道这里是什么地方——去世界书补一条地点条目。')}</p>
+      ${sc.tension ? `<p class="ds-tension">气氛：${esc(sc.tension)}</p>` : ''}`
+  const past = (Array.isArray(rc.recent) ? rc.recent : []).map((r) => `<div class="ds-mem"><span>第${r.round}拍</span>${esc(r.excerpt)}…</div>`).join('')
+  const pastSec = `${rc.story ? `<p class="ds-line ds-story">${esc(rc.story)}</p>` : ''}${past}`
+  const fronts = Array.isArray(data?.fronts) ? data.fronts : []
+  const frontsSec = fronts.map((f) => {
+    const filled = Number(f.filled) || 0
+    const max = Number(f.max) || 0
+    const pct = max ? Math.round((filled / max) * 100) : 0
+    return `<div class="ds-front"><div class="ds-front-row"><span>${esc(f.name || f.id || '前线')}</span><span>${filled}/${max}</span></div><div class="ds-front-bar"><i style="width:${pct}%"></i></div></div>`
+  }).join('')
+  return [
+    sec('你扮演', whoYouAre),
+    sec('在你面前', beforeYou),
+    sec('这里', whereSec),
+    sec('你经历过的', pastSec),
+    sec('世界的暗流', frontsSec)
+  ].join('')
 }
 
 /** 推演主面（OS-84 统一壳）：工具栏常驻，内容区三形态（叙事流/剧情树/Agent）就地切换。 */
@@ -8210,7 +8241,8 @@ function deduceEngineHtml() {
   const heatClass = { low: 'h-low', medium: 'h-mid', high: 'h-high', critical: 'h-crit' }[heatLevel] || 'h-low'
   const pov = session?.pov || data?.pov || engine.pov || ''
   const bgmAsset = pickDedBgm()
-  const infoVisible = data ? (engine.infoOpen === true || (!data.narrative && engine.infoOpen !== false)) : false
+  // OS-91：左栏＝已知信息牌，默认常驻（沉浸扮演要随时看得见自己是谁）；按钮只管开合
+  const infoVisible = data ? engine.infoOpen !== false : false
   // 形态三态：叙事流＝引擎+局面视图；剧情树＝引擎+树视图；Agent＝表单。互斥、恒显。
   const form = inFlow ? 'flow' : (state.deduce.mode === 'engine' ? 'tree' : 'agent')
   const segTab = (key, label, action, title) => `<button class="fl-seg-tab${form === key ? ' on' : ''}" data-action="${action}" title="${title}">${label}</button>`
@@ -8224,7 +8256,7 @@ function deduceEngineHtml() {
         ${segTab('agent', 'Agent', 'deduce-mode-agent', 'Agent 分支推理（需要模型，表单形态）')}
       </span>
       ${inFlow && data ? `<i class="fl-bar-div"></i>
-        <button class="fl-btn${infoVisible ? ' on' : ''}" data-action="deduce-info-toggle" title="显示/隐藏左侧的局面卡、前线与事实包">局面</button>
+        <button class="fl-btn${infoVisible ? ' on' : ''}" data-action="deduce-info-toggle" title="显示/隐藏左侧的已知信息：你扮演谁／谁在你面前／这里是什么地方／你经历过的">状态</button>
         <button class="fl-btn${engine.setOpen ? ' on' : ''}" data-action="deduce-tools-toggle" title="推演设置：POV / 种子 / 推进 / 重新开局">⚙ 设置</button>
         <button class="fl-btn${engine.bgmOn ? ' on' : ''}" data-action="deduce-bgm-toggle"${bgmAsset ? '' : ' disabled'}
           title="${bgmAsset ? `播放：${esc(bgmAsset.name)}（循环）` : '未配置 BGM——放 推演/…/素材/bgm/<场景或情绪>.mp3 即可启用'}">♪ BGM</button>
@@ -8237,34 +8269,7 @@ function deduceEngineHtml() {
     </span>
   </header>`
 
-  /* —— 局面浮层（局面卡＋前线＋事实包）与设置浮层：不与流争布局 —— */
-  const sceneHtml = data ? `<section class="ded-card ded-scene">
-      <div class="ded-card-head"><h3>局面</h3><span class="sub">第 ${Number(data.round) || 0} 拍</span></div>
-      <dl class="ded-fields">
-        <div><dt>在场</dt><dd>${who.length ? esc(who.join('、')) : '<i class="ded-none">无人</i>'}</dd></div>
-        <div><dt>地点</dt><dd>${card.where && card.where !== '未标记地点' ? esc(card.where) : '<i class="ded-none">未标记（世界书里还没有这个角色知道的地点）</i>'}</dd></div>
-        <div><dt>张力</dt><dd>${esc(card.tension || '—')}</dd></div>
-        <div><dt>钩子</dt><dd>${card.hook && card.hook !== '……' ? esc(card.hook) : '<i class="ded-none">这一拍没有挂起的伏笔</i>'}</dd></div>
-      </dl>
-      <div class="ded-meta">
-        ${data.seed !== null && data.seed !== undefined ? `<span title="同种子可复现">种子 ${esc(data.seed)}</span>` : ''}
-        ${Number.isFinite(Number(tension.active)) ? `<span>活跃前线 ${tension.active}</span>` : ''}
-        ${data.budget?.max ? `<span>AI 预算 ${data.budget.used || 0}/${data.budget.max}</span>` : ''}
-      </div>
-    </section>` : ''
-  const fronts = Array.isArray(data?.fronts) ? data.fronts : []
-  const frontsHtml = fronts.length ? `<section class="ded-card ded-fronts">
-      <div class="ded-card-head"><h3>前线 <span class="count">${fronts.length}</span></h3><span class="sub">挂机推进的威胁时钟，满格＝世界动手</span></div>
-      ${fronts.map((front) => {
-        const filled = Number(front.filled) || 0
-        const max = Number(front.max) || 0
-        const pct = max ? Math.round((filled / max) * 100) : 0
-        return `<div class="ded-front">
-          <div class="ded-front-row"><span>${esc(front.name || front.id || '前线')}</span><span class="ded-front-n">${filled}/${max}</span></div>
-          <div class="ded-clock"><i style="width:${pct}%"></i></div>
-        </div>`
-      }).join('')}
-    </section>` : ''
+  /* —— 已知信息牌（deduceSideHtml）接管局面卡／前线；事实包术语退场（世界书管条目） —— */
   const controls = `<div class="ded-tools">
       <input class="file-input" id="deduce-pov" list="deduce-pov-list" placeholder="以谁的眼睛看（可选）" value="${esc(engine.pov)}">
       <datalist id="deduce-pov-list">${(state.deduce.characters || []).map((name) => `<option value="${esc(name)}"></option>`).join('')}</datalist>
@@ -8289,11 +8294,7 @@ function deduceEngineHtml() {
       <div class="ded-sess-list">${sessRows || '<p class="ded-none">局清单还没读到——再开一次设置页试试</p>'}</div>
       <button class="btn-ghost ded-sess-new" data-action="deduce-sess-new"${engine.busy || engine.turnBusy ? ' disabled' : ''} title="新开一局（自动命名，切过去就是空白第一拍）">＋新开一局</button>
     </div>`
-  const infoPanel = data ? `<div class="ded-stage-info"${infoVisible ? '' : ' hidden'}>
-      ${sceneHtml}
-      ${frontsHtml}
-      ${dedPackHtml()}
-    </div>` : ''
+  const sideHtml = deduceSideHtml(data)
   const setPanel = `<div class="ded-set-panel"${engine.setOpen ? '' : ' hidden'}>
       ${sessHtml}
       <div class="ded-set-head">推演设置<span class="sub">POV / 种子 / 推进</span></div>
@@ -8324,9 +8325,9 @@ function deduceEngineHtml() {
               <h2>事实推演引擎</h2>
               <p>读本库的拆解条目（世界观／角色／剧情）作为事实包，推出一拍局面与候选。每一拍是一条消息：你选一条走向，世界回你一段正文——像酒馆一样往下读。</p>
               <div class="ded-empty-types">
-                <div class="ded-type"><b>必然</b><span>世界事实推导出的走向</span></div>
-                <div class="ded-type"><b>命运</b><span>种子化 2d6 检定</span></div>
-                <div class="ded-type"><b>戏剧</b><span>需要模型，可选</span></div>
+                <div class="ded-type"><b>眼前分支</b><span>基于你面前的情境：进山还是绕行，搭话还是观察</span></div>
+                <div class="ded-type"><b>世界的暗手</b><span>命运骰在幕后掷——顺逆体现在世界的回应里，不用你掷</span></div>
+                <div class="ded-type"><b>你自己说</b><span>任何时候都能自己写这一拍怎么走</span></div>
               </div>
               <p class="sub">引擎是确定性的：同一个种子＋同一份事实包＝同一拍。它是「如果世界」的推演，不是替你写正文。</p>
             </div>
@@ -8377,20 +8378,25 @@ function deduceEngineHtml() {
     </div>
   </div>`
 
+  // OS-91：沉浸舞台＝左（已知信息牌）＋右（气泡流）。左栏不是聊天，是「我知道什么」。
   return `<div class="ded-flow" data-paper="${engine.paperMode ? 1 : 0}">
     <div class="ded-flow-bg"${sceneAsset ? ` style="background-image:url('${dedAssetUrl(sceneAsset)}')"` : ''}>${sceneAsset ? '' : '<div class="ded-scene-grain"></div>'}</div>
     <div class="ded-flow-tint"></div>
     ${bar}
-    <div class="fl-scroll-wrap">
-      <div class="fl-scroll" id="deduce-flow">
-        <div class="fl-inner">
-          ${msgs.join('')}
+    <div class="ded-body">
+      <aside class="ded-side"${infoVisible ? '' : ' hidden'}>${sideHtml}</aside>
+      <div class="ded-main-col">
+        <div class="fl-scroll-wrap">
+          <div class="fl-scroll" id="deduce-flow">
+            <div class="fl-inner">
+              ${msgs.join('')}
+            </div>
+          </div>
+          <button class="fl-jump" id="deduce-flow-jump" data-action="deduce-flow-jump" hidden>↓ 最新一拍</button>
         </div>
+        ${composer}
       </div>
-      <button class="fl-jump" id="deduce-flow-jump" data-action="deduce-flow-jump" hidden>↓ 最新一拍</button>
     </div>
-    ${composer}
-    ${infoPanel}
     ${setPanel}
   </div>`
 }
