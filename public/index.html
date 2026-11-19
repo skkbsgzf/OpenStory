@@ -772,9 +772,15 @@ html[data-doc-auto-gap="off"] .doc-paper p { margin-bottom: 0; }
 /* 正文滚动区占满整格（OS-48）：左右两栏都是绝对定位浮层，纸面宽度与位置只受窗口影响，
    开关任何一栏都不会动正文一像素——这是「附庸不挤占正文」的落地。 */
 .doc-workspace-sticky .doc-scroll { position: absolute; inset: 0; overflow-y: auto; padding: 22px calc(var(--content-px, 34px) + 4px) 60px; }
-/* 浮层让位（OS-48）：纸面固定居中，窄窗口里先把行宽收窄，保证不被左右浮层压住。
-   300(右) + 248(左) + 两侧各 16 的呼吸 ≈ 580px 被浮层占用，其余才是纸面可用的净宽。 */
-@media (max-width: 1500px) { :root { --doc-max: min(720px, calc(100vw - 320px - 580px)); } }
+/* 浮层让位（OS-48 原设计已退役）：
+   旧方案靠「窄窗口自动收窄纸面」避免遮挡，但窗口 ≥1500 时纸面用默认 720px，
+   而左右浮层实占 ~580px —— 正文被分析面板压住（作者实测截图）。
+   OS-88 改为**结构性让位**：哪一侧浮层打开，正文滚动区就补对应内边距，
+   纸面永远居中落在剩余空间里，不依赖窗口宽度断点。 */
+.doc-workspace-sticky.has-refcol .doc-scroll { padding-left: calc(248px + var(--content-px, 34px)); }
+.doc-workspace-sticky.has-analyze .doc-scroll { padding-right: calc(300px + var(--content-px, 34px)); }
+/* 左右浮层同时打开且窗口不够宽时的兜底：纸面收窄到可读下限之上，宁可窄不重叠 */
+@media (max-width: 1180px) { :root { --doc-max: min(720px, calc(100vw - 640px)); } }
 .doc-block { outline: none; border-radius: 4px; margin: 0 0 var(--doc-para-gap); padding: 2px 4px; margin-left: -4px; margin-right: -4px; }
 .doc-block:hover { background: var(--soft); }
 .doc-block:focus { background: var(--soft); box-shadow: inset 0 0 0 1px var(--line); }
