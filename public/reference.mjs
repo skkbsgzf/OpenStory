@@ -140,18 +140,12 @@ export function refTreeHtml({ notes, tags = [], activeTag = '', activePath = '',
 }
 
 export function refNavHtml({ tags = [], notes, activeTag = '', activePath = '', view = 'graph', q = '' } = {}) {
-  const views = [
-    ['note', '笔记'],
-    ['graph', '关系图谱']
-  ]
-  const viewRows = views.map(([id, label]) =>
-    `<button class="nav-row view${view === id ? ' on' : ''}" data-ref-view="${esc(id)}"><span>${esc(label)}</span></button>`
-  ).join('')
+  // OS-80：去掉「笔记 / 关系图谱」这对视图开关——作者口径「笔记不是视图，
+  // 点目录里的笔记自然就进详情」。只保留一个回图谱的入口（在详情页里）。
   const tree = refTreeHtml({ notes, tags, activeTag, activePath, q })
   return `<div class="ref-nav">
     <input class="search" id="ref-search" type="search" placeholder="过滤目录…" value="${esc(q)}">
-    <div class="nav-group"><div class="nav-group-label">视图</div>${viewRows}</div>
-    <div class="nav-group grow"><div class="nav-group-label">目录</div><div id="ref-tree">${tree}</div></div>
+    <div class="nav-group grow"><div id="ref-tree">${tree}</div></div>
   </div>`
 }
 

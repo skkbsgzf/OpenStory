@@ -347,6 +347,31 @@ export const ENDPOINTS = Object.freeze({
     response: { ok: 'true', note: 'object', backlinks: 'object' },
     errors: ['NO_LIBRARY', 'PATH_ESCAPE', 'INVALID_ENTRY', 'NOT_FOUND']
   },
+  jobsGet: {
+    method: 'GET',
+    path: '/api/jobs',
+    // 全局后台任务中心（OS-80）：所有插件的长任务都登记在这里，前端悬浮球轮询它。
+    // 任务不跨 daemon 重启存活（重启即清空，不留幽灵进度）。
+    request: { query: { root: 'string?', kind: 'string?', state: 'string?', limit: 'string?' } },
+    response: { ok: 'true', jobs: 'array', active: 'number' },
+    errors: []
+  },
+  jobCancel: {
+    method: 'POST',
+    path: '/api/jobs/cancel',
+    // 取消任务：置 cancelled + abort。执行器需自己响应 signal（引擎类任务每轮检查）。
+    request: { body: { id: 'string' } },
+    response: { ok: 'true' },
+    errors: ['NOT_FOUND', 'INVALID_ENTRY', 'ALREADY_SETTLED']
+  },
+  jobsClear: {
+    method: 'POST',
+    path: '/api/jobs/clear',
+    // 清空已终态任务（done/failed/cancelled），按 root 可选。
+    request: { body: { root: 'string?' } },
+    response: { ok: 'true', removed: 'number' },
+    errors: []
+  },
   factEntriesImport: {
     method: 'POST',
     path: '/api/fact/entries/import',
