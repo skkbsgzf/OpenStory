@@ -78,7 +78,8 @@ async function makeFixture() {
 }
 
 test('契约：端点都带 method/path/request/response/errors，路径可反查', () => {
-  assert.equal(Object.keys(ENDPOINTS).length, 80)
+  // OS-89：80 → 86（+ changeLogGet / changeLogSummary / uiStateGet / uiStatePut / draftGet / draftPut）
+  assert.equal(Object.keys(ENDPOINTS).length, 86)
   for (const [id, endpoint] of Object.entries(ENDPOINTS)) {
     assert.ok(endpoint.method, `${id} 缺 method`)
     assert.ok(endpoint.path.startsWith('/api/'), `${id} 路径不是 /api/`)
