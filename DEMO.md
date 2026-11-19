@@ -1,8 +1,18 @@
-# OpenStory 演示脚本——水浒传样例库
+# OpenStory 演示脚本
 
-> 本仓库自带一个公版样例库《水浒传》（`D:\Projects\水浒传`），覆盖全部模块。
+> 三个样例库覆盖三种载体，全部功能模块跑通：
+>
+> | 库 | 载体 | 规模 | 用途 |
+> |---|---|---|---|
+> | **水浒传**（`D:\Projects\水浒传`） | novel | 7 条目 / 63 链接 / 5 拍推演 | 长篇：正文、世界书图谱、推演文游 |
+> | **泄密的心**（`D:\Projects\泄密的心`） | novel | 12 条目 / 11 事件 / 8 伏笔 | 短篇：故事源三形态、伏笔回收真数据 |
+> | **戏院三部曲**（`D:\Projects\戏院三部曲`） | screenplay | 9 条目 / 3 幕 / 7 伏笔 | 剧本：剧本页签、幕结构 |
+>
 > 启动：`cd D:\OpenStory && npm start`（daemon 127.0.0.1:8807），浏览器打开 `http://127.0.0.1:8807`。
 > MCP：`node D:\OpenStory\mcp.mjs`（前置同 daemon）。
+>
+> 说明：两个演示库的拆解数据是手写的（结构与 enrich 产出完全一致，都过内核 schema 校验），
+> 因为 enrich 需要 LLM 端点。配好模型后重跑 enrich 即可得到真实抽取结果。
 
 ## 一、正文（纯净写作面）
 顶栏选《水浒传》→ 页签「正文」。
@@ -54,7 +64,31 @@
   页头标「对齐：精确/近似」。整本条目都标同一章、而 wiki 是多章时（实测短篇样本）
   自动改走段号均分，避免 291 条全挤进「第 1 章」。
 
-## 七、MCP（对外输出）
+## 七、生图双后端（OS-74）
+
+设置 → 模型 → 生图，支持两种后端：
+
+| 后端 | 配置 | 适合 |
+|---|---|---|
+| **OpenAI 兼容 API** | endpoint（填到 `/v1`）+ 模型 + key | 云端，一次请求直接出图 |
+| **ComfyUI**（本机） | 地址（`http://127.0.0.1:8188`）+ 工作流 JSON + 节点映射 | 本地，可控工作流，免费 |
+
+- 「测试连接」会真发请求：OpenAI 路径发一次最小生成（**会花额度，需确认**），ComfyUI 路径走 `/system_stats` 只读探测。
+- ComfyUI 工作流用「Save (API Format)」导出；节点映射留空则按 title 自动猜（Positive/Negative/KSampler/EmptyLatentImage）。
+
+## 八、文字模型与 CLI（OS-74）
+
+设置 → 模型 → 对话模型，三种运行时：
+
+| 运行时 | 模型来源 | 凭据 |
+|---|---|---|
+| **DSH** | `/api/agent/dsh/models` 实时枚举（带推理深度选项） | DSH 自己的 profile |
+| **CLI**（Claude / CodeBuddy / Qoder） | kit manifest 的 `models` 清单 | **CLI 自己登录的凭据——本仓不存 key、不直连 LLM API** |
+| **Pi**（兜底） | 手填 endpoint + model | 本仓存 key（脱敏回显） |
+
+CLI 模式的设计意图：跑动记录与 CLI 自己的历史一致，不产生两套账。
+
+## 九、MCP（对外输出）
 20 个工具覆盖五模块（小说/世界书/习惯/拆解/推演/分析，详见 `mcp/skills/OVERVIEW.md`）。
 读写分级：读自由；写有 .history 备份；absorb 不开；习惯表有 `openstory_habits_read`。
 
