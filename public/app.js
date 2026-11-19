@@ -4326,29 +4326,29 @@ async function commitRefBlock(blockEl) {
 
 let refRescanTimer = null
 
-/** OS-75：世界书条目的图墙（封面大图 + 缩略图行 + 一键生图）。
+/** OS-81：右栏「图片槽」——1..N 张图，第一张做主图，其余做缩略行。
  * 图片路径来自 referenceStore 的 images[]（frontmatter cover/portrait/images/refImages）。
- * 站内相对路径走 /api/chapter 读不出二进制——用 daemon 的静态托管：库内文件通过
- * /api/reference/asset 暴露（见 daemon 的 referenceAssetGet）。 */
-function refImagesHtml(note) {
+ * 站内相对路径走 /api/reference/asset 二进制通道（daemon 的 referenceAssetGet）。 */
+function refImagesSlotHtml(note) {
   const images = Array.isArray(note?.images) ? note.images.filter(Boolean) : []
   const root = state.current?.path || ''
   const urlOf = (rel) => /^https?:\/\//u.test(rel)
     ? rel
     : `/api/reference/asset?root=${encodeURIComponent(root)}&path=${encodeURIComponent(rel)}`
-  const genBtn = `<button class="btn-ghost ref-gen-img" data-action="ref-gen-image" title="按这个条目生成设定图（走设置里的生图后端）">✦ 生成设定图</button>`
+  const genBtn = `<button class="ref-slot-gen" data-action="ref-gen-image" title="按这个条目生成设定图（后台任务，进度看右下角任务中心）">✦ 生成设定图</button>`
   if (!images.length) {
-    return `<div class="ref-gallery empty">
-      <div class="ref-gallery-none">还没有设定图</div>
-      ${genBtn}
+    return `<div class="ref-img-slot empty">
+      <div class="ref-slot-head">参考图</div>
+      <div class="ref-slot-empty-body">${genBtn}</div>
     </div>`
   }
   const cover = images[0]
   const thumbs = images.slice(1, 7)
-  return `<div class="ref-gallery">
-    <div class="ref-gallery-cover"><img src="${esc(urlOf(cover))}" alt="${esc(note.title || '')}" loading="lazy"></div>
-    ${thumbs.length ? `<div class="ref-gallery-thumbs">${thumbs.map((p) => `<img src="${esc(urlOf(p))}" alt="" loading="lazy">`).join('')}</div>` : ''}
-    <div class="ref-gallery-ops">${genBtn}</div>
+  return `<div class="ref-img-slot">
+    <div class="ref-slot-head">参考图<span class="ref-slot-n">${images.length}</span></div>
+    <div class="ref-slot-cover"><img src="${esc(urlOf(cover))}" alt="${esc(note.title || '')}" loading="lazy"></div>
+    ${thumbs.length ? `<div class="ref-slot-thumbs">${thumbs.map((p) => `<img src="${esc(urlOf(p))}" alt="" loading="lazy">`).join('')}</div>` : ''}
+    <div class="ref-slot-ops">${genBtn}</div>
   </div>`
 }
 
@@ -4393,33 +4393,32 @@ function referenceEditorHtml() {
     .map((tag) => `<button class="pill tag-pick" data-ref-tag="${esc(tag)}" title="按这个标签筛选">#${esc(tag)}</button>`).join('')
   const mdPlain = (source) => text(source).replace(/[*_`#>[\]()|]/gu, ' ').replace(/-{2,}/gu, ' ').replace(/\s+/gu, ' ').trim()
   const excerpt = mdPlain(note.excerpt) || mdPlain(bodySource).slice(0, 120)
-  const backlinks = refModule.backlinksHtml(ref.backlinks)
+  // OS-81（作者裁定）：条目名是 H1；上半区左 60% 摘要正文（无卡）/ 右 40% 图片槽＋图谱槽两张卡；
+  // 往下的详情全屏铺开；「关联说明」整块删除——要干净的前端。
   return `<div class="ref-detail">
     <div class="ref-detail-head">
       ${ref.from === 'graph' ? '<button class="btn-ghost" data-action="ref-back-graph" title="回到关系图谱">← 返回图谱</button>' : ''}
-      <h2>${esc(note.title || note.path)}</h2>
+      <h1 class="ref-title">${esc(note.title || note.path)}</h1>
       <span class="ref-detail-path">${esc(note.path)}${note.chars !== undefined ? ` · ${note.chars} 字` : ''}</span>
       <span class="sp"></span>
       <span class="doc-autosave" id="ref-autosave"></span>
       <span class="count">点正文直接改，失焦自动保存</span>
       <button class="btn-ghost" data-action="ref-to-agent">发给 Agent</button>
     </div>
-    <div class="ref-detail-top">
-      <div class="ref-detail-brief">
-        ${refImagesHtml(note)}
-        <div class="brief-tags">${tagChips || '<span class="nav-empty">无标签</span>'}</div>
+    <div class="ref-hero">
+      <div class="ref-hero-left">
+        <div class="brief-tags">${tagChips}</div>
         <p class="brief-text">${esc(excerpt)}</p>
       </div>
-      <div class="ref-detail-graph">
-        <div class="rd-graph-head">关系图谱 <span>本词条的关联 · 点节点跳转</span></div>
-        <div class="graph-box detail"><canvas id="ref-detail-canvas"></canvas></div>
+      <div class="ref-hero-right">
+        ${refImagesSlotHtml(note)}
+        <div class="ref-graph-slot">
+          <div class="ref-slot-head">关系图谱</div>
+          <div class="graph-box detail"><canvas id="ref-detail-canvas"></canvas></div>
+        </div>
       </div>
     </div>
     <div class="ref-doc">${body}</div>
-    <div class="ref-detail-backlinks">
-      <h4>关联说明</h4>
-      ${backlinks}
-    </div>
   </div>`
 }
 
