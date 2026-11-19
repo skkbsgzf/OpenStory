@@ -3237,6 +3237,11 @@ async function factToScriptFlow() {
     work.loaded = true
     closeModal()
     await openDirWork('剧本')
+    // OS-87：如实报这次转出了什么——没有台词只有剧情概要时，这是「骨架」不是剧本，
+    // 作者得知道接下来要自己写台词，而不是以为转换坏了。
+    state.reference.flash = stats?.skeletal
+      ? `已按 ${stats.acts} 条剧情梳理出剧本骨架（${stats.sketches} 段剧情概要）——拆解里没有台词/事件明细，台词待你补写`
+      : `已转成剧本：${stats?.acts ?? 0} 幕 · ${stats?.lines ?? 0} 句台词`
     render()
   } catch (error) {
     if (errEl) errEl.textContent = `转失败：${text(error?.message || error)}`
@@ -8006,12 +8011,26 @@ function deducePrologueHtml(narrative) {
 }
 
 /** 你的回合：这一拍选了哪条候选 / 自己写了什么（choiceId 在会话节点里，回放同源）。 */
+/** 命运回合行的人话文案（OS-88）。服务端同款在 deduceEngine.humanizeFateText（按 trace 重写）；
+ *  这里兜历史拍——会话节点只存了 text 没存 trace，旧黑话「剧情检定 2d6=…」从文本拆骰点翻人话。 */
+function fateHumanFromLegacy(chosen) {
+  const m = /^剧情检定 2d6=(\d+)\+(\d+)\=(\d+)：(顺遂|受阻)$/.exec(text(chosen?.text || ''))
+  if (!m) return ''
+  const a = Number(m[1]); const b = Number(m[2]); const sum = Number(m[3])
+  const success = m[4] === '顺遂'
+  return success
+    ? `世界不拦你——事情按眼下最自然的走向推进（命运骰 ${sum}：${a}+${b} 顺遂）`
+    : `世界设了坎——这一步会受阻，有代价要收拾（命运骰 ${sum}：${a}+${b} 受阻）`
+}
+
 function deduceTurnLineHtml(node) {
   const chosen = (node.candidates || []).find((candidate) => candidate.id === node.choiceId)
   if (!node.choiceId || !chosen) return ''
+  // OS-88：命运候选历史拍是黑话文本——渲染时翻人话；新档已是人话（正则不中）原样
+  const chosenText = chosen.source === '命运' ? (fateHumanFromLegacy(chosen) || chosen.text) : chosen.text
   return `<div class="fl-you">
     <span class="fl-you-arrow">▸</span><span class="fl-you-label">你</span>
-    <span class="fl-you-text">${esc(chosen.text)}</span>
+    <span class="fl-you-text">${esc(chosenText)}</span>
     ${chosen.source ? `<span class="ded-badge">${esc(chosen.source)}</span>` : ''}
   </div>`
 }
@@ -8113,7 +8132,7 @@ function deducePendingHtml(data) {
   const who = Array.isArray(card.who) ? card.who.filter(Boolean) : []
   const where = card.where && card.where !== '未标记地点' ? text(card.where) : '地点未标'
   const hook = card.hook && card.hook !== '……' ? text(card.hook) : ''
-  const sourceNote = { 必然: '从世界事实推出来的', 命运: '这一骰决定走向', 戏剧: '模型提的另一种可能' }
+  const sourceNote = { 必然: '从世界事实推出来的', 命运: '掷骰定顺逆：顺＝世界放行，逆＝世界设坎', 戏剧: '模型提的另一种可能' }
   const describeCandidate = (candidate) => {
     const trace = candidate.trace
     if (candidate.source === '命运' && trace && Number.isFinite(trace.sum)) {
