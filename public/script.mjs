@@ -84,3 +84,31 @@ export function scriptStats(source) {
     scenes: blocks.filter((b) => b.kind === 'stage').length
   }
 }
+
+
+/**
+ * 带源码偏移的块解析（OS-76：与 md.splitBlocks 同口径，供 commitDocBlock 复用）。
+ * 返回 [{ index, raw, kind, who, hint, said, start, end }]，start/end 指向原文切片。
+ * 这样剧本页可以走和正文页完全相同的「逐块 contenteditable + 失焦按偏移写回」链路。
+ */
+export function splitScriptBlocks(source) {
+  const raw = text(source).replace(/\r\n?/gu, '\n')
+  const out = []
+  const re = /[^\n]+(?:\n(?!\n)[^\n]+)*/gu
+  let match
+  let guard = 0
+  while ((match = re.exec(raw)) !== null && guard++ < 5000) {
+    const chunk = match[0]
+    if (!chunk.trim()) continue
+    const first = chunk.split('\n')[0]
+    const info = classifyScriptLine(first)
+    out.push({
+      index: out.length,
+      raw: chunk,
+      start: match.index,
+      end: match.index + chunk.length,
+      ...info
+    })
+  }
+  return out
+}
