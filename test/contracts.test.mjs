@@ -319,7 +319,7 @@ test('daemon 端点：库清单/条目/单条/正文读写/路径拒收/root 白
     const index = await fetch(`${origin}/`)
     assert.equal(index.status, 200)
     assert.match(index.headers.get('content-type'), /text\/html/u)
-    assert.match(await index.text(), /OpenStory · 工作台/u)
+    assert.match(await index.text(), /OpenStory · OS-/u)
 
     const appJs = await fetch(`${origin}/app.js`)
     assert.equal(appJs.status, 200)
