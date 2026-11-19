@@ -349,9 +349,9 @@ function render() {
   if (state.view !== 'dir:拆解') disposeStorySourceChart()
   // 正文页自己管滚动（页头吸顶＋纸面/右栏各自滚），外层不再滚动
   // OS-76：剧本页也用沉浸式排版（与正文页同构：铺满视口、左中右三栏）
-  // OS-81：推演叙事流同构——铺满视口、只有流自己滚，外层滚动条退役
+  // OS-84：推演全形态（叙事流/剧情树/Agent）同一壳——铺满视口、内容区自己滚
   viewEl.classList.toggle('content-locked', state.view === 'write' || state.view === 'dir:剧本'
-    || (state.view === 'deduce' && state.deduce.mode === 'engine' && state.deduce.engine.view !== 'tree'))
+    || state.view === 'deduce')
   if (state.view !== 'deduce') dedTypewriterStop()
   if (state.view === 'libraries') viewEl.innerHTML = libraryHtml()
   else if (state.view === 'write') {
@@ -3176,8 +3176,10 @@ async function scriptToFactFlow() {
   const errEl = document.getElementById('sm-err')
   try {
     const normalized = mod.normalizeScript(work.text).text
-    const { entries, wiki, stats } = await sf.scriptToFact(normalized, { bookId: 'screenplay', domain: '舞台剧' })
-    const bookId = text(work.file || 'screenplay').split('/').pop().replace(/\.md$/u, '') || 'screenplay'
+    // OS-83 修：不拿剧本文件名当 bookId——会造出与本书事实包割裂的「第二本书」。
+    // 先问服务端本库事实包叫什么（拆解/ 下最新的那份），落到同一本书上。
+    const bookId = await resolveLibraryBookId()
+    const { entries, wiki, stats } = await sf.scriptToFact(normalized, { bookId, domain: '舞台剧' })
     const payload = await api('/api/fact/entries/import', {
       method: 'POST',
       body: JSON.stringify({
@@ -3202,22 +3204,45 @@ async function factToScriptFlow() {
   if (!sf?.factToScript) { alert('互转模块还没加载，稍后再试'); return }
   const errEl = document.getElementById('sm-err')
   try {
-    const bookId = text(dirWork('剧本').file || '').split('/').pop().replace(/\.md$/u, '') || 'screenplay'
-    const payload = await api(`/api/fact/entries?root=${encodeURIComponent(state.current.path)}&bookId=${encodeURIComponent(bookId)}&limit=500`)
+    const work = dirWork('剧本')
+    // OS-83 修：bookId 不能拿剧本文件名凑（空目录时是 ''，会退化成 'screenplay' 再查成 404）。
+    // 拆解事实包按「库」存，不传 bookId 就是本库全量——这才是互转要读的东西。
+    const payload = await api(`/api/fact/entries?root=${encodeURIComponent(state.current.path)}&limit=500`)
     if (!payload.ok) throw new Error(payload.error?.message || '读条目失败')
     const { text: scriptText, stats } = sf.factToScript(payload.entries, payload.wiki)
     if (!scriptText.trim()) { if (errEl) errEl.textContent = '这部书还没有可用的拆解条目'; return }
-    const work = dirWork('剧本')
+    // 空剧本目录：先落一个文件名，否则 PUT 没有落点（旧实现直接静默失败）
+    if (!work.file) {
+      const stamp = new Date().toISOString().slice(0, 10)
+      work.file = `剧本/${stamp.replace(/-/gu, '')}-${escFileName('由拆解生成')}.md`
+    }
     work.text = scriptText
     await api('/api/chapter', {
       method: 'PUT',
       body: JSON.stringify({ root: state.current.path, file: work.file, text: scriptText })
     })
+    work.loaded = true
     closeModal()
+    await openDirWork('剧本')
     render()
   } catch (error) {
     if (errEl) errEl.textContent = `转失败：${text(error?.message || error)}`
   }
+}
+
+/** 文件名安全化（去掉路径分隔符与 Windows 保留字符）。 */
+function escFileName(name) {
+  return text(name).replace(/[\\/:*?"<>|]/gu, '').trim() || '未命名'
+}
+
+/** OS-83：解析本库事实包的 bookId（factEntriesGet 不传 bookId 时返回 mtime 最新那本）。 */
+async function resolveLibraryBookId() {
+  try {
+    const payload = await api(`/api/fact/entries?root=${encodeURIComponent(state.current.path)}&limit=1`)
+    const resolved = text(payload?.bookId).trim()
+    if (resolved) return resolved
+  } catch { /* 读不到就退回库名，至少不静默 */ }
+  return text(state.current?.name).trim() || 'default'
 }
 
 function settingsScriptSectionHtml() {
@@ -5942,15 +5967,20 @@ function openTabAdd() {
         <span class="tp-check">${off ? '' : '✓'}</span><b>${esc(item.label)}</b></button>`
     }).join('')
   // 目录型页签（已有目录）
+  // 「参考」「习惯」不是普通目录：它们分流到 reference/habits 专页（见 renderTabs）。
+  // 面板里要用同一个 view 键，否则勾选会写进 dir:参考 而页签栏根本不放它。
+  const DIR_TO_VIEW = { 参考: 'reference', 习惯: 'habits' }
+  const DIR_TO_LABEL = { 参考: '参考', 习惯: '习惯' }
   const dirRows = libDirs
     .filter((dir) => dir !== '正文' && dir !== '世界书' && dir !== '推演')
     .sort((left, right) => DIR_ORDER.indexOf(left) - DIR_ORDER.indexOf(right))
     .map((dir) => {
-      const view = `dir:${dir}`
+      const view = DIR_TO_VIEW[dir] || `dir:${dir}`
       const off = hidden.has(view)
-      const known = Boolean(DIR_LABELS[dir])
+      const known = Boolean(DIR_LABELS[dir]) || Boolean(DIR_TO_VIEW[dir])
+      const label = DIR_TO_LABEL[dir] || DIR_LABELS[dir] || dir
       return `<button class="tab-pick${off ? '' : ' on'}" data-action="tab-toggle-pick" data-tab-view="${esc(view)}">
-        <span class="tp-check">${off ? '' : '✓'}</span><b>${esc(DIR_LABELS[dir] || dir)}</b>${known ? '' : '<span class="tp-note">未识别</span>'}</button>`
+        <span class="tp-check">${off ? '' : '✓'}</span><b>${esc(label)}</b>${known ? '' : '<span class="tp-note">未识别</span>'}</button>`
     }).join('')
   // OS-83：已识别但库里还没建的业务目录（剧本/人物/场景/素材/漫画/视频…）。
   // 以前面板只列磁盘已有的目录，于是「剧本」这种模块在小说库里整块消失——作者以为功能不存在。
@@ -7757,30 +7787,9 @@ async function startDeduce() {
 
 
 function deduceHtml() {
-  const deduce = state.deduce
   if (!state.current) return needLibraryHtml()
-  const engine = deduce.engine
-  const tabs = `<span class="subtabs">
-      <button class="chip${deduce.mode === 'engine' ? ' on' : ''}" data-action="deduce-mode-engine" title="确定性推演引擎（种子化 2d6，不需要模型）">引擎</button>
-      <button class="chip${deduce.mode === 'agent' ? ' on' : ''}" data-action="deduce-mode-agent" title="Agent 分支推理（需要模型）">Agent</button>
-    </span>`
-  // 视图切换（OS-61 P3）：叙事流 / 剧情树——只在引擎模式下有意义
-  const viewTabs = deduce.mode === 'engine' ? `<span class="subtabs">
-      <button class="chip${engine.view !== 'tree' ? ' on' : ''}" data-action="deduce-view-scene" title="沉浸叙事流：一拍一条消息，候选挂在流末">叙事流</button>
-      <button class="chip${engine.view === 'tree' ? ' on' : ''}" data-action="deduce-view-tree" title="二维分支导图：横轴拍号、纵轴分支，点节点可回跳或开新分支">剧情树</button>
-    </span>` : ''
-  const head = `<div class="doc-head">
-      <div class="kick">${esc(state.current.name)} / 推演</div>
-      <div class="doc-line-row"><h1>推演</h1>${tabs}${viewTabs}</div>
-      <div class="doc-meta">
-        <span class="b">${deduce.mode === 'engine' ? '事实推演引擎' : 'Agent 推演'}</span>
-        ${deduce.mode === 'engine' ? '<span class="count">局面卡＋三层候选（必然/命运/戏剧）· 种子化确定性</span>' : ''}
-        ${deduce.mode === 'agent' && deduce.sessionId ? '<span class="count">推演会话已建——卡在左列会话里采纳</span>' : ''}
-      </div>
-    </div>`
-  if (deduce.mode === 'agent') return head + deduceAgentHtml()
-  if (engine.view === 'tree') return head + deduceTreeHtml()
-  // OS-81：叙事流自带工具栏（模式/视图切换也收进去），页头退役——流是唯一主面
+  // OS-84：统一壳——引擎/Agent、叙事流/剧情树共用同一条工具栏与同一容器，
+  // 切换只换内容区不换骨架（旧实现 Agent/剧情树另起 doc-head，切换＝整页换头，割裂）。
   return deduceEngineHtml()
 }
 
