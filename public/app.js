@@ -1508,6 +1508,8 @@ function renderAnalyzePanel() {
   if (!panel) return
   const open = state.analyze.open && state.chapterLoaded
   panel.classList.toggle("open", open)
+  // OS-88：浮层打开＝正文滚动区补右侧内边距（纸面让位），不再压住正文
+  panel.closest('.doc-workspace-sticky')?.classList.toggle('has-analyze', open)
   document.querySelector('[data-action="analyze-toggle"]')?.classList.toggle('on', open)
   if (!open) return
   const name = state.chapterFile ? state.chapterFile.split("/").pop() : ""
@@ -4909,7 +4911,14 @@ function refColHtml() {
 /** 题材页渲染完后统一挂图谱（各页只负责插 refColHtml()）。 */
 function afterRefColMount() {
   const host = document.getElementById('ref-col')
-  if (!host) return
+  const shell = document.querySelector('.doc-workspace-sticky')
+  if (!host) {
+    // 左栏整栏关掉（模块全隐）＝不占位，正文不该留白
+    shell?.classList.remove('has-refcol')
+    return
+  }
+  // OS-88：左栏存在＝正文滚动区补左侧内边距（纸面让位），与右栏 has-analyze 对称
+  shell?.classList.toggle('has-refcol', true)
   const openState = state.refCol.open ?? {}
   const graphCard = host.querySelector('[data-ref-mod="graph"]')
   if (graphCard && openState.graph !== false && graphCard.dataset.open === '1') {
