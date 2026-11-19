@@ -444,7 +444,8 @@ async function serveStatic(req, res, url, publicDir) {
   res.writeHead(200, {
     'content-type': MIME[extname(resolved.path).toLowerCase()] ?? 'application/octet-stream',
     'content-length': stats.size,
-    'cache-control': 'no-cache'
+    // no-store：代码/页面永远fresh——迭代批次密集时浏览器拿旧包会让作者看到「老的东西」
+    'cache-control': /\.(html|js|css|mjs)$/iu.test(resolved.path) ? 'no-store' : 'no-cache'
   })
   createReadStream(resolved.path).pipe(res)
 }
