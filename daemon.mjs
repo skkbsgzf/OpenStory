@@ -1240,7 +1240,7 @@ async function listDeduceAssets(root, bookId) {
       seed: Number.isSafeInteger(request.seed) ? request.seed : null,
       reset: request.reset === true,
       peek: request.peek === true,
-      sessionId: text(request.sessionId),
+      sessionId: text(request.sessionId).trim() || readActiveSessionId(authorized.root, await resolveFactBookId(authorized.root, request.bookId)),
       // OS-82：戏剧候选接全局文本模型（没配模型＝null，必然/命运照常）
       llmPort: await buildDeduceLlmPort({ context })
     })
@@ -1259,7 +1259,7 @@ async function listDeduceAssets(root, bookId) {
       candidateId: text(request.candidateId),
       action: text(request.action || 'choose'),
       note: text(request.note),
-      sessionId: text(request.sessionId)
+      sessionId: text(request.sessionId).trim() || readActiveSessionId(authorized.root, await resolveFactBookId(authorized.root, request.bookId))
     })
     if (!result.ok) return sendError(res, result.code ?? API_ERROR_CODES.INVALID_ENTRY, result.message)
     return sendJson(res, 200, result)
