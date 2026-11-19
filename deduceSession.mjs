@@ -50,6 +50,12 @@ function normalizeBuffer(raw) {
   }
 }
 
+/** 待确认事实卡（OS-82 回填闭环）：结算产物不自动落库，作者确认后才写进拆解。
+ *  归一只保形状：数组照收、非数组清空——条目本体是内核 settle 产出的合法 fact 条目，不做二次校验。 */
+function normalizePending(raw) {
+  return Array.isArray(raw) ? raw.filter((item) => item && typeof item === 'object') : []
+}
+
 /**
  * 归一校验（PUT 整存与读取共用）：schema 对、nodes 是数组才收；
  * bookId 以调用方给的为准（存哪个库的路径就记哪个库），缺省字段补默认值。
@@ -66,7 +72,8 @@ export function normalizeDeduceSession(input, bookId = '') {
     cursor: Number.isSafeInteger(input.cursor) && input.cursor >= 0 ? input.cursor : 0,
     nodes: input.nodes,
     buffer: normalizeBuffer(input.buffer),
-    archived: Array.isArray(input.archived) ? input.archived : []
+    archived: Array.isArray(input.archived) ? input.archived : [],
+    pending: normalizePending(input.pending)
   }
 }
 

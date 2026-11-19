@@ -37,7 +37,8 @@ function newSession(bookId = 'book-1') {
     cursor: 0,
     nodes: [],
     buffer: { chapterNo: 1, nodes: [], words: 0 },
-    archived: []
+    archived: [],
+    pending: []
   }
 }
 
@@ -284,4 +285,29 @@ test('桥接：无旧状态/无 round 明确报错不抛', async () => {
   const { importLegacyDeduce } = await import('../deduceSession.mjs')
   assert.equal(importLegacyDeduce({ legacyState: null }).code, 'NO_LEGACY_STATE')
   assert.equal(importLegacyDeduce({ legacyState: { round: 0 } }).code, 'NO_LEGACY_ROUND')
+})
+
+test('待确认事实卡（OS-82）：pending 归一与存读往返', async () => {
+  const { base, root } = await makeRoot()
+  try {
+    const session = newSession()
+    session.nodes = []
+    // pending 非数组被清空；数组里的非对象被滤掉
+    const dirty = { ...newSession(), pending: 'junk' }
+    const normalized = normalizeDeduceSession(dirty, 'book-1')
+    assert.deepEqual(normalized.pending, [])
+    const withJunk = { ...newSession(), pending: [{ id: 'pd-1', entry: { layer: 'plot', name: '第1拍·推门' } }, null, 42] }
+    assert.equal(normalizeDeduceSession(withJunk, 'book-1').pending.length, 1)
+    // 存读往返：pending 原样落盘再读回
+    session.pending = [{ id: 'pd-1', nodeId: 'n1', round: 1, decidedBy: 'author', entry: { schema: 'fact.data/v3', id: 'abc123', layer: 'plot', name: '第1拍·推门' }, addedAt: '2026-11-20T00:00:00.000Z' }]
+    const saved = await saveDeduceSession(root, 'book-1', session)
+    assert.equal(saved.ok, true)
+    const loaded = loadDeduceSession(root, 'book-1')
+    assert.equal(loaded.pending.length, 1)
+    assert.equal(loaded.pending[0].id, 'pd-1')
+    assert.equal(loaded.pending[0].entry.name, '第1拍·推门')
+    assert.equal(loaded.pending[0].decidedBy, 'author')
+  } finally {
+    await rm(base, { recursive: true, force: true })
+  }
 })

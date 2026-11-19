@@ -123,16 +123,18 @@ test('回合：choiceId 走既有结算——lastTurn 候选桥接后可选', as
 })
 
 test('回合：regenerate 覆盖同一拍正文，不新增节点（LLM 桩）', async () => {
-  const ctx = await boot({ prose: ['雾起了，他推开门。', '雾散了，他转身离开。'] })
+  // OS-82：present 现在带 llmPort——戏剧候选先消耗一次调用（桩回空 proposals），成文从第二个桩起
+  const ctx = await boot({ prose: ['{"proposals":[]}', '雾起了，他推开门。', '雾散了，他转身离开。'] })
   try {
     await ctx.present()
     const first = await (await ctx.turn({ customText: '夜渡' })).json()
     assert.equal(first.ok, true)
     assert.equal(first.node.prose, '雾起了，他推开门。')
     assert.equal(first.proseError, undefined)
-    assert.equal(ctx.llm.calls.length, 1)
-    // 成文走小说叙述体：system 提示不是推演提议体，输入面带局面与选定内容
-    const call = ctx.llm.calls[0]
+    assert.equal(ctx.llm.calls.length, 2, '戏剧候选 1 次＋成文 1 次')
+    // 第 0 次是戏剧候选提议（提议器 system 提示）；成文走小说叙述体，输入面带局面与选定内容
+    assert.match(ctx.llm.calls[0].messages[0].content, /剧情推演提议器/)
+    const call = ctx.llm.calls[1]
     assert.equal(call.messages[0].role, 'system')
     assert.match(call.messages[0].content, /叙述体/)
     assert.doesNotMatch(JSON.stringify(call), /只输出符合要求的 JSON/)
@@ -148,7 +150,7 @@ test('回合：regenerate 覆盖同一拍正文，不新增节点（LLM 桩）',
     assert.equal(again.session.buffer.nodes.length, 1)
     assert.equal(again.session.buffer.nodes[0].prose, '雾散了，他转身离开。')
     assert.equal(again.session.buffer.words, '雾散了，他转身离开。'.length)
-    assert.equal(ctx.llm.calls.length, 2)
+    assert.equal(ctx.llm.calls.length, 3, '戏剧＋首拍成文＋重写')
     const onDisk = loadDeduceSession(ctx.root, 'book-1')
     assert.equal(onDisk.nodes.length, 1)
     assert.equal(onDisk.nodes[0].prose, '雾散了，他转身离开。')
