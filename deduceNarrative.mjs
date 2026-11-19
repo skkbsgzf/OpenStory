@@ -18,6 +18,14 @@ import { join } from 'node:path'
 
 const text = (v) => String(v ?? '')
 
+/** OS-92：把文本里的 POV 角色名换成人称——选项＝「我」（我的决定），世界反馈/场景＝「你」（对你说）。
+ *  POV 名字不再当第三人称主语（引擎侧与叙事侧共用同一份转换）。 */
+export function firstPersonify(str, pov, pronoun = '我') {
+  const name = text(pov).trim()
+  if (!name) return text(str)
+  return text(str).split(name).join(pronoun)
+}
+
 /** 读兄弟 wiki 文件（<bookId>.wiki.json）；没有就返回 null。 */
 export function readWikiSafe(root, bookId) {
   const p = join(root, '拆解', `${bookId}.wiki.json`)
@@ -116,12 +124,13 @@ export function buildScene({ sceneCard, entries, wiki, pov }) {
         archetype: text(p?.archetype) || ''
       }
     })
-  // 场景描写：没有真立绘也能读——用地点 + 在场 + 张力拼一句人话
+  // 场景描写（OS-92）：世界对「你」说话——POV 自己不再当第三人称主语（「叙述者在场」是黑话）
+  const othersNames = others.map((o) => o.name)
   const sceneText = [
     whereKnown ? `你在${where}。` : '',
-    who.length ? `${who.join('、')}${who.length > 1 ? '都在场' : '在场'}。` : '四下无人。',
+    othersNames.length ? `你面前：${othersNames.join('、')}。` : (who.length ? '这里只有你自己。' : '四下无人。'),
     tension ? `气氛${tension.includes('顺遂') ? '暂且松下来' : tension.includes('受阻') ? '紧了起来' : '悬着'}。` : '',
-    hookKnown ? `${hook}` : ''
+    hookKnown ? firstPersonify(hook, pov, '你') : ''
   ].filter(Boolean).join('')
   return { where: whereKnown ? where : '', who, others, tension, hook: hookKnown ? hook : '', text: sceneText }
 }

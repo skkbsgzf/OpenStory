@@ -15,7 +15,7 @@ import { openDeduceSession } from './core/pinax/next/fact/usecases/deduce/openin
 import { presentTurn, applyDirectorAction } from './core/pinax/next/fact/usecases/deduce/turn.js'
 import { settleChoice } from './core/pinax/next/fact/usecases/deduce/settle.js'
 import { createFactFileStore } from './core/pinax/next/kernel/factFileStore.mjs'
-import { buildNarrativeContext, readWikiSafe } from './deduceNarrative.mjs'
+import { buildNarrativeContext, firstPersonify, readWikiSafe } from './deduceNarrative.mjs'
 
 function text(value) {
   return String(value ?? '')
@@ -98,7 +98,15 @@ export async function deducePresent({ root, bookId = 'default', pov = '', seed =
       round: state.round ?? 0,
       seed: state.seed ?? null,
       sceneCard: last?.sceneCard ?? null,
-      candidates: Array.isArray(last?.candidates) ? last.candidates : [],
+      // OS-92：选项＝我的决定——存量候选显示层纠偏（命运补人话文案、其余把 POV 名换成「我」）
+      candidates: Array.isArray(last?.candidates)
+        ? last.candidates.map((candidate) => ({
+            ...candidate,
+            text: text(candidate.source) === '命运' && candidate.trace
+              ? humanizeFateText(candidate.trace)
+              : firstPersonify(candidate.text, pov)
+          }))
+        : [],
       tension: last?.tension ?? null,
       fronts: summarizeFronts(state.fronts),
       budget: { used: state.aiSpent ?? 0, max: state.budgetMax ?? 8 },
@@ -134,12 +142,14 @@ export async function deducePresent({ root, bookId = 'default', pov = '', seed =
   } catch (error) {
     return { ok: false, code: text(error?.code || 'INVALID_ENTRY'), message: text(error?.message || error) }
   }
-  // OS-88：候选统一映射——命运候选文案人话化（骰点收尾），一处重写全链路受益
-  // （你回合行/事实条目名/待确认卡/剧情树都读这份 text）
+  // OS-88/92：候选统一映射——命运文案人话化（骰点收尾）；其余候选把 POV 名换成「我」
+  // （选项＝我的决定，哪怕 vendor/存量给的是第三人称）。一处重写全链路受益。
   const mappedCandidates = (turn.candidates ?? []).map((candidate, index) => ({
     id: text(candidate.id) ? `${text(candidate.id)}-${index}` : `c${index}`,
     source: text(candidate.source),
-    text: text(candidate.source) === '命运' ? humanizeFateText(candidate.trace) : text(candidate.text),
+    text: text(candidate.source) === '命运'
+      ? humanizeFateText(candidate.trace)
+      : firstPersonify(candidate.text, state.pov),
     refs: Array.isArray(candidate.refs) ? candidate.refs : [],
     trace: candidate.trace ?? null
   }))
