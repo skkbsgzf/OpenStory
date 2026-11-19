@@ -123,6 +123,8 @@ import {
   setPrimaryCarrier
 } from './libraryManage.mjs'
 import { createFactFileStore } from './core/pinax/next/kernel/factFileStore.mjs'
+import { readLog, logSummary, recordChange } from './changelog.mjs'
+import { dropDraft, listDrafts, loadDraft, readUiState, saveDraft, writeUiState } from './libState.mjs'
 import { absorbLegacyDirs, backlinksOf, buildReferenceGraph, REFERENCE_DIR, scanReferences } from './referenceStore.mjs'
 import { deduceOpening, deducePresent, deduceSettle, deduceStatePath } from './deduceEngine.mjs'
 import { safeDeduceBookId } from './deduceSession.mjs'
@@ -577,12 +579,14 @@ async function writeHabitsWithBackup(root, habits) {
   return backup
 }
 
-async function writeChapterWithBackup(root, file, newText) {
+async function writeChapterWithBackup(root, file, newText, logOptions = {}) {
   const resolved = resolveInsideRoot(root, file)
   if (!resolved.ok) return { ok: false, code: resolved.code, message: resolved.message, details: resolved.details }
   try {
     await mkdir(dirname(resolved.path), { recursive: true })
     let backupRelative = null
+    let beforeText = ''
+    let existed = false
     if (existsSync(resolved.path)) {
       // v1 粗保护：写前把原内容复制到同目录 .history/。OpenStory 与 Electron 同时写同一库时，
       // 这里不拦冲突（不做跨进程 revision 闸），只保证「上一版还能捞回来」。
@@ -592,14 +596,46 @@ async function writeChapterWithBackup(root, file, newText) {
       await mkdir(dirname(backup.path), { recursive: true })
       await copyFile(resolved.path, backup.path)
       backupRelative = backup.relative
+      // OS-89：读旧内容用于算 diff（.history 只是二进制快照，日志要的是可读差异）
+      try { beforeText = await readFile(resolved.path, 'utf-8') } catch { beforeText = '' }
+      existed = true
     }
     const tmp = `${resolved.path}.tmp-${randomUUID()}`
     await writeFile(tmp, newText, 'utf-8')
     await rename(tmp, resolved.path)
-    return { ok: true, chars: newText.length, savedAt: new Date().toISOString(), ...(backupRelative ? { backup: backupRelative } : {}) }
+    // OS-89：每一次修改都留 diff + log（AGENTS.md 第 10 条）。日志失败不影响写盘结果，
+    // 但要如实回传给调用方，不能假装记上了。
+    const logged = await recordChange({
+      root,
+      module: logOptions.module || moduleOfPath(file),
+      file,
+      op: existed ? 'update' : 'create',
+      before: beforeText,
+      after: newText,
+      actor: logOptions.actor || 'author',
+      meta: logOptions.meta || null
+    })
+    return {
+      ok: true,
+      chars: newText.length,
+      savedAt: new Date().toISOString(),
+      ...(backupRelative ? { backup: backupRelative } : {}),
+      ...(logged.ok === false ? { logError: logged.message } : {}),
+      ...(logged.record ? { changeId: `${logged.path}#${logged.record.afterHash}` } : {})
+    }
   } catch (error) {
     return { ok: false, code: API_ERROR_CODES.WRITE_PROTOCOL_IO_FAILED, message: `正文写入失败：${text(error?.message || error)}`, details: { file } }
   }
+}
+
+/**
+ * OS-89：从库内相对路径推模块名（'参考/人物/李逵.md' → '参考'）。
+ * 写通道的调用方大多不必显式传 module，靠这个默认推断即可。
+ */
+export function moduleOfPath(file) {
+  const first = text(file).split('/')[0] || ''
+  if (first === '拆解') return '故事源'
+  return first || 'misc'
 }
 
 /* ---------- 产物盘点（OS-11：全库只读，按顶层目录分组）---------- */
@@ -1019,6 +1055,72 @@ async function handleApi(req, res, url, context) {
     const checked = validateResponse('factBooksGet', payload)
     if (!checked.ok) return sendError(res, API_ERROR_CODES.INVALID_ENTRY, '书目清单响应形状不符合契约', { errors: checked.errors })
     return sendJson(res, 200, payload)
+  }
+
+  /* ---------- OS-89：变更日志 / 界面状态 / 草稿（全部落库内本地文件） ---------- */
+
+  if (endpointId === 'changeLogGet') {
+    const authorized = authorizeRoot(allowlist, request.root)
+    if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
+    const result = await readLog({
+      root: authorized.root,
+      module: text(request.module),
+      file: text(request.file),
+      limit: Number(request.limit) || 50
+    })
+    return sendJson(res, 200, { ok: true, entries: result.entries ?? [], truncated: result.truncated === true })
+  }
+
+  if (endpointId === 'changeLogSummary') {
+    const authorized = authorizeRoot(allowlist, request.root)
+    if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
+    const result = await logSummary(authorized.root)
+    return sendJson(res, 200, { ok: true, modules: result.modules ?? [] })
+  }
+
+  if (endpointId === 'uiStateGet') {
+    const authorized = authorizeRoot(allowlist, request.root)
+    if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
+    const result = await readUiState(authorized.root)
+    return sendJson(res, 200, { ok: true, state: result.state ?? {} })
+  }
+
+  if (endpointId === 'uiStatePut') {
+    const authorized = authorizeRoot(allowlist, request.root)
+    if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
+    const result = await writeUiState(authorized.root, request.state)
+    if (!result.ok) return sendError(res, result.code ?? API_ERROR_CODES.INVALID_ENTRY, result.message)
+    return sendJson(res, 200, { ok: true, state: result.state, ...(result.backup ? { backup: result.backup } : {}) })
+  }
+
+  if (endpointId === 'draftGet') {
+    const authorized = authorizeRoot(allowlist, request.root)
+    if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
+    const mod = text(request.module)
+    if (!mod) return sendError(res, API_ERROR_CODES.INVALID_ENTRY, 'module 必填')
+    const wantedId = text(request.id)
+    if (wantedId) {
+      const result = await loadDraft(authorized.root, mod, wantedId)
+      return sendJson(res, 200, { ok: true, draft: result.draft ?? null })
+    }
+    const listed = await listDrafts(authorized.root, mod)
+    return sendJson(res, 200, { ok: true, drafts: listed.drafts ?? [] })
+  }
+
+  if (endpointId === 'draftPut') {
+    const authorized = authorizeRoot(allowlist, request.root)
+    if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
+    const mod = text(request.module)
+    const id = text(request.id)
+    if (!mod || !id) return sendError(res, API_ERROR_CODES.INVALID_ENTRY, 'module 与 id 必填')
+    if (request.delete === true) {
+      const dropped = await dropDraft(authorized.root, mod, id)
+      if (!dropped.ok) return sendError(res, dropped.code ?? API_ERROR_CODES.WRITE_PROTOCOL_IO_FAILED, dropped.message)
+      return sendJson(res, 200, { ok: true, draft: null })
+    }
+    const saved = await saveDraft(authorized.root, { module: mod, id, text: text(request.text), meta: request.meta })
+    if (!saved.ok) return sendError(res, saved.code ?? API_ERROR_CODES.WRITE_PROTOCOL_IO_FAILED, saved.message)
+    return sendJson(res, 200, { ok: true, draft: saved.draft })
   }
 
   if (endpointId === 'habitsGet') {
@@ -2252,6 +2354,9 @@ function readLegacyDeduceState(root, bookId) {
       chars: written.chars,
       savedAt: written.savedAt,
       ...(written.backup ? { backup: written.backup } : {}),
+      // OS-89：把变更 id 透传给前端（有 diff 就有 id，可用于「查看这次改了什么」）
+      ...(written.changeId ? { changeId: written.changeId } : {}),
+      ...(written.logError ? { logError: written.logError } : {}),
       ...(health ? { factStale: health.stale, factEntries: health.entries } : {})
     })
   }
@@ -2392,7 +2497,7 @@ function readLegacyDeduceState(root, bookId) {
   return sendError(res, API_ERROR_CODES.NOT_FOUND, `端点未实现：${endpointId}`)
 }
 
-const ENDPOINT_HAS_QUERY = new Set(['referenceAssetGet', 'habitsGet', 'chapterGet', 'agentSessions', 'agentSessionGet', 'agentSessionDelete', 'libraryDiagnose', 'filesGet', 'chaptersGet', 'chapterDelete', 'artifactsGet', 'suiteStateDataGet', 'agentPicksGet', 'briefGet', 'skillsGet', 'skillGet', 'enrichStatus', 'enrichGraph', 'kbStatusGet', 'agentDshModelsGet', 'factCurveGet', 'factEntriesGet', 'factBooksGet', 'referenceGet', 'referenceGraphGet', 'referenceNoteGet', 'deduceSessionGet', 'deduceSessionsGet', 'deduceOpeningGet', 'deduceAssets', 'deduceAssetFile'])
+const ENDPOINT_HAS_QUERY = new Set(['referenceAssetGet', 'habitsGet', 'chapterGet', 'agentSessions', 'agentSessionGet', 'agentSessionDelete', 'libraryDiagnose', 'filesGet', 'chaptersGet', 'chapterDelete', 'artifactsGet', 'suiteStateDataGet', 'agentPicksGet', 'briefGet', 'skillsGet', 'skillGet', 'enrichStatus', 'enrichGraph', 'kbStatusGet', 'agentDshModelsGet', 'factCurveGet', 'factEntriesGet', 'factBooksGet', 'referenceGet', 'referenceGraphGet', 'referenceNoteGet', 'deduceSessionGet', 'deduceSessionsGet', 'deduceOpeningGet', 'deduceAssets', 'deduceAssetFile', 'changeLogGet', 'changeLogSummary', 'uiStateGet', 'draftGet'])
 
 /** 套件资产 MIME（page 模式自带页同源装载）。 */
 const SUITE_ASSET_MIME = Object.freeze({

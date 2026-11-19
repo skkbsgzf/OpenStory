@@ -818,6 +818,59 @@ export const ENDPOINTS = Object.freeze({
     request: { body: { id: 'string', values: 'object' } },
     response: { ok: 'true', values: 'object' },
     errors: ['INVALID_ENTRY']
+  },
+  changeLogGet: {
+    method: 'GET',
+    path: '/api/log',
+    // OS-89：模块自检索变更日志（AGENTS.md 第 10 条）。
+    // 每个模块加载时调一次，拿自己相关的近期修改（含 unified diff）。
+    // module 缺省＝跨模块概览；file 缺省＝该模块全部文件。
+    request: { query: { root: 'string', module: 'string?', file: 'string?', limit: 'string?' } },
+    response: { ok: 'true', entries: 'array', truncated: 'boolean' },
+    errors: ['NO_LIBRARY']
+  },
+  changeLogSummary: {
+    method: 'GET',
+    path: '/api/log/summary',
+    // 每模块最近一条变更（库总览用）。
+    request: { query: { root: 'string' } },
+    response: { ok: 'true', modules: 'array' },
+    errors: ['NO_LIBRARY']
+  },
+  uiStateGet: {
+    method: 'GET',
+    path: '/api/ui-state',
+    // OS-89：界面状态落库内（.pinax/ui-state.json），不再用浏览器 localStorage。
+    // 换机器 / 清缓存后重新打开库必须完全复原（AGENTS.md 第 8 条）。
+    request: { query: { root: 'string' } },
+    response: { ok: 'true', state: 'object' },
+    errors: ['NO_LIBRARY']
+  },
+  uiStatePut: {
+    method: 'PUT',
+    path: '/api/ui-state',
+    // 整对象合并写（浅合并，undefined 不覆盖）。原子写 + .history 备份。
+    request: { body: { root: 'string', state: 'object' } },
+    response: { ok: 'true', state: 'object', backup: 'string?' },
+    errors: ['NO_LIBRARY', 'INVALID_ENTRY', 'WRITE_PROTOCOL_IO_FAILED']
+  },
+  draftGet: {
+    method: 'GET',
+    path: '/api/draft',
+    // OS-89：未保存的编辑草稿落库内 .pinax/drafts/<module>/<id>.json。
+    // 作者还没点保存的内容也必须落本地（AGENTS.md 第 11 条）。
+    request: { query: { root: 'string', module: 'string', id: 'string?' } },
+    response: { ok: 'true', draft: 'object?', drafts: 'array?' },
+    errors: ['NO_LIBRARY']
+  },
+  draftPut: {
+    method: 'PUT',
+    path: '/api/draft',
+    // 存草稿：给 module＋id 就 upsert；给 module 不给 id 就列全部（见 draftGet）。
+    // 删除＝text 传空且 delete:true。
+    request: { body: { root: 'string', module: 'string', id: 'string', text: 'string?', meta: 'object?', delete: 'boolean?' } },
+    response: { ok: 'true', draft: 'object?' },
+    errors: ['NO_LIBRARY', 'INVALID_ENTRY', 'WRITE_PROTOCOL_IO_FAILED']
   }
 })
 

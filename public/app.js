@@ -540,21 +540,6 @@ function deliverableLabel(deliverable) { return deliverable === 'novel' ? '小�
 
 
 /* ---------- 写作偏好（OS-21：字号/行高/段距/缩进/自动隔行 → CSS 变量）---------- */
-/* OS-94 并行批垫片（防全页崩）：并行会话把 localStorage 迁库内 ui-state 时调用了 uiGet/uiSet，
- * 但实现还没落地——缺定义会让 loadDocPrefs 等 boot 早期调用抛 ReferenceError，click 分发
- * 根本绑不上（作者看到的「卡片全点不了」就是它）。先用 localStorage 顶住签名，落地后整体替换。 */
-function uiGet(key, fallback = null) {
-  try {
-    const raw = localStorage.getItem('openstory-ui:' + key)
-    return raw === null ? fallback : JSON.parse(raw)
-  } catch { return fallback }
-}
-function uiSet(key, value) {
-  try {
-    if (value === null || value === undefined) localStorage.removeItem('openstory-ui:' + key)
-    else localStorage.setItem('openstory-ui:' + key, JSON.stringify(value))
-  } catch { /* 隐私模式 */ }
-}
 
 const DOC_PREF_DEFAULTS = { fontSize: 17, lineHeight: 1.9, paraGap: 1, indent: 2, autoGap: true }
 
@@ -613,9 +598,15 @@ function formatBytes(size) {
  */
 async function loadWriteChapters({ force = false } = {}) {
   if (!state.current) return
-  // OS-89：模块加载时检索自己的 log
-  void loadModuleLog('正文', { limit: 20 })
-  if (state.write.chapters.length && !force) return
+  // OS-89：模块加载时检索自己的 log。必须 await 且在早退之前——
+  // 章节已缓存时函数会直接 return，放后面就永远拉不到（作者看不到修改记录）。
+  await loadModuleLog('正文', { limit: 20 })
+  // OS-89：日志是异步拉的，render 早就跑过了——到位后必须重排左栏，
+  // 否则「本模块修改」永远显示 0。这是约束要求「模块加载时检索自己的 log」的落地。
+  if (state.view === 'write' && document.getElementById('ref-col')) renderRefCol()
+  if (state.write.chapters.length && !force) {
+    return
+  }
   const firstLoad = state.write.chapters.length === 0
   if (firstLoad) {
     state.write.listLoading = true
@@ -8687,6 +8678,10 @@ async function openLibrary(path) {
   if (state.view === 'write' && state.chapterFile && !state.chapterLoaded) {
     loadChapter(state.chapterFile)
   }
+  // OS-89：进库时按当前模块检索它自己的 log（AGENTS.md 第 10 条）。
+  // 进库不走 go('write')，所以必须在这里补——否则「本模块修改」永远是 0。
+  await loadModuleLog(moduleOfCurrentView(), { limit: 20 })
+  if (state.view === 'write' && document.getElementById('ref-col')) renderRefCol()
   await loadSessions()
   // 默认会话：接着这个库上次那条聊（OS-39），不用手动去下拉里点
   await restoreAgentSession()
@@ -8935,6 +8930,8 @@ function go(view) {
       if (!state.chapterLoaded && state.chapterFile && state.write.chapters.some((chapter) => chapter.file === state.chapterFile)) {
         loadChapter(state.chapterFile)
       }
+      // OS-89：日志是异步拉的，到位后重排左栏（否则「本模块修改」停在 0）
+      if (state.view === 'write' && document.getElementById('ref-col')) renderRefCol()
     })
     // 左栏图谱与参考索引：写小说时要能看到关联的参考（OS-45）。
     // 注意 loadReferences 有「已加载就短路」的分支，所以图谱要单独保证被拉一次——
@@ -9823,7 +9820,12 @@ document.addEventListener('input', (event) => {
   // 推演草稿（OS-81）：逐字同步进 draft——失焦保存才有东西可存（旧实现只挂 blur，编辑内容实际存不进去）
   if (target.id === 'deduce-draft') {
     const engine = state.deduce.engine
-    if (engine.draft) engine.draft.prose = target.value
+    if (engine.draft) {
+      engine.draft.prose = target.value
+      // OS-89：编辑中的草稿也要落本地（未保存内容禁止只活在内存/缓存里）。
+      // 走独立草稿通道，和「会话整存」分开——会话整存是失焦时才做，这里要即时。
+      debounceDraftPersist('推演', engine.draft.nodeId || `round-${engine.draft.round}`, target.value)
+    }
     const chars = document.getElementById('deduce-draft-chars')
     if (chars) chars.textContent = `${target.value.length} 字 · 失焦自动保存`
     return
@@ -10095,5 +10097,261 @@ async function bootStyles() {
   applySkin(currentPack())
 }
 
+/**
+ * 库内 UI 状态桥接（OS-89）。
+ *
+ * 作者立宪（AGENTS.md 第 8 条）：
+ *   「绝对不能放在任何浏览器缓存里……关掉浏览器、换一台机器、清缓存后，
+ *     重新打开库必须完全复原。不能复原＝违规。」
+ *
+ * 所以原来的 localStorage 用法全部改到库内 `.pinax/ui-state.json`：
+ *   · 读：同步（界面渲染需要立即拿到值）——从内存镜像 state.uiState 读；
+ *     进库时由 loadUiState() 从服务端拉一次灌满镜像。
+ *   · 写：同步更新镜像 + 异步防抖落库（不阻塞 UI，但保证最终一致）。
+ *   · 无库可写时（库清单页）才退到内存，不落任何浏览器存储。
+ *
+ * localStorage 只保留一个例外：皮肤（纯渲染偏好，且要在没有库时也生效）。
+ */
+
+/** 内存镜像：库内 ui-state.json 的副本。切换库时重置。 */
+function uiMemory(root) {
+  if (!state.uiState) state.uiState = { root: '', values: {}, loaded: false }
+  const mem = state.uiState
+  const key = text(root || state.current?.path || '')
+  if (mem.root !== key) {
+    mem.root = key
+    mem.values = {}
+    mem.loaded = false
+  }
+  return mem
+}
+
+/** 进库时拉一次（在 openLibrary 里调）。失败不阻断界面。 */
+async function loadUiState() {
+  if (!state.current?.path) return {}
+  const mem = uiMemory(state.current.path)
+  try {
+    const payload = await api(`/api/ui-state?root=${encodeURIComponent(state.current.path)}`)
+    mem.values = payload?.state && typeof payload.state === 'object' ? payload.state : {}
+    mem.loaded = true
+  } catch {
+    mem.values = {}
+    mem.loaded = true
+  }
+  return mem.values
+}
+
+/**
+ * 同步读一个 UI 状态键。
+ * @param {string} key
+ * @param {*} fallback 键不存在时的默认值
+ */
+function uiGet(key, fallback = null) {
+  const mem = uiMemory()
+  return key in mem.values ? mem.values[key] : fallback
+}
+
+/** 防抖落库：短时间内多次设置只写一次。 */
+let uiFlushTimer = null
+let uiPendingKeys = new Set()
+
+function uiFlush() {
+  if (uiFlushTimer) { clearTimeout(uiFlushTimer); uiFlushTimer = null }
+  const root = state.current?.path
+  if (!root) return
+  const mem = uiMemory(root)
+  uiPendingKeys = new Set()
+  // 落库失败不回滚内存（界面以内存为准），但要如实报错
+  api('/api/ui-state', {
+    method: 'PUT',
+    body: JSON.stringify({ root, state: mem.values })
+  }).catch((error) => {
+    state.error = `界面状态没能存进库（${error?.message || error}）——换机器后这些偏好会丢`
+    render()
+  })
+}
+
+/**
+ * 写一个 UI 状态键（同步更新内存，防抖落库）。
+ * @param {string} key
+ * @param {*} value 传 null ＝删除该键
+ */
+function uiSet(key, value, { immediate = false } = {}) {
+  const mem = uiMemory()
+  if (value === null) delete mem.values[key]
+  else mem.values[key] = value
+  uiPendingKeys.add(key)
+  if (immediate || !state.current?.path) {
+    if (state.current?.path) uiFlush()
+    return
+  }
+  if (uiFlushTimer) clearTimeout(uiFlushTimer)
+  uiFlushTimer = setTimeout(uiFlush, 400)
+}
+
+/** 页面关闭前把没落库的写掉（尽力而为）。 */
+function flushUiOnUnload() {
+  const root = state.current?.path
+  if (!root || !uiPendingKeys.size) return
+  const mem = uiMemory(root)
+  try {
+    // sendBeacon 保证卸载时也能发出去；daemon 是本地回环，几乎必达
+    const blob = new Blob([JSON.stringify({ root, state: mem.values })], { type: 'application/json' })
+    navigator.sendBeacon?.('/api/ui-state', blob)
+  } catch { /* 尽力而为 */ }
+}
+window.addEventListener('beforeunload', flushUiOnUnload)
+
+/* ---------- 模块变更日志（AGENTS.md 第 10 条） ---------- */
+
+/**
+ * 模块加载时检索自己的 log。
+ * 「每一个模块在每次加载的时候，都要自己检索一遍跟自己相关的一些 log。」
+ * @param {string} module 模块名（正文/参考/推演/习惯/剧本/故事源…）
+ * @param {{limit?: number, file?: string}} [opts]
+ * @returns {Promise<{entries: Array, truncated: boolean}>}
+ */
+async function loadModuleLog(module, { limit = 20, file = '' } = {}) {
+  if (!state.current?.path) return { entries: [], truncated: false }
+  const key = `${module}|${file}`
+  if (!state.moduleLogs) state.moduleLogs = {}
+  try {
+    const qs = new URLSearchParams({
+      root: state.current.path,
+      module,
+      limit: String(limit),
+      ...(file ? { file } : {})
+    })
+    const payload = await api(`/api/log?${qs.toString()}`)
+    const result = { entries: payload?.entries ?? [], truncated: payload?.truncated === true }
+    state.moduleLogs[key] = result
+    return result
+  } catch {
+    state.moduleLogs = state.moduleLogs || {}
+    state.moduleLogs[key] = { entries: [], truncated: false, error: true }
+    return state.moduleLogs[key]
+  }
+}
+
+/** 取已加载的模块日志（同步，供渲染）。 */
+function moduleLogOf(module, file = '') {
+  return state.moduleLogs?.[`${module}|${file}`] ?? null
+}
+
+/** 把日志渲染成可读清单（时间/操作/文件/一句话 diff 摘要）。 */
+function moduleLogHtml(module, { file = '', limit = 8, title = '最近修改' } = {}) {
+  const log = moduleLogOf(module, file)
+  if (!log || (!log.entries.length && !log.error)) return ''
+  if (log.error) return `<div class="modlog"><div class="modlog-head">${esc(title)}</div><p class="modlog-empty">日志读不到（不影响写作）</p></div>`
+  const rows = log.entries.slice(0, limit).map((entry) => {
+    const when = text(entry.at).replace('T', ' ').slice(5, 16)
+    const opLabel = { create: '新建', update: '修改', delete: '删除', move: '移动', adopt: '采纳' }[entry.op] || entry.op
+    const fileLabel = text(entry.file).split('/').pop()
+    const delta = entry.beforeChars === entry.afterChars ? ''
+      : `${entry.beforeChars}→${entry.afterChars} 字`
+    return `<div class="modlog-row" title="${esc(entry.file)}">
+      <span class="modlog-at">${esc(when)}</span>
+      <span class="modlog-op" data-op="${esc(entry.op)}">${esc(opLabel)}</span>
+      <span class="modlog-file">${esc(fileLabel)}</span>
+      <span class="modlog-delta">${esc(delta)}</span>
+    </div>`
+  }).join('')
+  return `<div class="modlog">
+    <div class="modlog-head">${esc(title)}<span class="count">${log.entries.length}</span></div>
+    ${rows}
+  </div>`
+}
+
+/* ---------- 未保存草稿落本地（AGENTS.md 第 11 条） ---------- */
+
+/**
+ * 草稿落库防抖队列。
+ * 作者正在打字时不必每键一次网络往返，但**绝不能只留在内存**：
+ * 停手 700ms 就落一次，刷新/关页面也能捞回。
+ */
+const draftTimers = new Map()
+
+/**
+ * 把「正在编辑、尚未保存」的内容落进库内 .pinax/drafts（防抖 700ms）。
+ * @param {string} module 模块名
+ * @param {string} id     草稿标识（如推演拍号）
+ * @param {string} body   当前文本
+ */
+function debounceDraftPersist(module, id, body) {
+  if (!state.current?.path || !module || !id) return
+  const key = `${module}|${id}`
+  if (draftTimers.has(key)) clearTimeout(draftTimers.get(key))
+  draftTimers.set(key, setTimeout(() => {
+    draftTimers.delete(key)
+    persistDraftNow(module, id, body)
+  }, 700))
+}
+
+/** 立刻落一次草稿（失焦、切页、关闭前调）。 */
+async function persistDraftNow(module, id, body) {
+  if (!state.current?.path || !module || !id) return { ok: false }
+  try {
+    const payload = await api('/api/draft', {
+      method: 'PUT',
+      body: JSON.stringify({ root: state.current.path, module, id, text: text(body) })
+    })
+    return { ok: true, draft: payload?.draft ?? null }
+  } catch (error) {
+    return { ok: false, error }
+  }
+}
+
+/** 读一份草稿（恢复用）。 */
+async function readDraft(module, id) {
+  if (!state.current?.path || !module || !id) return null
+  try {
+    const qs = new URLSearchParams({ root: state.current.path, module, id })
+    const payload = await api(`/api/draft?${qs.toString()}`)
+    return payload?.draft ?? null
+  } catch { return null }
+}
+
+/** 列某模块全部草稿。 */
+async function readDrafts(module) {
+  if (!state.current?.path || !module) return []
+  try {
+    const qs = new URLSearchParams({ root: state.current.path, module })
+    const payload = await api(`/api/draft?${qs.toString()}`)
+    return Array.isArray(payload?.drafts) ? payload.drafts : []
+  } catch { return [] }
+}
+
+/** 删除草稿（内容已采纳进正文时收口）。 */
+async function dropDraftFile(module, id) {
+  if (!state.current?.path || !module || !id) return false
+  try {
+    await api('/api/draft', {
+      method: 'PUT',
+      body: JSON.stringify({ root: state.current.path, module, id, delete: true })
+    })
+    return true
+  } catch { return false }
+}
+
+/** 卸载前把待落草稿全部写掉（尽力而为）。 */
+function flushDraftsOnUnload() {
+  for (const [key, timer] of draftTimers.entries()) {
+    clearTimeout(timer)
+    draftTimers.delete(key)
+  }
+}
+window.addEventListener('beforeunload', flushDraftsOnUnload)
+
 bootStyles()
 boot()
+
+/** OS-89：当前视图对应的模块名（用于「模块加载时检索自己的 log」）。 */
+function moduleOfCurrentView() {
+  const view = state.view || ''
+  if (view === 'write') return '正文'
+  if (view === 'reference') return '参考'
+  if (view === 'habits') return '习惯'
+  if (view === 'deduce') return '推演'
+  if (view.startsWith('dir:')) return view.slice(4)
+  return ''
+}
