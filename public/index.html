@@ -102,6 +102,24 @@ input, textarea, select { font: inherit; color: inherit; }
 .ref-col:empty { display: none; }
 .ref-col.collapsed-all { display: none; }
 .ref-mod { flex: 0 0 auto; background: var(--surface-card); border-radius: var(--radius-md); overflow: hidden; box-shadow: var(--shadow-card); transition: box-shadow .16s ease; }
+
+/* ── OS-89：模块修改日志卡（左栏「本模块修改」）────────────────────
+   作者立宪：每个模块加载时自己检索自己的 log，并如实呈现。
+   一行一次修改：时间 / 动作 / 文件 / 字数变化；数据源 .pinax/log/<模块>/*.jsonl */
+.modlog { display: flex; flex-direction: column; }
+.modlog-head { display: flex; align-items: center; gap: 6px; padding: 7px 12px 5px; font-size: 11.5px; font-weight: 600; color: var(--ink-2); }
+.modlog-head .count { margin-left: auto; font-size: 10px; font-weight: 400; color: var(--meta); }
+.modlog-row { display: grid; grid-template-columns: 62px 34px minmax(0, 1fr) auto; gap: 6px; align-items: baseline;
+  padding: 3px 12px; font-size: 11px; color: var(--muted); border-top: 1px dashed var(--hair); }
+.modlog-row:hover { background: var(--soft); }
+.modlog-at { font-variant-numeric: tabular-nums; color: var(--meta); font-size: 10.5px; }
+.modlog-op { font-size: 10px; border-radius: var(--pill); padding: 0 6px; text-align: center;
+  background: color-mix(in srgb, var(--ink) 6%, transparent); color: var(--ink-2); }
+.modlog-op[data-op="create"] { background: color-mix(in srgb, var(--ok) 14%, transparent); color: var(--ok); }
+.modlog-op[data-op="delete"] { background: color-mix(in srgb, var(--danger) 12%, transparent); color: var(--danger); }
+.modlog-file { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-2); }
+.modlog-delta { font-size: 10px; color: var(--meta); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.modlog-empty { margin: 0; padding: 4px 12px 10px; font-size: 11px; color: var(--meta); font-style: italic; }
 .ref-mod:hover { box-shadow: var(--shadow-card-hover); }
 /* 卡片头统一（OS-48）：标题 + 计数 + 折叠 + 关闭 ×，左三卡与右栏分析头同构 */
 .ref-mod-head { display: flex; align-items: center; gap: 2px; padding: 4px 6px 4px 12px; font-size: 12px; font-weight: 600; color: var(--ink-2); user-select: none; }
@@ -1208,7 +1226,7 @@ html[data-doc-auto-gap="off"] .doc-block { margin-bottom: 0; }
   flex: 1 1 200px; min-width: 0; text-align: left; border: 1px solid var(--hair);
   background: color-mix(in srgb, var(--bg) 70%, transparent); border-radius: var(--radius-sm);
   padding: 9px 12px; cursor: pointer; }
-.ow-card .ow-pick.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.ow-card.on .ow-pick { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
 .ow-card .ow-pick b { font-size: 13px; color: var(--ink); }
 .ow-card .ow-pick i { font-style: normal; font-size: 10px; color: var(--meta);
   border: 1px solid var(--hair); padding: 0 6px; border-radius: var(--pill); }
@@ -1806,6 +1824,8 @@ border-left: 2px solid var(--accent); padding: 6px 10px; border-radius: 0 var(--
 <!-- 单段分析结果（OS-37：右键一段 → 分析这一段） -->
 <aside class="para-result" id="para-result"></aside>
 
+<!-- OS-89：库内状态桥接（ui-state / 模块日志）必须先于 app.js 加载 -->
+<script src="./state-bridge.js" defer></script>
 <script src="./app.js" defer></script>
 </body>
 </html>
