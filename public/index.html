@@ -870,51 +870,8 @@ html[data-doc-auto-gap="off"] .doc-block { margin-bottom: 0; }
 .jb-cancel { color: var(--meta); font-size: 12px; flex: 0 0 auto; }
 @keyframes jb-spin { to { transform: rotate(360deg); } }
 
-/* OS-79：推演 galgame 开场三卡（你是谁 / 前情提要 / 眼前场景）
-   作者口径：先告诉玩家「我是谁、身处什么故事、眼前看见什么」，再给决策选项——
-   不能像裸跑团那样只丢一个局面卡。三卡浮在舞台左上，可与局面/事实包并存。 */
+/* OS-79 退役（OS-81）：galgame 开场三卡改为序章消息入流，gg-* 样式全部退役 */
 .ded-opt-roll { margin-left: auto; font-size: 10px; color: var(--meta); font-family: var(--mono); }
-
-/* 与「局面/事实包」浮层同一位置——两者互斥显示（点顶栏「局面」切换），避免叠在一起
-   max-height 留出底部对话框与选项区的空间 */
-.gg-intro { position: absolute; left: 14px; top: 46px; bottom: 260px; z-index: 5; width: 340px; display: flex; flex-direction: column; gap: 6px; overflow-y: auto; padding-right: 2px; }
-/* 开场卡展开时，底部选项区与对话框不要被完全遮住：给左栏让出视觉通道 */
-.ded-stage-tall .gg-intro ~ .ded-stage-bottom { }
-.gg-bar { display: flex; justify-content: flex-end; }
-.gg-bar-btn { font-size: 10.5px; color: rgba(255,255,255,.75); background: rgba(20,18,30,.4); border-radius: var(--pill); padding: 2px 10px; backdrop-filter: blur(4px); }
-.gg-bar-btn:hover { background: rgba(20,18,30,.62); color: #fff; }
-.gg-collapsed { bottom: auto !important; }
-
-.gg-card { background: rgba(255,255,255,.94); backdrop-filter: blur(10px); border-radius: var(--radius); box-shadow: var(--shadow-card); overflow: hidden; }
-.gg-head { display: flex; }
-.gg-toggle { flex: 1; display: flex; align-items: center; gap: 6px; padding: 8px 11px; text-align: left; font: inherit; color: inherit; }
-.gg-title { font-size: 12px; font-weight: 700; color: var(--ink); }
-.gg-badge { font-size: 10.5px; color: var(--muted); background: var(--surface-card); padding: 1px 7px; border-radius: var(--pill); }
-.gg-chev { margin-left: auto; font-size: 10px; color: var(--meta); }
-.gg-body { padding: 0 12px 11px; font-size: 12px; line-height: 1.75; color: var(--ink-2); }
-.gg-name { margin: 0 0 6px; font-size: 13px; color: var(--ink); }
-.gg-name b { color: var(--accent); }
-.gg-arch { margin-left: 6px; font-size: 10.5px; color: var(--meta); }
-.gg-line { margin: 0 0 5px; }
-.gg-goal { color: var(--ink); }
-.gg-goal span { color: var(--meta); font-size: 11px; margin-right: 4px; }
-.gg-story { font-family: var(--serif); color: var(--ink); line-height: 1.85; }
-.gg-scene { font-family: var(--serif); color: var(--ink); background: var(--surface-card); padding: 7px 9px; border-radius: var(--radius-sm); }
-.gg-chips { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0 0; }
-.gg-chip { font-size: 10.5px; background: color-mix(in srgb, var(--accent) 10%, transparent); color: var(--accent); padding: 1px 7px; border-radius: var(--pill); }
-.gg-sofar, .gg-recent { margin-top: 6px; }
-.gg-sofar-row { display: flex; flex-direction: column; gap: 2px; padding: 4px 0; border-top: 1px dashed var(--hair); }
-.gg-sofar-row b { font-size: 11px; color: var(--ink); }
-.gg-sofar-row span { font-size: 11.5px; color: var(--muted); }
-.gg-recent-head, .gg-others-head { font-size: 10.5px; color: var(--meta); margin-bottom: 3px; }
-.gg-recent-row { font-size: 11.5px; color: var(--muted); padding: 2px 0; }
-.gg-rn { color: var(--accent); font-size: 10.5px; margin-right: 5px; }
-.gg-others { margin-top: 6px; }
-.gg-other { display: flex; flex-direction: column; gap: 1px; padding: 3px 0; }
-.gg-other b { font-size: 11.5px; color: var(--ink); }
-.gg-other span { font-size: 11px; color: var(--muted); }
-.gg-missing { margin: 0; font-size: 11.5px; color: var(--meta); font-style: italic; }
-.gg-missing-note { font-size: 10.5px; color: var(--warn-ink); background: color-mix(in srgb, var(--warn) 12%, transparent); padding: 4px 9px; border-radius: var(--radius-sm); }
 
 /* OS-76：剧本左侧文件列表（与正文页章节列表同构，顶部横栏退役） */
 .sc-side { width: 236px; }
@@ -1194,9 +1151,6 @@ html[data-doc-auto-gap="off"] .doc-block { margin-bottom: 0; }
 /* 推演页（OS-60 打磨）：类纸卡片、局面卡字段化、候选翻译成人话 */
 .ded-tools { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; }
 .ded-tools .file-input { flex: 0 1 200px; }
-.ded-grid { display: grid; grid-template-columns: minmax(0, 340px) minmax(0, 1fr); gap: 14px; align-items: start; }
-@media (max-width: 1180px) { .ded-grid { grid-template-columns: minmax(0, 1fr); } }
-.ded-col-left, .ded-col-right { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 .ded-card { background: var(--surface-card); border-radius: var(--radius-md); padding: 14px 16px; box-shadow: var(--shadow-card); }
 .ded-card-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 10px; }
 .ded-card-head h3 { margin: 0; font-size: 14px; }
@@ -1220,7 +1174,6 @@ html[data-doc-auto-gap="off"] .doc-block { margin-bottom: 0; }
 .ded-front-n { color: var(--meta); font-variant-numeric: tabular-nums; }
 .ded-clock { height: 5px; border-radius: 999px; background: color-mix(in srgb, var(--ink) 8%, transparent); overflow: hidden; }
 .ded-clock i { display: block; height: 100%; border-radius: 999px; background: var(--accent); }
-.ded-hint { font-size: 12px; color: var(--ok); margin-bottom: 10px; }
 .ded-howto { margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--hair); display: flex; flex-direction: column; gap: 3px; }
 .ded-howto b { font-size: 11.5px; color: var(--ink-2); }
 .ded-howto span { font-size: 11px; color: var(--meta); line-height: 1.65; }
@@ -1237,26 +1190,181 @@ html[data-doc-auto-gap="off"] .doc-block { margin-bottom: 0; }
 .ded-type { background: var(--surface-card); border-radius: var(--radius); padding: 10px 12px; display: flex; flex-direction: column; gap: 3px; box-shadow: var(--shadow-card); }
 .ded-type b { font-size: 12.5px; }
 .ded-type span { font-size: 11px; color: var(--meta); }
-/* 推演回合层（OS-61 P2）：缓存区进度 / 自己写 / 正文草稿 */
-.ded-buffer { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+/* 推演回合层（OS-61 P2 遗留）：树视图还用 buffer-stat */
 .ded-buffer-stat { font-size: 12px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
-.ded-buffer .ok-note { flex: 1 1 240px; }
-.ded-custom { display: flex; gap: 8px; align-items: flex-start; margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--hair); }
-.ded-custom-input { flex: 1 1 auto; min-height: 54px; border: 1px solid var(--line); border-radius: var(--radius); padding: 8px 10px; outline: none; background: var(--bg); font: inherit; font-size: 12.5px; line-height: 1.7; resize: vertical; }
-.ded-custom-input:focus { border-color: var(--ink); }
-.ded-custom .btn-primary { flex: 0 0 auto; white-space: nowrap; }
-.ded-draft-input { width: 100%; min-height: 220px; border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; outline: none; background: var(--bg); font-family: var(--serif); font-size: 14px; line-height: 1.9; resize: vertical; box-sizing: border-box; }
-.ded-draft-input:focus { border-color: var(--ink); }
-.ded-draft-meta { display: flex; justify-content: flex-end; font-size: 10.5px; color: var(--meta); font-variant-numeric: tabular-nums; margin: 4px 0 10px; }
-.ded-draft .warn-box { margin-bottom: 10px; }
-/* 文游舞台（OS-61 P4）：场景立绘＋对话框打字机＋人物头像列＋宽按钮选项 */
-/* 文游舞台（OS-63）：一张铺满的画面，对话框浮底、选项浮其上——galgame 观感 */
-.ded-stage { position: relative; height: min(72vh, 760px); min-height: 520px; border-radius: var(--radius-md);
-  overflow: hidden; background: var(--soft); margin-bottom: 12px; }
-/* OS-70：舞台是唯一主面——占满视口余量，局面/设置浮层并入，舞台下不再有割裂的详情区 */
-.ded-stage-tall { height: calc(100vh - 178px); min-height: 600px; margin-bottom: 0; }
-/* 左侧浮层卡（局面/前线/事实包）：类纸半透明，暗舞台上可读；可经顶栏「局面」收起 */
-.ded-stage-info { position: absolute; left: 14px; top: 46px; bottom: 190px; z-index: 3; width: 302px;
+/* ============================================================
+   OS-81：推演＝沉浸叙事流（酒馆模型）＋流末待决回合（RPG 模型）
+   结构：.ded-flow（铺满视口，页面不再滚）
+     ├ .ded-flow-bg / .ded-flow-tint   场景立绘暗化背景（纸面模式关掉）
+     ├ .fl-bar                          细工具栏（进度/张力/切换/浮层开关）
+     ├ .fl-scroll-wrap > .fl-scroll     唯一滚动容器＝故事流
+     │    └ .fl-inner                   序章 → 你的回合 → 正文 → 待决
+     ├ .fl-composer                     常驻输入条（自己写）
+     └ .ded-stage-info / .ded-set-panel 浮层（不占布局）
+   ============================================================ */
+.ded-flow { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column;
+  overflow: hidden; border-radius: var(--radius-md); background: var(--scene-deep); }
+.ded-flow-bg { position: absolute; inset: 0; background-size: cover; background-position: center;
+  background-color: var(--scene-deep); background-image: linear-gradient(160deg, var(--scene-deep) 0%, var(--scene-mid) 45%, var(--scene-far) 100%); }
+.ded-flow-tint { position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(180deg, rgba(15,13,22,.42) 0%, rgba(15,13,22,.62) 55%, rgba(15,13,22,.78) 100%); }
+/* 纸面模式：关掉立绘背景，回纯纸面（读文优先） */
+.ded-flow[data-paper="1"] { background: var(--bg); }
+.ded-flow[data-paper="1"] .ded-flow-bg, .ded-flow[data-paper="1"] .ded-flow-tint { display: none; }
+.ded-scene-grain { position: absolute; inset: 0; opacity: .5;
+  background: radial-gradient(circle at 30% 20%, rgba(255,255,255,.14), transparent 55%),
+              radial-gradient(circle at 75% 70%, rgba(255,200,220,.12), transparent 50%); }
+
+/* 工具栏：细一行，浮在背景上；纸面模式下回墨色 */
+.fl-bar { position: relative; z-index: 6; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 10px 16px; color: rgba(255,255,255,.88); }
+.ded-flow[data-paper="1"] .fl-bar { color: var(--ink-2); }
+.fl-bar-progress { font-size: 11.5px; font-variant-numeric: tabular-nums; }
+.ded-bar-sep { margin: 0 7px; opacity: .45; }
+.fl-bar .ded-heat { font-size: 10.5px; margin-left: 0; }
+.fl-bar-right { margin-left: auto; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.fl-chips { display: inline-flex; gap: 0; margin-right: 6px; }
+.fl-chips .chip { border-radius: 0; font-size: 10.5px; }
+.fl-chips .chip:first-child { border-radius: var(--pill) 0 0 var(--pill); }
+.fl-chips .chip:last-child { border-radius: 0 var(--pill) var(--pill) 0; }
+/* 小药丸按钮：工具栏与动作行共用 */
+.fl-btn { font-size: 10.5px; color: rgba(255,255,255,.82); background: rgba(20,18,30,.4);
+  border-radius: var(--pill); padding: 2px 11px; backdrop-filter: blur(4px); }
+.fl-btn:hover { background: rgba(20,18,30,.62); color: #fff; }
+.fl-btn.on { background: rgba(255,255,255,.18); color: #fff; }
+.fl-btn[disabled] { opacity: .55; }
+.ded-flow[data-paper="1"] .fl-btn { color: var(--muted); background: var(--soft); backdrop-filter: none; }
+.ded-flow[data-paper="1"] .fl-btn:hover { background: color-mix(in srgb, var(--ink) 10%, transparent); color: var(--ink-2); }
+.ded-flow[data-paper="1"] .fl-btn.on { background: var(--accent-soft); color: var(--accent); }
+
+/* 故事流：唯一滚动容器；正文列宽 ~720px 居中 */
+.fl-scroll-wrap { position: relative; flex: 1; min-height: 0; }
+.fl-scroll { position: absolute; inset: 0; overflow-y: auto; padding: 14px 18px 18px; }
+.fl-inner { max-width: 720px; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; }
+/* 消息：左侧拍号栏＋右侧内容 */
+.fl-msg { position: relative; padding-left: 58px; }
+.fl-rn { position: absolute; left: 0; top: 3px; font-size: 10px; color: rgba(255,255,255,.72);
+  background: rgba(20,18,30,.46); padding: 2px 8px; border-radius: var(--pill);
+  backdrop-filter: blur(4px); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ded-flow[data-paper="1"] .fl-rn { color: var(--muted); background: var(--soft); backdrop-filter: none; }
+/* 正文纸卡：半透明类纸，暗背景上高可读 */
+.fl-prose { background: rgba(255,255,255,.94); backdrop-filter: blur(10px); border-radius: var(--radius);
+  box-shadow: 0 2px 14px rgba(0,0,0,.18); padding: 14px 18px 15px; }
+.ded-flow[data-paper="1"] .fl-prose { background: var(--surface-card); backdrop-filter: none;
+  border: 1px solid var(--hair); box-shadow: var(--shadow-card); }
+.fl-text-body { cursor: pointer; }
+.fl-text { margin: 0; font-family: var(--serif); font-size: 15px; line-height: 1.95; color: var(--ink);
+  white-space: pre-wrap; overflow-wrap: anywhere; }
+.fl-text.is-empty { color: var(--meta); font-style: italic; font-size: 13px; }
+.fl-caret { color: var(--accent); animation: blink 1s steps(1) infinite; }
+/* 序章消息 */
+.fl-msg-prologue .fl-prose { background: rgba(255,255,255,.88); }
+.fl-prologue-head { display: flex; align-items: center; gap: 6px; font-weight: 700; font-size: 13px;
+  color: var(--ink); margin-bottom: 7px; }
+.fl-prologue-mark { color: var(--accent); font-size: 11px; }
+.fl-line { margin: 0 0 5px; font-size: 13px; line-height: 1.85; color: var(--ink-2); }
+.fl-line.is-missing, .is-missing { color: var(--meta); font-style: italic; }
+.fl-line b { color: var(--ink); }
+.fl-scene { font-family: var(--serif); font-size: 13.5px; color: var(--ink); }
+.fl-arch { margin-left: 6px; font-size: 10.5px; color: var(--meta); }
+.fl-goal { display: block; margin-top: 3px; color: var(--ink); }
+.fl-goal::before { content: '你要 '; color: var(--meta); font-size: 11px; }
+.fl-chips-row, .fl-chip { font-size: 10.5px; }
+.fl-chip { display: inline-block; background: color-mix(in srgb, var(--accent) 10%, transparent);
+  color: var(--accent); padding: 1px 7px; border-radius: var(--pill); margin: 2px 4px 0 0; }
+.fl-recap-toggle { font-size: 11px; color: var(--accent); background: none; border: 0;
+  padding: 2px 0; cursor: pointer; margin-top: 2px; }
+.fl-recap-toggle:hover { text-decoration: underline; }
+.fl-recap-body { margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--hair); }
+.fl-sofar-row, .fl-recent-row { font-size: 11.5px; color: var(--muted); padding: 3px 0; line-height: 1.7; }
+.fl-sofar-row { display: flex; flex-direction: column; gap: 1px; border-top: 1px dashed var(--hair); }
+.fl-sofar-row b { font-size: 11px; color: var(--ink); }
+.fl-rn-inline { color: var(--accent); font-size: 10.5px; margin-right: 5px; }
+.fl-missing-note { font-size: 10.5px; color: var(--warn-ink);
+  background: color-mix(in srgb, var(--warn) 12%, transparent); padding: 4px 9px;
+  border-radius: var(--radius-sm); margin-top: 6px; }
+/* 你的回合：引用块直接写在流上（不占卡片） */
+.fl-you { display: flex; align-items: baseline; gap: 7px; padding: 0 6px; flex-wrap: wrap;
+  color: rgba(255,255,255,.92); }
+.ded-flow[data-paper="1"] .fl-you { color: var(--ink-2); }
+.fl-you-arrow { color: var(--accent); font-size: 12px; }
+.fl-you-label { font-size: 10.5px; color: rgba(255,255,255,.6); }
+.ded-flow[data-paper="1"] .fl-you-label { color: var(--meta); }
+.fl-you-text { font-weight: 600; font-size: 13px; }
+.fl-you .ded-badge { flex: 0 0 auto; }
+/* 最新拍动作行（下一拍/重写/编辑） */
+.fl-actions { display: flex; align-items: center; gap: 6px; margin-top: 10px;
+  padding-top: 9px; border-top: 1px dashed var(--hair); }
+.fl-actions-note { margin-right: auto; font-size: 10.5px; color: var(--meta); }
+.fl-actions .fl-btn { color: var(--muted); background: var(--soft); backdrop-filter: none; }
+.fl-actions .fl-btn:hover { background: color-mix(in srgb, var(--ink) 10%, transparent); color: var(--ink-2); }
+.fl-actions .fl-btn.on { background: var(--accent-soft); color: var(--accent); }
+.fl-actions .fl-btn.is-primary { color: var(--on-accent); background: var(--accent); font-weight: 600; }
+.fl-actions .fl-btn.is-primary:hover { background: var(--accent-hover); color: var(--on-accent); }
+.fl-actions .fl-btn[disabled] { opacity: .55; }
+.fl-draft-input { width: 100%; min-height: 180px; max-height: 40vh; resize: vertical; border: 1px solid var(--line);
+  border-radius: var(--radius-sm); padding: 10px 12px; outline: none; background: var(--bg);
+  font-family: var(--serif); font-size: 14px; line-height: 1.9; box-sizing: border-box; }
+.fl-draft-input:focus { border-color: var(--ink); }
+/* 待决回合：场景行＋候选宽按钮（RPG 的爽快保留在流末） */
+.fl-pending { display: flex; flex-direction: column; gap: 8px; padding-left: 58px; }
+.fl-pending-scene { display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  font-size: 11.5px; color: rgba(255,255,255,.82); }
+.ded-flow[data-paper="1"] .fl-pending-scene { color: var(--muted); }
+.fl-pending-rn { font-weight: 700; font-size: 12px; }
+.fl-pending-where { opacity: .85; }
+.fl-who { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: rgba(255,255,255,.88);
+  background: rgba(20,18,30,.44); padding: 1px 9px 1px 2px; border-radius: var(--pill); backdrop-filter: blur(4px); }
+.ded-flow[data-paper="1"] .fl-who { color: var(--ink-2); background: var(--soft); backdrop-filter: none; }
+.fl-who img, .fl-who i { width: 18px; height: 18px; border-radius: 50%; object-fit: cover;
+  display: grid; place-items: center; font-size: 10px; font-weight: 700; font-style: normal; }
+.fl-who-none { font-size: 11px; font-style: italic; opacity: .7; }
+.fl-typing { font-size: 11.5px; color: rgba(255,255,255,.66); font-style: italic; }
+.ded-flow[data-paper="1"] .fl-typing { color: var(--meta); }
+.fl-no-cand { margin: 0; font-size: 12px; color: rgba(255,255,255,.72); }
+.ded-flow[data-paper="1"] .fl-no-cand { color: var(--muted); }
+.ded-opt-row { display: flex; gap: 6px; align-items: stretch; }
+.ded-opt { flex: 1; min-width: 0; text-align: left; display: flex; flex-direction: column; gap: 2px;
+  padding: 9px 13px; border-radius: var(--radius); background: rgba(255,255,255,.94); border: 0;
+  box-shadow: 0 2px 12px rgba(0,0,0,.16); transition: transform .1s ease, box-shadow .12s ease; }
+.ded-opt:hover { transform: translateY(-1px); box-shadow: 0 4px 16px rgba(0,0,0,.22); }
+.ded-opt:disabled { opacity: .6; }
+.ded-opt-head { display: flex; align-items: center; gap: 6px; }
+.ded-opt-title { font-family: var(--serif); font-size: 13.5px; line-height: 1.6; color: var(--ink); }
+.ded-opt-sub { font-size: 11px; color: var(--muted); line-height: 1.5; }
+.ded-opt-refs { font-size: 10px; color: var(--meta); }
+.ded-opt-veto { flex: 0 0 auto; font-size: 11px; color: rgba(255,255,255,.8); background: rgba(20,18,30,.4);
+  border-radius: var(--radius); padding: 0 12px; backdrop-filter: blur(4px); }
+.ded-opt-veto:hover { background: rgba(20,18,30,.62); }
+.ded-flow[data-paper="1"] .ded-opt-veto { color: var(--muted); background: var(--soft); backdrop-filter: none; }
+/* 「↓ 最新一拍」浮标：用户上滚后出现 */
+.fl-jump { position: absolute; left: 50%; transform: translateX(-50%); bottom: 12px; z-index: 5;
+  font-size: 11px; color: #fff; background: rgba(20,18,30,.68); border-radius: var(--pill);
+  padding: 4px 14px; backdrop-filter: blur(6px); box-shadow: 0 2px 10px rgba(0,0,0,.3); }
+.fl-jump:hover { background: rgba(20,18,30,.85); }
+/* 常驻输入条（酒馆式 composer） */
+.fl-composer { position: relative; z-index: 6; display: flex; flex-direction: column; gap: 6px;
+  padding: 8px 16px 14px; }
+.fl-note-row { max-width: 720px; margin: 0 auto; width: 100%; }
+.fl-composer-row { display: flex; gap: 8px; align-items: flex-end; max-width: 720px; margin: 0 auto; width: 100%; }
+.fl-input { flex: 1; min-height: 40px; max-height: 132px; resize: none; border: 0; border-radius: var(--radius);
+  padding: 10px 13px; font: inherit; font-size: 13px; line-height: 1.65; color: var(--ink);
+  background: rgba(255,255,255,.94); box-shadow: 0 2px 12px rgba(0,0,0,.2); outline: none; }
+.fl-input:focus { box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 45%, transparent), 0 2px 12px rgba(0,0,0,.2); }
+.ded-flow[data-paper="1"] .fl-input { background: var(--surface-card); border: 1px solid var(--line); box-shadow: none; }
+.fl-send { flex: 0 0 auto; white-space: nowrap; }
+.fl-hint { max-width: 720px; margin: 0 auto; width: 100%; font-size: 11.5px; color: var(--ok); }
+/* 空态说明（未开局）：暗背景上字要亮；纸面模式自动回正常色 */
+.fl-hero { max-width: 640px; margin: auto; padding: 36px 10px 24px; color: rgba(255,255,255,.88); }
+.fl-hero h2 { color: #fff; }
+.fl-hero p { color: rgba(255,255,255,.78); }
+.fl-hero .sub { color: rgba(255,255,255,.6); }
+.ded-flow[data-paper="1"] .fl-hero { color: var(--ink-2); }
+.ded-flow[data-paper="1"] .fl-hero h2 { color: var(--ink); }
+.ded-flow[data-paper="1"] .fl-hero p { color: var(--muted); }
+.ded-flow[data-paper="1"] .fl-hero .sub { color: var(--meta); }
+/* 左侧浮层（局面/前线/事实包）：抽屉式叠在流上，不占布局 */
+.ded-stage-info { position: absolute; left: 14px; top: 52px; bottom: 118px; z-index: 5; width: 302px;
   display: flex; flex-direction: column; gap: 8px; overflow-y: auto; padding-right: 2px; }
 .ded-stage-info[hidden] { display: none; }
 .ded-stage-info .ded-card { background: rgba(255, 255, 255, .93); backdrop-filter: blur(8px);
@@ -1267,99 +1375,13 @@ html[data-doc-auto-gap="off"] .doc-block { margin-bottom: 0; }
 .ded-stage-info .ded-fields dd { font-size: 11.5px; }
 .ded-stage-info .ded-meta { font-size: 10px; }
 /* 右上设置弹层（POV/种子/推进/重新开局） */
-.ded-set-panel { position: absolute; right: 14px; top: 46px; z-index: 6; width: min(430px, calc(100% - 380px));
-  background: rgba(255, 255, 255, .95); backdrop-filter: blur(8px); border-radius: var(--radius);
+.ded-set-panel { position: absolute; right: 14px; top: 52px; z-index: 7; width: min(430px, calc(100% - 28px));
+  background: rgba(255, 255, 255, .96); backdrop-filter: blur(8px); border-radius: var(--radius);
   box-shadow: 0 6px 24px rgba(0,0,0,.26); padding: 12px 14px; }
 .ded-set-panel[hidden] { display: none; }
 .ded-set-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 9px; font-size: 12.5px; font-weight: 600; }
 .ded-set-head .sub { font-size: 10.5px; color: var(--meta); font-weight: 400; }
 .ded-set-panel .ded-tools { margin: 0; }
-/* 对话框动作行（编辑/重写/下一拍内嵌，不再外置重复） */
-.ded-dialog-actions { margin-left: auto; display: flex; align-items: center; gap: 6px; }
-.ded-dialog-head .ded-dialog-tip { margin-left: 0; }
-.ded-dialog-actions .ded-bgm { font-size: 10.5px; color: rgba(255,255,255,.82);
-  background: rgba(20,18,30,.4); border-radius: var(--pill); padding: 2px 11px; backdrop-filter: blur(4px); }
-.ded-dialog-actions .ded-bgm:hover { background: rgba(20,18,30,.62); }
-.ded-dialog-actions .ded-bgm.on { background: rgba(255,255,255,.16); }
-.ded-dialog-actions .ded-next { font-size: 11px; color: var(--on-accent); background: var(--accent);
-  border-radius: var(--pill); padding: 3px 13px; font-weight: 600; }
-.ded-dialog-actions .ded-next:hover { background: var(--accent-hover); }
-.ded-dialog-actions .ded-next[disabled] { opacity: .55; }
-/* 对话框编辑态：就地 textarea，字数脚注 */
-.ded-dialog.editing { padding-bottom: 10px; }
-.ded-dialog-input { width: 100%; min-height: 150px; max-height: 34vh; resize: vertical; border: 0; outline: none;
-  border-radius: var(--radius); padding: 10px 13px; font-family: var(--serif); font-size: 14px; line-height: 1.9;
-  background: rgba(12, 11, 18, .55); color: rgba(255,255,255,.95); }
-.ded-dialog-input:focus { background: rgba(12, 11, 18, .72); }
-.ded-dialog-foot { display: flex; align-items: baseline; gap: 8px; margin-top: 6px; font-size: 10.5px; color: rgba(255,255,255,.62); }
-.ded-dialog-foot-sub { margin-left: auto; opacity: .7; }
-.ded-scene-visual { position: absolute; inset: 0; background-size: cover; background-position: center;
-  background-color: var(--scene-deep); background-image: linear-gradient(160deg, var(--scene-deep) 0%, var(--scene-mid) 45%, var(--scene-far) 100%); }
-.ded-scene-grain { position: absolute; inset: 0; opacity: .5;
-  background: radial-gradient(circle at 30% 20%, rgba(255,255,255,.14), transparent 55%),
-              radial-gradient(circle at 75% 70%, rgba(255,200,220,.12), transparent 50%); }
-.ded-scene-badge { position: absolute; left: 16px; top: 44px; font-size: 11px; color: rgba(255,255,255,.82);
-  background: rgba(20,18,30,.34); border-radius: var(--pill); padding: 2px 10px; backdrop-filter: blur(4px); z-index: 3; }
-.ded-stage-bar { position: absolute; left: 0; right: 0; top: 0; display: flex; align-items: center; gap: 10px;
-  padding: 12px 16px; z-index: 4; }
-.ded-bar-sep { margin: 0 7px; opacity: .45; }
-.ded-bar-right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
-.ded-stage-bar .ded-stage-progress { font-size: 11.5px; color: rgba(255,255,255,.86); }
-.ded-stage-bar .ded-heat { font-size: 10.5px; }
-.ded-stage-bar .ded-bgm { font-size: 10.5px; color: rgba(255,255,255,.8);
-  background: rgba(20,18,30,.34); border-radius: var(--pill); padding: 2px 10px; backdrop-filter: blur(4px); }
-.ded-stage-bar .ded-bgm[disabled] { opacity: .55; }
-.ded-stage-side { position: absolute; right: 12px; top: 46px; z-index: 3; display: flex; flex-direction: column; gap: 10px;
-  max-height: calc(100% - 240px); overflow-y: auto; }
-.ded-avatar { display: flex; flex-direction: column; align-items: center; gap: 3px; }
-.ded-avatar img, .ded-avatar-ph { width: 56px; height: 56px; border-radius: 50%; object-fit: cover;
-  display: grid; place-items: center; font-size: 20px; font-weight: 700; box-shadow: 0 2px 10px rgba(0,0,0,.22); }
-.ded-avatar-name { font-size: 10px; color: rgba(255,255,255,.88); text-shadow: 0 1px 3px rgba(0,0,0,.5); }
-.ded-avatar-none { font-size: 10.5px; color: rgba(255,255,255,.6); writing-mode: vertical-rl; }
-.ded-stage-bottom { position: absolute; left: 0; right: 0; bottom: 0; z-index: 4;
-  display: flex; flex-direction: column; gap: 8px; padding: 0 18px 16px; }
-.ded-stage-options { display: flex; flex-direction: column; gap: 6px; max-height: 40%; overflow-y: auto; padding-right: 4px; }
-.ded-opt-row { display: flex; gap: 6px; align-items: stretch; }
-.ded-opt { flex: 1; min-width: 0; text-align: left; display: flex; flex-direction: column; gap: 2px;
-  padding: 9px 13px; border-radius: var(--radius); background: rgba(255,255,255,.93);
-  box-shadow: 0 2px 12px rgba(0,0,0,.16); transition: transform .1s ease, box-shadow .12s ease; }
-.ded-opt:hover { transform: translateY(-1px); box-shadow: 0 4px 16px rgba(0,0,0,.22); }
-.ded-opt:disabled { opacity: .6; }
-.ded-opt-main .ded-opt-title { font-size: 14px; }
-.ded-opt-head { display: flex; align-items: center; gap: 6px; }
-.ded-opt-title { font-family: var(--serif); font-size: 13.5px; line-height: 1.6; color: var(--ink); }
-.ded-opt-sub { font-size: 11px; color: var(--muted); line-height: 1.5; }
-.ded-opt-refs { font-size: 10px; color: var(--meta); }
-.ded-opt-veto { flex: 0 0 auto; font-size: 11px; color: rgba(255,255,255,.8); background: rgba(20,18,30,.4);
-  border-radius: var(--radius); padding: 0 12px; backdrop-filter: blur(4px); }
-.ded-opt-veto:hover { background: rgba(20,18,30,.62); }
-.ded-custom { display: flex; gap: 6px; align-items: stretch; }
-.ded-custom-input { flex: 1; min-height: 38px; max-height: 88px; resize: vertical; border: 0;
-  border-radius: var(--radius); padding: 8px 12px; font-size: 12.5px; font-family: inherit;
-  background: rgba(255,255,255,.92); box-shadow: 0 2px 12px rgba(0,0,0,.16); outline: none; }
-.ded-custom .btn-primary { flex: 0 0 auto; box-shadow: 0 2px 12px rgba(0,0,0,.2); }
-/* 舞台内的主按钮统一深色半透明（.btn-primary 的浅底在画面上太扎眼） */
-.ded-stage .ded-opt-main { background: rgba(255,255,255,.93); }
-.ded-stage .ded-opt-veto, .ded-stage .btn-primary {
-  background: var(--scene-overlay); color: var(--on-accent); border: 0; backdrop-filter: blur(6px); }
-.ded-stage .ded-opt-veto:hover, .ded-stage .btn-primary:hover { background: rgba(20,18,30,.75); }
-/* 对话框：半透明深色卡片浮在画面底部，像 galgame 的文本框 */
-.ded-dialog { background: rgba(24, 22, 34, .82); backdrop-filter: blur(10px); border-radius: var(--radius-md);
-  padding: 14px 18px 16px; box-shadow: 0 6px 28px rgba(0,0,0,.3); }
-.ded-dialog-head { display: flex; align-items: baseline; gap: 8px; font-size: 10.5px; color: rgba(255,255,255,.6); margin-bottom: 7px; }
-.ded-dialog-tip { margin-left: auto; opacity: .7; }
-.ded-dialog-body { max-height: min(26vh, 220px); overflow-y: auto; }
-.ded-dialog-text { font-family: var(--serif); font-size: 14.5px; line-height: 1.92; color: rgba(255,255,255,.95);
-  white-space: pre-wrap; overflow-wrap: anywhere; }
-.ded-dialog-caret { color: var(--accent); animation: blink 1s steps(1) infinite; }
-.ded-dialog .warn-box { background: rgba(255,180,120,.16); color: var(--warn-on-dark); border-radius: var(--radius); padding: 6px 10px; font-size: 11.5px; margin-bottom: 8px; }
-/* 工具区收成一行细线 */
-.ded-toolbox { margin-bottom: 12px; }
-.ded-toolbox > summary { cursor: pointer; font-size: 11.5px; color: var(--meta); padding: 6px 2px; list-style: none; }
-.ded-toolbox > summary::-webkit-details-marker { display: none; }
-.ded-toolbox > summary::marker { content: ''; }
-.ded-toolbox > summary:hover { color: var(--ink-2); }
-.ded-toolbox .ded-tools { margin: 8px 0 0; }
 .ded-image-ops { display: flex; gap: 8px; justify-content: flex-end; margin-top: 6px; }
 /* 拆解知识化视图（OS-66）：fact 链的可读呈现 */
 .fv-wrap { max-width: 880px; display: flex; flex-direction: column; gap: 14px; }
@@ -1390,11 +1412,6 @@ html[data-doc-auto-gap="off"] .doc-block { margin-bottom: 0; }
 .fv-led-row b { color: var(--ink-2); }
 .fv-led-row span { color: var(--muted); line-height: 1.6; }
 .fv-led-block h5 { margin: 4px 0 2px; font-size: 11.5px; color: var(--meta); }
-.ded-details { margin-top: 4px; }
-.ded-details > summary { cursor: pointer; font-size: 12px; color: var(--muted); padding: 6px 2px; user-select: none; }
-.ded-details[open] > summary { margin-bottom: 10px; }
-.deduce-engine-grid { display: grid; grid-template-columns: minmax(0, 380px) minmax(0, 1fr); gap: 16px; align-items: start; }
-@media (max-width: 1100px) { .deduce-engine-grid { grid-template-columns: minmax(0, 1fr); } }
 /* 剧情树（OS-61 P3）：整宽 SVG 导图＋右上选中提示 */
 .ded-tree-wrap { position: relative; }
 .ded-tree-bar { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
