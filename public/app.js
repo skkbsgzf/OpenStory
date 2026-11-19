@@ -191,9 +191,12 @@ function formatAt(value) {
 }
 
 async function api(path, options = {}) {
+  // allowOkFalse：软空态查询用——响应 200 且 ok:false 时原样返回（不抛），
+  // 例如推演 peek 无会话（NO_DEDUCE_SESSION 是合法空态不是错误）。
+  const { allowOkFalse, ...fetchOpts } = options
   const response = await fetch(path, {
     headers: { 'content-type': 'application/json' },
-    ...options
+    ...fetchOpts
   })
   let payload = null
   try {
@@ -201,7 +204,7 @@ async function api(path, options = {}) {
   } catch {
     payload = null
   }
-  if (!response.ok || payload?.ok === false) {
+  if (!response.ok || (payload?.ok === false && !allowOkFalse)) {
     const error = new Error(payload?.error?.message || `请求失败（HTTP ${response.status}）`)
     error.code = payload?.error?.code || ''
     error.details = payload?.error?.details || null
@@ -7356,12 +7359,20 @@ async function deduceEnginePresent(opts) {
         pov: engine.pov || undefined,
         seed: engine.seed === "" ? undefined : Number(engine.seed),
         reset: options.reset === true
-      })
+      }),
+      // peek 是软查询：NO_DEDUCE_SESSION＝合法空态（新开的局还没有第一面），不抛
+      ...(options.peek === true ? { allowOkFalse: true } : {})
     })
-    engine.data = payload
-    if (Array.isArray(payload.characters)) state.deduce.characters = payload.characters
-    engine.flowPin = true
-    engine.hint = opts && opts.hint ? opts.hint : ""
+    if (payload.ok === false) {
+      // 软空态：维持空态画面，不进错误条
+      engine.data = null
+      if (payload.code !== 'NO_DEDUCE_SESSION') engine.hint = opts && opts.hint ? opts.hint : ""
+    } else {
+      engine.data = payload
+      if (Array.isArray(payload.characters)) state.deduce.characters = payload.characters
+      engine.flowPin = true
+      engine.hint = opts && opts.hint ? opts.hint : ""
+    }
   } catch (error) {
     engine.error = (error && error.code ? error.code + " · " : "") + text((error && error.message) || error)
     engine.data = null

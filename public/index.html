@@ -1409,6 +1409,26 @@ html[data-doc-auto-gap="off"] .doc-block { margin-bottom: 0; }
 .ded-set-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 9px; font-size: 12.5px; font-weight: 600; }
 .ded-set-head .sub { font-size: 10.5px; color: var(--meta); font-weight: 400; }
 .ded-set-panel .ded-tools { margin: 0; }
+/* 多局切换（OS-86）：主线永远在列，当前局高亮，删＝非破坏进回收站 */
+.ded-sess { margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid var(--hair); }
+.ded-sess-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 7px; font-size: 12.5px; font-weight: 600; }
+.ded-sess-head .sub { font-size: 10.5px; color: var(--meta); font-weight: 400; }
+.ded-sess-list { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; }
+.ded-sess-row { display: flex; align-items: center; gap: 6px; }
+.ded-sess-row .ded-sess-pick { flex: 1; display: flex; align-items: baseline; gap: 8px; min-width: 0;
+  border: 1px solid var(--hair); background: transparent; border-radius: 6px;
+  padding: 6px 10px; cursor: pointer; text-align: left; }
+.ded-sess-row.on .ded-sess-pick { border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  background: color-mix(in srgb, var(--accent) 8%, transparent); cursor: default; }
+.ded-sess-row .ded-sess-pick[disabled] { cursor: default; }
+.ded-sess-name { font-size: 12.5px; font-weight: 600; color: var(--ink); white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis; }
+.ded-sess-meta { font-size: 10.5px; color: var(--meta); flex-shrink: 0; }
+.ded-sess-del { flex-shrink: 0; border: 1px solid var(--hair); background: transparent;
+  border-radius: var(--radius-sm); padding: 5px 9px; font-size: 11px; color: var(--meta);
+  cursor: pointer; }
+.ded-sess-del:hover { color: var(--danger); border-color: var(--danger); }
+.ded-sess-new { width: 100%; }
 .ded-image-ops { display: flex; gap: 8px; justify-content: flex-end; margin-top: 6px; }
 /* 拆解知识化视图（OS-66）：fact 链的可读呈现 */
 .fv-wrap { max-width: 880px; display: flex; flex-direction: column; gap: 14px; }
