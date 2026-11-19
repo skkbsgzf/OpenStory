@@ -24,6 +24,11 @@
    样式令牌区外禁止裸色值。侧栏=绝对定位浮层，正文恒居中（OS-48 宪法）。
    组件约定见 `docs/UX-STRUCTURE.md`。
 
+## 发布规范（推送前必读）
+
+推 GitHub 前必过 [PUBLISHING.md](./PUBLISHING.md) 的检查单（协议干净/demo 干净/人机双读）；
+自动检查器：`node ~/.zcode/skills/repo-publish/scripts/publish-scan.mjs .`，全绿才推。
+
 ## 改完必跑（验收线，详见 `docs/ACCEPTANCE.md`）
 
 ```bash
