@@ -805,6 +805,52 @@ html[data-doc-auto-gap="off"] .doc-block { margin-bottom: 0; }
 /* ── 设置 · 模型与能力（S4）：四张配置卡＋probe 徽标 ─────────────── */
 .cfg-card { border: 1px solid var(--line); border-radius: var(--radius-md); padding: 16px 18px; margin-bottom: 14px; background: var(--bg); }
 /* OS-74：生图后端切换的两个表单块（OpenAI 兼容 / ComfyUI），hidden 时不占位 */
+/* OS-79：推演 galgame 开场三卡（你是谁 / 前情提要 / 眼前场景）
+   作者口径：先告诉玩家「我是谁、身处什么故事、眼前看见什么」，再给决策选项——
+   不能像裸跑团那样只丢一个局面卡。三卡浮在舞台左上，可与局面/事实包并存。 */
+.ded-opt-roll { margin-left: auto; font-size: 10px; color: var(--meta); font-family: var(--mono); }
+
+/* 与「局面/事实包」浮层同一位置——两者互斥显示（点顶栏「局面」切换），避免叠在一起
+   max-height 留出底部对话框与选项区的空间 */
+.gg-intro { position: absolute; left: 14px; top: 46px; bottom: 260px; z-index: 5; width: 340px; display: flex; flex-direction: column; gap: 6px; overflow-y: auto; padding-right: 2px; }
+/* 开场卡展开时，底部选项区与对话框不要被完全遮住：给左栏让出视觉通道 */
+.ded-stage-tall .gg-intro ~ .ded-stage-bottom { }
+.gg-bar { display: flex; justify-content: flex-end; }
+.gg-bar-btn { font-size: 10.5px; color: rgba(255,255,255,.75); background: rgba(20,18,30,.4); border-radius: var(--pill); padding: 2px 10px; backdrop-filter: blur(4px); }
+.gg-bar-btn:hover { background: rgba(20,18,30,.62); color: #fff; }
+.gg-collapsed { bottom: auto !important; }
+
+.gg-card { background: rgba(255,255,255,.94); backdrop-filter: blur(10px); border-radius: var(--radius); box-shadow: var(--shadow-card); overflow: hidden; }
+.gg-head { display: flex; }
+.gg-toggle { flex: 1; display: flex; align-items: center; gap: 6px; padding: 8px 11px; text-align: left; font: inherit; color: inherit; }
+.gg-title { font-size: 12px; font-weight: 700; color: var(--ink); }
+.gg-badge { font-size: 10.5px; color: var(--muted); background: var(--surface-card); padding: 1px 7px; border-radius: var(--pill); }
+.gg-chev { margin-left: auto; font-size: 10px; color: var(--meta); }
+.gg-body { padding: 0 12px 11px; font-size: 12px; line-height: 1.75; color: var(--ink-2); }
+.gg-name { margin: 0 0 6px; font-size: 13px; color: var(--ink); }
+.gg-name b { color: var(--accent); }
+.gg-arch { margin-left: 6px; font-size: 10.5px; color: var(--meta); }
+.gg-line { margin: 0 0 5px; }
+.gg-goal { color: var(--ink); }
+.gg-goal span { color: var(--meta); font-size: 11px; margin-right: 4px; }
+.gg-story { font-family: var(--serif); color: var(--ink); line-height: 1.85; }
+.gg-scene { font-family: var(--serif); color: var(--ink); background: var(--surface-card); padding: 7px 9px; border-radius: var(--radius-sm); }
+.gg-chips { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0 0; }
+.gg-chip { font-size: 10.5px; background: color-mix(in srgb, var(--accent) 10%, transparent); color: var(--accent); padding: 1px 7px; border-radius: var(--pill); }
+.gg-sofar, .gg-recent { margin-top: 6px; }
+.gg-sofar-row { display: flex; flex-direction: column; gap: 2px; padding: 4px 0; border-top: 1px dashed var(--hair); }
+.gg-sofar-row b { font-size: 11px; color: var(--ink); }
+.gg-sofar-row span { font-size: 11.5px; color: var(--muted); }
+.gg-recent-head, .gg-others-head { font-size: 10.5px; color: var(--meta); margin-bottom: 3px; }
+.gg-recent-row { font-size: 11.5px; color: var(--muted); padding: 2px 0; }
+.gg-rn { color: var(--accent); font-size: 10.5px; margin-right: 5px; }
+.gg-others { margin-top: 6px; }
+.gg-other { display: flex; flex-direction: column; gap: 1px; padding: 3px 0; }
+.gg-other b { font-size: 11.5px; color: var(--ink); }
+.gg-other span { font-size: 11px; color: var(--muted); }
+.gg-missing { margin: 0; font-size: 11.5px; color: var(--meta); font-style: italic; }
+.gg-missing-note { font-size: 10.5px; color: var(--warn-ink); background: color-mix(in srgb, var(--warn) 12%, transparent); padding: 4px 9px; border-radius: var(--radius-sm); }
+
 /* OS-76：剧本左侧文件列表（与正文页章节列表同构，顶部横栏退役） */
 .sc-side { width: 236px; }
 /* OS-78：角色专属色——块级变量由 castColorStyle 注入，台词名用专属色 */

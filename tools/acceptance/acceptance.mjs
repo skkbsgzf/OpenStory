@@ -132,7 +132,10 @@ for (const f of rootMjs) {
 // 白名单：① 协议层（contracts/chapters）② vendor 内核 core/pinax/**（fact 链底座，见 VENDORED.md）
 //        ③ deduceSession→deduceEngine（会话容器引引擎＝内核依赖）
 const KERNEL_ALLOW = new Set([
-  'deduceSession.mjs -> deduceEngine.mjs'
+  'deduceSession.mjs -> deduceEngine.mjs',
+  // OS-79：deduceNarrative 是推演引擎的内部子模块（只做叙事上下文拼装，纯函数），
+  // 不是平等功能模块——引擎引它属于内部组合，不是跨模块耦合。
+  'deduceEngine.mjs -> deduceNarrative.mjs'
 ])
 const PROTOCOL = new Set(['contracts.mjs', 'chapters.mjs']) // 底层接口协议层（chapters=文件读写协议）
 const MODULES = rootMjs.filter((f) => [
