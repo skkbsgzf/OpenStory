@@ -60,6 +60,8 @@ const state = {
   deduce: { premise: '', variables: '', question: '', sessionId: '', streaming: false, reply: '', controller: null, error: '',
     mode: 'engine', engine: { busy: false, data: null, pov: '', seed: '', error: '', hint: '',
       session: null, sessionLoaded: false, customText: '', draft: null, turnBusy: false, archiveNote: '',
+      // OS-86 多局：当前局 id（='main'＝legacy 主线）＋局清单缓存（设置浮层切换/新建/删除用）
+      sessionId: 'main', sessions: null,
       view: 'scene', treePick: null,
       assets: null, assetsLoaded: false, assetBookId: '', bgmOn: false,
       // OS-81 叙事流：纸面模式（关掉立绘背景回纯纸面）/ 贴底跟随 / 序章折叠
@@ -404,9 +406,17 @@ function render() {
     if (!engine.sessionLoaded) {
       engine.sessionLoaded = true
       api(`/api/deduce/session?root=${encodeURIComponent(state.current.path)}`)
-        .then((payload) => { engine.session = payload.session ?? null; deduceRestoreDraft() })
+        .then((payload) => {
+          engine.session = payload.session ?? null
+          engine.sessionId = payload.activeId || engine.session?.sessionId || 'main'
+          deduceRestoreDraft()
+        })
         .catch(() => { /* 读不到会话不拦推演 */ })
         .finally(() => { if (state.view === 'deduce') render() })
+      // OS-86 多局清单：设置浮层里的局列表（切换/新建/删除）
+      api(`/api/deduce/sessions?root=${encodeURIComponent(state.current.path)}`)
+        .then((payload) => { engine.sessions = { activeId: payload.activeId, sessions: payload.sessions ?? [] } })
+        .catch(() => { engine.sessions = null })
     }
     // 剧情树（OS-61 P3）：树视图挂 SVG 导图；离开树视图就清理（mode 在 state.deduce 上，不在 engine 上）
     if (state.deduce.mode === 'engine' && engine.view === 'tree') mountDeduceTree()
@@ -6018,7 +6028,8 @@ function openTabAdd() {
     .map((dir) => `<button class="tab-pick" data-action="tab-make-dir" data-dir-name="${esc(dir)}" title="库里还没有 ${esc(dir)}/ 目录——点一下建出来并加页签">
       <span class="tp-check">＋</span><b>${esc(DIR_LABELS[dir])}</b><span class="tp-note">待建</span></button>`)
     .join('')
-  // 磁盘上有、但没在任何页签里的目录（比如「出图」）也列出来——这是「加页签」的主用途之一
+  // 磁盘上有、但不在 DIR_LABELS 里的目录（作者自建的如「分镜」）也列出来——
+  // 这是「加页签」的主用途之一；标「未识别」如实说明它不是内置载体。
   openModal(`
     <h3>增加页签</h3>
     <p class="sub">勾上就会出现在顶栏；取消勾选只是收起页签，磁盘上的文件和稿子不受影响。</p>
@@ -7339,6 +7350,9 @@ async function deduceEnginePresent(opts) {
       method: "POST",
       body: JSON.stringify({
         root: state.current.path,
+        // OS-86：局跟 sessionId 走（peek 也带——切局后用 peek 回放那局的最后一面）
+        sessionId: engine.sessionId || undefined,
+        peek: options.peek === true || undefined,
         pov: engine.pov || undefined,
         seed: engine.seed === "" ? undefined : Number(engine.seed),
         reset: options.reset === true
@@ -7356,6 +7370,45 @@ async function deduceEnginePresent(opts) {
   render()
 }
 
+/** 多局管理（OS-86）：new＝新开一局并切过去；switch＝切局；delete＝非破坏删除。
+ *  成功后引擎画面清空，peek 回放新激活局的最后一面——像换了一本书读。 */
+async function deduceSessionManage(action, sessionId) {
+  const engine = state.deduce.engine
+  if (!state.current || engine.busy) return
+  engine.busy = true
+  engine.error = ''
+  render()
+  try {
+    const payload = await api('/api/deduce/session/manage', {
+      method: 'POST',
+      body: JSON.stringify({ root: state.current.path, action, ...(sessionId ? { sessionId } : {}) })
+    })
+    if (Array.isArray(payload.sessions)) {
+      engine.sessions = { activeId: payload.activeId ?? payload.sessionId, sessions: payload.sessions }
+    }
+    engine.sessionId = payload.activeId ?? payload.sessionId ?? 'main'
+    engine.session = payload.session ?? null
+    engine.data = null
+    engine.draft = null
+    engine.customText = ''
+    engine.flowPin = true
+    if (action === 'delete') {
+      engine.hint = `已删除这一局（回收站：推演/<bookId>/.deleted/sessions/ 可找回）——现在在：${engine.session?.title || '主线'}`
+      // 删除响应带局清单但没有画面——直接 peek 新激活局
+      if (engine.session) await deduceEnginePresent({ peek: true })
+    } else {
+      engine.hint = action === 'new'
+        ? `已新开一局：${engine.session?.title || ''}——推下一拍开始`
+        : `已切到：${engine.session?.title || ''}`
+      await deduceEnginePresent({ peek: true })
+    }
+  } catch (error) {
+    engine.error = (error && error.code ? error.code + ' · ' : '') + text((error && error.message) || error)
+  }
+  engine.busy = false
+  render()
+}
+
 /** 结算：选择某候选（或否决）。 */
 async function deduceEngineSettle(candidateId, action) {
   const engine = state.deduce.engine
@@ -7368,6 +7421,7 @@ async function deduceEngineSettle(candidateId, action) {
       method: "POST",
       body: JSON.stringify({
         root: state.current.path,
+        sessionId: engine.sessionId || undefined,
         candidateId: candidateId || undefined,
         action: action || "choose"
       })
@@ -7408,6 +7462,7 @@ async function deduceEngineTurn(opts) {
       method: 'POST',
       body: JSON.stringify({
         root: state.current.path,
+        sessionId: engine.sessionId || undefined,
         choiceId: opts.choiceId || undefined,
         customText: opts.customText || undefined,
         regenerate: opts.regenerate === true || undefined
@@ -7442,7 +7497,7 @@ async function deducePendingSettle(pendingId, action) {
   try {
     const payload = await api('/api/deduce/pending', {
       method: 'POST',
-      body: JSON.stringify({ root: state.current.path, pendingId, action })
+      body: JSON.stringify({ root: state.current.path, sessionId: engine.sessionId || undefined, pendingId, action })
     })
     engine.session = payload.session
     engine.hint = action === 'write'
@@ -7517,7 +7572,7 @@ async function deduceArchiveChapter() {
   try {
     const payload = await api('/api/deduce/archive', {
       method: 'POST',
-      body: JSON.stringify({ root: state.current.path })
+      body: JSON.stringify({ root: state.current.path, sessionId: engine.sessionId || undefined })
     })
     engine.archiveNote = `已归档：${payload.path} · ${payload.words} 字`
     const sessionPayload = await api(`/api/deduce/session?root=${encodeURIComponent(state.current.path)}`)
@@ -7773,7 +7828,7 @@ async function deduceTreeBranch() {
   try {
     const payload = await api('/api/deduce/branch', {
       method: 'POST',
-      body: JSON.stringify({ root: state.current.path, fromNodeId: node.id })
+      body: JSON.stringify({ root: state.current.path, sessionId: engine.sessionId || undefined, fromNodeId: node.id })
     })
     engine.session = payload.session
     engine.sessionLoaded = true
@@ -8178,7 +8233,24 @@ function deduceEngineHtml() {
       <datalist id="deduce-pov-list">${(state.deduce.characters || []).map((name) => `<option value="${esc(name)}"></option>`).join('')}</datalist>
       <input class="file-input" id="deduce-seed" placeholder="种子（留空＝随机）" value="${esc(engine.seed)}" title="同一种子＋同一份事实＝同一拍，可复现">
       <button class="btn-primary" data-action="deduce-engine-present"${engine.busy || engine.turnBusy ? ' disabled' : ''}>${engine.busy ? '推演中…' : data ? '推下一拍' : '开始推演'}</button>
-      ${data ? '<button class="btn-ghost" data-action="deduce-engine-reset" title="清空会话从第一拍重来">重新开局</button>' : ''}
+      ${data ? '<button class="btn-ghost" data-action="deduce-engine-reset" title="清空本局从第一拍重来">本局重开</button>' : ''}
+    </div>`
+  /* —— 多局切换（OS-86）：主线永远在列；当前局高亮；每行可删（非破坏，回收站可找回） —— */
+  const currentSid = engine.sessionId || 'main'
+  const sessRows = (engine.sessions?.sessions ?? []).map((item) => {
+    const isCur = item.id === currentSid
+    return `<div class="ded-sess-row${isCur ? ' on' : ''}">
+      <button class="ded-sess-pick" data-action="deduce-sess-switch" data-id="${esc(item.id)}"${isCur ? ' disabled' : ''} title="${isCur ? '当前局' : '切到这一局'}">
+        <span class="ded-sess-name">${esc(item.title || (item.id === 'main' ? '主线' : item.id))}</span>
+        <span class="ded-sess-meta">${item.rounds} 拍${item.pending ? ` · ${item.pending} 张待确认` : ''}</span>
+      </button>
+      <button class="ded-sess-del" data-action="deduce-sess-del" data-id="${esc(item.id)}" title="删除这一局（非破坏——文件进 推演/.deleted/sessions/ 可找回）">删</button>
+    </div>`
+  }).join('')
+  const sessHtml = `<div class="ded-sess">
+      <div class="ded-sess-head">推演局<span class="sub">不同前提各开一局，互不串线</span></div>
+      <div class="ded-sess-list">${sessRows || '<p class="ded-none">局清单还没读到——再开一次设置页试试</p>'}</div>
+      <button class="btn-ghost ded-sess-new" data-action="deduce-sess-new"${engine.busy || engine.turnBusy ? ' disabled' : ''} title="新开一局（自动命名，切过去就是空白第一拍）">＋新开一局</button>
     </div>`
   const infoPanel = data ? `<div class="ded-stage-info"${infoVisible ? '' : ' hidden'}>
       ${sceneHtml}
@@ -8186,6 +8258,7 @@ function deduceEngineHtml() {
       ${dedPackHtml()}
     </div>` : ''
   const setPanel = `<div class="ded-set-panel"${engine.setOpen ? '' : ' hidden'}>
+      ${sessHtml}
       <div class="ded-set-head">推演设置<span class="sub">POV / 种子 / 推进</span></div>
       ${controls}
     </div>`
@@ -8458,6 +8531,7 @@ async function openLibrary(path) {
     mode: 'engine',
     engine: { busy: false, data: null, pov: '', seed: '', error: '', hint: '',
       session: null, sessionLoaded: false, customText: '', draft: null, turnBusy: false, archiveNote: '',
+      sessionId: 'main', sessions: null,
       view: 'scene', treePick: null,
       assets: null, assetsLoaded: false, assetBookId: '', bgmOn: false,
       paperMode: false, flowPin: true, introOpen: null },
@@ -9270,7 +9344,13 @@ document.addEventListener('click', (event) => {
     else deduceEnginePresent({})
   } else if (action === 'deduce-engine-reset') {
     state.deduce.engine.draft = null
-    deduceEnginePresent({ reset: true, hint: '新开了推演会话' })
+    deduceEnginePresent({ reset: true, hint: '本局已清空从第一拍重来' })
+  } else if (action === 'deduce-sess-new') {
+    deduceSessionManage('new', '')
+  } else if (action === 'deduce-sess-switch') {
+    deduceSessionManage('switch', target.dataset.id)
+  } else if (action === 'deduce-sess-del') {
+    deduceSessionManage('delete', target.dataset.id)
   } else if (action === 'deduce-engine-choose') {
     deduceEngineTurn({ choiceId: target.dataset.candidateId })
   } else if (action === 'deduce-engine-custom') {
