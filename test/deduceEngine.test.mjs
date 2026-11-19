@@ -7,7 +7,7 @@ import assert from 'node:assert/strict'
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { deducePresent, deduceSettle, deduceStatePath, loadEntries } from '../deduceEngine.mjs'
+import { deducePresent, deduceSettle, deduceStatePath, humanizeFateText, loadEntries } from '../deduceEngine.mjs'
 
 const ENTRIES = [
   { schema: 'fact.data/v3', id: 'e1', layer: 'worldview', name: '雾港规则', definition: '雾起时渡口不开船。', status: 'adopted' },
@@ -115,4 +115,19 @@ test('引擎：结算选择——无会话 404；有会话时选择不抛', asyn
   } finally {
     await rm(base, { recursive: true, force: true })
   }
+})
+
+
+test('命运候选文案人话化（OS-88）：骰点收尾、结论先行、可复现', () => {
+  const ok = humanizeFateText({ a: 6, b: 2, sum: 8, success: true })
+  assert.ok(ok.startsWith('世界不拦你'), '顺遂＝世界放行：' + ok)
+  assert.ok(ok.includes('（命运骰 8：6+2 顺遂）'), '骰点收尾保留：' + ok)
+  const bad = humanizeFateText({ a: 2, b: 3, sum: 5, success: false })
+  assert.ok(bad.startsWith('世界设了坎'), '受阻＝世界设坎：' + bad)
+  assert.ok(bad.includes('受阻'), bad)
+  // trace 缺 success 按 sum>=7 推；完全没 trace 也不崩
+  assert.ok(humanizeFateText({ a: 5, b: 3, sum: 8 }).startsWith('世界不拦你'))
+  assert.ok(humanizeFateText(null).startsWith('世界'), '无骰点也有兜底话术：' + humanizeFateText(null))
+  // 纯函数可复现
+  assert.equal(humanizeFateText({ a: 1, b: 1, sum: 2, success: false }), humanizeFateText({ a: 1, b: 1, sum: 2, success: false }))
 })
