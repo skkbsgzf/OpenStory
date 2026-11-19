@@ -1221,20 +1221,32 @@ html[data-doc-auto-gap="off"] .doc-block { margin-bottom: 0; }
 .fl-bar-progress { font-size: 11.5px; font-variant-numeric: tabular-nums; }
 .ded-bar-sep { margin: 0 7px; opacity: .45; }
 .fl-bar .ded-heat { font-size: 10.5px; margin-left: 0; }
-.fl-bar-right { margin-left: auto; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.fl-chips { display: inline-flex; gap: 0; margin-right: 6px; }
-.fl-chips .chip { border-radius: 0; font-size: 10.5px; }
-.fl-chips .chip:first-child { border-radius: var(--pill) 0 0 var(--pill); }
-.fl-chips .chip:last-child { border-radius: 0 var(--pill) var(--pill) 0; }
+.fl-bar-right { margin-left: auto; display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+/* OS-86：形态三分切换——一体胶囊（segmented），永远恰好一个选中，恒显不跳动 */
+.fl-seg { display: inline-flex; align-items: center; padding: 2px; gap: 2px;
+  background: rgba(20,18,30,.42); border-radius: var(--pill); backdrop-filter: blur(4px); }
+.fl-seg-tab { font-size: 10.5px; color: rgba(255,255,255,.72); border-radius: var(--pill);
+  padding: 2px 12px; white-space: nowrap; }
+.fl-seg-tab:hover { color: #fff; }
+.fl-seg-tab.on { background: rgba(255,255,255,.92); color: #171624; font-weight: 600; }
+.ded-flow[data-paper="1"] .fl-seg { background: var(--soft); backdrop-filter: none; }
+.ded-flow[data-paper="1"] .fl-seg-tab { color: var(--muted); }
+.ded-flow[data-paper="1"] .fl-seg-tab.on { background: var(--ink); color: var(--bg); }
+/* 分组竖线：形态切换｜内容开关｜动作｜显示偏好 */
+.fl-bar-div { width: 1px; height: 14px; background: rgba(255,255,255,.22); margin: 0 3px; flex: 0 0 auto; }
+.ded-flow[data-paper="1"] .fl-bar-div { background: var(--hair); }
 /* 小药丸按钮：工具栏与动作行共用 */
 .fl-btn { font-size: 10.5px; color: rgba(255,255,255,.82); background: rgba(20,18,30,.4);
   border-radius: var(--pill); padding: 2px 11px; backdrop-filter: blur(4px); }
 .fl-btn:hover { background: rgba(20,18,30,.62); color: #fff; }
-.fl-btn.on { background: rgba(255,255,255,.18); color: #fff; }
+/* 开关的 on 态：accent 点＋亮底，跟动作按钮一眼区分 */
+.fl-btn.on { background: rgba(255,255,255,.2); color: #fff; }
+.fl-btn.on::before { content: '● '; font-size: 7px; vertical-align: 1px; color: var(--ok); }
 .fl-btn[disabled] { opacity: .55; }
 .ded-flow[data-paper="1"] .fl-btn { color: var(--muted); background: var(--soft); backdrop-filter: none; }
 .ded-flow[data-paper="1"] .fl-btn:hover { background: color-mix(in srgb, var(--ink) 10%, transparent); color: var(--ink-2); }
-.ded-flow[data-paper="1"] .fl-btn.on { background: var(--accent-soft); color: var(--accent); }
+/* 纸面模式开关 on：淡绿底＋绿点（跟暗背景同一「绿点＝开」语言） */
+.ded-flow[data-paper="1"] .fl-btn.on { background: color-mix(in srgb, var(--ok) 12%, var(--soft)); color: var(--ink-2); }
 
 /* 故事流：唯一滚动容器；正文列宽 ~720px 居中 */
 .fl-scroll-wrap { position: relative; flex: 1; min-height: 0; }
@@ -1284,9 +1296,9 @@ html[data-doc-auto-gap="off"] .doc-block { margin-bottom: 0; }
 .fl-arch { margin-left: 6px; font-size: 10.5px; color: var(--meta); }
 .fl-goal { display: block; margin-top: 3px; color: var(--ink); }
 .fl-goal::before { content: '你要 '; color: var(--meta); font-size: 11px; }
-.fl-chips-row, .fl-chip { font-size: 10.5px; }
+.fl-chips-row { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0 0; }
 .fl-chip { display: inline-block; background: color-mix(in srgb, var(--accent) 10%, transparent);
-  color: var(--accent); padding: 1px 7px; border-radius: var(--pill); margin: 2px 4px 0 0; }
+  color: var(--accent); padding: 1px 7px; border-radius: var(--pill); }
 .fl-recap-toggle { font-size: 11px; color: var(--accent); background: none; border: 0;
   padding: 2px 0; cursor: pointer; margin-top: 2px; }
 .fl-recap-toggle:hover { text-decoration: underline; }

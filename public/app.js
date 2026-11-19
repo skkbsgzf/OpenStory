@@ -7907,7 +7907,7 @@ function deducePrologueHtml(narrative) {
     : id.missing
       ? `<p class="fl-line">你是 <b>${esc(id.name)}</b>。<span class="is-missing">这个角色还没有档案（去世界书写一条，或跑 enrich 生成人物档）。</span></p>`
       : `<p class="fl-line">你是 <b>${esc(id.name)}</b>${id.archetype ? `<span class="fl-arch">${esc(id.archetype)}</span>` : ''}${id.identity ? `，${esc(id.identity)}` : ''}${id.goal ? `<span class="fl-goal">你要 ${esc(id.goal)}</span>` : ''}</p>
-        ${id.personality && id.personality.length ? `<p class="fl-chips">${id.personality.map((p) => `<span class="fl-chip">${esc(p)}</span>`).join('')}</p>` : ''}`
+        ${id.personality && id.personality.length ? `<p class="fl-chips-row">${id.personality.map((p) => `<span class="fl-chip">${esc(p)}</span>`).join('')}</p>` : ''}`
 
   // —— 眼前场景 ——
   const sc = narrative.scene || { text: '', others: [], where: '' }
@@ -8116,33 +8116,36 @@ function deduceEngineHtml() {
   const sceneName = card.where && card.where !== '未标记地点' ? text(card.where) : ''
   const sceneAsset = sceneName ? assets.scenes.find((item) => item.name === sceneName) : null
 
-  /* —— 工具栏：进度＋张力（叙事流）／模式切换（全形态）／流内开关＋纸面 —— */
+  /* —— 工具栏（OS-86 重排）：左＝进度＋张力；右＝形态三分切换（永远一个亮、永不消失）
+       ＋内容开关（局面/设置/BGM）＋动作（生图/归档）＋显示偏好（纸面），组间细竖线 —— */
   const heatLevel = text(tension.level)
   const heatLabel = { low: '平静', medium: '升温', high: '紧迫', critical: '一触即发' }[heatLevel] || ''
   const heatClass = { low: 'h-low', medium: 'h-mid', high: 'h-high', critical: 'h-crit' }[heatLevel] || 'h-low'
   const pov = session?.pov || data?.pov || engine.pov || ''
   const bgmAsset = pickDedBgm()
   const infoVisible = data ? (engine.infoOpen === true || (!data.narrative && engine.infoOpen !== false)) : false
+  // 形态三态：叙事流＝引擎+局面视图；剧情树＝引擎+树视图；Agent＝表单。互斥、恒显。
+  const form = inFlow ? 'flow' : (state.deduce.mode === 'engine' ? 'tree' : 'agent')
+  const segTab = (key, label, action, title) => `<button class="fl-seg-tab${form === key ? ' on' : ''}" data-action="${action}" title="${title}">${label}</button>`
   const bar = `<header class="fl-bar">
     ${inFlow ? `<span class="fl-bar-progress">${data ? `第 ${Number(data.round) || 0} 拍` : '未开局'}${pov ? `<span class="ded-bar-sep">·</span>${esc(pov)}视角` : ''}<span class="ded-bar-sep">·</span>本章 ${bufferCount} 拍 ${buffer?.words || 0} 字</span>
     ${heatLabel ? `<span class="ded-heat ${heatClass}" title="前线时钟读数：张力从平静到一触即发">${esc(heatLabel)}</span>` : ''}` : ''}
     <span class="fl-bar-right">
-      <span class="fl-chips">
-        <button class="chip${state.deduce.mode === 'engine' ? ' on' : ''}" data-action="deduce-mode-engine" title="确定性推演引擎（种子化 2d6，不需要模型）">引擎</button>
-        <button class="chip${state.deduce.mode === 'agent' ? ' on' : ''}" data-action="deduce-mode-agent" title="Agent 分支推理（需要模型）">Agent</button>
+      <span class="fl-seg">
+        ${segTab('flow', '叙事流', 'deduce-view-scene', '沉浸叙事流：一拍一条消息，候选挂在流末（确定性引擎）')}
+        ${segTab('tree', '剧情树', 'deduce-view-tree', '二维分支导图：回跳或开新分支（确定性引擎）')}
+        ${segTab('agent', 'Agent', 'deduce-mode-agent', 'Agent 分支推理（需要模型，表单形态）')}
       </span>
-      ${state.deduce.mode === 'engine' ? `<span class="fl-chips">
-        <button class="chip${engine.view !== 'tree' ? ' on' : ''}" data-action="deduce-view-scene" title="沉浸叙事流">叙事流</button>
-        <button class="chip${engine.view === 'tree' ? ' on' : ''}" data-action="deduce-view-tree" title="二维分支导图：回跳或开新分支">剧情树</button>
-      </span>` : ''}
-      ${inFlow && data ? `
+      ${inFlow && data ? `<i class="fl-bar-div"></i>
         <button class="fl-btn${infoVisible ? ' on' : ''}" data-action="deduce-info-toggle" title="显示/隐藏左侧的局面卡、前线与事实包">局面</button>
         <button class="fl-btn${engine.setOpen ? ' on' : ''}" data-action="deduce-tools-toggle" title="推演设置：POV / 种子 / 推进 / 重新开局">⚙ 设置</button>
-        <button class="fl-btn" data-action="deduce-image" title="按本拍局面生成一张场景立绘（需在设置里配生图端点）"${engine.turnBusy ? ' disabled' : ''}>✦ 生图</button>
         <button class="fl-btn${engine.bgmOn ? ' on' : ''}" data-action="deduce-bgm-toggle"${bgmAsset ? '' : ' disabled'}
-          title="${bgmAsset ? `播放：${esc(bgmAsset.name)}（循环）` : '未配置 BGM——放 推演/…/素材/bgm/<场景或情绪>.mp3 即可启用'}">♪ ${bgmAsset ? (engine.bgmOn ? 'BGM 开' : 'BGM 关') : 'BGM'}</button>
-        <button class="fl-btn" data-action="deduce-archive"${engine.turnBusy || !bufferCount ? ' disabled' : ''} title="把本章缓冲的拍整理成 markdown 归档（不写正文文件）">归档本章</button>
+          title="${bgmAsset ? `播放：${esc(bgmAsset.name)}（循环）` : '未配置 BGM——放 推演/…/素材/bgm/<场景或情绪>.mp3 即可启用'}">♪ BGM</button>
+        <i class="fl-bar-div"></i>
+        <button class="fl-btn" data-action="deduce-image" title="按本拍局面生成一张场景立绘（需在设置里配生图端点）"${engine.turnBusy ? ' disabled' : ''}>生图</button>
+        <button class="fl-btn" data-action="deduce-archive"${engine.turnBusy || !bufferCount ? ' disabled' : ''} title="把本章缓冲的拍整理成 markdown 归档（不写正文文件）">归档</button>
       ` : ''}
+      <i class="fl-bar-div"></i>
       <button class="fl-btn${engine.paperMode ? ' on' : ''}" data-action="deduce-paper-toggle" title="纸面模式：关掉立绘背景，纯纸面读文">纸面</button>
     </span>
   </header>`
@@ -9362,10 +9365,13 @@ document.addEventListener('click', (event) => {
     state.deduce.mode = 'agent'
     render()
   } else if (action === 'deduce-view-scene') {
+    // OS-86：形态三分切换——从 Agent 点回流/树要先把引擎模式接回来
+    state.deduce.mode = 'engine'
     state.deduce.engine.view = 'scene'
     state.deduce.engine.treePick = null
     render()
   } else if (action === 'deduce-view-tree') {
+    state.deduce.mode = 'engine'
     state.deduce.engine.view = 'tree'
     render()
   } else if (action === 'deduce-tree-back') {
