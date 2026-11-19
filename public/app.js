@@ -7968,11 +7968,15 @@ function deducePrologueHtml(narrative) {
 
   // —— 你是谁（一句话写进序章，不再单开卡） ——
   const id = narrative.identity || null
+  // OS-90 角色扮演框架：明说「你扮演的就是这个角色」——尤其 POV 名字抽象时（如「叙述者」），
+  // 玩家得知道这三个字就是自己。选项都是这个角色的行动，其他角色会自己行动。
   const idLine = !id
     ? '<p class="fl-line is-missing">还没选定视角人物——设置里填「以谁的眼睛看」，这里会显示你的身份与目标。</p>'
     : id.missing
-      ? `<p class="fl-line">你是 <b>${esc(id.name)}</b>。<span class="is-missing">这个角色还没有档案（去世界书写一条，或跑 enrich 生成人物档）。</span></p>`
-      : `<p class="fl-line">你是 <b>${esc(id.name)}</b>${id.archetype ? `<span class="fl-arch">${esc(id.archetype)}</span>` : ''}${id.identity ? `，${esc(id.identity)}` : ''}${id.goal ? `<span class="fl-goal">你要 ${esc(id.goal)}</span>` : ''}</p>
+      ? `<p class="fl-line">你扮演 <b>${esc(id.name)}</b>。<span class="is-missing">这个角色还没有档案（去世界书写一条，或跑 enrich 生成人物档）。</span></p>`
+      : `<p class="fl-line">你扮演 <b>${esc(id.name)}</b>${id.archetype ? `<span class="fl-arch">${esc(id.archetype)}</span>` : ''}${id.identity ? `，${esc(id.identity)}` : ''}。</p>
+        ${id.goal ? `<p class="fl-goal">你要 ${esc(id.goal)}</p>` : ''}
+        <p class="fl-line is-missing fl-role-hint">下面的选项都是你（${esc(id.name)}）能做的事；别人（场景里其他角色）会自己行动，世界也会回应。</p>
         ${id.personality && id.personality.length ? `<p class="fl-chips-row">${id.personality.map((p) => `<span class="fl-chip">${esc(p)}</span>`).join('')}</p>` : ''}`
 
   // —— 眼前场景 ——
