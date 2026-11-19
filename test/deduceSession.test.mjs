@@ -12,13 +12,18 @@ import {
   appendNode,
   archiveChapter,
   clearChapterBuffer,
+  createDeduceSession,
   DEDUCE_SESSION_SCHEMA,
   deduceSessionPath,
+  deleteDeduceSession,
+  listDeduceSessions,
   loadDeduceSession,
   normalizeDeduceSession,
+  readActiveSessionId,
   saveDeduceSession,
   startChapterBuffer,
-  switchBranch
+  switchBranch,
+  writeActiveSessionId
 } from '../deduceSession.mjs'
 import { validateRequest, validateResponse } from '../contracts.mjs'
 
@@ -33,6 +38,8 @@ function newSession(bookId = 'book-1') {
   return {
     schema: DEDUCE_SESSION_SCHEMA,
     bookId,
+    sessionId: 'main',
+    title: '主线',
     branchId: 'main',
     cursor: 0,
     nodes: [],
@@ -307,6 +314,106 @@ test('待确认事实卡（OS-82）：pending 归一与存读往返', async () =
     assert.equal(loaded.pending[0].id, 'pd-1')
     assert.equal(loaded.pending[0].entry.name, '第1拍·推门')
     assert.equal(loaded.pending[0].decidedBy, 'author')
+  } finally {
+    await rm(base, { recursive: true, force: true })
+  }
+})
+
+/* ---------- 多局并存（OS-86）---------- */
+
+test('多局：新建→列表→激活切换；main 占位在首位', async () => {
+  const { base, root } = await makeRoot()
+  try {
+    // 空库：列表只有主线占位（哪怕文件还没有）
+    const before = listDeduceSessions(root, 'book-1')
+    assert.deepEqual(before.sessions.map((s) => s.id), ['main'])
+    assert.equal(before.activeId, 'main')
+    // 新建两局：自动命名「第1局/第2局」，新局激活
+    const first = await createDeduceSession(root, 'book-1', {})
+    assert.equal(first.ok, true)
+    assert.equal(first.session.title, '第1局')
+    const second = await createDeduceSession(root, 'book-1', { title: '雾港假设' })
+    assert.equal(second.ok, true)
+    assert.equal(second.session.title, '雾港假设')
+    assert.equal(readActiveSessionId(root, 'book-1'), second.sessionId)
+    // 列表：主线最前，其余按文件名倒序（新局在上）；pending 计数透出
+    const listed = listDeduceSessions(root, 'book-1')
+    assert.equal(listed.activeId, second.sessionId)
+    assert.equal(listed.sessions[0].id, 'main')
+    assert.equal(listed.sessions[1].id, second.sessionId)
+    assert.equal(listed.sessions[2].id, first.sessionId)
+    assert.equal(listed.sessions.find((s) => s.id === second.sessionId).title, '雾港假设')
+    // 切回主线：激活指针回落
+    await writeActiveSessionId(root, 'book-1', 'main')
+    assert.equal(readActiveSessionId(root, 'book-1'), 'main')
+  } finally {
+    await rm(base, { recursive: true, force: true })
+  }
+})
+
+test('多局：各局文件互相独立；存读往返保 sessionId/title', async () => {
+  const { base, root } = await makeRoot()
+  try {
+    const a = await createDeduceSession(root, 'book-1', { title: 'A 局' })
+    const b = await createDeduceSession(root, 'book-1', { title: 'B 局' })
+    appendNode(a.session, { scene: { who: '林砚' }, prose: 'A 局第一拍' })
+    const saved = await saveDeduceSession(root, 'book-1', a.session)
+    assert.equal(saved.ok, true)
+    // B 局读不到 A 局的拍
+    const loadA = loadDeduceSession(root, 'book-1', a.sessionId)
+    const loadB = loadDeduceSession(root, 'book-1', b.sessionId)
+    assert.equal(loadA.nodes.length, 1)
+    assert.equal(loadB.nodes.length, 0)
+    assert.equal(loadA.sessionId, a.sessionId)
+    assert.equal(loadA.title, 'A 局')
+    // 文件真的分开落
+    const { existsSync } = await import('node:fs')
+    assert.equal(existsSync(join(root, '推演', 'book-1', 'sessions', `${a.sessionId}.json`)), true)
+    assert.equal(existsSync(join(root, '推演', 'book-1', 'sessions', `${b.sessionId}.json`)), true)
+  } finally {
+    await rm(base, { recursive: true, force: true })
+  }
+})
+
+test('多局：删除非破坏（挪 .deleted）＋删激活局回落主线＋最后一局拒删', async () => {
+  const { base, root } = await makeRoot()
+  try {
+    // 只有一局（主线占位、无文件）→ 拒删
+    const only = await deleteDeduceSession(root, 'book-1', 'main')
+    assert.equal(only.ok, false)
+    assert.equal(only.code, 'INVALID_ENTRY')
+    // 建一局后先验幽灵（≥2 局时不存在＝NOT_FOUND，不会先撞最后一局守卫）
+    const a = await createDeduceSession(root, 'book-1', { title: '要删的局' })
+    const ghost = await deleteDeduceSession(root, 'book-1', 's-nothing')
+    assert.equal(ghost.code, 'NOT_FOUND')
+    // 再删：文件进 .deleted、激活回落主线
+    const removed = await deleteDeduceSession(root, 'book-1', a.sessionId)
+    assert.equal(removed.ok, true)
+    assert.equal(removed.activeId, 'main')
+    const { existsSync } = await import('node:fs')
+    assert.equal(existsSync(join(root, '推演', 'book-1', 'sessions', `${a.sessionId}.json`)), false)
+    assert.ok(existsSync(join(root, '推演', 'book-1', '.deleted', 'sessions')), '回收站目录存在')
+    // 主线+一局，删主线：主线文件也可删（作者有权清掉 legacy），激活回落剩下的局
+    const b = await createDeduceSession(root, 'book-1', {})
+    await saveDeduceSession(root, 'book-1', newSession())
+    await writeActiveSessionId(root, 'book-1', 'main')
+    const rmMain = await deleteDeduceSession(root, 'book-1', 'main')
+    assert.equal(rmMain.ok, true)
+    assert.equal(rmMain.activeId, b.sessionId)
+  } finally {
+    await rm(base, { recursive: true, force: true })
+  }
+})
+
+test('多局：激活指针指向已删会话 → 回落主线', async () => {
+  const { base, root } = await makeRoot()
+  try {
+    const a = await createDeduceSession(root, 'book-1', {})
+    // 手动把指针写成野值
+    await writeActiveSessionId(root, 'book-1', 's-gone')
+    assert.equal(readActiveSessionId(root, 'book-1'), 'main', '指向不存在的会话回落主线')
+    await writeActiveSessionId(root, 'book-1', a.sessionId)
+    assert.equal(readActiveSessionId(root, 'book-1'), a.sessionId)
   } finally {
     await rm(base, { recursive: true, force: true })
   }

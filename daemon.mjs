@@ -129,11 +129,16 @@ import { safeDeduceBookId } from './deduceSession.mjs'
 import {
   appendNode,
   archiveChapter,
+  createDeduceSession,
   DEDUCE_SESSION_SCHEMA,
+  deleteDeduceSession,
   importLegacyDeduce,
+  listDeduceSessions,
   loadDeduceSession,
   normalizeDeduceSession,
-  saveDeduceSession
+  readActiveSessionId,
+  saveDeduceSession,
+  writeActiveSessionId
 } from './deduceSession.mjs'
 import { factHealth } from './factGuard.mjs'
 import { enrichBook, enrichGraph } from './enrichEngine.mjs'
@@ -1235,6 +1240,7 @@ async function listDeduceAssets(root, bookId) {
       seed: Number.isSafeInteger(request.seed) ? request.seed : null,
       reset: request.reset === true,
       peek: request.peek === true,
+      sessionId: text(request.sessionId),
       // OS-82：戏剧候选接全局文本模型（没配模型＝null，必然/命运照常）
       llmPort: await buildDeduceLlmPort({ context })
     })
@@ -1252,7 +1258,8 @@ async function listDeduceAssets(root, bookId) {
       bookId: await resolveFactBookId(authorized.root, request.bookId),
       candidateId: text(request.candidateId),
       action: text(request.action || 'choose'),
-      note: text(request.note)
+      note: text(request.note),
+      sessionId: text(request.sessionId)
     })
     if (!result.ok) return sendError(res, result.code ?? API_ERROR_CODES.INVALID_ENTRY, result.message)
     return sendJson(res, 200, result)
@@ -1275,10 +1282,13 @@ function readLegacyDeduceState(root, bookId) {
     const authorized = authorizeRoot(allowlist, request.root)
     if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
     const bookId = await resolveFactBookId(authorized.root, request.bookId)
-    let session = loadDeduceSession(authorized.root, bookId)
+    // OS-86：sessionId 缺省＝激活指针（回落主线）——前端不用管「现在在哪局」
+    const wanted = text(request.sessionId).trim()
+    const sid = wanted || readActiveSessionId(authorized.root, bookId)
+    let session = loadDeduceSession(authorized.root, bookId, sid)
     // 自动桥接（OS-62）：新层还没有节点、但旧引擎层推过拍 → 把最后一面导入成首节点。
-    // 老库升级后剧情树不再空白；旧档不动，重复读幂等。
-    if (!session || !(session.nodes || []).length) {
+    // 老库升级后剧情树不再空白；旧档不动，重复读幂等。只桥主线——多局是 OS-86 之后的产物。
+    if ((!session || !(session.nodes || []).length) && (sid === 'main' || !wanted)) {
       const legacy = readLegacyDeduceState(authorized.root, bookId)
       if (legacy) {
         const merged = importLegacyDeduce({ legacyState: legacy, session, bookId })
@@ -1290,14 +1300,15 @@ function readLegacyDeduceState(root, bookId) {
         }
       }
     }
-    return sendJson(res, 200, { ok: true, session })
+    return sendJson(res, 200, { ok: true, session, activeId: sid })
   }
 
   if (endpointId === 'deduceSessionPut') {
     const authorized = authorizeRoot(allowlist, request.root)
     if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
     const bookId = await resolveFactBookId(authorized.root, request.bookId)
-    const session = normalizeDeduceSession(request.session, bookId)
+    // OS-86：sessionId 随会话对象走（main＝legacy 路径，其余 sessions/<sid>.json）
+    const session = normalizeDeduceSession(request.session, bookId, text(request.session?.sessionId))
     if (!session) {
       return sendError(res, API_ERROR_CODES.INVALID_ENTRY, `推演会话形状不对：schema 必须是 ${DEDUCE_SESSION_SCHEMA}，nodes 必须是数组`)
     }
@@ -1306,11 +1317,54 @@ function readLegacyDeduceState(root, bookId) {
     return sendJson(res, 200, { ok: true, session, ...(saved.backup ? { backup: saved.backup } : {}) })
   }
 
+  if (endpointId === 'deduceSessionsGet') {
+    // OS-86 多局并存：主线（legacy）＋ sessions/ 全部＋激活指针。列表轻量读全文取 meta。
+    const authorized = authorizeRoot(allowlist, request.root)
+    if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
+    const bookId = await resolveFactBookId(authorized.root, request.bookId)
+    const listed = listDeduceSessions(authorized.root, bookId)
+    return sendJson(res, 200, { ok: true, bookId, ...listed })
+  }
+
+  if (endpointId === 'deduceSessionManage') {
+    // OS-86 多局管理：new＝新建空局并激活；switch＝激活已有局；delete＝非破坏删除（挪 .deleted）。
+    // 最后一局不能删（推演页不能开天窗，清空走「重新开局」）。
+    const authorized = authorizeRoot(allowlist, request.root)
+    if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
+    const bookId = await resolveFactBookId(authorized.root, request.bookId)
+    const action = text(request.action || '').trim()
+    if (action === 'new') {
+      const created = await createDeduceSession(authorized.root, bookId, { title: text(request.title) })
+      if (!created.ok) return sendError(res, created.code ?? API_ERROR_CODES.WRITE_PROTOCOL_IO_FAILED, created.message ?? '新局创建失败')
+      const listed = listDeduceSessions(authorized.root, bookId)
+      return sendJson(res, 200, { ok: true, action: 'new', sessionId: created.sessionId, session: created.session, ...listed })
+    }
+    const sid = text(request.sessionId).trim()
+    if (action === 'switch') {
+      if (!sid) return sendError(res, API_ERROR_CODES.INVALID_ENTRY, 'sessionId 必填')
+      const session = loadDeduceSession(authorized.root, bookId, sid)
+      if (!session) return sendError(res, API_ERROR_CODES.NOT_FOUND, `会话不存在：${sid}`)
+      const active = await writeActiveSessionId(authorized.root, bookId, sid)
+      if (!active.ok) return sendError(res, active.code ?? API_ERROR_CODES.WRITE_PROTOCOL_IO_FAILED, active.message)
+      return sendJson(res, 200, { ok: true, action: 'switch', sessionId: sid, session })
+    }
+    if (action === 'delete') {
+      if (!sid) return sendError(res, API_ERROR_CODES.INVALID_ENTRY, 'sessionId 必填')
+      const removed = await deleteDeduceSession(authorized.root, bookId, sid)
+      if (!removed.ok) return sendError(res, removed.code ?? API_ERROR_CODES.INVALID_ENTRY, removed.message)
+      const listed = listDeduceSessions(authorized.root, bookId)
+      const session = loadDeduceSession(authorized.root, bookId, listed.activeId)
+      return sendJson(res, 200, { ok: true, action: 'delete', sessionId: sid, session, ...listed })
+    }
+    return sendError(res, API_ERROR_CODES.INVALID_ENTRY, 'action 只认 new / switch / delete')
+  }
+
   if (endpointId === 'deduceArchive') {
     const authorized = authorizeRoot(allowlist, request.root)
     if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
     const bookId = await resolveFactBookId(authorized.root, request.bookId)
-    const session = loadDeduceSession(authorized.root, bookId)
+    const sid = text(request.sessionId).trim() || readActiveSessionId(authorized.root, bookId)
+    const session = loadDeduceSession(authorized.root, bookId, sid)
     if (!session) return sendError(res, API_ERROR_CODES.NOT_FOUND, `还没有推演会话：${bookId}`)
     const archived = await archiveChapter(authorized.root, session, { title: text(request.title) })
     if (!archived.ok) return sendError(res, archived.code ?? API_ERROR_CODES.INVALID_ENTRY, archived.message)
@@ -1324,10 +1378,12 @@ function readLegacyDeduceState(root, bookId) {
     if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
     const root = authorized.root
     const bookId = await resolveFactBookId(root, request.bookId)
+    // OS-86：局跟 sessionId 走——引擎状态（候选桥接/结算）与会话存储必须同一局
+    const sid = text(request.sessionId).trim() || readActiveSessionId(root, bookId)
     const customText = text(request.customText).trim()
     const choiceId = text(request.choiceId).trim()
-    const session = loadDeduceSession(root, bookId)
-      ?? normalizeDeduceSession({ schema: DEDUCE_SESSION_SCHEMA, nodes: [] }, bookId)
+    const session = loadDeduceSession(root, bookId, sid)
+      ?? normalizeDeduceSession({ schema: DEDUCE_SESSION_SCHEMA, nodes: [] }, bookId, sid)
     const branchId = session.branchId || 'main'
     const branchNodes = session.nodes.filter((node) => (text(node?.branchId) || 'main') === branchId)
 
@@ -1353,11 +1409,11 @@ function readLegacyDeduceState(root, bookId) {
     }
     let settled
     if (customText) {
-      settled = await deduceSettle({ root, bookId, action: 'inject', note: customText })
+      settled = await deduceSettle({ root, bookId, action: 'inject', note: customText, sessionId: sid })
     } else {
-      const bridged = await bridgeDeduceCandidates(root, bookId)
+      const bridged = await bridgeDeduceCandidates(root, bookId, sid)
       if (!bridged.ok) return sendError(res, bridged.code ?? API_ERROR_CODES.INVALID_ENTRY, bridged.message)
-      settled = await deduceSettle({ root, bookId, candidateId: choiceId, action: 'choose' })
+      settled = await deduceSettle({ root, bookId, candidateId: choiceId, action: 'choose', sessionId: sid })
     }
     if (!settled.ok) return sendError(res, settled.code ?? API_ERROR_CODES.INVALID_ENTRY, settled.message)
     // OS-82 回填闭环：结算产出的 fact 条目不自动落库——挂会话 pending 队列（待确认卡），
@@ -1366,7 +1422,7 @@ function readLegacyDeduceState(root, bookId) {
 
     // 局面与候选取自引擎最后一面（present 存的 lastTurn）；自定义拍补一条「作者」候选
     let lastTurn = null
-    try { lastTurn = JSON.parse(readFileSync(deduceStatePath(root, bookId), 'utf-8')).lastTurn ?? null } catch { lastTurn = null }
+    try { lastTurn = JSON.parse(readFileSync(deduceStatePath(root, bookId, sid), 'utf-8')).lastTurn ?? null } catch { lastTurn = null }
     const sceneCard = lastTurn?.sceneCard ?? {}
     const candidates = (Array.isArray(lastTurn?.candidates) ? lastTurn.candidates : [])
       .map((candidate) => ({ id: text(candidate?.id), source: text(candidate?.source), text: text(candidate?.text) }))
@@ -1418,10 +1474,11 @@ function readLegacyDeduceState(root, bookId) {
     if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
     const root = authorized.root
     const bookId = await resolveFactBookId(root, request.bookId)
+    const sid = text(request.sessionId).trim() || readActiveSessionId(root, bookId)
     const pendingId = text(request.pendingId).trim()
     const action = text(request.action || 'write')
     if (!pendingId) return sendError(res, API_ERROR_CODES.INVALID_ENTRY, 'pendingId 必填')
-    const session = loadDeduceSession(root, bookId)
+    const session = loadDeduceSession(root, bookId, sid)
     if (!session) return sendError(res, API_ERROR_CODES.NOT_FOUND, '这个库还没有推演会话')
     const index = (Array.isArray(session.pending) ? session.pending : []).findIndex((item) => text(item?.id) === pendingId)
     if (index < 0) return sendError(res, API_ERROR_CODES.NOT_FOUND, '这条待确认卡已不存在（可能已写入或已忽略）——刷新会话即可')
@@ -1536,9 +1593,10 @@ function readLegacyDeduceState(root, bookId) {
     if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
     const root = authorized.root
     const bookId = await resolveFactBookId(root, request.bookId)
+    const sid = text(request.sessionId).trim() || readActiveSessionId(root, bookId)
     const fromNodeId = text(request.fromNodeId).trim()
     if (!fromNodeId) return sendError(res, API_ERROR_CODES.INVALID_ENTRY, '指明从哪一拍开分支（fromNodeId）')
-    const session = loadDeduceSession(root, bookId)
+    const session = loadDeduceSession(root, bookId, sid)
     if (!session) return sendError(res, API_ERROR_CODES.NOT_FOUND, `还没有推演会话：${bookId}`)
     const fromNode = session.nodes.find((node) => text(node?.id) === fromNodeId)
     if (!fromNode) return sendError(res, API_ERROR_CODES.NOT_FOUND, `会话里没有这一拍：${fromNodeId}`)
@@ -2322,7 +2380,7 @@ function readLegacyDeduceState(root, bookId) {
   return sendError(res, API_ERROR_CODES.NOT_FOUND, `端点未实现：${endpointId}`)
 }
 
-const ENDPOINT_HAS_QUERY = new Set(['referenceAssetGet', 'habitsGet', 'chapterGet', 'agentSessions', 'agentSessionGet', 'agentSessionDelete', 'libraryDiagnose', 'filesGet', 'chaptersGet', 'chapterDelete', 'artifactsGet', 'suiteStateDataGet', 'agentPicksGet', 'briefGet', 'skillsGet', 'skillGet', 'enrichStatus', 'enrichGraph', 'kbStatusGet', 'agentDshModelsGet', 'factCurveGet', 'factEntriesGet', 'factBooksGet', 'referenceGet', 'referenceGraphGet', 'referenceNoteGet', 'deduceSessionGet', 'deduceAssets', 'deduceAssetFile'])
+const ENDPOINT_HAS_QUERY = new Set(['referenceAssetGet', 'habitsGet', 'chapterGet', 'agentSessions', 'agentSessionGet', 'agentSessionDelete', 'libraryDiagnose', 'filesGet', 'chaptersGet', 'chapterDelete', 'artifactsGet', 'suiteStateDataGet', 'agentPicksGet', 'briefGet', 'skillsGet', 'skillGet', 'enrichStatus', 'enrichGraph', 'kbStatusGet', 'agentDshModelsGet', 'factCurveGet', 'factEntriesGet', 'factBooksGet', 'referenceGet', 'referenceGraphGet', 'referenceNoteGet', 'deduceSessionGet', 'deduceSessionsGet', 'deduceAssets', 'deduceAssetFile'])
 
 /** 套件资产 MIME（page 模式自带页同源装载）。 */
 const SUITE_ASSET_MIME = Object.freeze({
@@ -3215,8 +3273,8 @@ async function resolveChatUpstream(config, context) {
  * 「候选不在本拍里」。根因在 deduceEngine.mjs（本工单允许文件之外），这里在结算前把
  * lastTurn 的候选同步进 lastCandidates（同一份数据、同一套 id，不是伪造候选）。
  */
-async function bridgeDeduceCandidates(root, bookId) {
-  const path = deduceStatePath(root, bookId)
+async function bridgeDeduceCandidates(root, bookId, sessionId = '') {
+  const path = deduceStatePath(root, bookId, sessionId)
   if (!existsSync(path)) return { ok: false, code: 'NOT_FOUND', message: '还没有推演会话：先呈现一拍' }
   let state
   try { state = JSON.parse(readFileSync(path, 'utf-8')) } catch {

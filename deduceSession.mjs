@@ -8,7 +8,7 @@
  * 存储：库内 `推演/<bookId>/session.json`（原子写＋.history 备份，与正文/习惯表同一可逆语义）。
  * 归档：`推演/<bookId>/归档/第N章.md`。不碰 .pinax，不碰 vendor。
  */
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { mkdir, rename, writeFile } from 'node:fs/promises'
 import { dirname, join, relative, sep } from 'node:path'
 
@@ -27,6 +27,23 @@ export function safeDeduceBookId(bookId) {
 /** 会话文件路径（库内）。 */
 export function deduceSessionPath(root, bookId) {
   return join(root, DEDUCE_SESSION_DIR, safeDeduceBookId(bookId), 'session.json')
+}
+
+/**
+ * 会话文件路径（OS-86 多局并存）：sessionId='main' 就是既有 session.json（legacy 主线，
+ * 零迁移），其余会话落 推演/<bookId>/sessions/<sid>.json——一个库可以同时养好几局
+ * 平行世界（不同前提/POV/种子），切换走激活指针而不是覆盖文件。
+ */
+export function deduceSessionFile(root, bookId, sessionId = '') {
+  const safe = safeDeduceBookId(bookId)
+  const sid = text(sessionId).trim() || 'main'
+  if (sid === 'main') return join(root, DEDUCE_SESSION_DIR, safe, 'session.json')
+  return join(root, DEDUCE_SESSION_DIR, safe, 'sessions', `${sid}.json`)
+}
+
+/** 激活指针（OS-86）：推演/<bookId>/active.json = { id }；没有/坏档回落 'main'。 */
+export function deduceActivePath(root, bookId) {
+  return join(root, DEDUCE_SESSION_DIR, safeDeduceBookId(bookId), 'active.json')
 }
 
 function relativeTo(root, absPath) {
@@ -59,15 +76,17 @@ function normalizePending(raw) {
 /**
  * 归一校验（PUT 整存与读取共用）：schema 对、nodes 是数组才收；
  * bookId 以调用方给的为准（存哪个库的路径就记哪个库），缺省字段补默认值。
- * 形状不对返回 null（不抛）。
+ * 形状不对返回 null（不抛）。sessionId/title 随会话走（OS-86 多局）。
  */
-export function normalizeDeduceSession(input, bookId = '') {
+export function normalizeDeduceSession(input, bookId = '', sessionId = '') {
   if (!input || typeof input !== 'object' || Array.isArray(input)) return null
   if (input.schema !== DEDUCE_SESSION_SCHEMA) return null
   if (!Array.isArray(input.nodes)) return null
   return {
     schema: DEDUCE_SESSION_SCHEMA,
     bookId: text(bookId).trim() || text(input.bookId).trim() || 'default',
+    sessionId: text(sessionId).trim() || text(input.sessionId).trim() || 'main',
+    title: text(input.title).trim() || '主线',
     branchId: text(input.branchId).trim() || 'main',
     cursor: Number.isSafeInteger(input.cursor) && input.cursor >= 0 ? input.cursor : 0,
     nodes: input.nodes,
@@ -78,27 +97,155 @@ export function normalizeDeduceSession(input, bookId = '') {
 }
 
 /** 读会话：无档/坏档/形状不对都返回 null（空态是合法形态，不报错）。 */
-export function loadDeduceSession(root, bookId) {
-  const path = deduceSessionPath(root, bookId)
+export function loadDeduceSession(root, bookId, sessionId = '') {
+  const path = deduceSessionFile(root, bookId, sessionId)
   if (!existsSync(path)) return null
   try {
-    return normalizeDeduceSession(JSON.parse(readFileSync(path, 'utf-8')), bookId)
+    return normalizeDeduceSession(JSON.parse(readFileSync(path, 'utf-8')), bookId, sessionId)
   } catch {
     return null
   }
 }
 
+/** 读激活会话 id（OS-86）：指针缺省/坏档/指向不存在的会话都回落 'main'。 */
+export function readActiveSessionId(root, bookId) {
+  const path = deduceActivePath(root, bookId)
+  let id = 'main'
+  if (existsSync(path)) {
+    try { id = text(JSON.parse(readFileSync(path, 'utf-8'))?.id).trim() || 'main' } catch { id = 'main' }
+  }
+  if (id !== 'main' && !existsSync(deduceSessionFile(root, bookId, id))) return 'main'
+  return id
+}
+
+/** 写激活指针（原子写）。失败返回 { ok:false }，不抛——激活指针丢了对旧版只是回落主线。 */
+export async function writeActiveSessionId(root, bookId, sessionId) {
+  const sid = text(sessionId).trim() || 'main'
+  const path = deduceActivePath(root, bookId)
+  try {
+    await mkdir(dirname(path), { recursive: true })
+    const tmp = `${path}.tmp-${Date.now()}`
+    await writeFile(tmp, JSON.stringify({ id: sid }, null, 2), 'utf-8')
+    await rename(tmp, path)
+    return { ok: true }
+  } catch (error) {
+    return { ok: false, code: 'WRITE_PROTOCOL_IO_FAILED', message: `激活指针写入失败：${text(error?.message || error)}` }
+  }
+}
+
+/** 单会话轻量摘要（列表用）：读全文取 meta——会话文件都是小档，不值得另建索引。 */
+function sessionMeta(root, bookId, sid) {
+  const session = loadDeduceSession(root, bookId, sid)
+  if (!session) return null
+  const words = (session.buffer?.nodes ?? []).reduce((sum, item) => sum + nodeWords(item), 0)
+  return {
+    id: sid,
+    title: text(session.title) || (sid === 'main' ? '主线' : sid),
+    rounds: (session.nodes ?? []).length,
+    words,
+    branchId: text(session.branchId) || 'main',
+    pending: (session.pending ?? []).length
+  }
+}
+
+/**
+ * 列会话（OS-86）：主线（legacy，哪怕文件还没有也占位）＋ sessions/ 目录全部。
+ * 返回 { activeId, sessions: [meta] }——主线永远排最前，其余按文件名倒序（新局在上）。
+ */
+export function listDeduceSessions(root, bookId) {
+  const safe = safeDeduceBookId(bookId)
+  const dir = join(root, DEDUCE_SESSION_DIR, safe, 'sessions')
+  const extra = []
+  try {
+    for (const name of readdirSync(dir)) {
+      if (name.endsWith('.json')) extra.push(name.replace(/\.json$/u, ''))
+    }
+  } catch { /* 没有 sessions 目录＝只有主线 */ }
+  // 新局在上：s-<时间36进制> 定宽前缀，倒序即建局倒序
+  extra.sort((a, b) => b.localeCompare(a))
+  const sessions = ['main', ...extra]
+    .map((sid) => {
+      // 主线还没有文件也占位——列表永远能看见主线，进推演页就有落点
+      if (sid === 'main' && !existsSync(deduceSessionFile(root, bookId, 'main'))) {
+        return { id: 'main', title: '主线', rounds: 0, words: 0, branchId: 'main', pending: 0 }
+      }
+      return sessionMeta(root, bookId, sid)
+    })
+    .filter(Boolean)
+  return { activeId: readActiveSessionId(root, bookId), sessions }
+}
+
+/** 新局 id：s-<时间36进制>-<随机4位>——文件名安全、排序即建局顺序。 */
+function newSessionId() {
+  return `s-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`
+}
+
+/**
+ * 新开一局（OS-86）：空会话落 sessions/<sid>.json 并激活。title 缺省＝「第N局」。
+ * 返回 { ok, sessionId, session }。
+ */
+export async function createDeduceSession(root, bookId, { title = '' } = {}) {
+  const sid = newSessionId()
+  const safe = safeDeduceBookId(bookId)
+  const dir = join(root, DEDUCE_SESSION_DIR, safe, 'sessions')
+  const existing = (() => { try { return readdirSync(dir).filter((n) => n.endsWith('.json')).length } catch { return 0 } })()
+  const session = normalizeDeduceSession({
+    schema: DEDUCE_SESSION_SCHEMA,
+    title: text(title).trim() || `第${existing + 1}局`,
+    nodes: []
+  }, bookId, sid)
+  const saved = await saveDeduceSession(root, bookId, session)
+  if (!saved.ok) return saved
+  const active = await writeActiveSessionId(root, bookId, sid)
+  if (!active.ok) return active
+  return { ok: true, sessionId: sid, session }
+}
+
+/**
+ * 删除一局（OS-86）：非破坏——文件挪 推演/<bookId>/.deleted/sessions/<sid>-<ts>.json。
+ * 主线可以删吗？可以——但删到一份都不剩时拒绝（推演页不能开天窗）；
+ * 删的是当前激活局时，激活指针回落到还存在的第一局（主线优先）。
+ */
+export async function deleteDeduceSession(root, bookId, sessionId) {
+  const sid = text(sessionId).trim()
+  if (!sid) return { ok: false, code: 'INVALID_ENTRY', message: 'sessionId 必填' }
+  const { activeId, sessions } = listDeduceSessions(root, bookId)
+  if (sessions.length <= 1) {
+    return { ok: false, code: 'INVALID_ENTRY', message: '这是最后一局了——不能删（要清空就用「重新开局」）' }
+  }
+  const file = deduceSessionFile(root, bookId, sid)
+  if (!existsSync(file)) return { ok: false, code: 'NOT_FOUND', message: `会话不存在：${sid}` }
+  const safe = safeDeduceBookId(bookId)
+  const trashDir = join(root, DEDUCE_SESSION_DIR, safe, '.deleted', 'sessions')
+  const trashPath = join(trashDir, `${sid}-${Date.now()}.json`)
+  try {
+    await mkdir(trashDir, { recursive: true })
+    await rename(file, trashPath)
+  } catch (error) {
+    return { ok: false, code: 'WRITE_PROTOCOL_IO_FAILED', message: `会话删除失败：${text(error?.message || error)}` }
+  }
+  let nextActive = activeId
+  if (activeId === sid) {
+    nextActive = sessions.find((m) => m.id !== sid && m.id === 'main')?.id
+      ?? sessions.find((m) => m.id !== sid)?.id ?? 'main'
+    await writeActiveSessionId(root, bookId, nextActive)
+  }
+  return { ok: true, deleted: sid, activeId: nextActive, trash: trashPath }
+}
+
 /**
  * 原子写（tmp＋rename）＋写前备份到 `推演/<bookId>/.history/`。
+ * 落点按 session.sessionId 分档（OS-86：main＝legacy session.json，其余 sessions/<sid>.json）。
  * 失败返回 { ok:false, code, message }，不抛（调用方按契约码透传）。
  */
 export async function saveDeduceSession(root, bookId, session) {
-  const path = deduceSessionPath(root, bookId)
+  const path = deduceSessionFile(root, bookId, session?.sessionId)
   try {
     await mkdir(dirname(path), { recursive: true })
     let backup = null
     if (existsSync(path)) {
-      const backupPath = join(dirname(path), '.history', `session-${Date.now()}.json`)
+      const sid = text(session?.sessionId).trim() || 'main'
+      const backupPath = join(dirname(path), '.history', `session-${sid}-${Date.now()}.json`)
       await mkdir(dirname(backupPath), { recursive: true })
       await writeFile(backupPath, readFileSync(path))
       backup = relativeTo(root, backupPath)
