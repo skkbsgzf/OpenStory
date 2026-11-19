@@ -804,6 +804,9 @@ html[data-doc-auto-gap="off"] .doc-block { margin-bottom: 0; }
 
 /* ── 设置 · 模型与能力（S4）：四张配置卡＋probe 徽标 ─────────────── */
 .cfg-card { border: 1px solid var(--line); border-radius: var(--radius-md); padding: 16px 18px; margin-bottom: 14px; background: var(--bg); }
+/* OS-74：生图后端切换的两个表单块（OpenAI 兼容 / ComfyUI），hidden 时不占位 */
+.cfg-sub { padding-top: 4px; }
+.cfg-sub[hidden] { display: none; }
 .cfg-head { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
 .cfg-head h3 { margin: 0; font-size: 14px; flex: 1 1 auto; }
 .cfg-badge { flex: 0 0 auto; max-width: 52%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; border: 1px solid var(--line); border-radius: var(--pill); padding: 2px 10px; color: var(--meta); }

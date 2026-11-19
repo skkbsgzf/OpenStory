@@ -112,6 +112,8 @@ export function normalizeRuntimeKit(raw, { source, dir } = {}) {
     // 允许 PATH 名或绝对路径（本机 manifest 可信；是否真能执行由 probe 实测）
     kit.probe = { cmd: probeCmd, args: Array.isArray(probe.args) ? probe.args.map((arg) => text(arg)) : [] }
     kit.cliArgs = Array.isArray(raw.cliArgs) ? raw.cliArgs.map((arg) => text(arg)) : ['-p', '{prompt}']
+    // OS-74：{model} 占位允许出现在 cliArgs 里（如 --model {model}）；本 kit 支持的可选模型清单
+    kit.models = Array.isArray(raw.models) ? raw.models.map((m) => text(typeof m === 'string' ? m : m?.id)).filter(Boolean) : []
     const timeoutMs = Number(raw.timeoutMs)
     kit.timeoutMs = Number.isFinite(timeoutMs) && timeoutMs >= 1000 && timeoutMs <= 900000 ? timeoutMs : 120000
   }

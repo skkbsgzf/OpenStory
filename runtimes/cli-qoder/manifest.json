@@ -4,8 +4,10 @@
   "name": "Qoder CLI",
   "kind": "cli",
   "category": "cli",
-  "description": "把 Qoder CLI 当一次性模型用（嫁接：每次对话跑一次子进程）。装没装由 probe 探测。",
+  "description": "把 Qoder CLI 当一次性模型用（嫁接：每次对话跑一次子进程）。凭据走 CLI 自身配置。",
   "probe": { "cmd": "qoder", "args": ["--version"] },
-  "cliArgs": ["-p", "{prompt}"],
+  "cliArgs": ["-p", "{prompt}", "--model", "{model}", "--output-format", "text"],
+  "models": ["Qwen4-Max", "Qwen3.8-Flash"],
+  "defaultModel": "Qwen4-Max",
   "timeoutMs": 180000
 }

@@ -466,7 +466,7 @@ export const ENDPOINTS = Object.freeze({
     // 分析面板 fact 曲线（对齐拆解线算法）：读库内 拆解/ 的 fact+wiki，返回章级 序列/情绪/剧情点/事件数/伏笔数。
     // bookId 可选（默认取最近修改的一本）；库无拆解数据时 chapters=[] 降级，不报错。
     request: { query: { root: 'string', bookId: 'string?' } },
-    response: { ok: 'true', bookId: 'string?', title: 'string?', words: 'number', chapters: 'array', books: 'array' },
+    response: { ok: 'true', bookId: 'string?', title: 'string?', words: 'number', chapters: 'array', foreshadows: 'array', books: 'array' },
     errors: ['INVALID_ENTRY']
   },
   factEntriesGet: {

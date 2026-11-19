@@ -26,10 +26,23 @@ export function composeCliPrompt(messages) {
   return lines.join('\n\n')
 }
 
-/** cliArgs 模板 → 实际 argv（{prompt} 占位替换；其余原样）。 */
-export function buildCliArgs(cliArgs, prompt) {
+/** cliArgs 模板 → 实际 argv（{prompt}/{model} 占位替换；其余原样）。
+ * OS-74：{model} 用于把设置里选的模型注入 CLI（如 --model {model}）。
+ * 模板含 {model} 但没配模型时，这一对参数整段去掉（避免 `--model ""` 空值报错）。 */
+export function buildCliArgs(cliArgs, prompt, model = '') {
   const template = Array.isArray(cliArgs) && cliArgs.length ? cliArgs : ['-p', '{prompt}']
-  const args = template.map((arg) => text(arg).replaceAll('{prompt}', prompt))
+  const modelName = text(model).trim()
+  const args = []
+  for (let i = 0; i < template.length; i++) {
+    const raw = text(template[i])
+    if (!modelName && raw === '{model}') {
+      // 前一项是 --model/--model= 这类开关时，把开关也一起去掉
+      const prev = args[args.length - 1]
+      if (prev && /^--?[a-z-]*model$/iu.test(prev)) args.pop()
+      continue
+    }
+    args.push(raw.replaceAll('{prompt}', prompt).replaceAll('{model}', modelName))
+  }
   // 模板里没有 {prompt} 占位＝prompt 走 stdin（如 `cat` 类工具）
   return { args, useStdin: !template.some((arg) => text(arg).includes('{prompt}')) }
 }
@@ -38,10 +51,11 @@ export function buildCliArgs(cliArgs, prompt) {
  * 跑一次 CLI 对话。返回 {ok:true, text} 或 {ok:false, message}。
  * shell:false；超时 kill 整棵进程树（Windows 用 taskkill /T）；stdout+stderr 合并取内容。
  */
-export async function runCliChat(kit, messages) {
+export async function runCliChat(kit, messages, options = {}) {
   const prompt = composeCliPrompt(messages)
   if (!prompt.trim()) return { ok: false, message: 'CLI 嫁接：对话内容为空' }
-  const { args, useStdin } = buildCliArgs(kit.cliArgs, prompt)
+  // OS-74：模型由调用方传（设置里的 text.model）；CLI 只吃 CLI 自己的凭据，不经 llm API
+  const { args, useStdin } = buildCliArgs(kit.cliArgs, prompt, options.model ?? '')
   const timeoutMs = Number(kit.timeoutMs) > 0 ? Number(kit.timeoutMs) : 120000
   return new Promise((resolvePromise) => {
     let child
