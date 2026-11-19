@@ -134,16 +134,19 @@ export async function deducePresent({ root, bookId = 'default', pov = '', seed =
   } catch (error) {
     return { ok: false, code: text(error?.code || 'INVALID_ENTRY'), message: text(error?.message || error) }
   }
+  // OS-88：候选统一映射——命运候选文案人话化（骰点收尾），一处重写全链路受益
+  // （你回合行/事实条目名/待确认卡/剧情树都读这份 text）
+  const mappedCandidates = (turn.candidates ?? []).map((candidate, index) => ({
+    id: text(candidate.id) ? `${text(candidate.id)}-${index}` : `c${index}`,
+    source: text(candidate.source),
+    text: text(candidate.source) === '命运' ? humanizeFateText(candidate.trace) : text(candidate.text),
+    refs: Array.isArray(candidate.refs) ? candidate.refs : [],
+    trace: candidate.trace ?? null
+  }))
   // 存最后一面（OS-60）：进入推演页时 peek 回放这一面，不额外推进
   state.lastTurn = {
     sceneCard: turn.sceneCard ?? null,
-    candidates: (turn.candidates ?? []).map((candidate, index) => ({
-      id: text(candidate.id) ? `${text(candidate.id)}-${index}` : `c${index}`,
-      source: text(candidate.source),
-      text: text(candidate.text),
-      refs: Array.isArray(candidate.refs) ? candidate.refs : [],
-      trace: candidate.trace ?? null
-    })),
+    candidates: mappedCandidates,
     tension: turn.tension ?? null
   }
   await saveState(root, bookId, state, sessionId)
@@ -160,13 +163,7 @@ export async function deducePresent({ root, bookId = 'default', pov = '', seed =
     round: state.round ?? 0,
     seed: useSeed,
     sceneCard: turn.sceneCard,
-    candidates: (turn.candidates ?? []).map((candidate, index) => ({
-      id: text(candidate.id) ? `${text(candidate.id)}-${index}` : `c${index}`,
-      source: text(candidate.source),
-      text: text(candidate.text),
-      refs: Array.isArray(candidate.refs) ? candidate.refs : [],
-      trace: candidate.trace ?? null
-    })),
+    candidates: mappedCandidates,
     tension: turn.tension ?? null,
     fronts: summarizeFronts(state.fronts),
     budget: { used: state.aiSpent ?? 0, max: state.budgetMax ?? 8 },
@@ -179,6 +176,23 @@ export async function deducePresent({ root, bookId = 'default', pov = '', seed =
       .map((entry) => text(entry?.name).trim())
       .filter(Boolean)
   }
+}
+
+/**
+ * 命运候选的人话文案（OS-88，作者实测「检定 2d6=6+2=8：顺遂到底是什么意思」）：
+ * vendor 的 `剧情检定 2d6=a+b=sum：顺遂/受阻` 是跑团黑话——玩家不知道自己选的是什么。
+ * 这里按骰点翻成一句话：先说人话结论，骰点收尾（条目名截 18 字也截在语义上）。
+ * 纯函数：同 trace 同文案，不破坏引擎「同种子同事实＝同一拍」的可复现承诺。
+ */
+export function humanizeFateText(trace) {
+  const t = trace ?? {}
+  const a = Number.isFinite(Number(t.a)) ? Number(t.a) : null
+  const b = Number.isFinite(Number(t.b)) ? Number(t.b) : null
+  const sum = Number.isFinite(Number(t.sum)) ? Number(t.sum) : (a !== null && b !== null ? a + b : null)
+  const success = t.success === undefined || t.success === null ? (sum !== null && sum >= 7) : t.success === true
+  const roll = sum !== null ? `（命运骰 ${sum}：${a}+${b} ${success ? '顺遂' : '受阻'}）` : ''
+  if (success) return `世界不拦你——事情按眼下最自然的走向推进${roll}`
+  return `世界设了坎——这一步会受阻，有代价要收拾${roll}`
 }
 
 function summarizeFronts(fronts) {
