@@ -1783,6 +1783,7 @@ async function putAgentPicks(patch) {
     const payload = await api('/api/agent-picks', { method: 'PUT', body: JSON.stringify(body) })
     state.agent.picks = { style: payload.picks.style || '', methods: payload.picks.methods || [] }
     state.agent.picksExplicit = true
+    state.agent.picksFlashAt = Date.now()
   } catch (error) {
     rememberAgentError(`选择链写入失败：${text(error?.message || error)}`)
   }
@@ -1823,6 +1824,7 @@ async function pickGenre(id) {
       const dir = state.view.slice(4)
       if (!(state.libDirs || []).includes(dir)) state.view = 'write'
     }
+    state.agent.picksFlashAt = Date.now()
     closeComposerMenus()
     render()
   } catch (error) {
@@ -2147,6 +2149,25 @@ function renderAgentCurrent() {
   const session = agent.sessions[index]
   const title = session ? sessionTitle(session, index) : { label: '未落档的新会话', broken: false }
   host.innerHTML = `<span>当前</span><span class="tt${title.broken ? ' bad' : ''}">${esc(title.label)}</span>`
+}
+
+/** 生效知识链常驻提示（OS-71 作者要求「切换要有画面提示」）：
+ * 题材 · 文风 · 方法论数，配了才显示（沉默层），点一下＝打开灯泡选择链。
+ * 刚切换 1.5s 内加 flash 动画，让「改了什么」一眼可见。 */
+function renderKbChain() {
+  const host = document.getElementById('agent-kb-chain')
+  if (!host) return
+  const genre = state.briefGenre?.name || ''
+  const picks = state.agent.picksExplicit && state.agent.picks ? state.agent.picks : null
+  if (!genre && !picks?.style && !(picks?.methods || []).length) { host.innerHTML = ''; return }
+  const styleName = picks?.style || ''
+  const methods = picks?.methods || []
+  const flash = Date.now() - (state.agent.picksFlashAt || 0) < 1600
+  const segs = []
+  if (genre) segs.push(`<span class="kb-chip" title="题材（写进库简报）">${esc(genre)}</span>`)
+  if (styleName) segs.push(`<span class="kb-chip style" title="主导文风（每轮注入）">${esc(styleName.replace(/^style-/, ''))}</span>`)
+  if (methods.length) segs.push(`<span class="kb-chip" title="${esc(methods.join('、'))}">方法论 ×${methods.length}</span>`)
+  host.innerHTML = `<button class="kb-chain${flash ? ' flash' : ''}" data-action="toggle-style-menu" title="点开调整知识链">知识链 ${segs.join('<i class="kb-sep">·</i>')}</button>`
 }
 
 function toggleAgentSessions() {
@@ -2548,6 +2569,7 @@ function renderContextChip() {
 function renderAgent() {
   renderContextChip()
   renderAgentCurrent()
+  renderKbChain()
   const strip = document.getElementById('agent-sess-panel')
   if (strip) strip.innerHTML = sessionsHtml()
   const count = document.getElementById('agent-sess-count')
@@ -2659,7 +2681,7 @@ async function sendAgentMessage() {
   const polish = ctx?.kind === 'polish'
   const head = polish ? '【润笔请求】' : ctx?.kind === 'skill' ? '【技能规范】' : '【选中段落】'
   const askTag = polish ? '【作者要求】' : '【我的问题】'
-  const ctxBlock = ctx.kind === 'skill' ? ctx.context : `【所在段落上下文】\n${ctx.context}`
+  const ctxBlock = ctx ? (ctx.kind === 'skill' ? ctx.context : `【所在段落上下文】\n${ctx.context}`) : ''
   const content = ctx
     ? `${head}\n${ctx.quote}\n\n${ctxBlock}${typed ? `\n\n${askTag}\n${typed}` : ''}`
     : typed

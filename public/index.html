@@ -283,6 +283,14 @@ input, textarea, select { font: inherit; color: inherit; }
 .agent-sess-btn:hover { border-color: var(--ink); color: var(--ink); }
 .agent-sess-btn.on { border-color: var(--ink); color: var(--ink); }
 .agent-sess-btn svg { flex: 0 0 13px; }
+#agent-kb-chain:empty { display: none; }
+.kb-chain { display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap; margin: 6px 14px 0; padding: 4px 10px; border: 1px solid var(--hair); border-radius: 999px; background: var(--soft); font-size: 11px; color: var(--ink-2); cursor: pointer; text-align: left; }
+.kb-chain:hover { border-color: var(--line); background: var(--accent-soft); }
+.kb-chain.flash { animation: kbflash 1.5s ease-out; }
+@keyframes kbflash { 0% { background: var(--accent-soft); border-color: var(--accent); } 100% { background: var(--soft); border-color: var(--hair); } }
+.kb-chip { font-weight: 600; color: var(--ink-2); }
+.kb-chip.style { color: var(--accent); }
+.kb-sep { font-style: normal; color: var(--meta); }
 .agent-sess-panel { position: absolute; right: 0; top: calc(100% + 6px); width: 274px; max-height: 60vh; overflow-y: auto; background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius-md); box-shadow: var(--shadow); padding: 6px; display: none; z-index: 85; }
 .agent-sess-panel.open { display: block; }
 .agent-sess-panel .sess { display: flex; align-items: center; gap: 8px; width: 100%; padding: 7px 8px; border-radius: var(--radius); text-align: left; color: var(--muted); font-size: 12px; }
@@ -1255,6 +1263,7 @@ html[data-doc-auto-gap="off"] .doc-block { margin-bottom: 0; }
         </div>
       </div>
       <div class="agent-current" id="agent-current"></div>
+      <div id="agent-kb-chain"></div>
       <div class="agent-body" id="agent-thread">
         <div class="agent-empty">
           <strong>问剧情、要一段正文、改设定…</strong>
