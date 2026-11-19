@@ -526,6 +526,62 @@ function blockHtmlToMd(blockEl) {
   return text.split('\n').map((line) => line.trimEnd()).join('\n').trim()
 }
 
+/** 剧本块 HTML → 剧本文本（OS-76：与 blockHtmlToMd 同职责，但保留剧本标记）。
+ * 按 data-sc-kind 重建：幕 `# 标题`、场景 `*〔…〕*`、台词 `**名**（提示）：说白`。 */
+function scriptBlockToRaw(blockEl) {
+  // data-sc-kind 渲染在内层块（.sc-line/.sc-act/…）上，不在 doc-block 外层——
+  // 先读外层（兼容），再从内层找；两处都没有才算 action。
+  const inner = blockEl.querySelector('[data-sc-kind]')
+  const kind = blockEl.dataset.scKind || inner?.dataset.scKind || ''
+  const raw = blockEl.dataset.raw || ''
+  // contenteditable 里 innerText 会受浏览器排版影响；优先用 textContent（不含渲染空白差异）
+  const plain = (el) => text(el?.textContent ?? '').replace(/\s+/gu, ' ').trim()
+  if (kind === 'act') return `# ${plain(blockEl) || raw.replace(/^#\s+/u, '')}`
+  if (kind === 'stage') return `*〔${plain(blockEl) || raw.replace(/^\*?[〔【\[]/u, '').replace(/[〕】\]]\*?$/u, '')}〕*`
+  if (kind === 'line') {
+    const who = plain(blockEl.querySelector('.sc-who'))
+    const hint = plain(blockEl.querySelector('.sc-hint')).replace(/^[（(]|[）)]$/gu, '')
+    const said = plain(blockEl.querySelector('.sc-said'))
+    // 结构被浏览器重组（span 丢了）时，用 data-raw 反解出 who/hint 兜底
+    if (who && said !== undefined) return `**${who}**${hint ? `（${hint}）` : ''}：${said}`
+    if (raw) {
+      const m = /^\*\*([^*]+)\*\*\s*(?:[（(]([^）)]*)[）)])?\s*[:：]\s*([\s\S]*)$/u.exec(raw)
+      if (m) return `**${m[1].trim()}**${m[2] ? `（${m[2].trim()}）` : ''}：${plain(blockEl) || m[3]}`
+    }
+    return plain(blockEl)
+  }
+  return plain(blockEl) || raw
+}
+
+/** 剧本块保存：与 commitDocBlock 同构，只是块转源码和保存目标换掉。 */
+async function commitScriptBlock(blockEl) {
+  const work = dirWork('剧本')
+  if (!work?.loaded || !work.file) return
+  const start = Number(blockEl.dataset.start)
+  const end = Number(blockEl.dataset.end)
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return
+  const nextBlock = scriptBlockToRaw(blockEl)
+  const currentRaw = blockEl.dataset.raw ?? ''
+  if (nextBlock === currentRaw) return
+  const next = work.text.slice(0, start) + nextBlock + work.text.slice(end)
+  work.text = next
+  blockEl.dataset.raw = nextBlock
+  setAutosaveChip('保存中…')
+  try {
+    const payload = await api('/api/chapter', {
+      method: 'PUT',
+      body: JSON.stringify({ root: state.current.path, file: work.file, text: next })
+    })
+    work.savedAt = payload.savedAt
+    setAutosaveChip('已保存 · 刚刚')
+    const chars = document.getElementById('dir-chars')
+    if (chars) chars.textContent = `${next.replace(/\s/gu, '').length} 字`
+  } catch (error) {
+    setAutosaveChip('保存失败')
+    state.error = `${error?.code ? `${error.code} · ` : ''}${text(error?.message || error)}`
+    render()
+  }
+}
 
 /** 当前章节的渲染块列表（与 data-block 的下标一致：已过滤掉 H1）。 */
 function renderedBlocks() {
@@ -558,6 +614,8 @@ async function writeChapterText(text, note = '') {
 }
 
 async function commitDocBlock(blockEl) {
+  // OS-76：剧本页复用本函数（同一套逐块编辑链路），只是文本转换与保存目标不同
+  if (state.view === 'dir:剧本') return commitScriptBlock(blockEl)
   if (!state.current || !state.chapterFile) return
   const start = Number(blockEl.dataset.start)
   const end = Number(blockEl.dataset.end)
@@ -3241,24 +3299,23 @@ function settingsModelsSectionHtml() {
       <div class="field">
         <label class="cfg-switch">
           <input type="checkbox" id="mcfg-vision-enabled"${vision.enabled === true ? ' checked' : ''}>
-          <span>启用识图（把图片交给模型看）</span>
+          <span>启用识图（派 DSH 子 agent 读图写白描）</span>
         </label>
       </div>
-      <div class="field"><label>Endpoint（OpenAI 兼容，填到 /v1 为止）</label>
-        <input id="mcfg-vision-endpoint" placeholder="https://api.openai.com/v1" value="${esc(text(vision.endpoint))}">
+      <div class="field"><label>识图模型（从 DSH 模型清单选）</label>
+        <select class="select" id="mcfg-vision-model">
+          <option value=""${text(vision.model) ? '' : ' selected'}>用 DSH 默认模型</option>
+          ${(agent.dshModels || []).map((m) => `<option value="${esc(m.provider + '/' + m.id)}"${text(vision.model) === m.provider + '/' + m.id ? ' selected' : ''}>${esc(m.providerName + ' / ' + m.name)}</option>`).join('')}
+        </select>
+        <span class="cfg-note">走 DSH 子 agent + 内置 read_image 工具，不引入额外模型、不直连 LLM API。跑动记录与 DSH 会话一致。</span>
       </div>
-      <div class="field"><label>模型</label>
-        <input id="mcfg-vision-model" placeholder="gpt-4o-mini" value="${esc(text(vision.model))}">
-      </div>
-      <div class="field"><label>API Key${vision.apiKeyMasked ? `（已设置 ${esc(vision.apiKeyMasked)}）` : ''}</label>
-        <input id="mcfg-vision-key" type="password" placeholder="${vision.apiKeyMasked ? '留空保留原 key' : 'sk-…'}">
+      <div class="field"><label>DSH profile（留空＝默认 openstory）</label>
+        <input id="mcfg-vision-profile" placeholder="openstory" value="${esc(text(vision.profile))}">
       </div>
       <div class="row">
         <button class="btn-primary" data-action="config-save" data-block="vision">保存</button>
-        <button class="btn-ghost" data-action="config-probe" data-probe-kind="vision">测试连接</button>
-        <span class="cfg-note" id="mcfg-vision-note"></span>
+        <span class="cfg-note">识图没有独立探测——随手生一张设定图后点「看这张图写白描」就能验。</span>
       </div>
-      <span class="cfg-note">测试会发一张 8×8 的纯红小图，问模型「什么颜色」。</span>
       <div class="err" id="mcfg-vision-err"></div>
     </div>
 
@@ -3318,13 +3375,12 @@ async function saveConfigBlock(block) {
       body.image.comfyNodeMap = parseNodeMapText(cfgValue('mcfg-comfy-nodemap'))
     }
   } else if (block === 'vision') {
+    // OS-76：识图走 DSH 子 agent——只存 enabled / model / profile
     body.vision = {
       enabled: cfgChecked('mcfg-vision-enabled'),
-      endpoint: cfgValue('mcfg-vision-endpoint'),
-      model: cfgValue('mcfg-vision-model')
+      model: cfgValue('mcfg-vision-model'),
+      profile: cfgValue('mcfg-vision-profile')
     }
-    const key = cfgRawValue('mcfg-vision-key')
-    if (key.trim()) body.vision.apiKey = key
   } else {
     body.agent = {
       defaultModel: cfgValue('mcfg-default-model'),
@@ -6696,30 +6752,53 @@ function scriptViewHtml() {
   const options = work.files
     .map((item) => `<option value="${esc(item.file)}"${item.file === work.file ? ' selected' : ''}>${esc(item.name)}（${item.size} B）</option>`)
     .join('')
-  const sc = work.loaded ? state.scriptModule?.scriptStats?.(work.text) : null
-  const stats = sc
-    ? `<span class="b">${sc.acts} 幕</span><span>${sc.scenes} 场</span><span>${sc.lines} 句台词</span><span>${sc.chars} 字</span>${sc.cast.length ? `<span class="count">出场：${esc(sc.cast.join('、'))}</span>` : ''}`
+  const sc = work.loaded && state.scriptModule?.scriptStats ? state.scriptModule.scriptStats(work.text) : null
+  const meta = sc
+    ? `<span class="b">${sc.acts} 幕</span><span class="docline-sep">·</span><span>${sc.scenes} 场</span><span class="docline-sep">·</span><span>${sc.lines} 句台词</span><span class="docline-sep">·</span><span id="dir-chars">${sc.chars} 字</span>${sc.cast.length ? `<span class="docline-sep">·</span><span class="count">出场：${esc(sc.cast.join('、'))}</span>` : ''}`
     : `<span id="dir-chars">${work.text.length} 字</span>`
+  // OS-76：与正文页同构——逐块 contenteditable + data-start/end/raw 偏移，
+  // 保存走同一套 commitDocBlock（只是渲染器换成剧本版式）。
   const body = work.loaded
-    ? `<div class="sc-doc" id="sc-doc" contenteditable="true" spellcheck="false" data-script-editor="1">${state.scriptModule?.renderScriptBody?.(work.text) || ''}</div>`
+    ? renderScriptDocBody(work.text)
     : `<div class="empty-state"><h2>${esc(label)}</h2><p>还没有剧本——选一个文件开始，或新建一个。</p></div>`
-  return `<div class="doc-head">
-      <div class="kick">${esc(state.current.name)} / ${esc(label)}</div>
-      <h1>${esc(work.file ? work.file.split('/').pop() : label)}</h1>
-      <div class="doc-meta">${stats}
-        ${work.savedAt ? `<span class="saved-chip">已保存 · ${esc(formatAt(work.savedAt))}</span>` : ''}
-        ${work.note ? `<span class="count">${esc(work.note)}</span>` : ''}
+  return `<div class="doc-workspace doc-workspace-sticky">
+    <header class="doc-head doc-head-immersive">
+      <div class="docline">
+        <span class="kick">${esc(state.current.name)}</span>
+        <span class="docline-sep">·</span>
+        <span class="chap-no">${esc(label)}</span>
+        <span class="docline-sep">·</span>
+        ${meta}
+        <span class="sp"></span>
+        ${work.savedAt ? `<span class="saved-chip">已保存 · ${esc(formatAt(work.savedAt))}</span>` : '<span class="doc-autosave" id="doc-autosave"></span>'}
       </div>
-    </div>
+      <div class="doc-title-row">
+        <h1 class="doc-title">${esc(work.file ? work.file.split('/').pop().replace(/\.md$/u, '') : label)}</h1>
+      </div>
+    </header>
     ${flowError(work.error)}
-    <div class="toolbar">
+    <div class="doc-toolbar">
       ${options ? `<select class="select" id="dirfile-select">${options}</select>` : ''}
       <input class="file-input" id="dirfile-new-name" placeholder="新剧本.md" value=""><button class="btn-ghost" data-action="dirfile-new">新建</button>
       <span class="sp"></span>
       <span class="count">点内容直接改，失焦自动保存</span>
-      <button class="btn-primary" data-action="dirfile-save"${work.loaded ? '' : ' disabled'}>保存</button>
     </div>
-    ${work.loading && !work.loaded ? '<div class="loading">正在读取…</div>' : body}`
+    ${work.loading && !work.loaded ? '<div class="loading">正在读取…</div>' : body}
+  </div>`
+}
+
+/** 剧本逐块渲染（与 renderDocBody 同构：doc-line + doc-block + 源码偏移）。
+ * 唯一区别是块内容按剧本版式渲染，而不是 markdown。 */
+function renderScriptDocBody(source) {
+  const mod = state.scriptModule
+  if (!mod?.splitScriptBlocks) return `<div class="doc-paper"><p>${esc(source)}</p></div>`
+  const blocks = mod.splitScriptBlocks(source)
+  if (!blocks.length) return `<div class="doc-paper"><div class="sc-empty">还没有内容——写第一幕吧。</div></div>`
+  const parts = blocks.map((block) => `<div class="doc-line" data-line="${block.index}">
+      <button class="doc-gutter" data-action="gutter-jump" data-block-index="${block.index}" title="第 ${block.index + 1} 块" aria-label="第 ${block.index + 1} 块"></button>
+      <div class="doc-block sc-block" contenteditable="true" spellcheck="false" data-block="${block.index}" data-start="${block.start}" data-end="${block.end}" data-raw="${esc(block.raw)}">${mod.renderScriptBlock(block)}</div>
+    </div>`)
+  return `<div class="doc-paper sc-doc" id="doc-reader">${parts.join('')}</div>`
 }
 
 function dirViewHtml(dir) {
@@ -6733,6 +6812,7 @@ function dirViewHtml(dir) {
   // OS-75：剧本走原生渲染（幕/场景指示/角色台词按剧本格式排版，不是裸 textarea）。
   // 与小说同构：逐块 contenteditable 实时编辑，失焦保存。
   if (dir === '剧本') return scriptViewHtml()
+  const work = dirWork(dir)
   const readonly = READONLY_DIRS.has(dir)
   const label = DIR_LABELS[dir] || dir
   const options = work.files
@@ -8854,9 +8934,9 @@ document.addEventListener('dblclick', (event) => {
 document.addEventListener('focusout', (event) => {
   const blockEl = event.target?.closest?.('.doc-block[data-block]')
   if (!blockEl) return
-  // 正文页与参考详情页共用同一套逐块实时编辑（OS-53）；按所在容器分流写回
+  // 正文页 / 参考详情页 / 剧本页共用同一套逐块实时编辑（OS-53/OS-76）；按所在容器与视图分流写回
   if (blockEl.closest('#ref-reader')) commitRefBlock(blockEl)
-  else if (state.view === 'write') commitDocBlock(blockEl)
+  else if (state.view === 'write' || state.view === 'dir:剧本') commitDocBlock(blockEl)
 })
 
 // 文档内拖选文字 → 上方浮窗（润笔 / 与 Agent 讨论）

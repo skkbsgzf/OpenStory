@@ -102,7 +102,7 @@ import {
 } from './genres.mjs'
 import { runCliChat } from './cli-bridge.mjs'
 import { detectDsh, detectDshAny, detectDshModels, probeDshStack, resolveDshChat, resolveDshRun, setupDshStack } from './dsh-bridge.mjs'
-import { runDshStdio } from './dsh-cli.mjs'
+import { dshModelSelection, runDshStdio } from './dsh-cli.mjs'
 import {
   builtinSuitesDir,
   defaultSuiteStatePath,
@@ -1587,36 +1587,29 @@ function readLegacyDeduceState(root, bookId) {
   }
 
   if (endpointId === 'visionDescribe') {
-    // OS-75：识图写作——读库内图片，走 vision provider（OpenAI 兼容多模态），
-    // 产出文学化白描（不是技术描述）。配套 skill: skills/visual-describe。
+    // OS-76：识图走 DSH 子 agent（不是 LLM API）——DSH 有内置 read_image 工具，
+    // 子 agent 用「设置里指定的 vision 模型」读图，按预设提示词写文学白描。
+    // 这样不引入额外模型变量，跑动记录与 DSH 自己的会话一致。
     const authorized = authorizeRoot(allowlist, request.root)
     if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
-    const imageRel = text(request.image).trim().replaceAll('\\', '/')
+    const imageRel = text(request.image).trim().replaceAll('\x5c', '/')
     if (!imageRel) return sendError(res, API_ERROR_CODES.INVALID_ENTRY, 'image 必填（库内图片相对路径）')
     if (!/\.(png|jpe?g|webp|gif|avif)$/iu.test(imageRel)) {
       return sendError(res, API_ERROR_CODES.INVALID_ENTRY, `不是图片：${imageRel}`)
     }
     const resolvedImage = resolveInsideRoot(authorized.root, imageRel, { allowMetadata: false })
     if (!resolvedImage.ok) return sendError(res, resolvedImage.code ?? API_ERROR_CODES.PATH_ESCAPE, resolvedImage.message)
+    if (!existsSync(resolvedImage.path)) {
+      return sendError(res, API_ERROR_CODES.INVALID_ENTRY, `图片不存在：${imageRel}`)
+    }
 
     const { config } = await loadConfigV2(context.agentConfigPath)
     const vision = config.vision
     if (!vision.enabled) {
-      return sendError(res, API_ERROR_CODES.AGENT_UPSTREAM_ERROR, '识图没启用——设置 · 模型 · 识图里打开开关并填 endpoint/模型')
-    }
-    if (!vision.endpoint) {
-      return sendError(res, API_ERROR_CODES.AGENT_UPSTREAM_ERROR, '未配置识图端点')
+      return sendError(res, API_ERROR_CODES.AGENT_UPSTREAM_ERROR, '识图没启用——设置 · 模型 · 识图里打开开关并选模型')
     }
 
-    let buf
-    try { buf = await readFile(resolvedImage.path) } catch (error) {
-      return sendError(res, API_ERROR_CODES.INVALID_ENTRY, `图片读不了：${text(error?.message || error)}`)
-    }
-    const ext = imageRel.split('.').pop().toLowerCase()
-    const mime = ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : ext === 'webp' ? 'image/webp' : ext === 'gif' ? 'image/gif' : ext === 'avif' ? 'image/avif' : 'image/png'
-    const dataUrl = `data:${mime};base64,${buf.toString('base64')}`
-
-    // 目标决定白描口径
+    // target 决定白描口径
     const target = text(request.target).trim() || 'character'
     const targetGuide = {
       character: '这是一个角色。写他的外形与气质：身形/衣着的具体质感、面容里最抓人的一处、姿态透出的性格。',
@@ -1627,8 +1620,11 @@ function readLegacyDeduceState(root, bookId) {
     const focus = text(request.focus).trim()
     const habitContext = text(request.habitContext).trim()
 
-    const systemPrompt = [
-      '你是小说家的眼睛。看一张图，用文学语言写一段可复用的人物/场景白描。',
+    // ★ 预设提示词（作者口径：不让人现编，固定这套）
+    const prompt = [
+      '你有 read_image 工具。先读这张图，然后用文学语言写一段可直接进小说正文的白描。',
+      '',
+      `图片路径：${resolvedImage.path}`,
       '',
       '硬规矩：',
       '1. 只写看得见、能推理的。图上没有的身份/来历/情绪成因不编。',
@@ -1642,33 +1638,31 @@ function readLegacyDeduceState(root, bookId) {
       habitContext ? `\n作者习惯（必须遵守）：${habitContext}` : ''
     ].filter(Boolean).join('\n')
 
-    let payload = null
-    try {
-      const response = await fetch(chatCompletionsUrl(vision.endpoint), {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', ...(vision.apiKey ? { authorization: `Bearer ${vision.apiKey}` } : {}) },
-        body: JSON.stringify({
-          model: text(vision.model),
-          max_tokens: 800,
-          stream: false,
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: [
-              { type: 'text', text: '看图，写白描。' },
-              { type: 'image_url', image_url: { url: dataUrl } }
-            ] }
-          ]
-        }),
-        signal: AbortSignal.timeout(180_000)
-      })
-      if (!response.ok) throw new Error(`HTTP ${response.status} · ${(await response.text()).slice(0, 200)}`)
-      payload = await response.json()
-    } catch (error) {
-      return sendError(res, API_ERROR_CODES.AGENT_UPSTREAM_ERROR, `识图端点失败：${text(error?.message || error)}`)
+    // 模型：设置里 vision.model（形如 provider/id）优先；没选＝用 DSH 默认
+    const modelSelection = dshModelSelection(text(vision.model))
+    const profile = text(vision.profile || context.env?.DSH_PROFILE || 'openstory').trim()
+    let collected = ''
+    const run = await runDshStdio({
+      dshCmd: context.env?.DSH_CLI || 'dsh',
+      profile,
+      cwd: authorized.root,
+      prompt,
+      ...(modelSelection ? { model: modelSelection } : {}),
+      inactivityMs: 180_000,
+      timeoutMs: 600_000,
+      onText: (piece) => { collected += piece }
+    })
+    if (!run.ok) {
+      return sendError(res, API_ERROR_CODES.AGENT_UPSTREAM_ERROR, `DSH 识图失败：${text(run.message || run.code || 'unknown')}`)
     }
-    const out = text(payload?.choices?.[0]?.message?.content).trim()
-    if (!out) return sendError(res, API_ERROR_CODES.AGENT_UPSTREAM_ERROR, '识图端点没有返回文本')
-    return sendJson(res, 200, { ok: true, text: out, chars: out.length, ...(vision.model ? { model: vision.model } : {}) })
+    const out = text(collected || run.text || '').trim()
+    if (!out) return sendError(res, API_ERROR_CODES.AGENT_UPSTREAM_ERROR, 'DSH 子 agent 没有返回文本（模型可能不支持读图）')
+    return sendJson(res, 200, {
+      ok: true,
+      text: out,
+      chars: out.length,
+      ...(modelSelection ? { model: `${modelSelection.provider}/${modelSelection.id}` } : {})
+    })
   }
 
   if (endpointId === 'referenceAssetGet') {
@@ -2442,7 +2436,7 @@ const DEFAULT_IMAGE_NEGATIVE = 'lowres, blurry, watermark, text, 3d render, phot
 const CONFIG_BLOCK_FIELDS = Object.freeze({
   text: ['endpoint', 'model', 'apiKey', 'runtime', 'reasoningEffort', 'chineseReasoning'],
   image: ['enabled', 'backend', 'endpoint', 'model', 'apiKey', 'comfyUrl', 'comfyWorkflow', 'comfyNodeMap', 'stylePrompt'],
-  vision: ['enabled', 'endpoint', 'model', 'apiKey'],
+  vision: ['enabled', 'endpoint', 'model', 'apiKey', 'profile'],
   agent: ['defaultModel', 'subagentModel', 'profile']
 })
 
@@ -2450,7 +2444,7 @@ function emptyConfigV2() {
   return {
     text: { endpoint: '', model: '', apiKey: '', runtime: '', reasoningEffort: '', chineseReasoning: true },
     image: { enabled: false, backend: 'openai', endpoint: '', model: '', apiKey: '', comfyUrl: '', comfyWorkflow: '', comfyNodeMap: {}, stylePrompt: '' },
-    vision: { enabled: false, endpoint: '', model: '', apiKey: '' },
+    vision: { enabled: false, endpoint: '', model: '', apiKey: '', profile: '' },
     agent: { defaultModel: '', subagentModel: '', profile: '' }
   }
 }
@@ -2486,11 +2480,14 @@ function normalizeConfigBlock(kind, raw) {
     }
   }
   if (kind === 'vision') {
+    // OS-76：识图走 DSH 子 agent——只认 enabled + model（provider/id）+ profile，
+    // endpoint/apiKey 保留字段位（兼容旧配置），但不再使用。
     return {
       enabled: source.enabled === true,
       endpoint: text(source.endpoint).trim(),
       model: text(source.model).trim(),
-      apiKey: text(source.apiKey).trim()
+      apiKey: text(source.apiKey).trim(),
+      profile: text(source.profile).trim()
     }
   }
   return {
@@ -2659,7 +2656,9 @@ function configPublicV2(config, configPath) {
       endpoint: config.vision.endpoint,
       model: config.vision.model,
       apiKeyMasked: config.vision.apiKey ? maskApiKey(config.vision.apiKey) : '',
-      configured: Boolean(config.vision.endpoint)
+      profile: config.vision.profile || '',
+      // OS-76：走 DSH 子 agent，选了模型即算已配置（不需要 endpoint）
+      configured: Boolean(config.vision.model)
     },
     agent: {
       defaultModel: config.agent.defaultModel,

@@ -809,6 +809,10 @@ html[data-doc-auto-gap="off"] .doc-block { margin-bottom: 0; }
 .sc-doc { max-width: var(--doc-max); margin: 0 auto; padding: 8px 0 60px; font-family: var(--serif);
   font-size: 15px; line-height: 1.85; color: var(--ink); outline: none; }
 .sc-doc:focus { outline: none; }
+/* OS-76：剧本页复用 doc-line/doc-block 逐块编辑链路——块内是剧本版式，不是纯文本 */
+.sc-doc .doc-line { padding-left: 0; }
+.sc-block { min-height: 1.6em; outline: none; }
+.sc-block:focus { background: color-mix(in srgb, var(--accent) 5%, transparent); border-radius: var(--radius-sm); }
 .sc-act { font-family: var(--sans); font-size: 19px; font-weight: 700; letter-spacing: .02em;
   margin: 34px 0 18px; padding-bottom: 8px; border-bottom: 2px solid var(--line); color: var(--ink); }
 .sc-act:first-child { margin-top: 8px; }
