@@ -347,12 +347,57 @@ export const ENDPOINTS = Object.freeze({
     response: { ok: 'true', note: 'object', backlinks: 'object' },
     errors: ['NO_LIBRARY', 'PATH_ESCAPE', 'INVALID_ENTRY', 'NOT_FOUND']
   },
+  visionDescribe: {
+    method: 'POST',
+    path: '/api/vision/describe',
+    // 识图写作（OS-75）：读库内图片 → 调 vision provider（OpenAI 兼容 chat/completions
+    // 多模态）→ 返回文学化白描。未配置 vision 时如实报。
+    request: {
+      body: {
+        root: 'string',
+        image: 'string',
+        target: 'string?',
+        focus: 'string?',
+        habitContext: 'string?'
+      }
+    },
+    response: { ok: 'true', text: 'string', chars: 'number', model: 'string?' },
+    errors: ['NO_LIBRARY', 'PATH_ESCAPE', 'INVALID_ENTRY', 'AGENT_UPSTREAM_ERROR']
+  },
+  referenceAssetGet: {
+    method: 'GET',
+    path: '/api/reference/asset',
+    // 世界书条目的图片本体（OS-75）：path 相对库根，只放行 参考/ 下图片扩展名。
+    // 成功响应是二进制流（image/png 等），不是 JSON——前端 <img> 直挂。
+    request: { query: { root: 'string', path: 'string' } },
+    response: { ok: 'true' },
+    errors: ['NO_LIBRARY', 'PATH_ESCAPE', 'NOT_FOUND', 'INVALID_ENTRY']
+  },
+  referenceImageGenerate: {
+    method: 'POST',
+    path: '/api/reference/image',
+    // 世界书条目生图（OS-75）：按条目名＋描述生成设定图，落
+    // 参考/<条目目录>/assets/<条目名>.png，并把相对路径回填进该条目的 frontmatter cover/images。
+    // 后端走全局配置 image 块（OpenAI 兼容 或 ComfyUI）；stylePrompt 缺省＝「2D彩漫风格」。
+    request: {
+      body: {
+        root: 'string',
+        path: 'string',
+        prompt: 'string?',
+        stylePrompt: 'string?',
+        size: 'string?',
+        kind: 'string?'
+      }
+    },
+    response: { ok: 'true', path: 'string', imagePath: 'string', frontmatter: 'object', chars: 'number' },
+    errors: ['NO_LIBRARY', 'PATH_ESCAPE', 'INVALID_ENTRY', 'AGENT_UPSTREAM_ERROR', 'WRITE_PROTOCOL_IO_FAILED']
+  },
   deduceImage: {
     method: 'POST',
     path: '/api/deduce/image',
     // 生图（OS-63 预留转正）：调全局配置 image.endpoint（OpenAI 兼容 images/generations），
     // 产物落 推演/<bookId>/素材/场景/<name>.png。未启用/未配置如实报。
-    request: { body: { root: 'string', bookId: 'string?', name: 'string', prompt: 'string', size: 'string?' } },
+    request: { body: { root: 'string', bookId: 'string?', name: 'string', prompt: 'string', size: 'string?', stylePrompt: 'string?', negative: 'string?' } },
     response: { ok: 'true', name: 'string', path: 'string', size: 'string' },
     errors: ['NO_LIBRARY', 'PATH_ESCAPE', 'INVALID_ENTRY', 'AGENT_UPSTREAM_ERROR']
   },

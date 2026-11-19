@@ -53,6 +53,7 @@ const state = {
   dirWork: {},
   write: { chapters: [], listLoading: false, mode: 'read', docPrefs: null },
   sel: { text: '', blockIndex: -1, rect: null, busy: false, preview: null, para: -1 },
+  scriptModule: null,
   analyze: { open: false, result: null, busy: false, dismissed: {}, activePara: -1, expandOthers: false, fact: null, factRoot: '', factTab: 'emotion', modOpen: {},
     enabled: [], enabledRoot: '', pickerOpen: false, work: {}, workRoot: '', workLoaded: false, workLoading: false },
   deduce: { premise: '', variables: '', question: '', sessionId: '', streaming: false, reply: '', controller: null, error: '',
@@ -116,6 +117,19 @@ async function loadAnalysis() {
 loadAnalysis().catch(() => {})
 
 // S3：分析模块注册表（纯数据＋纯函数；work 级模块的数据口径来自 storySource）
+let scriptModulePromise = null
+function loadScriptModule() {
+  if (!scriptModulePromise) {
+    scriptModulePromise = import('./script.mjs').then((mod) => {
+      state.scriptModule = mod
+      if (state.view === 'dir:剧本') render()
+      return mod
+    }).catch(() => null)
+  }
+  return scriptModulePromise
+}
+loadScriptModule()
+
 let analysisModules = null
 async function loadAnalysisModules() {
   if (!analysisModules) analysisModules = await import('./analysisModules.mjs')
@@ -3845,6 +3859,8 @@ async function openReference(path, { from = '' } = {}) {
   ref.activePath = path
   ref.from = from
   ref.error = ''
+  // OS-75：点条目＝进详情页（此前漏切视图，导致图谱视图下点条目无反应）
+  ref.view = 'note'
   render()
   try {
     const query = new URLSearchParams({ root: state.current.path, path })
@@ -3933,6 +3949,55 @@ async function commitRefBlock(blockEl) {
 
 let refRescanTimer = null
 
+/** OS-75：世界书条目的图墙（封面大图 + 缩略图行 + 一键生图）。
+ * 图片路径来自 referenceStore 的 images[]（frontmatter cover/portrait/images/refImages）。
+ * 站内相对路径走 /api/chapter 读不出二进制——用 daemon 的静态托管：库内文件通过
+ * /api/reference/asset 暴露（见 daemon 的 referenceAssetGet）。 */
+function refImagesHtml(note) {
+  const images = Array.isArray(note?.images) ? note.images.filter(Boolean) : []
+  const root = state.current?.path || ''
+  const urlOf = (rel) => /^https?:\/\//u.test(rel)
+    ? rel
+    : `/api/reference/asset?root=${encodeURIComponent(root)}&path=${encodeURIComponent(rel)}`
+  const genBtn = `<button class="btn-ghost ref-gen-img" data-action="ref-gen-image" title="按这个条目生成设定图（走设置里的生图后端）">✦ 生成设定图</button>`
+  if (!images.length) {
+    return `<div class="ref-gallery empty">
+      <div class="ref-gallery-none">还没有设定图</div>
+      ${genBtn}
+    </div>`
+  }
+  const cover = images[0]
+  const thumbs = images.slice(1, 7)
+  return `<div class="ref-gallery">
+    <div class="ref-gallery-cover"><img src="${esc(urlOf(cover))}" alt="${esc(note.title || '')}" loading="lazy"></div>
+    ${thumbs.length ? `<div class="ref-gallery-thumbs">${thumbs.map((p) => `<img src="${esc(urlOf(p))}" alt="" loading="lazy">`).join('')}</div>` : ''}
+    <div class="ref-gallery-ops">${genBtn}</div>
+  </div>`
+}
+
+/** OS-75：世界书条目一键生图。生成中禁用按钮，完成后重载笔记（图墙自动出现）。 */
+async function generateReferenceImage() {
+  const ref = state.reference
+  const note = ref?.note
+  if (!state.current || !note?.path) return
+  const btn = document.querySelector('[data-action="ref-gen-image"]')
+  if (btn) { btn.disabled = true; btn.textContent = '生成中…（ComfyUI 约 2–3 分钟）' }
+  try {
+    const payload = await api('/api/reference/image', {
+      method: 'POST',
+      body: JSON.stringify({ root: state.current.path, path: note.path })
+    })
+    ref.flash = `设定图已生成：${payload.imagePath}`
+    // 重载笔记拿新 frontmatter（图墙读 note.images）
+    await openReference(note.path)
+  } catch (error) {
+    ref.flash = ''
+    ref.error = text(error?.message || error)
+    if (btn) { btn.disabled = false; btn.textContent = '✦ 生成设定图' }
+  }
+  render()
+}
+
 function referenceEditorHtml() {
   const ref = state.reference
   const note = ref.note
@@ -3959,6 +4024,7 @@ function referenceEditorHtml() {
     </div>
     <div class="ref-detail-top">
       <div class="ref-detail-brief">
+        ${refImagesHtml(note)}
         <div class="brief-tags">${tagChips || '<span class="nav-empty">无标签</span>'}</div>
         <p class="brief-text">${esc(excerpt)}</p>
       </div>
@@ -6621,6 +6687,41 @@ async function mountStorySourceChart() {
   }
 }
 
+/** 剧本页（OS-75）：与小说同构的「逐块实时编辑」，但按剧本格式渲染。
+ * 数据通道不变（/api/files + /api/chapter）——剧本就是 剧本/NNN-标题.md。 */
+function scriptViewHtml() {
+  const dir = '剧本'
+  const work = dirWork(dir)
+  const label = DIR_LABELS[dir] || dir
+  const options = work.files
+    .map((item) => `<option value="${esc(item.file)}"${item.file === work.file ? ' selected' : ''}>${esc(item.name)}（${item.size} B）</option>`)
+    .join('')
+  const sc = work.loaded ? state.scriptModule?.scriptStats?.(work.text) : null
+  const stats = sc
+    ? `<span class="b">${sc.acts} 幕</span><span>${sc.scenes} 场</span><span>${sc.lines} 句台词</span><span>${sc.chars} 字</span>${sc.cast.length ? `<span class="count">出场：${esc(sc.cast.join('、'))}</span>` : ''}`
+    : `<span id="dir-chars">${work.text.length} 字</span>`
+  const body = work.loaded
+    ? `<div class="sc-doc" id="sc-doc" contenteditable="true" spellcheck="false" data-script-editor="1">${state.scriptModule?.renderScriptBody?.(work.text) || ''}</div>`
+    : `<div class="empty-state"><h2>${esc(label)}</h2><p>还没有剧本——选一个文件开始，或新建一个。</p></div>`
+  return `<div class="doc-head">
+      <div class="kick">${esc(state.current.name)} / ${esc(label)}</div>
+      <h1>${esc(work.file ? work.file.split('/').pop() : label)}</h1>
+      <div class="doc-meta">${stats}
+        ${work.savedAt ? `<span class="saved-chip">已保存 · ${esc(formatAt(work.savedAt))}</span>` : ''}
+        ${work.note ? `<span class="count">${esc(work.note)}</span>` : ''}
+      </div>
+    </div>
+    ${flowError(work.error)}
+    <div class="toolbar">
+      ${options ? `<select class="select" id="dirfile-select">${options}</select>` : ''}
+      <input class="file-input" id="dirfile-new-name" placeholder="新剧本.md" value=""><button class="btn-ghost" data-action="dirfile-new">新建</button>
+      <span class="sp"></span>
+      <span class="count">点内容直接改，失焦自动保存</span>
+      <button class="btn-primary" data-action="dirfile-save"${work.loaded ? '' : ' disabled'}>保存</button>
+    </div>
+    ${work.loading && !work.loaded ? '<div class="loading">正在读取…</div>' : body}`
+}
+
 function dirViewHtml(dir) {
   if (!state.current) return needLibraryHtml()
   // 拆解目录走专属视图（OS-66）：enrich 产出的六槽位/因果图/台账/章纲是人类可读的
@@ -6629,7 +6730,9 @@ function dirViewHtml(dir) {
     loadFactViewData()
     return factViewHtml()
   }
-  const work = dirWork(dir)
+  // OS-75：剧本走原生渲染（幕/场景指示/角色台词按剧本格式排版，不是裸 textarea）。
+  // 与小说同构：逐块 contenteditable 实时编辑，失焦保存。
+  if (dir === '剧本') return scriptViewHtml()
   const readonly = READONLY_DIRS.has(dir)
   const label = DIR_LABELS[dir] || dir
   const options = work.files
@@ -8334,6 +8437,8 @@ document.addEventListener('click', (event) => {
     deduceEngineSettle(target.dataset.candidateId, 'veto')
   } else if (action === 'deduce-tw-skip') {
     dedTypewriterSkip()
+  } else if (action === 'ref-gen-image') {
+    generateReferenceImage()
   } else if (action === 'deduce-image') {
     deduceImageFlow()
   } else if (action === 'deduce-info-toggle') {
@@ -8611,6 +8716,18 @@ document.addEventListener('change', (event) => {
   // 推演草稿（OS-61 P2）：失焦即存进会话
   if (target.id === 'deduce-draft') {
     deduceSaveDraft()
+    return
+  }
+  // OS-75：剧本 contenteditable 失焦保存（把 innerText 写回 dir work）
+  if (target.dataset?.scriptEditor === '1' && state.view === 'dir:剧本') {
+    const work = dirWork('剧本')
+    if (work?.loaded) {
+      const next = target.innerText.replace(/\n{3,}/gu, '\n\n').trim()
+      if (next !== work.text.replace(/\s+$/u, '').trim()) {
+        work.text = next
+        saveDirFile('剧本')
+      }
+    }
     return
   }
 })
