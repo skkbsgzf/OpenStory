@@ -95,9 +95,13 @@ function filterTree(node, needle) {
 }
 
 function treeNoteRow(note, activePath) {
+  // OS-96：首次出现章节标——0 显示「共识」，>0 显示「第N章」；点不出为止
+  const fc = Number(note.firstChapter) || 0
+  const fcBadge = fc > 0 ? `<span class="fc-badge" title="首次出现于第${fc}章">${fc}章</span>` : `<span class="fc-badge fc-base" title="原生共识（开篇即成立）">共识</span>`
   return `<button class="nav-row note${note.path === activePath ? ' on' : ''}" data-ref-path="${esc(note.path)}" title="${esc(note.path)}">
       <span class="tag-name">${esc(note.title)}</span>
       <span class="nav-count">${note.chars}</span>
+      ${fcBadge}
     </button>`
 }
 
@@ -177,7 +181,7 @@ function refMainEmptyHtml() {
  * 参考页整体骨架（OS-51）：侧栏导航 + 主区全宽（反链并入详情页底部，不再占独立列）。
  * mainHtml 由调用方按 view 给：笔记视图传详情页整块，图谱视图传大画布块。
  */
-export function referenceShellHtml({ notes, tags, activeTag, activePath, view = 'graph', q = '', mainHtml = '', stats, absorbable = 0, changelogHtml = '' }) {
+export function referenceShellHtml({ notes, tags, activeTag, activePath, view = 'graph', q = '', mainHtml = '', stats, absorbable = 0, changelogHtml = '', firstChapterFilter = 0 }) {
   const statsLine = stats
     ? `<span class="count">${stats.notes} 篇 · ${stats.tags} 个标签 · ${stats.links} 条链接</span>`
     : ''
@@ -186,6 +190,7 @@ export function referenceShellHtml({ notes, tags, activeTag, activePath, view = 
     <div class="ref-toolbar">
       <h1>世界书</h1>
       ${statsLine}
+      <label class="fc-filter" title="只看首次出现章节 ≤ 此值的词条（0＝原生共识恒显示）">看到第 <input type="number" id="fc-filter" min="0" value="${Number(firstChapterFilter) || 0}" data-action="fc-filter-input"> 章为止</label>
       <span class="sp"></span>
       ${absorbable > 0 ? `<button class="btn-ghost" data-action="ref-absorb">迁入旧目录（${absorbable} 篇）</button>` : ''}
       <button class="btn-ghost" data-action="ref-new-note">＋ 新建笔记</button>

@@ -630,11 +630,14 @@ export async function enrichBook({ root, bookId, entries, book, llmPort, protago
           scenes: (parsed.scenes ?? []).slice(0, 10).map((item) => ({
             name: text(item?.name).slice(0, 20),
             chapters: Array.isArray(item?.chapters) ? item.chapters.filter(Number.isInteger) : [],
+            // OS-96：首次出现章节＝chapters 最小值（没有章节信息＝0 原生共识）
+            firstChapter: (Array.isArray(item?.chapters) ? item.chapters.filter(Number.isInteger) : []).length ? Math.min(...item.chapters.filter(Number.isInteger)) : 0,
             desc: text(item?.desc).slice(0, 60)
           })).filter((item) => item.name),
           items: (parsed.items ?? []).slice(0, 10).map((item) => ({
             name: text(item?.name).slice(0, 20),
             chapters: Array.isArray(item?.chapters) ? item.chapters.filter(Number.isInteger) : [],
+            firstChapter: (Array.isArray(item?.chapters) ? item.chapters.filter(Number.isInteger) : []).length ? Math.min(...item.chapters.filter(Number.isInteger)) : 0,
             holder: text(item?.holder).slice(0, 16),
             desc: text(item?.desc).slice(0, 60)
           })).filter((item) => item.name)

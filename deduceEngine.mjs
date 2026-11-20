@@ -67,7 +67,14 @@ export function deduceOpening({ root }) {
           total: list.length,
           worldview: count('worldview'),
           characters: count('character'),
-          plot: count('plot')
+          plot: count('plot'),
+          // OS-96：条目的首次出现章节分布（世界书按章过滤的依据）
+          firstChapterOf: (entry) => {
+            const fc = Number(entry?.firstChapter)
+            if (Number.isFinite(fc) && fc >= 0) return fc
+            const chapters = Array.isArray(entry?.chapters) ? entry.chapters.filter(Number.isInteger) : []
+            return chapters.length ? Math.min(...chapters) : 0
+          }
         })
       } catch { /* 坏档跳过 */ }
     }
@@ -124,10 +131,19 @@ function defaultPov(entries) {
   return chars[0]?.name ?? null
 }
 
-export async function deducePresent({ root, bookId = 'default', pov = '', seed = null, reset = false, peek = false, llmPort = null, sessionId = '', seedPrompt = '' } = {}) {
+export async function deducePresent({ root, bookId = 'default', pov = '', seed = null, reset = false, peek = false, llmPort = null, sessionId = '', seedPrompt = '', chapterLimit = null } = {}) {
   const loaded = loadEntries(root)
   if (!loaded.ok) return { ok: false, code: 'INVALID_ENTRY', message: loaded.message }
-  const entries = loaded.entries
+  // OS-96：chapterLimit 给了＝世界书词条按首次出现章节过滤（写 到30 章 的库不给 31 章以后的知识）
+  const limit = Number.isFinite(Number(chapterLimit)) && Number(chapterLimit) > 0 ? Number(chapterLimit) : null
+  const entries = limit == null
+    ? loaded.entries
+    : loaded.entries.filter((entry) => {
+      const fc = Number(entry?.firstChapter)
+      if (Number.isFinite(fc) && fc >= 0) return fc <= limit
+      const chapters = Array.isArray(entry?.chapters) ? entry.chapters.filter(Number.isInteger) : []
+      return chapters.length ? Math.min(...chapters) <= limit : true
+    })
   if (!entries.length) {
     return { ok: false, code: 'INVALID_ENTRY', message: '这个库还没有拆解条目（worldview/角色/剧情），推演引擎需要事实包才能开局' }
   }
