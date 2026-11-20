@@ -3189,19 +3189,17 @@ const SETTINGS_GROUPS = Object.freeze([
       // OS-98：相关概念合并——外观（皮肤+字号）；模型/知识库/路径都是「接什么、存哪」
       { id: 'appearance', label: '外观', hint: '皮肤主题与字号档位' },
       { id: 'engines', label: '引擎与存储', hint: 'Agent 运行时 / 模型 / 知识库 / 路径' },
-      { id: 'modules', label: '工作台模块', hint: '左右栏的分析模块插拔' },
       { id: 'about', label: '关于', hint: '版本与定位' }
     ]
   },
   {
     id: 'plugins',
     label: '插件中心',
-    hint: '用户接进来的业务套件',
-    sections: [
-      // OS-100：业务套件从「插件中心 → 业务套件」两级压成一级——
-      // 作者口径「业务套件分开呈现」，它本身就是一件独立的事，不需要再套一层壳。
-      { id: 'suites', label: '业务套件', hint: '小说 / 剧本 / 漫剧…' }
-    ]
+    hint: '每个套件是一行，点开看它自己的设置',
+    // OS-101：作者口径「插件中心就是很多套件排列，不是内部排列」
+    // → 这里不再是「插件中心 → 业务套件」两级，而是插件中心直接列出全部套件。
+    // 套件清单在渲染时动态展开（见 settingsNavHtml）。
+    sections: [{ id: 'suites', label: '全部套件', hint: '小说 / 剧本 / 漫剧…' }]
   }
 ])
 
@@ -3214,15 +3212,22 @@ const SETTINGS_SECTIONS = Object.freeze(
  * 工作台模块清单（OS-44）：左栏三个 + 右栏分析模块。
  * 作者口径：所有模块都可以在设置里插拔开关自定义。
  */
+/**
+ * 工作台模块清单（OS-101）。
+ * 作者口径：「工作台模块是套件内部的设置项」——不是本体设置。
+ * 所以每个模块带 `suite` 归属：它属于哪个业务套件，就在哪个套件的详情里配置。
+ * 目前这批都是小说/写作场景的模块 → suite: 'writing'。
+ * 将来漫剧套件要加自己的分镜面板模块，就在这里加一条 suite: 'comicdrama'。
+ */
 const WORKBENCH_MODULES = Object.freeze([
-  { id: 'chapters', label: '章节树', slot: '左栏', hint: '卷/章两级，写小说时随手切章' },
-  { id: 'graph', label: '参考图谱', slot: '左栏', hint: '参考与章节/条目的关系图' },
-  { id: 'summary', label: '参考摘要', slot: '左栏', hint: 'AI 基于图谱总结本章要点' },
-  { id: 'plotCurve', label: '剧情曲线', slot: '右栏', hint: '情绪曲线 / 事件密度（需拆解 fact）' },
-  { id: 'style', label: '文风分析', slot: '右栏', hint: '句长/段长变异系数 + 套话与连接词' },
-  { id: 'rhythm', label: '节奏', slot: '右栏', hint: '逐段字数起伏' },
-  { id: 'aiSmell', label: 'AI 味', slot: '右栏', hint: '四因子加权评分' },
-  { id: 'annotations', label: '本段批注', slot: '右栏', hint: '跟着正文滚动对齐的问题卡' }
+  { id: 'chapters', label: '章节树', slot: '左栏', suite: 'writing', hint: '卷/章两级，写小说时随手切章' },
+  { id: 'graph', label: '参考图谱', slot: '左栏', suite: 'writing', hint: '参考与章节/条目的关系图' },
+  { id: 'summary', label: '参考摘要', slot: '左栏', suite: 'writing', hint: 'AI 基于图谱总结本章要点' },
+  { id: 'plotCurve', label: '剧情曲线', slot: '右栏', suite: 'writing', hint: '情绪曲线 / 事件密度（需拆解 fact）' },
+  { id: 'style', label: '文风分析', slot: '右栏', suite: 'writing', hint: '句长/段长变异系数 + 套话与连接词' },
+  { id: 'rhythm', label: '节奏', slot: '右栏', suite: 'writing', hint: '逐段字数起伏' },
+  { id: 'aiSmell', label: 'AI 味', slot: '右栏', suite: 'writing', hint: '四因子加权评分' },
+  { id: 'annotations', label: '本段批注', slot: '右栏', suite: 'writing', hint: '跟着正文滚动对齐的问题卡' }
 ])
 
 /** 工作台模块插拔（设置页）。 */
@@ -3447,11 +3452,14 @@ function castColorOf(name) {
   }
 }
 
-function settingsModulesSectionHtml() {
+/** 套件内部的工作台模块设置（OS-101）：只列这个套件自己的模块。 */
+function settingsModulesSectionHtml({ suiteId = '' } = {}) {
   const hidden = hiddenModules()
+  const owned = suiteId ? WORKBENCH_MODULES.filter((mod) => mod.suite === suiteId) : WORKBENCH_MODULES
+  if (!owned.length) return ''
   const groups = ['左栏', '右栏']
   const rows = groups.map((slot) => {
-    const items = WORKBENCH_MODULES.filter((mod) => mod.slot === slot)
+    const items = owned.filter((mod) => mod.slot === slot)
     if (!items.length) return ''
     return `<div class="step"><h3>${esc(slot)}</h3>
       <div class="mod-list">${items.map((mod) => {
@@ -4256,9 +4264,10 @@ function settingsHtml() {
     data: settingsCombinedEnginesHtml,
     // —— 插件中心 ——
     suites: suitesSectionHtml,
-    suite: () => suiteDetailHtml(state.settings.suiteId),
-    suiteSettings: () => suiteDetailHtml(state.settings.suiteId),
-    suiteDetail: () => suiteDetailHtml(state.settings.suiteId),
+    // 旧 id 重定向到统一的套件主面
+    suite: suitesSectionHtml,
+    suiteSettings: suitesSectionHtml,
+    suiteDetail: suitesSectionHtml,
     runtimes: settingsRuntimeSectionHtml,
     // —— 兼容旧入口（老链接/深链）——
     plugins: suitesSectionHtml,
@@ -4272,16 +4281,29 @@ function settingsHtml() {
     ? 'suites'
     : (sectionId === 'runtime' ? 'runtimes' : sectionId)
   const sectionHtml = (sectionRenderers[sectionId] ?? settingsAppearanceSectionHtml)()
-  // OS-97：左导航按组渲染——本体设置 / 插件中心，两组之间有明显间隔与组标题
-  const nav = SETTINGS_GROUPS.map((group) => `
-    <div class="settings-nav-group">
-      <div class="settings-nav-grouphead">${esc(group.label)}<span>${esc(group.hint)}</span></div>
-      ${group.sections.map((section) => `
+  // OS-101：左导航按组渲染——本体设置 / 插件中心。
+  // 插件中心不再是二级壳：它直接把**每个套件**列成一行（作者：「插件中心就是很多套件排列」）。
+  const nav = SETTINGS_GROUPS.map((group) => {
+    const isPluginGroup = group.id === 'plugins'
+    const items = isPluginGroup
+      ? (Array.isArray(state.suites) ? state.suites : []).map((suite) => {
+        const on = suite.enabled !== false
+        const active = state.settings.section === 'suites' && state.settings.suiteId === suite.id
+        return `<button class="settings-nav-item${active ? ' on' : ''}" data-action="suite-select" data-id="${esc(suite.id)}">
+          <b>${esc(suite.name)}${on ? '' : '<i class="nav-off-tag">停用</i>'}</b>
+          <span>${esc((suite.domains ?? []).join('／') || suite.description || '')}</span>
+        </button>`
+      }).join('') || '<p class="nav-empty">还没有套件</p>'
+      : group.sections.map((section) => `
         <button class="settings-nav-item${section.id === navOn ? ' on' : ''}" data-settings-section="${esc(section.id)}">
           <b>${esc(section.label)}</b>
           <span>${esc(section.hint)}</span>
-        </button>`).join('')}
-    </div>`).join('')
+        </button>`).join('')
+    return `<div class="settings-nav-group">
+      <div class="settings-nav-grouphead">${esc(group.label)}<span>${esc(group.hint)}</span></div>
+      ${items}
+    </div>`
+  }).join('')
   const help = SETTINGS_HELP[sectionId] || SETTINGS_HELP.plugins
   const helpOpen = state.settings.helpOpen === true
   return `<div class="lib-wrap">
@@ -4402,44 +4424,24 @@ function suiteValue(key, id, fallback) {
  *   右栏           详情：来源信息（内置还是本机、物理路径、自带页、捆绑技能）
  *                 ＋ 能力清单 ＋ 启停开关 ＋ 设置区（schema 表单 或 page iframe）
  */
+/**
+ * 插件中心主面（OS-101）。
+ * 作者口径：「插件中心就是很多套件排列，不是内部排列」——
+ * 套件清单已经在**左侧导航**里逐行列出，所以主面不再重复一遍列表，
+ * 只渲染「当前选中套件」的详情（来源与身份 / 能力 / 设置 / 工作台模块）。
+ */
 function suitesSectionHtml() {
   const list = Array.isArray(state.suites) ? state.suites : []
-  const enabledCount = list.filter((suite) => suite.enabled !== false).length
-  // 选中项：默认第一个；点击左列切换
+  if (!list.length) {
+    return `<div class="step"><h3>业务套件</h3>
+      <p class="sub">还没有套件——把套件目录丢进本机 suites 货架即上新。</p></div>`
+  }
   const activeId = state.settings.suiteId && list.some((suite) => suite.id === state.settings.suiteId)
     ? state.settings.suiteId
-    : (list[0]?.id ?? '')
-  const active = list.find((suite) => suite.id === activeId) ?? null
-
-  const listRows = list.map((suite) => {
-    const on = suite.enabled !== false
-    const isActive = suite.id === activeId
-    const domains = Array.isArray(suite.domains) ? suite.domains : []
-    return `<button class="suite-list-item${isActive ? ' on' : ''}${on ? '' : ' off'}"
-      data-action="suite-select" data-id="${esc(suite.id)}" title="${esc(suite.description || '')}">
-      <span class="sli-name">${esc(suite.name)}</span>
-      <span class="sli-meta">
-        ${domains.length ? `<span class="sli-domain">${esc(domains.join('／'))}</span>` : ''}
-        <span class="sli-state${on ? ' is-on' : ''}">${on ? '启用' : '停用'}</span>
-      </span>
-    </button>`
-  }).join('')
-
-  const empty = `<div class="suite-empty">
-    <p class="uikit-empty-title">还没有套件</p>
-    <p class="uikit-empty-hint">把套件目录丢进本机 suites 货架即上新</p>
-  </div>`
-
+    : list[0].id
+  const active = list.find((suite) => suite.id === activeId) ?? list[0]
   return `<div class="step suite-center">
-    <h3>业务套件<span class="sub">共 ${list.length} 个 · 启用 ${enabledCount}</span></h3>
-    <div class="suite-split">
-      <aside class="suite-col">
-        ${listRows || empty}
-      </aside>
-      <section class="suite-detail-col">
-        ${active ? suiteDetailPaneHtml(active) : '<p class="sub" style="padding:var(--ui-gap-lg)">选一个套件看详情</p>'}
-      </section>
-    </div>
+    ${suiteDetailPaneHtml(active)}
   </div>`
 }
 
@@ -4515,6 +4517,17 @@ function suiteDetailPaneHtml(suite) {
         <h5>设置</h5>
         ${settingsBody}
       </div>
+      ${(() => {
+        // OS-101：工作台模块属于套件的内部设置，不是本体设置
+        const modHtml = settingsModulesSectionHtml({ suiteId: suite.id })
+        if (!modHtml) return ''
+        return `<div class="suite-detail-section">
+          <h5>工作台模块<span class="h5-sub">这套件启用时，左/右栏出现哪些分析模块</span></h5>
+          ${modHtml.replace(/<div class="step"><h3>/g, '<div class="suite-mod-group"><h6>')
+            .replace(/<\/h3>/g, '</h6>')
+            .replace(/<p class="sub">[^<]*<\/p>/g, '')}
+        </div>`
+      })()}
     </div>`
 }
 
@@ -10730,7 +10743,7 @@ document.addEventListener('click', (event) => {
     restoreArtifact(target.dataset.file, target.dataset.original)
   } else if (action === 'suite-open') {
     state.settings.suiteId = target.dataset.id
-    state.settings.section = 'suite'
+    state.settings.section = 'suites'
     render()
   } else if (action === 'suite-toggle') {
     toggleSuite(target.dataset.id)
