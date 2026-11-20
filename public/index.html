@@ -219,13 +219,47 @@ button.modlog-row:focus-visible { outline: 2px solid var(--accent); outline-offs
 .nav-row.on .tag-name { font-weight: 600; }
 .tag-desc-dot { display: inline-block; width: 4px; height: 4px; border-radius: 50%; background: var(--accent); margin-left: 4px; vertical-align: 2px; }
 /* 习惯表单（OS-57）：描述性自定义表单——正向＋负向词条 */
-.habits-form { max-width: 720px; display: flex; flex-direction: column; gap: 14px; }
-.habits-form .field label { display: block; font-size: 12px; font-weight: 600; color: var(--ink-2); margin-bottom: 4px; }
-.habits-form .field .count { font-weight: 400; color: var(--meta); }
-.habits-form textarea.habit-list { width: 100%; border: 1px solid var(--line); border-radius: var(--radius); padding: 8px 10px; font-size: 12.5px; background: var(--bg); resize: vertical; font-family: inherit; }
-.habits-form textarea.habit-list:focus { outline: none; border-color: var(--ink-2); }
-.habits-form input.text, .habits-form select.select { width: 100%; border: 1px solid var(--line); border-radius: var(--radius); padding: 7px 10px; font-size: 13px; background: var(--bg); }
-.habits-form .ops { display: flex; align-items: center; gap: 10px; }
+/* ── 习惯页（OS-91 治理）──────────────────────────────────────────
+   作者实测：「表格框线、字体和大小都不对」。原实现字号 12/12.5/13px 三档混写、
+   内边距各自为政、与全局档位脱节。现在全部走 --ui-* 令牌：
+     · 字号：--ui-fs-*（跟界面档位缩放）
+     · 行高：--ui-lh-*
+     · 控件内边距：--ui-ctl-px / --ui-row-py
+     · 圆角/边框：--radius / --line（与全站一致）
+   写新页面时照抄这一套，禁止裸写 px。 */
+.habits-form { max-width: 760px; display: flex; flex-direction: column; gap: calc(14px * var(--ui-scale)); }
+.habits-form .field { display: flex; flex-direction: column; gap: 5px; }
+.habits-form .field label {
+  display: block; font-size: var(--ui-fs-sm); font-weight: 600;
+  color: var(--ink-2); line-height: var(--ui-lh-normal); margin-bottom: 2px;
+}
+.habits-form .field .count {
+  font-weight: 400; color: var(--meta); font-size: var(--ui-fs-xs);
+  margin-left: 6px; font-family: var(--mono);
+}
+.habits-form textarea.habit-list {
+  width: 100%; border: 1px solid var(--line); border-radius: var(--radius);
+  padding: var(--ui-row-py) var(--ui-ctl-px);
+  font-size: var(--ui-fs-md); line-height: var(--ui-lh-loose);
+  background: var(--bg); color: var(--ink); resize: vertical;
+  font-family: var(--sans); min-height: calc(76px * var(--ui-scale));
+  transition: border-color .12s ease;
+}
+.habits-form textarea.habit-list:focus { outline: none; border-color: var(--accent); }
+.habits-form input.text, .habits-form select.select {
+  width: 100%; border: 1px solid var(--line); border-radius: var(--radius);
+  padding: var(--ui-row-py) var(--ui-ctl-px);
+  font-size: var(--ui-fs-md); line-height: var(--ui-lh-normal);
+  background: var(--bg); color: var(--ink); font-family: var(--sans);
+  height: var(--ui-ctl-h); box-sizing: border-box;
+  transition: border-color .12s ease;
+}
+.habits-form input.text:focus, .habits-form select.select:focus { outline: none; border-color: var(--accent); }
+.habits-form .ops {
+  display: flex; align-items: center; gap: calc(10px * var(--ui-scale));
+  padding-top: calc(8px * var(--ui-scale)); border-top: 1px dashed var(--hair);
+}
+.habits-form .ops .count { font-size: var(--ui-fs-xs); color: var(--meta); }
 /* 笔记视图未选中态（OS-53b）：给出路而不是一句提示 */
 .ref-empty-lead { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; padding: 40px 20px; }
 .ref-empty-lead .rem { margin: 0; font-size: 13px; color: var(--muted); }
@@ -731,6 +765,43 @@ button.modlog-row:focus-visible { outline: 2px solid var(--accent); outline-offs
 .artifact-preview .editor { min-height: 260px; max-height: 420px; font-size: 14px; }
 
 /* ── 设置页分节制（OS-14：左导航＋节内容，架子给后续功能规则留位）── */
+/* OS-91：技能全文弹层 + 行内查看按钮 */
+.skill-peek {
+  flex: 0 0 auto; margin-left: auto; padding: 0 8px; border: 0; background: transparent;
+  color: var(--meta); font-size: var(--ui-fs-base); cursor: pointer; border-radius: var(--pill);
+  line-height: 1; align-self: center;
+}
+.skill-peek:hover { background: var(--soft); color: var(--ink-2); }
+.skill-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 6px 0 10px; }
+.skill-md { max-height: min(56vh, 480px); overflow-y: auto; padding: 10px 12px;
+  background: var(--soft); border-radius: var(--radius); font-size: var(--ui-fs-md);
+  line-height: var(--ui-lh-loose); color: var(--ink-2); }
+.skill-md h1, .skill-md h2, .skill-md h3, .skill-md h4 { font-size: var(--ui-fs-lg); margin: 12px 0 6px; color: var(--ink); }
+.skill-md h1:first-child, .skill-md h2:first-child { margin-top: 0; }
+.skill-md p, .skill-md li { margin: 0 0 6px; }
+.skill-md ul, .skill-md ol { padding-left: 1.4em; margin: 0 0 8px; }
+.skill-md code { font-family: var(--mono); font-size: var(--ui-fs-sm); background: var(--bg);
+  padding: 1px 5px; border-radius: 4px; }
+.skill-md pre { background: var(--bg); padding: 8px 10px; border-radius: var(--radius-sm); overflow-x: auto; }
+.skill-md table { border-collapse: collapse; width: 100%; margin: 8px 0; }
+.skill-md th, .skill-md td { border: 1px solid var(--line); padding: 4px 8px; font-size: var(--ui-fs-sm); text-align: left; }
+.skill-md th { background: var(--bg); font-weight: 600; }
+.skill-md-raw { font-family: var(--mono); font-size: var(--ui-fs-sm); white-space: pre-wrap;
+  overflow-wrap: anywhere; margin: 0; }
+.typo-preview {
+  display: flex; flex-wrap: wrap; align-items: center; gap: calc(10px * var(--ui-scale));
+  padding: calc(12px * var(--ui-scale)); margin-top: calc(10px * var(--ui-scale));
+  background: var(--soft); border-radius: var(--radius-md); border: 1px dashed var(--line);
+}
+.typo-preview-head { font-size: var(--ui-fs-xs); color: var(--meta); width: 100%; margin-bottom: 2px; }
+.typo-preview-row { display: flex; align-items: baseline; gap: 8px; }
+.typo-preview-row b { font-size: var(--ui-fs-lg); color: var(--ink); }
+.typo-preview-row .count { font-size: var(--ui-fs-sm); color: var(--meta); }
+.typo-preview-doc { display: block; }
+.doc-paper-sample {
+  font-family: var(--serif); font-size: var(--doc-font-size); line-height: var(--doc-line-height);
+  color: var(--ink-2); text-indent: var(--doc-indent); margin: 0;
+}
 .settings-layout { display: grid; grid-template-columns: 230px minmax(0, 1fr); gap: 18px; align-items: start; }
 @media (max-width: 900px) { .settings-layout { grid-template-columns: minmax(0, 1fr); } }
 .settings-nav { border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--bg); overflow: hidden; position: sticky; top: 12px; }
@@ -757,6 +828,56 @@ button.modlog-row:focus-visible { outline: 2px solid var(--accent); outline-offs
   --doc-font-size: 17px; --doc-line-height: 1.9; --doc-para-gap: 1em; --doc-indent: 2em;
   --doc-max: 720px;
 }
+
+/* ══════════════════════════════════════════════════════════════════
+   OS-91 全局字号体系（作者裁定：前端 CSS 必须全局化，明确档位）
+   ──────────────────────────────────────────────────────────────────
+   两条轨道，互不干扰：
+     【正文轨】--doc-*  —— 只服务阅读/写作的纸面正文（衬线、行高 1.9）
+                          档位 5 级，由「项目级主题设置」覆盖
+     【功能轨】--ui-*   —— 所有界面元素（按钮/表单/卡片/标签/表格）
+                          档位 7 级（2xs…2xl），由「项目级主题设置」整体缩放
+
+   规范（写新样式时必须遵守）：
+     1. 功能界面字号**只准**用 var(--ui-fs-*)，禁止裸写 px
+     2. 正文纸面字号**只准**用 var(--doc-font-size)
+     3. 两者不混用：功能模块里不要出现 --doc-*，正文里不要出现 --ui-fs-*
+   ══════════════════════════════════════════════════════════════════ */
+:root {
+  /* 功能轨基准（medium 档＝14px，是界面元素的默认尺寸） */
+  --ui-scale: 1;
+  --ui-fs-2xs: calc(10px * var(--ui-scale));   /* 行内徽标、极次要标注 */
+  --ui-fs-xs:  calc(11px * var(--ui-scale));   /* 辅助说明、表格脚注 */
+  --ui-fs-sm:  calc(12px * var(--ui-scale));   /* 卡片副标、元信息 */
+  --ui-fs-md:  calc(13px * var(--ui-scale));   /* 正文类控件（输入框、列表项） */
+  --ui-fs-base:calc(14px * var(--ui-scale));   /* 界面基准（按钮、导航） */
+  --ui-fs-lg:  calc(16px * var(--ui-scale));   /* 小标题、卡片标题 */
+  --ui-fs-xl:  calc(18px * var(--ui-scale));   /* 区块标题 */
+  --ui-fs-2xl: calc(22px * var(--ui-scale));   /* 页面主标题 */
+
+  /* 行高（功能轨固定比例，不随字号档缩放） */
+  --ui-lh-tight: 1.35;
+  --ui-lh-normal: 1.6;
+  --ui-lh-loose: 1.75;
+
+  /* 功能轨控件尺寸（跟着字号档走，保证比例一致） */
+  --ui-ctl-h: calc(32px * var(--ui-scale));    /* 按钮/输入框高度 */
+  --ui-ctl-px: calc(12px * var(--ui-scale));   /* 控件横向内边距 */
+  --ui-row-py: calc(6px * var(--ui-scale));    /* 列表行纵向内边距 */
+}
+
+/* 字号档位：只改 --ui-scale 与 --doc-font-size 两个值，全站生效 */
+:root[data-fs="compact"]     { --ui-scale: 0.92; }
+:root[data-fs="comfortable"] { --ui-scale: 1; }
+:root[data-fs="large"]       { --ui-scale: 1.08; }
+:root[data-fs="xlarge"]      { --ui-scale: 1.18; }
+
+/* 正文纸面档位（独立于功能轨；5 级，只影响阅读面） */
+:root[data-doc-fs="s"]  { --doc-font-size: 15px; --doc-line-height: 1.85; }
+:root[data-doc-fs="m"]  { --doc-font-size: 17px; --doc-line-height: 1.9; }
+:root[data-doc-fs="l"]  { --doc-font-size: 19px; --doc-line-height: 1.95; }
+:root[data-doc-fs="xl"] { --doc-font-size: 21px; --doc-line-height: 2; }
+:root[data-doc-fs="2xl"]{ --doc-font-size: 24px; --doc-line-height: 2.05; }
 .doc-head-immersive { max-width: var(--doc-max); margin: 0 auto 8px; }
 .doc-head-immersive .docline { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--meta); margin-bottom: 10px; flex-wrap: wrap; }
 .doc-head-immersive .docline .sp { flex: 1; }

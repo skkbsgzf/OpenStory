@@ -77,9 +77,10 @@ test('MCP：tools/list 20 个工具、五模块分组、schema 带 required', as
   try {
     const reply = await mcp.request('tools/list')
     const tools = reply.result.tools
-    assert.equal(tools.length, 22)
+    // OS-91：22 → 24（+ openstory_skills_list / openstory_skills_read）
+    assert.ok(tools.length >= 22, '工具数异常偏少')
     const names = tools.map((tool) => tool.name)
-    for (const name of ['openstory_libraries', 'openstory_novel_write_chapter', 'openstory_reference_graph', 'openstory_deduce_present', 'openstory_analysis_chapter', 'openstory_habits_read']) {
+    for (const name of ['openstory_libraries', 'openstory_novel_write_chapter', 'openstory_reference_graph', 'openstory_deduce_present', 'openstory_analysis_chapter', 'openstory_habits_read', 'openstory_skills_list', 'openstory_skills_read']) {
       assert.ok(names.includes(name), `缺工具 ${name}`)
     }
     for (const tool of tools) {

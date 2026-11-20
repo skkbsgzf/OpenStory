@@ -522,6 +522,58 @@ const tools = [
       const result = analyzeChapter(args.text, { paragraphs })
       return { editorial: result.editorial, stats: result.stats, style: result.style, aiSmell: { score: result.aiSmell?.score, factors: result.aiSmell?.factors }, issues: result.issues, emotion: result.emotion, rhythm: result.rhythm }
     }
+  },
+
+  /* ---------- 技能货架（OS-91）：让外部 Agent 也能发现并读取 31 个手艺配方 ----------
+   * 之前 skills 只经 /api/skills 暴露给左侧 Agent 的选择器，MCP 侧零暴露——
+   * 外部 Agent（Claude/Qoder/CodeBuddy…）完全看不到这套技能库。这里补两个工具。 */
+  {
+    name: 'openstory_skills_list',
+    title: '技能清单',
+    description: '列出本机技能货架的**全部手艺配方**（31 个：技法/审阅/改写/抽取四类，含文风包）。返回 name/description/category/genres/stage/version/vendor。开工前先看清单，再用 openstory_skills_read 读全文——选技能靠 description，别凭名字猜。可按体裁过滤。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        genre: { type: 'string', description: '体裁 id（如 long-serial / short-story / screenplay）；不传＝全部' },
+        category: { type: 'string', enum: ['craft', 'review', 'transform', 'extract'], description: '只列某一类' }
+      },
+      additionalProperties: false
+    },
+    async run(args) {
+      const query = args.genre ? { genre: String(args.genre) } : {}
+      const payload = await daemon('/api/skills', { query })
+      let skills = payload.skills || []
+      if (args.category) skills = skills.filter((item) => item.category === args.category)
+      return {
+        ok: true,
+        total: skills.length,
+        skills: skills.map((item) => ({
+          name: item.name,
+          description: item.description,
+          category: item.category,
+          genres: item.genres,
+          stage: item.stage || null,
+          version: item.version || null,
+          vendor: item.vendor || null
+        })),
+        ...(payload.warnings?.length ? { warnings: payload.warnings } : {})
+      }
+    }
+  },
+  {
+    name: 'openstory_skills_read',
+    title: '读技能全文',
+    description: '读一个技能的 SKILL.md 全文（含 frontmatter 之外的正文、附属 tools/output 声明）。这是「怎么做事」的真源——craft 类是技法规则可直接遵循，review 类只出问题清单不改文件，transform 类产提案，extract 类产数据。**动手前先读这一篇，别只凭 description 发挥**。',
+    inputSchema: {
+      type: 'object',
+      properties: { name: { type: 'string', description: '技能 id（openstory_skills_list 返回的 name）' } },
+      required: ['name'],
+      additionalProperties: false
+    },
+    async run(args) {
+      if (typeof args.name !== 'string' || !args.name.trim()) throw invalidArgs('name')
+      return await daemon('/api/skill', { query: { name: String(args.name).trim() } })
+    }
   }
 ]
 

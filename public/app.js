@@ -557,8 +557,10 @@ function loadDocPrefs() {
 function applyDocPrefs() {
   const prefs = loadDocPrefs()
   const root = document.documentElement
-  root.style.setProperty('--doc-font-size', `${prefs.fontSize}px`)
-  root.style.setProperty('--doc-line-height', String(prefs.lineHeight))
+  // OS-91：字号与行高归「设置 · 主题与字号」的 --doc-font-size 档位统一管，
+  // 这里**不再** inline 覆盖它们（否则 inline style 优先级高于 :root[data-doc-fs]，
+  // 项目级档位永远不生效——这正是两套字号体系打架的根因）。
+  // 段落级参数（段距/缩进/隔行）仍归页面自己的写作偏好。
   root.style.setProperty('--doc-para-gap', `${prefs.paraGap}em`)
   root.style.setProperty('--doc-indent', `${prefs.indent}em`)
   root.dataset.docAutoGap = prefs.autoGap ? 'on' : 'off'
@@ -816,8 +818,11 @@ function docPrefSlidersHtml() {
       <input type="range" data-docpref="${key}" min="${min}" max="${max}" step="${step}" value="${prefs[key]}">
     </div>`
   return [
-    slider('fontSize', '字号', 14, 24, 1, 'px'),
-    slider('lineHeight', '行高', 1.4, 2.6, 0.05, ''),
+    // OS-91：字号/行高已上收到「设置 · 主题与字号」的项目级档位，这里不再重复给——
+    // 两处各摆一套滑杆＝两个真源，改一处另一处不生效，作者实测过这个坑。
+    `<div class="field"><label>字号与行高<span class="count"> 去「设置 · 主题与字号」调</span></label>
+      <button class="btn-ghost" data-action="open-typography-settings">打开主题设置</button>
+    </div>`,
     slider('paraGap', '段距', 0, 2.5, 0.1, 'em'),
     slider('indent', '首行缩进', 0, 3, 0.5, 'em'),
     `<div class="field"><label>自动隔行（段落间空一行）</label>
@@ -1981,13 +1986,13 @@ function genreMenuHtml() {
   const styleRows = [`<div class="pop-item genre-item" data-action="pick-style" data-skill-name=""><span class="pi-ic">${activeStyle ? '○' : '✓'}</span><span class="genre-main"><b>不指定</b><i class="genre-desc">中性文风——只按体裁策略写</i></span></div>`]
   for (const skill of styleSkills) {
     const on = activeStyle === skill.name
-    styleRows.push(`<div class="pop-item genre-item" data-action="pick-style" data-skill-name="${esc(skill.name)}"><span class="pi-ic">${on ? '✓' : '○'}</span><span class="genre-main"><b>${esc(skill.name)}${on ? '<i class="on-tag">主导文风</i>' : ''}</b><i class="genre-desc">${esc(skill.description || '')}</i></span></div>`)
+    styleRows.push(`<div class="pop-item genre-item" data-action="pick-style" data-skill-name="${esc(skill.name)}"><span class="pi-ic">${on ? '✓' : '○'}</span><span class="genre-main"><b>${esc(skill.name)}${on ? '<i class="on-tag">主导文风</i>' : ''}</b><i class="genre-desc">${esc(skill.description || '')}</i></span><button class="skill-peek" data-action="skill-peek" data-skill-name="${esc(skill.name)}" title="看这篇 SKILL.md 全文">…</button></div>`)
   }
 
   // —— 级3 方法论（多选）——
   const methodRows = methodSkills.map((skill) => {
     const on = activeMethods.includes(skill.name)
-    return `<div class="pop-item genre-item" data-action="toggle-method" data-skill-name="${esc(skill.name)}"><span class="pi-ic">${on ? '☑' : '☐'}</span><span class="genre-main"><b>${esc(skill.name)}</b><i class="genre-desc">${esc(skill.description || '')}</i></span></div>`
+    return `<div class="pop-item genre-item" data-action="toggle-method" data-skill-name="${esc(skill.name)}"><span class="pi-ic">${on ? '☑' : '☐'}</span><span class="genre-main"><b>${esc(skill.name)}</b><i class="genre-desc">${esc(skill.description || '')}</i></span><button class="skill-peek" data-action="skill-peek" data-skill-name="${esc(skill.name)}" title="看这篇 SKILL.md 全文">…</button></div>`
   }).join('')
 
   const foot = []
@@ -2008,6 +2013,40 @@ function genreMenuHtml() {
     ${methodRows}
     <div class="pop-div"></div>
     ${foot.join('')}`
+}
+
+/**
+ * OS-91：看一篇技能的 SKILL.md 全文。
+ * 作者口径：技能既要能被左侧 Agent 发现，也要能被外部 Agent 读——
+ * 前者靠面板清单，后者靠 MCP（openstory_skills_list/read）。这里补上「人」这一层：
+ * 作者点开就能看这篇配方到底怎么写的、依赖什么工具、产出什么。
+ */
+async function openSkillPeek(name) {
+  if (!name) return
+  openModal(`<div class="loading">正在读 ${esc(name)}…</div>`)
+  try {
+    const payload = await api(`/api/skill?name=${encodeURIComponent(name)}`)
+    const skill = payload.skill ?? {}
+    const bodyHtml = window.__mdRender
+      ? window.__mdRender(text(skill.body))
+      : `<pre class="skill-md-raw">${esc(text(skill.body))}</pre>`
+    openModal(`<h3>${esc(skill.name || name)}</h3>
+      <p class="sub">${esc(skill.description || '')}</p>
+      <div class="skill-meta">
+        <span class="chip">${esc(skill.category || '—')}</span>
+        ${skill.version ? `<span class="count">v${esc(skill.version)}</span>` : ''}
+        ${skill.vendor ? `<span class="count">${esc(skill.vendor)}</span>` : ''}
+        ${Array.isArray(skill.genres) ? `<span class="count">体裁：${esc(skill.genres.join('／'))}</span>` : ''}
+        ${skill.stage ? `<span class="count">阶段：${esc(skill.stage)}</span>` : ''}
+      </div>
+      ${Array.isArray(skill.tools) && skill.tools.length ? `<p class="sub">用到的工具：${esc(skill.tools.join('、'))}</p>` : ''}
+      ${skill.output ? `<p class="sub">产出：${esc(skill.output)}</p>` : ''}
+      <div class="skill-md">${bodyHtml}</div>
+      <div class="ops"><button class="btn-ghost" data-action="modal-close">关闭</button></div>`)
+  } catch (error) {
+    openModal(`<h3>${esc(name)}</h3><p class="sub">读不出来：${esc(text(error?.message || error))}</p>
+      <div class="ops"><button class="btn-ghost" data-action="modal-close">关闭</button></div>`)
+  }
 }
 
 /** 写选择链（风格词条/方法论）：单点 PUT，回来更新本地缓存。 */
@@ -3099,6 +3138,7 @@ const SETTINGS_SECTIONS = Object.freeze([
   { id: 'plugins', label: '插件', hint: '套件与 Agent 运行时' },
   { id: 'models', label: '模型', hint: '对话 / 生图 / 识图' },
   { id: 'appearance', label: '风格', hint: '皮肤包切换' },
+  { id: 'typography', label: '主题与字号', hint: '全局字号档位（强制覆盖各页签）' },
   { id: 'script', label: '剧本', hint: '自动排版与角色配色' },
   { id: 'modules', label: '工作台模块', hint: '左栏与右栏的分析模块插拔' },
   { id: 'discover', label: '发现与导入', hint: '货架路径与导入稿件' },
@@ -3817,6 +3857,100 @@ function settingsAppearanceSectionHtml() {
 }
 
 
+/**
+ * 主题与字号（OS-91）——项目级强制覆盖，管所有页签。
+ * 作者口径：「前端 CSS 需要全局化，在全局设置中配置应用，明确规范好有几个大小档位，
+ * 正文模块和功能模块的字体大小档位区分开……交给项目级设置去做全局的主题设置，强制覆盖各个页签。」
+ *
+ * 两条轨道各自独立：
+ *   · 功能轨（按钮/表单/卡片/标签/表格）→ 4 档：紧凑 / 标准 / 大 / 特大（改 --ui-scale）
+ *   · 正文轨（纸面阅读）→ 5 档：小 / 中 / 大 / 特大 / 巨（改 --doc-font-size）
+ * 每个档位都有**实时预览**，改完立刻投影到 documentElement，写进库内 ui-state。
+ */
+function settingsTypographySectionHtml() {
+  const st = typographyState()
+  const uiOptions = [
+    { id: 'compact', label: '紧凑', hint: '0.92× · 信息密度优先' },
+    { id: 'comfortable', label: '标准', hint: '1.0× · 默认' },
+    { id: 'large', label: '大', hint: '1.08× · 长时间看屏' },
+    { id: 'xlarge', label: '特大', hint: '1.18× · 高分屏/远距' }
+  ]
+  const docOptions = [
+    { id: 's', label: '小', hint: '15px' },
+    { id: 'm', label: '中', hint: '17px · 默认' },
+    { id: 'l', label: '大', hint: '19px' },
+    { id: 'xl', label: '特大', hint: '21px' },
+    { id: '2xl', label: '巨', hint: '24px' }
+  ]
+  const uiCards = uiOptions.map((opt) => `
+    <button class="big-opt${st.ui === opt.id ? ' on' : ''}" data-action="typo-ui" data-typo-ui="${esc(opt.id)}">
+      <b>${esc(opt.label)}</b><span>${esc(opt.hint)}</span>
+    </button>`).join('')
+  const docCards = docOptions.map((opt) => `
+    <button class="big-opt${st.doc === opt.id ? ' on' : ''}" data-action="typo-doc" data-typo-doc="${esc(opt.id)}">
+      <b>${esc(opt.label)}</b><span>${esc(opt.hint)}</span>
+    </button>`).join('')
+  return `
+    <div class="step">
+      <h3>界面字号<span class="sub">影响按钮、表单、卡片、标签、表格等所有功能元素</span></h3>
+      <p class="sub">改完立刻生效并写进本库——换机器、清缓存后重新打开也保持一致（存在 .pinax/ui-state.json）。</p>
+      <div class="big-opts">${uiCards}</div>
+      <div class="typo-preview">
+        <div class="typo-preview-head">预览</div>
+        <button class="btn-primary" type="button">主要按钮</button>
+        <button class="btn-ghost" type="button">次要按钮</button>
+        <span class="chip">标签</span>
+        <input class="text" placeholder="输入框示例" style="max-width:200px">
+        <div class="typo-preview-row"><b>卡片标题</b><span class="count">副标说明</span></div>
+      </div>
+    </div>
+
+    <div class="step">
+      <h3>正文字号<span class="sub">只影响正文纸面（阅读/写作），不动界面元素</span></h3>
+      <p class="sub">正文用衬线体与独立行高，与界面字号分轨——调大界面不会把正文撑爆，反之亦然。</p>
+      <div class="big-opts">${docCards}</div>
+      <div class="typo-preview typo-preview-doc">
+        <div class="typo-preview-head">正文预览</div>
+        <p class="doc-paper-sample" style="max-width:none;margin:0">话说大宋仁宗天子在位，嘉祐三年三月三日五更三点，天子驾坐紫宸殿，受百官朝贺。</p>
+      </div>
+    </div>
+
+    <div class="step">
+      <h3>复位</h3>
+      <div class="ops">
+        <button class="btn-ghost" data-action="typo-reset">恢复默认（标准 + 中号正文）</button>
+        <span class="count">档位是项目级的：同一台机器上不同的库可以各自不同</span>
+      </div>
+    </div>`
+}
+
+/** 读字号档位（存在库内 ui-state，缺省＝标准/中）。 */
+function typographyState() {
+  const saved = uiGet('typography', null)
+  return {
+    ui: saved?.ui || 'comfortable',
+    doc: saved?.doc || 'm'
+  }
+}
+
+/** 把字号档位投影到 documentElement（全站生效）。 */
+function applyTypography() {
+  const st = typographyState()
+  const root = document.documentElement
+  root.dataset.fs = st.ui
+  root.dataset.docFs = st.doc
+}
+
+/** 改一个档位：立即生效 + 落库内 ui-state。 */
+function setTypography(kind, value) {
+  const st = typographyState()
+  if (kind === 'ui') st.ui = value
+  if (kind === 'doc') st.doc = value
+  uiSet('typography', { ...st }, { immediate: true })
+  applyTypography()
+  render()
+}
+
 /** 外观·写作（OS-21）：正文字号/行高/段距/首行缩进/自动隔行——改完立刻投影到 CSS 变量。 */
 function settingsWritingSectionHtml() {
   return `<div class="step">
@@ -3932,6 +4066,7 @@ function settingsHtml() {
     suiteSettings: () => suiteDetailHtml(state.settings.suiteId),
     runtime: settingsRuntimeSectionHtml,
     appearance: settingsAppearanceSectionHtml,
+    typography: settingsTypographySectionHtml,
     discover: settingsDiscoverSectionHtml,
     data: settingsDataSectionHtml,
     kb: settingsKbSectionHtml,
@@ -8608,6 +8743,7 @@ function deduceAgentHtml() {
 /* ---------- 数据加载 ---------- */
 
 async function boot() {
+  applyTypography()   // OS-91：无库时也先套默认字号档，避免首帧跳变
   // 运行时清单与 config 一起拉：chip 要能显示「DSH 原生」这类具体名字，不能等进设置页才加载
   await Promise.all([bootAgentConfig(), loadGlobalConfig(), loadAgentRuntimes()])
   updateAgentChip()
@@ -8715,6 +8851,7 @@ async function openLibrary(path) {
     // OS-89：拉库内界面状态（页签/模块开关等）——必须在 render() 之前灌满，
     // 否则第一帧会用默认值渲染再跳一下。这就是「不用浏览器缓存」的落地。
     await loadUiState()
+    applyTypography()   // OS-91：进库即应用项目级字号档位
     // OS-84：探已退场旧目录还剩多少篇——页签栏第一帧就要据此决定藏/露，不能等进参考页
     await probeRetiredDirs()
     // OS-19：体裁声明后按 excludedPages 裁剪页签（未声明＝不裁剪，保持 OS-8 行为）
@@ -9544,6 +9681,22 @@ document.addEventListener('click', (event) => {
     } else {
       deduceEngineTurn({ customText: customValue })
     }
+  } else if (action === 'open-typography-settings') {
+    closeModal()
+    state.settings.section = 'typography'
+    state.view = 'settings'
+    state.settings.open = true
+    render()
+  } else if (action === 'skill-peek') {
+    openSkillPeek(target.dataset.skillName)
+  } else if (action === 'typo-ui') {
+    setTypography('ui', target.dataset.typoUi)
+  } else if (action === 'typo-doc') {
+    setTypography('doc', target.dataset.typoDoc)
+  } else if (action === 'typo-reset') {
+    uiSet('typography', null, { immediate: true })
+    applyTypography()
+    render()
   } else if (action === 'modlog-open') {
     // OS-90：点日志行 → 看这次改动的完整 diff
     openChangeLogEntry(target.dataset.module, target.dataset.at, target.dataset.hash)
