@@ -143,13 +143,55 @@ export function refTreeHtml({ notes, tags = [], activeTag = '', activePath = '',
   return `${body}${untagged}`
 }
 
-export function refNavHtml({ tags = [], notes, activeTag = '', activePath = '', view = 'graph', q = '' } = {}) {
+/** 拆解词条分组（OS-103）：世界书的另一来源——库内 fact 条目（enrich/拆解产物）。
+ *  按 layer 分层显示，带首次出现章节徽标；点它进详情（只读，来源是 拆解/*.json）。 */
+const ENTRY_LAYER_LABEL = { worldview: '世界观', character: '角色', plot: '剧情', location: '地点', item: '道具', scene: '场景', term: '术语' }
+
+export function refEntriesGroupHtml({ entries = [], activeEntry = '', fcLimit = 0 } = {}) {
+  const list = (Array.isArray(entries) ? entries : []).filter((entry) => String(entry?.name ?? '').trim())
+  if (!list.length) return ''
+  // 按层分组（未知层归「其他」）
+  const byLayer = new Map()
+  for (const entry of list) {
+    const layer = String(entry?.layer ?? '').toLowerCase() || 'other'
+    if (!byLayer.has(layer)) byLayer.set(layer, [])
+    byLayer.get(layer).push(entry)
+  }
+  const fcOf = (entry) => {
+    const fc = Number(entry?.firstChapter)
+    if (Number.isFinite(fc) && fc >= 0) return fc
+    const chapters = Array.isArray(entry?.chapters) ? entry.chapters.filter(Number.isInteger) : []
+    return chapters.length ? Math.min(...chapters) : 0
+  }
+  const visible = (entry) => !fcLimit || fcOf(entry) <= fcLimit
+  const rows = [...byLayer.entries()].map(([layer, items]) => {
+    const shown = items.filter(visible)
+    if (!shown.length) return ''
+    return `<div class="nav-sub">${esc(ENTRY_LAYER_LABEL[layer] || layer)} <span class="nav-count">${shown.length}</span></div>` +
+      shown.map((entry) => {
+        const fc = fcOf(entry)
+        const badge = fc > 0 ? `<span class="fc-badge" title="首次出现于第${fc}章">${fc}章</span>` : '<span class="fc-badge fc-base" title="原生共识">共识</span>'
+        const active = String(entry?.id ?? '') && String(entry?.id) === String(activeEntry)
+        return `<button class="nav-row note entry${active ? ' on' : ''}" data-ref-entry="${esc(String(entry?.id ?? ''))}" title="拆解词条 · ${esc(layer)}">
+          <span class="tag-name">${esc(String(entry.name))}</span>
+          ${badge}
+        </button>`
+      }).join('')
+  }).join('')
+  if (!rows) return ''
+  return `<div class="nav-group"><div class="nav-group-label">拆解词条 <span class="nav-count">${list.filter(visible).length}</span></div>${rows}</div>`
+}
+
+export function refNavHtml({ tags = [], notes, activeTag = '', activePath = '', view = 'graph', q = '', factEntries = [], activeEntry = '', fcLimit = 0 } = {}) {
   // OS-80：去掉「笔记 / 关系图谱」这对视图开关——作者口径「笔记不是视图，
   // 点目录里的笔记自然就进详情」。只保留一个回图谱的入口（在详情页里）。
   const tree = refTreeHtml({ notes, tags, activeTag, activePath, q })
+  // OS-103：拆解词条是世界书的第二来源（enrich/拆解产物），按层分组挂在笔记树下面
+  const entriesGroup = refEntriesGroupHtml({ entries: factEntries, activeEntry, fcLimit })
   return `<div class="ref-nav">
     <input class="search" id="ref-search" type="search" placeholder="过滤目录…" value="${esc(q)}">
     <div class="nav-group grow"><div id="ref-tree">${tree}</div></div>
+    ${entriesGroup}
   </div>`
 }
 
@@ -181,11 +223,11 @@ function refMainEmptyHtml() {
  * 参考页整体骨架（OS-51）：侧栏导航 + 主区全宽（反链并入详情页底部，不再占独立列）。
  * mainHtml 由调用方按 view 给：笔记视图传详情页整块，图谱视图传大画布块。
  */
-export function referenceShellHtml({ notes, tags, activeTag, activePath, view = 'graph', q = '', mainHtml = '', stats, absorbable = 0, changelogHtml = '', firstChapterFilter = 0 }) {
+export function referenceShellHtml({ notes, tags, activeTag, activePath, view = 'graph', q = '', mainHtml = '', stats, absorbable = 0, changelogHtml = '', firstChapterFilter = 0, factEntries = [], activeEntry = '' }) {
   const statsLine = stats
     ? `<span class="count">${stats.notes} 篇 · ${stats.tags} 个标签 · ${stats.links} 条链接</span>`
     : ''
-  const nav = refNavHtml({ tags, notes, activeTag, activePath, view, q })
+  const nav = refNavHtml({ tags, notes, activeTag, activePath, view, q, factEntries, activeEntry, fcLimit: firstChapterFilter })
   return `<div class="ref-page">
     <div class="ref-toolbar">
       <h1>世界书</h1>

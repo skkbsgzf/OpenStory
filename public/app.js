@@ -3163,18 +3163,50 @@ function closeModal() {
 
 /* ---------- 设置页签（OS-32：组件页面，可关闭；说明文字收进右上角「!」）---------- */
 
-const SETTINGS_SECTIONS = Object.freeze([
-  { id: 'plugins', label: '插件', hint: '套件与 Agent 运行时' },
-  { id: 'models', label: '模型', hint: '对话 / 生图 / 识图' },
-  { id: 'appearance', label: '风格', hint: '皮肤包切换' },
-  { id: 'typography', label: '主题与字号', hint: '全局字号档位（强制覆盖各页签）' },
-  { id: 'script', label: '剧本', hint: '自动排版与角色配色' },
-  { id: 'modules', label: '工作台模块', hint: '左栏与右栏的分析模块插拔' },
-  { id: 'discover', label: '发现与导入', hint: '货架路径与导入稿件' },
-  { id: 'data', label: '数据与目录', hint: '库清单与配置位置' },
-  { id: 'kb', label: '知识库', hint: 'WeKnora 连接与健康' },
-  { id: 'about', label: '关于', hint: '这台工作台是什么' }
+/**
+ * 设置分节（OS-97 重构）。
+ *
+ * 作者口径：「设置这一块排得很乱，没有形成逻辑性。有些是我们的，有些是插件的，混在一起。
+ * 参照 DSH：软件本体的前端比较简单；插件有一个管理中心，管理中心下面就是用户自己接进来的插件，
+ * 单独给它留一列——小说是小说，剧本是剧本，谁是谁。」
+ *
+ * 所以分成**两组**，组之间语义清晰：
+ *   【本体设置】软件自己的东西：外观、模型、行为
+ *   【插件中心】用户接进来的东西：业务套件（小说/剧本/漫剧…）、Agent 运行时
+ *
+ * 「剧本」不再平铺——它属于写作套件的领域设置，进「插件中心 → 写作套件 → 领域设置」。
+ * 「发现与导入」「数据与目录」合并进「本机与数据」（同属「文件在哪」这一件事）。
+ */
+const SETTINGS_GROUPS = Object.freeze([
+  {
+    id: 'app',
+    label: '本体设置',
+    hint: '软件自己的外观、模型与行为',
+    sections: [
+      { id: 'appearance', label: '皮肤', hint: '亮/暗与配色主题' },
+      { id: 'typography', label: '字号', hint: '界面与正文两套档位' },
+      { id: 'models', label: '模型', hint: '对话 / 生图 / 识图端点' },
+      { id: 'modules', label: '工作台模块', hint: '左右栏的分析模块插拔' },
+      { id: 'kb', label: '知识库', hint: 'WeKnora 连接、分库与测试' },
+      { id: 'data', label: '本机与数据', hint: '路径、货架、导入稿件' },
+      { id: 'about', label: '关于', hint: '版本与定位' }
+    ]
+  },
+  {
+    id: 'plugins',
+    label: '插件中心',
+    hint: '业务套件与 Agent 运行时',
+    sections: [
+      { id: 'suites', label: '业务套件', hint: '小说 / 剧本 / 漫剧…' },
+      { id: 'runtimes', label: 'Agent 运行时', hint: 'DSH / CLI 通道' }
+    ]
+  }
 ])
+
+/** 扁平索引（渲染与查找用）。 */
+const SETTINGS_SECTIONS = Object.freeze(
+  SETTINGS_GROUPS.flatMap((group) => group.sections.map((section) => ({ ...section, group: group.id })))
+)
 
 /**
  * 工作台模块清单（OS-44）：左栏三个 + 右栏分析模块。
@@ -4024,6 +4056,27 @@ function settingsDiscoverSectionHtml() {
     <div class="row" style="display:flex;gap:10px"><button class="btn-ghost" data-action="flow-create">＋新建库</button><button class="btn-ghost" data-action="flow-import">导入稿件</button></div></div>`
 }
 
+/**
+ * 「本机与数据」（OS-97 合并）：原来「发现与导入」和「数据与目录」是两节，
+ * 但本质是同一件事——文件在哪、怎么进来。合成一节，按「路径 / 导入」两段。
+ */
+function settingsCombinedDataSectionHtml() {
+  return `<div class="step">
+    <h3>货架路径<span class="sub">丢文件即上新，本机目录覆盖内置</span></h3>
+    <div class="kv-line"><span class="k">业务套件</span><span class="v">%LOCALAPPDATA%\PinaxNext\openstory\suites</span></div>
+    <div class="kv-line"><span class="k">Agent 运行时</span><span class="v">%LOCALAPPDATA%\PinaxNext\openstoryuntimes</span></div>
+    <div class="kv-line"><span class="k">风格包</span><span class="v">%LOCALAPPDATA%\PinaxNext\openstory\styles</span></div>
+  </div>
+  <div class="step">
+    <h3>库与稿件</h3>
+    <div class="ops">
+      <button class="btn-primary" data-action="flow-create">＋ 新建库</button>
+      <button class="btn-ghost" data-action="flow-import">导入稿件</button>
+    </div>
+  </div>
+  ${settingsDataSectionHtml().replace(/^<div class="step">\s*<h3>本机路径<\/h3>/, '<div class="step"><h3>本机路径</h3>')}`
+}
+
 function settingsDataSectionHtml() {
   const paths = [
     { label: '库清单', path: state.preferencesPath || '%LOCALAPPDATA%\\PinaxNext\\next-preferences.json' },
@@ -4086,30 +4139,42 @@ function settingsKbSectionHtml() {
 
 function settingsHtml() {
   const sectionRenderers = {
-    plugins: settingsPluginsSectionHtml,
+    // —— 本体设置 ——
+    appearance: settingsAppearanceSectionHtml,
+    typography: settingsTypographySectionHtml,
     models: settingsModelsSectionHtml,
-    script: settingsScriptSectionHtml,
     modules: settingsModulesSectionHtml,
+    kb: settingsKbSectionHtml,
+    data: settingsCombinedDataSectionHtml,
+    about: settingsAboutSectionHtml,
+    // —— 插件中心 ——
     suites: suitesSectionHtml,
     suite: () => suiteDetailHtml(state.settings.suiteId),
     suiteSettings: () => suiteDetailHtml(state.settings.suiteId),
+    suiteDetail: () => suiteDetailHtml(state.settings.suiteId),
+    runtimes: settingsRuntimeSectionHtml,
+    // —— 兼容旧入口（老链接/深链）——
+    plugins: suitesSectionHtml,
     runtime: settingsRuntimeSectionHtml,
-    appearance: settingsAppearanceSectionHtml,
-    typography: settingsTypographySectionHtml,
-    discover: settingsDiscoverSectionHtml,
-    data: settingsDataSectionHtml,
-    kb: settingsKbSectionHtml,
-    about: settingsAboutSectionHtml
+    script: settingsScriptSectionHtml,
+    discover: settingsDiscoverSectionHtml
   }
-  const sectionId = sectionRenderers[state.settings.section] ? state.settings.section : 'plugins'
-  // 套件独立设置页在导航上高亮「插件」
-  const navOn = sectionId === 'suite' || sectionId === 'suiteSettings' ? 'plugins' : sectionId
-  const sectionHtml = (sectionRenderers[sectionId] ?? settingsPluginsSectionHtml)()
-  const nav = SETTINGS_SECTIONS.map((section) => `
-    <button class="settings-nav-item${section.id === navOn ? ' on' : ''}" data-settings-section="${esc(section.id)}">
-      <b>${esc(section.label)}</b>
-      <span>${esc(section.hint)}</span>
-    </button>`).join('')
+  const sectionId = sectionRenderers[state.settings.section] ? state.settings.section : 'appearance'
+  // 套件详情页在导航上高亮所属组（业务套件）
+  const navOn = sectionId === 'suite' || sectionId === 'suiteSettings' || sectionId === 'suiteDetail'
+    ? 'suites'
+    : (sectionId === 'runtime' ? 'runtimes' : sectionId)
+  const sectionHtml = (sectionRenderers[sectionId] ?? settingsAppearanceSectionHtml)()
+  // OS-97：左导航按组渲染——本体设置 / 插件中心，两组之间有明显间隔与组标题
+  const nav = SETTINGS_GROUPS.map((group) => `
+    <div class="settings-nav-group">
+      <div class="settings-nav-grouphead">${esc(group.label)}<span>${esc(group.hint)}</span></div>
+      ${group.sections.map((section) => `
+        <button class="settings-nav-item${section.id === navOn ? ' on' : ''}" data-settings-section="${esc(section.id)}">
+          <b>${esc(section.label)}</b>
+          <span>${esc(section.hint)}</span>
+        </button>`).join('')}
+    </div>`).join('')
   const help = SETTINGS_HELP[sectionId] || SETTINGS_HELP.plugins
   const helpOpen = state.settings.helpOpen === true
   return `<div class="lib-wrap">
@@ -4447,6 +4512,13 @@ async function loadReferences({ force = false } = {}) {
     ref.tagNotes = payload.tagNotes && typeof payload.tagNotes === 'object' ? payload.tagNotes : {}
     ref.stats = payload.stats ?? null
     ref.loaded = true
+    // OS-103：世界书第二来源——库内拆解词条（enrich/拆解产物），与笔记同页不同层
+    api('/api/fact/entries?root=' + encodeURIComponent(state.current.path))
+      .then((fact) => {
+        ref.factEntries = Array.isArray(fact.entries) ? fact.entries : []
+        if (state.view === 'reference') render()
+      })
+      .catch(() => { ref.factEntries = [] })
     // OS-89：模块加载时自己检索自己的 log（AGENTS.md 第 10 条）
     await loadModuleLog('参考', { limit: 20 })
     // OS-48：顺手探旧目录有没有可迁入的内容（迁入按钮按需显示；目录不存在＝0）
@@ -4645,6 +4717,41 @@ async function generateReferenceImage() {
   render()
 }
 
+/** 拆解词条详情（OS-103）：世界书第二来源的只读展示——类型、首次出现章节、定义、
+ *  以及它属于哪层（worldview/character/plot…）。想改它得改库内拆解文件（不在笔记通道）。 */
+function referenceEntryDetailHtml(entryId) {
+  const ref = state.reference
+  const entry = (ref.factEntries || []).find((item) => String(item?.id ?? '') === String(entryId))
+  if (!entry) {
+    return `<div class="ref-detail"><div class="ref-detail-head"><h1 class="ref-title">词条不存在</h1></div>
+      <p class="ds-empty">这条拆解词条可能已被移除或改过 id——点左侧其他词条看看。</p></div>`
+  }
+  const LAYER_LABEL = { worldview: '世界观', character: '角色', plot: '剧情', location: '地点', item: '道具', scene: '场景', term: '术语' }
+  const layer = String(entry.layer ?? '').toLowerCase()
+  const fc = Number(entry.firstChapter)
+  const firstChapter = Number.isFinite(fc) && fc >= 0 ? fc : (Array.isArray(entry.chapters) && entry.chapters.length ? Math.min(...entry.chapters.filter(Number.isInteger)) : 0)
+  const relations = Array.isArray(entry.relations) ? entry.relations : []
+  const anchors = entry.anchors && typeof entry.anchors === 'object' ? entry.anchors : null
+  const speech = anchors && Array.isArray(anchors.speech) ? anchors.speech.filter(Boolean) : []
+  return `<div class="ref-detail">
+    <div class="ref-detail-head">
+      <h1 class="ref-title">${esc(String(entry.name || '（无名）'))}</h1>
+      <span class="ref-detail-path">拆解词条 · ${esc(LAYER_LABEL[layer] || layer || '未分层')}</span>
+      <span class="fc-badge${firstChapter > 0 ? '' : ' fc-base'}">${firstChapter > 0 ? `首次出现在第${firstChapter}章` : '原生共识'}</span>
+      <span class="sp"></span>
+      <span class="count">只读 · 来源 拆解/（改动请走世界书笔记或 enrich）</span>
+    </div>
+    <div class="ref-flow">
+      ${entry.definition ? `<p class="brief-text">${esc(String(entry.definition))}</p>` : '<p class="ds-empty">这条词条还没有定义。</p>'}
+      ${entry.fact && entry.fact !== entry.definition ? `<div class="ref-doc"><p class="ds-line">${esc(String(entry.fact))}</p></div>` : ''}
+      ${speech.length ? `<section class="ds-sec"><h4>关键台词</h4>${speech.slice(0, 6).map((line) => `<p class="ds-line">${esc(String(line))}</p>`).join('')}</section>` : ''}
+      ${relations.length ? `<section class="ds-sec"><h4>关系</h4>${relations.slice(0, 10).map((rel) => `<p class="ds-line">${esc(String(rel?.name ?? rel?.to ?? ''))}${rel?.kind || rel?.type ? `（${esc(String(rel.kind || rel.type))}）` : ''}</p>`).join('')}</section>` : ''}
+      ${Array.isArray(entry.chapters) && entry.chapters.length ? `<section class="ds-sec"><h4>出现章节</h4><p class="ds-line">${entry.chapters.slice(0, 20).map((n) => `第${n}章`).join('、')}</p></section>` : ''}
+      ${entry.status ? `<p class="ds-tension">状态：${esc(String(entry.status))}</p>` : ''}
+    </div>
+  </div>`
+}
+
 function referenceEditorHtml() {
   const ref = state.reference
   const note = ref.note
@@ -4781,7 +4888,10 @@ function referencePageHtml() {
   if (!state.current) return needLibraryHtml()
   if (ref.loading && !ref.loaded) return '<div class="loading">正在读取参考…</div>'
   if (!refModule) return '<div class="loading">参考模块载入中…</div>'
-  const mainHtml = (ref.view || 'note') === 'graph' ? referenceGraphHtml() : referenceEditorHtml()
+  // OS-103：拆解词条详情优先（世界书第二来源，只读）
+  const mainHtml = (ref.view || 'note') === 'graph'
+    ? referenceGraphHtml()
+    : (ref.activeEntry ? referenceEntryDetailHtml(ref.activeEntry) : referenceEditorHtml())
   const absorbTotal = Object.values(ref.absorb || {}).reduce((sum, count) => sum + (Number(count) || 0), 0)
   // OS-96：首次出现章节筛选——0＝全量；>0 只看 firstChapter≤该章的词条
   const fcLimit = Number(ref.firstChapterFilter) || 0
@@ -4797,6 +4907,9 @@ function referencePageHtml() {
     stats: ref.stats,
     absorbable: absorbTotal,
     firstChapterFilter: fcLimit,
+    // OS-103：世界书第二来源（拆解词条）与当前选中词条
+    factEntries: ref.factEntries || [],
+    activeEntry: ref.activeEntry || '',
     // OS-89：参考模块自己的修改日志（AGENTS.md 第 10 条）
     changelogHtml: moduleLogHtml('参考', { title: '参考修改记录' })
   })
@@ -9463,6 +9576,15 @@ function go(view) {
 }
 
 document.addEventListener('click', (event) => {
+  // OS-103：世界书·拆解词条点击——切 note 视图并展示词条详情（只读，来源 拆解/）
+  const refEntryBtn = event.target.closest?.('[data-ref-entry]')
+  if (refEntryBtn && state.view === 'reference') {
+    state.reference.activeEntry = refEntryBtn.dataset.refEntry || ''
+    state.reference.activePath = ''
+    state.reference.view = 'note'
+    render()
+    return
+  }
   // 故事源（S2）：形态/层/条/章/图/折叠/关联/辐射都在页内切换，不碰全局路由
   const ssTarget = event.target.closest?.('[data-ss-view], [data-ss-layer], [data-ss-entry], [data-ss-chapter], [data-ss-chart], [data-ss-fold], [data-ss-close], [data-ss-open], [data-ss-ref], [data-ss-radiate], [data-ss-retry-chart], [data-ss-goto-write]')
   if (ssTarget && state.view === 'dir:拆解') {
