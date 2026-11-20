@@ -718,6 +718,24 @@ export const ENDPOINTS = Object.freeze({
     response: { ok: 'true', node: 'object', session: 'object', prose: 'string?', proseError: 'string?' },
     errors: ['NO_LIBRARY', 'INVALID_ENTRY', 'NOT_FOUND', 'WRITE_PROTOCOL_IO_FAILED']
   },
+  deduceExport: {
+    method: 'POST',
+    path: '/api/deduce/export',
+    // 导出（OS-94）：整个会话（每拍的决定＋正文＋归档清单）出 markdown，落
+    // 推演/<bookId>/导出/会话-<sid>-<ts>.md。读侧动作，不改会话。
+    request: { body: { root: 'string', bookId: 'string?', sessionId: 'string?', title: 'string?' } },
+    response: { ok: 'true', path: 'string', words: 'integer' },
+    errors: ['NO_LIBRARY', 'INVALID_ENTRY', 'NOT_FOUND', 'WRITE_PROTOCOL_IO_FAILED']
+  },
+  deducePromote: {
+    method: 'POST',
+    path: '/api/deduce/promote',
+    // 转正（OS-94）：把一拍的正文写进 正文/ 成正式章节——createChapter 自动下一章号＋
+    // writeChapterWithBackup 备份通道。prose 为空＝拒绝（先重写或自己写完）。
+    request: { body: { root: 'string', bookId: 'string?', sessionId: 'string?', nodeId: 'string', title: 'string?' } },
+    response: { ok: 'true', file: 'string', chapter: 'object', chars: 'integer' },
+    errors: ['NO_LIBRARY', 'INVALID_ENTRY', 'NOT_FOUND', 'WRITE_PROTOCOL_IO_FAILED']
+  },
   deducePendingSettle: {
     method: 'POST',
     path: '/api/deduce/pending',
