@@ -93,6 +93,14 @@
 15. **新增 UI 元素前先问：全局已有同款吗？** 有就用令牌，没有就先在 `:root` 加语义令牌
     （进 `design-system/tokens.css` 同步），再在页面里用——禁止在页面样式里发明一次性数值。
 
+16. **新 UI 只用 `.uikit-*` 与令牌；老类只是兼容别名。** 完整组件清单、用法示例、
+    交互契约与自检清单见 **[docs/UI-KIT.md](./docs/UI-KIT.md)** ——写前端前先读它。
+    - 组件在 `public/ui-kit.mjs`（10 个：chipField/field/textInput/select/toolbar/
+      card/emptyState/kvTable/buttonGroup/chipChip）
+    - 老类（`.btn-primary`/`.btn-ghost`/`.icon-btn`/`.select`/`.file-input`/`.text`/
+      `.kv-line`）已重写为与 uikit 同源的令牌组合，**不再新增变体**
+    - 多值输入用 `chipField`（标签式），**不要**再用「一行一个」的 textarea
+
 ## 发布规范（推送前必读）
 
 推 GitHub 前必过 [PUBLISHING.md](./PUBLISHING.md) 的检查单（协议干净/demo 干净/人机双读）；

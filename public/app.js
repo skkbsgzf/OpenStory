@@ -464,7 +464,8 @@ function render() {
     // 剧情树（OS-61 P3）：树视图挂 SVG 导图；离开树视图就清理（mode 在 state.deduce 上，不在 engine 上）
     if (state.deduce.mode === 'engine' && engine.view === 'tree') mountDeduceTree()
     else { deduceTreeCleanup?.(); deduceTreeCleanup = null }
-    // OS-94：推演偏好从库内 ui-state 复原（纸面模式/状态牌——换机器不丢）
+    // OS-94/100：偏好与模式从库内 ui-state 复原（纸面/状态牌/扮演模式）
+    engine.playMode = uiGet('deducePlayMode', 'roleplay') === 'engine' ? 'engine' : 'roleplay'
     engine.paperMode = uiGet('deducePaperMode', engine.paperMode === true)
     engine.infoOpen = uiGet('deduceInfoOpen', engine.infoOpen)
     // 文游素材（OS-61 P4）：进页拉一次盘点；打字机只在「当前局面」视图挂
@@ -4712,8 +4713,10 @@ function habitsViewHtml() {
         control: uiKit.textInput({ id: 'habit-style', value: h.style || '', placeholder: '例如：宋明白话为骨，白描，少形容词' })
       })}
       ${fields}
-      ${uiKit.buttonGroup({ items: [{ label: '保存习惯表', kind: 'primary', action: 'habits-save' }] })}
-      <p class="uikit-empty-hint" style="text-align:left">保存后立即生效：Agent 成文注入＋分析扫描。输入完按空格即成标签，长列表比文本框清楚得多。</p>
+      ${uiKit.toolbar({
+        left: uiKit.buttonGroup({ items: [{ label: '保存习惯表', kind: 'primary', action: 'habits-save' }] }),
+        right: '<span class="uikit-empty-hint">保存后立即生效：Agent 成文注入＋分析扫描</span>'
+      })}
     </div>
     ${moduleLogHtml('习惯', { title: '习惯表修改记录' })}`
 }
@@ -8438,7 +8441,18 @@ function deducePendingHtml(data) {
   const card = data.sceneCard ?? {}
   // OS-91：命运是世界的暗手（骰点体现在世界的回应里），不进玩家的选项——
   // 玩家面前只有基于眼前情境的分支（戏剧＝模型提的分支，必然＝世界规矩推的分支）
-  const candidates = (Array.isArray(data.candidates) ? data.candidates : []).filter((candidate) => candidate.source !== '命运')
+  let candidates = (Array.isArray(data.candidates) ? data.candidates : []).filter((candidate) => candidate.source !== '命运')
+  // OS-101：候选为空也要给选项（作者实测「写完这段怎么没有下一步」）——
+  // 从局面本身推三条确定性分支，不依赖引擎/模型。
+  if (candidates.length === 0) {
+    const others = who.filter((name) => text(name) && text(name) !== text(data.pov))
+    const place = where !== '地点未标' ? where : ''
+    candidates = [
+      ...(others.length ? [{ id: 'fallback-talk', source: '眼前', text: `我开口对${others[0]}说点什么，先探探他/她的反应`, refs: [others[0]] }] : []),
+      { id: 'fallback-look', source: '眼前', text: place ? `我在${place}里再仔细看一圈，找刚才漏掉的细节` : '我把眼前的东西一件件看过去，找刚才漏掉的细节', refs: [] },
+      { id: 'fallback-wait', source: '眼前', text: '我停在原地不动，等对方先开口或先动', refs: [] }
+    ].slice(0, 3)
+  }
   const who = Array.isArray(card.who) ? card.who.filter(Boolean) : []
   const where = card.where && card.where !== '未标记地点' ? text(card.where) : '地点未标'
   // OS-92：hook（上一拍的世界提示）对「你」说话——存量 sceneCard 是第三人称，显示层转人称
@@ -8709,7 +8723,9 @@ function deduceEngineHtml() {
       msgs.push(`<div class="fl-options"><p class="fl-prompt">轮到你了——选一条，或在下面说你的动作</p>${engine.roleplayOptions.map((opt, i) => `<button class="fl-opt" data-action="roleplay-option" data-idx="${i}"><span class="fl-opt-arrow">▸</span>${esc(opt)}</button>`).join('')}</div>`)
     }
   }
-  if (!draft && !rpMode && data) msgs.push(deducePendingHtml(data))
+  // OS-101：推演模式也要「写完就给下一步」——draft 存在（刚成文那一拍）照样给候选；
+  // 只有「正在成文中」才暂缓（避免和打字机打架）。
+  if (!rpMode && data && !engine.turnBusy) msgs.push(deducePendingHtml(data))
   if (engine.hint) msgs.push(`<div class="fl-hint">${esc(engine.hint)}</div>`)
 
   const composer = `<div class="fl-composer">
@@ -9823,9 +9839,11 @@ document.addEventListener('click', (event) => {
     deduceEnginePresent({ reset: true, hint: '本局已清空从第一拍重来' })
   } else if (action === 'ow-mode-roleplay') {
     state.deduce.engine.playMode = 'roleplay'
+    uiSet('deducePlayMode', 'roleplay')
     render()
   } else if (action === 'ow-mode-engine') {
     state.deduce.engine.playMode = 'engine'
+    uiSet('deducePlayMode', 'engine')
     render()
   } else if (action === 'ow-pov') {
     state.deduce.engine.opening.selPov = target.dataset.name
@@ -9852,6 +9870,7 @@ document.addEventListener('click', (event) => {
       engine.roleplayStarted = true
       engine.roleplayOptions = []
       engine.lastBeats = []
+      uiSet('deducePlayMode', 'roleplay')
       if (ow.selPov === '主持人') {
         engine.hint = '你是主持人——说一句开场（这一幕在哪儿、什么时候、谁在场），我来替你召集演员'
         render()
@@ -10392,12 +10411,15 @@ document.addEventListener('keydown', (event) => {
     sendAgentMessage()
     return
   }
-  // 推演输入条（OS-81）：Enter＝按我写的走，Shift+Enter＝换行
+  // 输入条（OS-81/97）：Enter＝发送，Shift+Enter＝换行。扮演模式走 roleplayTurn，推演走引擎。
   if (event.key === 'Enter' && event.target.id === 'deduce-custom' && !event.shiftKey) {
     event.preventDefault()
     const engine = state.deduce.engine
     const customValue = (engine.customText ?? '').trim()
-    if (customValue && !engine.busy && !engine.turnBusy) deduceEngineTurn({ customText: customValue })
+    if (customValue && !engine.busy && !engine.turnBusy) {
+      if ((engine.playMode || 'roleplay') !== 'engine') deduceRoleplayTurn({ playerAction: customValue })
+      else deduceEngineTurn({ customText: customValue })
+    }
     return
   }
   // OS-92：标签输入框——空格/回车/逗号成标签，空框退格删最后一个
