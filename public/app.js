@@ -14,6 +14,14 @@
  * 这里不内置任何演示数据——读不到就摆空态，不拿假卡片冒充库。
  */
 
+/* OS-92：UI 套件（标签编辑器/表单/卡片/表格…）——三方开发者写页面统一用它 */
+let uiKit = {
+  chipField: () => '', chipChip: () => '', field: () => '', textInput: () => '',
+  select: () => '', toolbar: () => '', card: () => '', emptyState: () => '',
+  kvTable: () => '', buttonGroup: () => ''
+}
+import('./ui-kit.mjs').then((mod) => { uiKit = mod }).catch(() => {})
+
 const state = {
   libraries: [],
   warnings: [],
@@ -4647,30 +4655,44 @@ const HABIT_FIELDS = [
   { key: 'formulas', label: '喜好的描述公式', hint: '惯用的写法公式（一行一个）', ph: '例如：动作+后果，不写血腥细节' }
 ]
 
+/**
+ * 习惯页（OS-92 重做）。
+ * 作者口径：「面对长列表、多词条的情况，再用文字框就很拉胯。可以用 tag 的形式，
+ * #标注一个条目，然后空格直接渲染成标签卡片。每个栏有增删按钮——
+ * 点击删按钮，下面的标签都出现 × 号，可以删除。」
+ */
 function habitsViewHtml() {
   const h = state.habits
   if (!state.current) return needLibraryHtml()
   if (!h) return '<div class="loading">正在读取习惯表…</div>'
-  const fields = HABIT_FIELDS.map((field) => `<div class="field">
-      <label>${esc(field.label)}<span class="count">　${esc(field.hint)}</span></label>
-      <textarea class="habit-list" data-habit-key="${esc(field.key)}" rows="4" placeholder="${esc(field.ph)}">${esc((h[field.key] || []).join('\n'))}</textarea>
-    </div>`).join('')
+  const fields = HABIT_FIELDS.map((item) => uiKit.chipField({
+    key: item.key,
+    label: item.label,
+    hint: item.hint.replace(/（一行一个）/u, ''),
+    values: Array.isArray(h[item.key]) ? h[item.key] : [],
+    placeholder: item.ph.split(String.fromCharCode(10))[0] || '输入后按空格添加…',
+    max: 60
+  })).join('')
+  const toneControl = uiKit.select({
+    id: 'habit-tone', value: h.tone || 'direct',
+    options: [
+      { value: 'direct', label: '直言——编辑体，问题直接说' },
+      { value: 'gentle', label: '温和——先扬后抑，问题说成「可以先动的」' }
+    ]
+  })
   return `<div class="doc-head"><div class="kick">${esc(state.current.name)} / 习惯</div><h1>习惯</h1>
       <div class="doc-meta"><span class="b">你的写作习惯表</span><span>Agent 成文前会逐条遵循；分析引擎按它扫问题</span></div></div>
     ${errorHtml()}
     <div class="habits-form">
-      <div class="field"><label>口吻（分析结论的说话方式）</label>
-        <select class="select" id="habit-tone">
-          <option value="direct"${h.tone !== 'gentle' ? ' selected' : ''}>直言——编辑体，问题直接说</option>
-          <option value="gentle"${h.tone === 'gentle' ? ' selected' : ''}>温和——先扬后抑，问题说成「可以先动的」</option>
-        </select>
-      </div>
-      <div class="field"><label>文风（一句自述，Agent 成文与总评都以它为基调）</label>
-        <input class="text" id="habit-style" value="${esc(h.style || '')}" placeholder="例如：宋明白话为骨，白描，少形容词">
-      </div>
+      ${uiKit.field({ label: '口吻', hint: '分析结论的说话方式', control: toneControl })}
+      ${uiKit.field({
+        label: '文风',
+        hint: '一句自述，Agent 成文与总评都以它为基调',
+        control: uiKit.textInput({ id: 'habit-style', value: h.style || '', placeholder: '例如：宋明白话为骨，白描，少形容词' })
+      })}
       ${fields}
-      <div class="ops"><button class="btn-primary" data-action="habits-save">保存习惯表</button>
-        <span class="count">保存后立即生效：Agent 成文注入＋分析扫描</span></div>
+      ${uiKit.buttonGroup({ items: [{ label: '保存习惯表', kind: 'primary', action: 'habits-save' }] })}
+      <p class="uikit-empty-hint" style="text-align:left">保存后立即生效：Agent 成文注入＋分析扫描。输入完按空格即成标签，长列表比文本框清楚得多。</p>
     </div>
     ${moduleLogHtml('习惯', { title: '习惯表修改记录' })}`
 }
@@ -4679,7 +4701,9 @@ async function saveHabits() {
   if (!state.current) return
   const form = { tone: document.getElementById('habit-tone')?.value || 'direct', style: document.getElementById('habit-style')?.value || '' }
   for (const field of HABIT_FIELDS) {
-    form[field.key] = (document.querySelector(`[data-habit-key="${field.key}"]`)?.value || '').split('\n').map((line) => line.trim()).filter(Boolean)
+    // OS-92：标签编辑器把值存在隐藏 input（data-chip-value）
+    const chipEl = document.querySelector(`[data-chip-field="${field.key}"]`)
+    form[field.key] = chipEl ? chipValuesOf(chipEl) : []
   }
   try {
     const payload = await api('/api/habits', { method: 'PUT', body: JSON.stringify({ root: state.current.path, habits: form }) })
@@ -9681,6 +9705,24 @@ document.addEventListener('click', (event) => {
     } else {
       deduceEngineTurn({ customText: customValue })
     }
+  } else if (action === 'chip-toggle-edit') {
+    // OS-92：进入/退出删除态——所有标签显 ×（作者原话：点删按钮，下面的标签都出现 x 号）
+    const field = target.closest('.uikit-chipfield')
+    if (field) {
+      const on = field.dataset.editing === '1'
+      field.dataset.editing = on ? '0' : '1'
+      for (const x of field.querySelectorAll('.uikit-chip-x')) x.classList.toggle('is-hidden', on)
+      target.classList.toggle('uikit-btn-ghost', !on)
+    }
+  } else if (action === 'chip-remove') {
+    // 删除单个标签：重排索引并同步隐藏字段
+    const field = target.closest('.uikit-chipfield')
+    const key = target.dataset.chipKey
+    const index = Number(target.dataset.chipIndex)
+    if (!field || !key) return
+    const values = chipValuesOf(field)
+    values.splice(index, 1)
+    chipSetValues(field, values)
   } else if (action === 'open-typography-settings') {
     closeModal()
     state.settings.section = 'typography'
@@ -10174,6 +10216,8 @@ document.addEventListener('keydown', (event) => {
     if (customValue && !engine.busy && !engine.turnBusy) deduceEngineTurn({ customText: customValue })
     return
   }
+  // OS-92：标签输入框——空格/回车/逗号成标签，空框退格删最后一个
+  if (chipInputKeydown(event)) return
   if (event.key === 'Escape') {
     if (state.view === 'write' && state.write.mode === 'edit') { leaveDocEdit(); return }
     closeModal()
@@ -10669,4 +10713,69 @@ function moduleOfCurrentView() {
   if (view === 'deduce') return '推演'
   if (view.startsWith('dir:')) return view.slice(4)
   return ''
+}
+
+/* ---------- OS-92：标签编辑器（chip field）交互 ---------- */
+
+/** 取某个 chip 字段的当前值（从隐藏 input 读，单一真源）。 */
+function chipValuesOf(fieldEl) {
+  const hidden = fieldEl?.querySelector('[data-chip-value]')
+  const raw = hidden ? hidden.value : ''
+  return raw.split(String.fromCharCode(10)).map((line) => line.trim()).filter(Boolean)
+}
+
+/** 写回标签集合：重排 DOM + 同步隐藏字段 + 更新计数。 */
+function chipSetValues(fieldEl, values) {
+  if (!fieldEl) return
+  const key = fieldEl.dataset.chipField
+  const max = Number(fieldEl.dataset.max) || 60
+  const list = values.map((v) => String(v).trim().slice(0, max)).filter(Boolean)
+  const body = fieldEl.querySelector('.uikit-chipfield-body')
+  const editing = fieldEl.dataset.editing === '1'
+  if (body) {
+    body.innerHTML = list.length
+      ? list.map((value, index) => uiKit.chipChip({ key, value, index, editing })).join('')
+      : '<span class="uikit-chipfield-empty">还没有条目——在下面输入，按空格添加</span>'
+  }
+  const hidden = fieldEl.querySelector('[data-chip-value]')
+  if (hidden) hidden.value = list.join(String.fromCharCode(10))
+  const count = fieldEl.querySelector('[data-chip-count]')
+  if (count) count.textContent = String(list.length)
+}
+
+/** 追加一个标签（去重）。 */
+function chipAddValue(fieldEl, value) {
+  const max = Number(fieldEl?.dataset.max) || 60
+  const clean = String(value || '').trim().slice(0, max)
+  if (!clean) return false
+  const values = chipValuesOf(fieldEl)
+  if (values.includes(clean)) return false
+  chipSetValues(fieldEl, [...values, clean])
+  return true
+}
+
+/** 标签输入框的键处理：空格/回车/逗号 → 成标签。 */
+function chipInputKeydown(event) {
+  const input = event.target
+  if (!input?.matches?.('[data-chip-input]')) return false
+  const isSep = event.key === ' ' || event.key === 'Enter' || event.key === ',' || event.key === '、'
+  const field = input.closest('.uikit-chipfield')
+  if (!field) return false
+  if (isSep) {
+    event.preventDefault()
+    const added = chipAddValue(field, input.value)
+    if (added) input.value = ''
+    return true
+  }
+  // 退格删最后一个（输入框为空时）
+  if (event.key === 'Backspace' && !input.value) {
+    const values = chipValuesOf(field)
+    if (values.length) {
+      event.preventDefault()
+      values.pop()
+      chipSetValues(field, values)
+    }
+    return true
+  }
+  return false
 }
