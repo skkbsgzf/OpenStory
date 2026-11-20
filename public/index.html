@@ -565,6 +565,13 @@ button.modlog-row:focus-visible { outline: 2px solid var(--accent); outline-offs
    原实现三个控件各写各的（9.5/11.5/12px 三档字号、宽度 52/58 两种、只有 fc-input 有内边距），
    且 align-items:baseline 让 number input 与文字基线错位（作者实测截图）。
    现在统一走控件令牌 + 居中对齐 + 数字框固定宽度。 */
+/* 拆解词条分组（OS-103） */
+.nav-sub { font-size: 10.5px; font-weight: 600; color: var(--ink-2); padding: 6px 8px 3px;
+  border-bottom: 1px dashed var(--hair); margin-bottom: 2px; }
+.nav-row.entry .tag-name { font-size: 12px; }
+.ref-detail-head { flex-wrap: wrap; row-gap: 6px; }
+.ref-detail-head .ref-title { flex: 0 0 auto; white-space: nowrap; }
+.ref-detail-head .fc-badge { flex: 0 0 auto; }
 .fc-badge {
   flex-shrink: 0; display: inline-flex; align-items: center;
   height: calc(var(--ui-ctl-h) * 0.62);
@@ -1022,6 +1029,19 @@ button.modlog-row:focus-visible { outline: 2px solid var(--accent); outline-offs
 .doc-paper-sample {
   font-family: var(--serif); font-size: var(--doc-font-size); line-height: var(--doc-line-height);
   color: var(--ink-2); text-indent: var(--doc-indent); margin: 0;
+}
+/* OS-97：设置左导航分组（本体设置 / 插件中心） */
+.settings-nav-group { display: flex; flex-direction: column; gap: var(--ui-gap-3xs); }
+.settings-nav-group + .settings-nav-group { margin-top: var(--ui-gap-lg); padding-top: var(--ui-gap-md); border-top: 1px solid var(--hair); }
+.settings-nav-grouphead {
+  padding: var(--ui-gap-xs) var(--ui-ctl-px) var(--ui-gap-2xs);
+  font-size: var(--ui-fs-2xs); font-weight: 600; letter-spacing: .06em;
+  color: var(--meta); text-transform: none;
+  display: flex; flex-direction: column; gap: 1px;
+}
+.settings-nav-grouphead span {
+  font-size: var(--ui-fs-2xs); font-weight: 400; letter-spacing: 0;
+  color: var(--meta); opacity: .75;
 }
 .settings-layout { display: grid; grid-template-columns: 230px minmax(0, 1fr); gap: var(--ui-gap-xl); align-items: start; }
 @media (max-width: 900px) { .settings-layout { grid-template-columns: minmax(0, 1fr); } }
