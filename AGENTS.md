@@ -5,10 +5,10 @@
 
 ## 这里是什么
 
-零 npm 构建依赖的中文小说工作台：`daemon.mjs`（Express 手写 HTTP，127.0.0.1:8807）
-+ `public/` 原生 JS 前端。模块：**小说**（纯净写作面）/ **世界书+参考**（条目 KB）/
-**习惯**（写作规矩表）/ **拆解**（fact 链）/ **推演**（种子化文游）/ **分析**（本地引擎）。
-全部经 `contracts.mjs`（62 端点）契约分派；MCP 对外 20 工具（`mcp.mjs`）。
+零 npm 构建依赖的中文小说工作台：`daemon.mjs`（node:http 手写路由，127.0.0.1:8807）
++ `public/` 原生 JS 前端。模块：**小说**（纯净写作面）/ **世界书**（参考笔记＋拆解词条只读层）/
+**习惯**（写作规矩表）/ **故事源**（fact 链可视化）/ **扮演**（主持人＋多角色，默认）/ **确定性推演**（可选）/ **剧本** / **分析**（本地引擎）。
+全部经 `contracts.mjs`（95 端点）契约分派；MCP 对外 24 工具（`mcp.mjs`）。
 
 ## 硬规则（违反＝白干）
 
@@ -115,7 +115,7 @@
 ## 改完必跑（验收线，详见 `docs/ACCEPTANCE.md`）
 
 ```bash
-node .zcode/run-gate.mjs                    # ① 全量单测（217 例）
+node .zcode/run-gate.mjs                    # ① 全量单测（299 例）
 node tools/acceptance/acceptance.mjs        # ② 交付标准 S1–S4 门禁（14 检查，Rea 式证据）
 # ③ .ua/ 知识图谱增量（/understand，skill 在 ~/.zcode/skills/understand*）
 # ④ 前端批次给作者截图讲场景（对照 design-system/DESIGN.md + docs/UX-STRUCTURE.md）
@@ -129,6 +129,6 @@ node tools/acceptance/acceptance.mjs        # ② 交付标准 S1–S4 门禁（
 - `contracts.mjs` 端点契约 → `daemon.mjs` 路由实现（endpointFor 分派 + validateResponse 校验）
 - `deduceEngine.mjs`（vendor 推演核）/ `deduceSession.mjs`（会话容器，推演/<bookId>/session.json）
 - `referenceStore.mjs`（参考索引/图谱）· `enrichEngine.mjs`（语义富化 6 窗）· `factGuard.mjs`
-- `skills/` 创作知识库 30 包（SKILL.md 制）· `mcp/skills/` 对外分发材料 · `design-system/` 设计令牌包
+- `skills/` 创作知识库 31 包＋套件捆绑 2（SKILL.md 制）· `mcp/skills/` 对外分发材料 · `design-system/` 设计令牌包
 - `tools/acceptance/` 验收门禁 · `.ua/` UA 知识图谱（intermediate/ 与 tmp/ 是运行产物不入库）
 - `test/` node --test 全覆盖；跑法统一走 `.zcode/run-gate.mjs`（它会 chdir 到仓根）
