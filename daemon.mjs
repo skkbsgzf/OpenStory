@@ -1726,6 +1726,10 @@ function readLegacyDeduceState(root, bookId) {
     const bookId = await resolveFactBookId(root, request.bookId)
     const loaded = loadEntries(root)
     if (!loaded.ok) return sendError(res, API_ERROR_CODES.INVALID_ENTRY, loaded.message)
+    // OS-107 修：空事实包不能开局——扮演底座必须有世界书/拆解条目，否则模型凭空编造
+    if (!Array.isArray(loaded.entries) || loaded.entries.length === 0) {
+      return sendError(res, API_ERROR_CODES.INVALID_ENTRY, '这个库还没有事实包（拆解条目/世界书词条）——先补世界书或跑 enrich，再开始扮演')
+    }
     const chapterLimit = Number.isFinite(Number(request.chapterLimit)) && Number(request.chapterLimit) > 0 ? Number(request.chapterLimit) : null
     const entries = chapterLimit == null
       ? loaded.entries
@@ -1780,6 +1784,10 @@ function readLegacyDeduceState(root, bookId) {
     const bookId = await resolveFactBookId(root, request.bookId)
     const loaded = loadEntries(root)
     if (!loaded.ok) return sendError(res, API_ERROR_CODES.INVALID_ENTRY, loaded.message)
+    // OS-107 修：空事实包不能演——与开场同口径
+    if (!Array.isArray(loaded.entries) || loaded.entries.length === 0) {
+      return sendError(res, API_ERROR_CODES.INVALID_ENTRY, '这个库还没有事实包——扮演需要世界书/拆解条目作底座')
+    }
     // 世界书按章过滤（OS-96）：chapterLimit 给了＝晚于该章成立的词条不存在
     const chapterLimit = Number.isFinite(Number(request.chapterLimit)) && Number(request.chapterLimit) > 0 ? Number(request.chapterLimit) : null
     const entries = chapterLimit == null

@@ -4791,6 +4791,8 @@ async function openReference(path, { from = '' } = {}) {
   const ref = state.reference
   if (!state.current || !path) return
   ref.activePath = path
+  // OS-106 修：打开笔记必须清掉 activeEntry——否则词条详情优先级高，点任何笔记都还是词条
+  ref.activeEntry = ''
   ref.from = from
   ref.error = ''
   // OS-75：点条目＝进详情页（此前漏切视图，导致图谱视图下点条目无反应）
