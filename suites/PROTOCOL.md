@@ -68,6 +68,55 @@ type ∈ string/number/boolean/select（select 带 options，default 必须在 o
 安装＝放目录 → 货架可见（版本/归属/能力 chips）；启用/停用＝`PUT /api/suite/state`（值保留）；
 下架＝删目录。停用的套件：宿主不应用其规则、其自带页横幅提示——**宿主绝不假装它在场**。
 
+## 4.5 套件前端规范（OS-95，page 模式的 settings.html / board.html 必读）
+
+作者口径：「整体的规范性还是要在统一的 UI 里面去管理。」
+插件页跑在同源 iframe 里，**不继承父文档的 CSS 变量**——所以宿主要主动下发。
+
+### 第一步：链接宿主令牌
+
+```html
+<link rel="stylesheet" href="/suite-assets/_tokens.css">
+```
+
+这一个 link 给你全套令牌（宿主按当前档位算好具体值下发）：
+
+| 类别 | 令牌 |
+|---|---|
+| 字号 | `--ui-fs-2xs` … `--ui-fs-2xl`（8 级） |
+| 行高 | `--ui-lh-tight|normal|loose` |
+| 控件 | `--ui-ctl-h`（高度）、`--ui-ctl-px`（横向内边距）、`--ui-row-py` |
+| 间距 | `--ui-gap-3xs` … `--ui-gap-2xl`（8 级） |
+| 配色 | `--bg` `--soft` `--ink` `--ink-2` `--muted` `--meta` `--line` `--hair` `--accent` `--accent-hover` `--accent-soft` `--ok` `--danger` `--warn` `--on-accent` |
+| 圆角 | `--radius` `--radius-md` `--radius-lg` `--pill` |
+| 字体 | `--sans` `--serif` `--mono` |
+
+暗色：`html[data-theme="dark"]` 已内置覆盖；套件页在 `<html>` 上打这个属性即可跟随夜皮。
+
+### 第二步：只用令牌写样式
+
+```css
+/* ✅ */
+label { font-size: var(--ui-fs-sm); color: var(--ink-2); margin-bottom: var(--ui-gap-2xs); }
+input { height: var(--ui-ctl-h); padding: 0 var(--ui-ctl-px); border: 1px solid var(--line); border-radius: var(--radius); }
+
+/* ❌ 禁止 */
+label { font-size: 12px; color: #6f6a63; }
+```
+
+**禁止裸写像素与十六进制色值**。宿主换皮、调字号档时，插件页必须自动跟随。
+
+### 第三步：样板
+
+`suites/comicdrama/settings.html` 是完整样板（0 裸值、全令牌）。新套件照抄它的结构。
+
+### 自检
+
+- [ ] `<link rel="stylesheet" href="/suite-assets/_tokens.css">` 在 head 里
+- [ ] 页面样式里没有 `font-size: Npx` / `#hex`
+- [ ] 控件高度用 `--ui-ctl-h`，间距用 `--ui-gap-*`
+- [ ] 暗色下可读（切夜皮看一眼）
+
 ## 5. 最小示例
 
 见 `openstory/suites/comicdrama/`（@2 page 模式：自带 settings.html）与

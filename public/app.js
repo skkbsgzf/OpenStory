@@ -4128,6 +4128,35 @@ function settingsHtml() {
   </div>`
 }
 
+/**
+ * OS-95：判断宿主当前是不是暗色面。
+ * 读 :root 的 --bg 计算值（皮肤令牌注入在这里），按相对亮度判定。
+ * 这是给插件 iframe 决定加载亮/暗令牌表用的——插件页不在宿主的 CSS 作用域里。
+ */
+function isDarkSurface() {
+  try {
+    const bg = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim()
+    const hex = bg.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i)
+    if (hex) {
+      let raw = hex[1]
+      if (raw.length === 3) raw = raw.split('').map((c) => c + c).join('')
+      const r = parseInt(raw.slice(0, 2), 16)
+      const g = parseInt(raw.slice(2, 4), 16)
+      const b = parseInt(raw.slice(4, 6), 16)
+      // 相对亮度（sRGB 近似）：> 0.5 视为亮底
+      const lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255
+      return lum < 0.5
+    }
+    // rgb()/hsl() 兜底：取数字最大值粗判
+    const nums = bg.match(/[0-9.]+/gu)
+    if (nums && nums.length >= 3) {
+      const [r, g, b] = nums.slice(0, 3).map(Number)
+      return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255 < 0.5
+    }
+  } catch { /* 读不到就当亮色 */ }
+  return false
+}
+
 /** 一键修复（od 口径：显式确认后才动 profile）——只支持 DSH。 */
 async function runRuntimeSetup(id) {
   const runtime = (agent.runtimeList || []).find((item) => item.id === id)
@@ -4253,7 +4282,13 @@ function suiteDetailHtml(id) {
   const paused = suite.enabled ? '' : '<div class="warn-box"><b>已停用</b>——这套件的规则当前走内置默认；下面的值保留，启用即恢复。</div>'
   let body = ''
   if (mode === 'page') {
-    body = `${paused}<iframe class="suite-frame" src="/suite-assets/${esc(suite.id)}/${esc(caps.settings.entry)}" title="${esc(suite.name)} 设置"></iframe>`
+    // OS-95：把宿主当前主题透给插件页——插件页据此决定加载亮/暗令牌表。
+    // 宿主主题真源是 skin 注入的 --bg 令牌值（不是 data-theme），所以按亮度判：
+    // #fff/#faf9f7 这类亮底 → light；#1c1b1a 这类暗底 → dark。
+    const theme = isDarkSurface() ? 'dark' : 'light'
+    const entry = caps.settings.entry
+    const sep = entry.includes('?') ? '&' : '?'
+    body = `${paused}<iframe class="suite-frame" src="/suite-assets/${esc(suite.id)}/${esc(entry)}${sep}theme=${theme}" title="${esc(suite.name)} 设置"></iframe>`
   } else if (mode === 'schema') {
     const schema = suite.settingsSchema ?? []
     body = `
