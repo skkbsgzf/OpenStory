@@ -3185,12 +3185,10 @@ const SETTINGS_GROUPS = Object.freeze([
     label: '本体设置',
     hint: '软件自己的外观、模型与行为',
     sections: [
-      { id: 'appearance', label: '皮肤', hint: '亮/暗与配色主题' },
-      { id: 'typography', label: '字号', hint: '界面与正文两套档位' },
-      { id: 'models', label: '模型', hint: '对话 / 生图 / 识图端点' },
+      // OS-98：相关概念合并——外观（皮肤+字号）；模型/知识库/路径都是「接什么、存哪」
+      { id: 'appearance', label: '外观', hint: '皮肤主题与字号档位' },
+      { id: 'engines', label: '引擎与存储', hint: '模型 / 知识库 / 本机路径' },
       { id: 'modules', label: '工作台模块', hint: '左右栏的分析模块插拔' },
-      { id: 'kb', label: '知识库', hint: 'WeKnora 连接、分库与测试' },
-      { id: 'data', label: '本机与数据', hint: '路径、货架、导入稿件' },
       { id: 'about', label: '关于', hint: '版本与定位' }
     ]
   },
@@ -3907,16 +3905,18 @@ async function runConfigProbe(kind) {
   paintProbeBadge(kind)
 }
 
-function settingsAppearanceSectionHtml() {
+/** 皮肤卡片内容（不含 .step 外壳）——供「外观」合并节直接嵌入。 */
+function skinCardsHtml() {
   const styleCards = state.styles.map((pack) => `
     <button class="big-opt${pack.id === state.skin ? ' on' : ''}" data-skin="${esc(pack.id)}">
       <b>${esc(pack.name)}<span class="src">${esc(pack.source)}</span></b>
       <span>${esc(pack.description || '')}</span>
     </button>`).join('')
-  return `<div class="step">
-    <h3>风格包</h3>
-    <div class="big-opts">${styleCards || '<span class="count">风格包清单读不到，先用内置珊瑚兜底。</span>'}</div>
-  </div>`
+  return `<div class="big-opts">${styleCards || '<span class="count">风格包清单读不到，先用内置珊瑚兜底。</span>'}</div>`
+}
+
+function settingsAppearanceSectionHtml() {
+  return `<div class="step"><h3>风格包</h3>${skinCardsHtml()}</div>`
 }
 
 
@@ -4194,16 +4194,60 @@ function settingsKbSectionHtml() {
     </div>`
 }
 
+/**
+ * 外观（OS-98 合并：皮肤 + 字号）。
+ *
+ * 作者口径：「外观只放一个——不管是字体还是主题，都是一件事。」
+ * 原来「皮肤」和「字号」两节分开，用户要来回点；现在合成一节，
+ * 主题在上一块、字号在下一块，改完立刻生效。
+ */
+function settingsCombinedAppearanceHtml() {
+  // OS-98：皮肤与字号合成一节——作者口径「外观只放一个，字体和主题都是一件事」
+  return `
+    <div class="step">
+      <h3>皮肤主题<span class="sub">亮/暗与配色基调，全局生效</span></h3>
+      ${skinCardsHtml()}
+    </div>
+    ${settingsTypographySectionHtml()}`
+}
+
+/**
+ * 引擎与存储（OS-98 合并：模型 / 知识库 / 本机路径）。
+ *
+ * 作者口径：「不管是模型还是知识库，还是各种引擎、本地的纯存储，
+ * 这些东西也都只有一份，全部都结合到一起。」
+ * 这四样本质都是「接什么外部能力、文件存哪」——归到一节，用子标题分开。
+ */
+function settingsCombinedEnginesHtml() {
+  const section = (title, hint, body) => `
+    <div class="step">
+      <h3>${esc(title)}${hint ? `<span class="sub">${esc(hint)}</span>` : ''}</h3>
+      ${body}
+    </div>`
+  // 各子节的内部 h3 去掉（外层已有标题）
+  const strip = (html) => text(html)
+    .replace(/^\s*<div class="step">\s*<h3>[^<]*(?:<span class="sub">.*?<\/span>)?[^<]*<\/h3>/, '<div>')
+    .replace(/<div class="step">\s*<h3>[^<]*(?:<span class="sub">.*?<\/span>)?[^<]*<\/h3>/gu, '<div>')
+
+  return [
+    section('对话模型', 'Agent 成文用的模型端点', strip(settingsModelsSectionHtml())),
+    section('知识库', 'WeKnora 连接、分库与测试', strip(settingsKbSectionHtml())),
+    section('本机路径与导入', '货架位置、库清单、导入稿件', strip(settingsCombinedDataSectionHtml()))
+  ].join('')
+}
+
 function settingsHtml() {
   const sectionRenderers = {
-    // —— 本体设置 ——
-    appearance: settingsAppearanceSectionHtml,
-    typography: settingsTypographySectionHtml,
-    models: settingsModelsSectionHtml,
+    // —— 本体设置（OS-98 合并：相关概念归一处）——
+    appearance: settingsCombinedAppearanceHtml,
+    engines: settingsCombinedEnginesHtml,
     modules: settingsModulesSectionHtml,
-    kb: settingsKbSectionHtml,
-    data: settingsCombinedDataSectionHtml,
     about: settingsAboutSectionHtml,
+    // 旧 id 重定向（深链兼容）
+    typography: settingsCombinedAppearanceHtml,
+    models: settingsCombinedEnginesHtml,
+    kb: settingsCombinedEnginesHtml,
+    data: settingsCombinedEnginesHtml,
     // —— 插件中心 ——
     suites: suitesSectionHtml,
     suite: () => suiteDetailHtml(state.settings.suiteId),
