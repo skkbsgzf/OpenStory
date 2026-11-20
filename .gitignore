@@ -30,3 +30,6 @@ desktop.ini
 .ua/tmp/
 .ua/diff-overlay.json
 .ua/.trash-*/
+
+# ── 运行残留补遗（OS-110 发现）──
+samples/**/.operations.jsonl
