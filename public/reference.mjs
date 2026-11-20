@@ -232,6 +232,7 @@ export function referenceShellHtml({ notes, tags, activeTag, activePath, view = 
     <div class="ref-toolbar">
       <h1>世界书</h1>
       ${statsLine}
+      <button class="btn-ghost${view === 'graph' ? ' on' : ''}" data-ref-view="graph" title="关系图谱：全库笔记与词条的关系全景">关系图谱</button>
       <label class="fc-filter" title="只看首次出现章节 ≤ 此值的词条（0＝原生共识恒显示）">看到第 <input type="number" id="fc-filter" min="0" value="${Number(firstChapterFilter) || 0}" data-action="fc-filter-input"> 章为止</label>
       <span class="sp"></span>
       ${absorbable > 0 ? `<button class="btn-ghost" data-action="ref-absorb">迁入旧目录（${absorbable} 篇）</button>` : ''}

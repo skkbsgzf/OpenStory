@@ -475,6 +475,36 @@ export function buildReferenceGraph(index, { entries = [] } = {}) {
     }
   }
 
+  // OS-104：全部拆解词条入图（不只是被 [[条目:id]] 链接到的）——
+  // 世界书第二来源（enrich/拆解产物）本身就是知识节点，图谱要能看见它们。
+  // 同一层的词条之间按 layer 连一条弱边（同域聚合），避免图谱全是孤点。
+  {
+    const layerBuckets = new Map()
+    for (const entry of (Array.isArray(entries) ? entries : [])) {
+      const id = text(entry?.id)
+      const name = text(entry?.name).trim()
+      if (!id || !name || name.startsWith('.')) continue
+      const nodeId = `entry:${id}`
+      const fc = Number(entry?.firstChapter)
+      const firstChapter = Number.isFinite(fc) && fc >= 0 ? fc : 0
+      ensureNode(nodeId, {
+        kind: 'entry',
+        label: name,
+        readonly: true,
+        layer: text(entry.layer),
+        firstChapter,
+        excerpt: text(entry.definition || entry.fact || entry.summary).slice(0, 120)
+      })
+      const layer = text(entry?.layer).toLowerCase() || 'other'
+      if (!layerBuckets.has(layer)) layerBuckets.set(layer, [])
+      layerBuckets.get(layer).push(nodeId)
+    }
+    // 同层聚合边（weight 0.5——弱于真实引用）
+    for (const [, list] of layerBuckets) {
+      for (let i = 1; i < list.length; i++) addEdge(list[0], list[i], 'layer', 0.5)
+    }
+  }
+
   const nodeList = [...nodes.values()]
   const edgeList = [...edges.values()]
   const isolated = nodeList.filter((node) => !edgeList.some((edge) => edge.a === node.id || edge.b === node.id)).length
