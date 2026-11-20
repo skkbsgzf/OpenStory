@@ -719,6 +719,14 @@ export const ENDPOINTS = Object.freeze({
     response: { ok: 'true', node: 'object', session: 'object', prose: 'string?', proseError: 'string?' },
     errors: ['NO_LIBRARY', 'INVALID_ENTRY', 'NOT_FOUND', 'WRITE_PROTOCOL_IO_FAILED']
   },
+  roleplayOpeningGet: {
+    method: 'POST',
+    path: '/api/roleplay/opening',
+    // 扮演开场（OS-100）：主持人替世界拉开第一幕——时间/地点/在场/第一眼看见什么＋三条初始分支。
+    request: { body: { root: 'string', bookId: 'string?', pov: 'string', premise: 'string?', openingDetail: 'string?', chapterLimit: 'integer?' } },
+    response: { ok: 'true', feedback: 'string', options: 'array' },
+    errors: ['NO_LIBRARY', 'INVALID_ENTRY']
+  },
   roleplayTurn: {
     method: 'POST',
     path: '/api/roleplay/turn',

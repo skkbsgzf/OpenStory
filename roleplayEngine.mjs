@@ -14,6 +14,7 @@ import {
   hostSystemPrompt,
   actorSystemPrompt,
   worldFeedbackPrompt,
+  openingPrompt,
   parseHostDecision,
   splitFeedbackOptions,
   fallbackActivation
@@ -132,4 +133,37 @@ export async function roleplayTurn({
   // OS-98：反馈正文与情境分支拆开（分支是玩家的决定素材）
   const { body, options } = splitFeedbackOptions(feedback)
   return { ok: true, beats, feedback: body, options }
+}
+
+
+/**
+ * 扮演开局（OS-100）：主持人替世界拉开第一幕——不摆引擎局面，也不是空白等玩家开口。
+ * 返回 { ok, feedback, options }（无 beats——开场还没有角色演绎）。
+ */
+export async function roleplayOpening({
+  chatComplete,
+  entries = [],
+  premise = '',
+  cast = [],
+  pov = '',
+  openingDetail = '',
+  chapterLimit = null
+} = {}) {
+  if (typeof chatComplete !== 'function') return { ok: false, feedback: '', options: [], error: '模型不可用' }
+  const worldbookDigest = worldbookDigestOf(entries)
+  const prompt = [
+    ROLEPLAY_BASE_SYSTEM,
+    '',
+    openingPrompt({ pov, premise, worldbookDigest, cast, openingDetail }),
+    chapterLimit ? `\n【知识边界】本局只进行到第 ${chapterLimit} 章——更晚才成立的知识不存在。` : ''
+  ].filter((line) => line !== '').join('\n')
+  let raw = ''
+  try {
+    raw = String(await chatComplete(prompt, { maxTokens: 700 })).trim()
+  } catch {
+    return { ok: false, feedback: '', options: [], error: '模型不可用——开场没有产出' }
+  }
+  if (!raw) return { ok: false, feedback: '', options: [], error: '模型返回为空' }
+  const { body, options } = splitFeedbackOptions(raw)
+  return { ok: true, feedback: body, options }
 }

@@ -127,7 +127,7 @@ import { readChange, readLog, logSummary, recordChange } from './changelog.mjs'
 import { dropDraft, listDrafts, loadDraft, readUiState, saveDraft, writeUiState } from './libState.mjs'
 import { absorbLegacyDirs, backlinksOf, buildReferenceGraph, REFERENCE_DIR, notesVisibleAt, scanReferences } from './referenceStore.mjs'
 import { deduceOpening, deducePresent, deduceSettle, deduceStatePath, loadEntries } from './deduceEngine.mjs'
-import { roleplayTurn } from './roleplayEngine.mjs'
+import { roleplayOpening, roleplayTurn } from './roleplayEngine.mjs'
 import { safeDeduceBookId } from './deduceSession.mjs'
 import {
   appendNode,
@@ -1643,6 +1643,52 @@ function readLegacyDeduceState(root, bookId) {
     const saved = await saveDeduceSession(root, bookId, session)
     if (!saved.ok) return sendError(res, saved.code ?? API_ERROR_CODES.WRITE_PROTOCOL_IO_FAILED, saved.message)
     return sendJson(res, 200, { ok: true, node, session, prose: node.prose, ...(gen.proseError ? { proseError: gen.proseError } : {}) })
+  }
+
+  if (endpointId === 'roleplayOpeningGet') {
+    // OS-100 扮演开场：主持人替世界拉开第一幕（时间/地点/在场/第一眼）＋三条初始分支。
+    const authorized = authorizeRoot(allowlist, request.root)
+    if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
+    const root = authorized.root
+    const bookId = await resolveFactBookId(root, request.bookId)
+    const loaded = loadEntries(root)
+    if (!loaded.ok) return sendError(res, API_ERROR_CODES.INVALID_ENTRY, loaded.message)
+    const chapterLimit = Number.isFinite(Number(request.chapterLimit)) && Number(request.chapterLimit) > 0 ? Number(request.chapterLimit) : null
+    const entries = chapterLimit == null
+      ? loaded.entries
+      : loaded.entries.filter((entry) => {
+          const fc = Number(entry?.firstChapter)
+          if (Number.isFinite(fc) && fc >= 0) return fc <= chapterLimit
+          const chapters = Array.isArray(entry?.chapters) ? entry.chapters.filter(Number.isInteger) : []
+          return chapters.length ? Math.min(...chapters) <= chapterLimit : true
+        })
+    const cast = entries
+      .filter((entry) => text(entry?.layer).toLowerCase() === 'character')
+      .map((entry) => ({
+        name: text(entry?.name).trim(),
+        identity: text(entry?.identity) || text(entry?.definition),
+        archetype: text(entry?.archetype)
+      }))
+      .filter((c) => c.name)
+    const pov = text(request.pov).trim()
+    if (!pov) return sendError(res, API_ERROR_CODES.INVALID_ENTRY, '先选你要扮演谁（pov）')
+    const upstream = await resolveUpstreamSafe({ context })
+    const chatComplete = async (prompt, opts = {}) => {
+      const out = await chatCompleteViaUpstream({ upstream, system: prompt, maxTokens: opts.maxTokens ?? 700, temperature: 0.9, cwd: root })
+      if (out.error) throw new Error(out.error)
+      return out.text ?? ''
+    }
+    const result = await roleplayOpening({
+      chatComplete,
+      entries,
+      premise: text(request.premise),
+      cast,
+      pov,
+      openingDetail: text(request.openingDetail),
+      chapterLimit
+    })
+    if (!result.ok) return sendError(res, API_ERROR_CODES.INVALID_ENTRY, result.error ?? '开场没有产出')
+    return sendJson(res, 200, { ok: true, feedback: result.feedback, options: result.options ?? [] })
   }
 
   if (endpointId === 'roleplayTurn') {

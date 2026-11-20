@@ -105,3 +105,20 @@ test('世界反馈带情境分支（OS-98）：正文与「>」选项拆开', as
   assert.doesNotMatch(r.feedback, /^>/m, '反馈正文不含分支行')
   assert.deepEqual(r.options, ['我举灯走近看那只眼', '我退回门口装作什么都没发生', '我开口唤他'])
 })
+
+test('扮演开场（OS-100）：主持人拉开第一幕＋三条初始分支', async () => {
+  const { roleplayOpening } = await import('../roleplayEngine.mjs')
+  const { openingPrompt } = await import('../roleplayPrompts.mjs')
+  const p = openingPrompt({ pov: '叙述者', premise: '第八夜', worldbookDigest: '- 夹层：藏尸处', cast: [{ name: '老人', identity: '同住者' }], openingDetail: '起意' })
+  assert.match(p, /扮演 叙述者/)
+  assert.match(p, /时间\/地点\/身体感受/)
+  assert.match(p, /起意/, '开场锚点注入')
+  const stub = async () => '深夜。油灯铺开一片昏黄。\n\n> 我俯身去看\n> 我后退一步\n> 我停在原地'
+  const r = await roleplayOpening({ chatComplete: stub, entries: [{ name: '夹层', definition: '藏尸处' }], cast: [{ name: '老人' }], pov: '叙述者', openingDetail: '起意' })
+  assert.equal(r.ok, true)
+  assert.match(r.feedback, /深夜/)
+  assert.equal(r.options.length, 3)
+  // 模型挂→如实失败
+  const dead = await roleplayOpening({ chatComplete: async () => { throw new Error('x') }, pov: '叙述者' })
+  assert.equal(dead.ok, false)
+})
