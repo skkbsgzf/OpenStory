@@ -269,10 +269,20 @@ function excerptOf(body) {
 }
 
 /**
+ * 按首次出现章节筛词条（OS-96）：firstChapter ≤ currentChapter 才放行——
+ * 0＝原生共识（开篇就成立），恒放行。currentChapter=null＝不过滤（世界书编辑视角看全量）。
+ */
+export function notesVisibleAt(notes, currentChapter) {
+  const limit = Number(currentChapter)
+  if (!Number.isFinite(limit) || limit <= 0) return Array.isArray(notes) ? notes.slice() : []
+  return (Array.isArray(notes) ? notes : []).filter((note) => (Number(note?.firstChapter) || 0) <= limit)
+}
+
+/**
  * 建参考索引。
  * @returns {Promise<{ok:true, notes:Array, tags:Array, tagNotes:Object, stats:Object}>}
  */
-export async function scanReferences(root) {
+export async function scanReferences(root, { currentChapter = null } = {}) {
   const base = join(root, REFERENCE_DIR)
   if (!existsSync(base)) {
     return { ok: true, notes: [], tags: [], tagNotes: {}, stats: { notes: 0, tags: 0, links: 0, exists: false } }
@@ -305,7 +315,8 @@ export async function scanReferences(root) {
       title: titleOf(data, body, rel),
       tags,
       links,
-      frontmatter: data,
+      // OS-96：首次出现章节（frontmatter.firstChapter，缺省 0＝原生共识——开篇就成立的知识）
+      firstChapter: Number.isFinite(Number(data.firstChapter)) && Number(data.firstChapter) >= 0 ? Number(data.firstChapter) : 0,
       images,
       ...(images.length ? { cover: images[0] } : {}),
       excerpt: excerptOf(body),

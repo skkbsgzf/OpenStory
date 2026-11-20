@@ -326,8 +326,9 @@ export const ENDPOINTS = Object.freeze({
     path: '/api/reference',
     // 参考载体索引（OS-44）：扫描 参考/ 目录，解析每篇的 frontmatter／标签／双链。
     // 不落盘（每次重建，避免两份真相）。标签清单一并返回（带计数与描述）。
-    request: { query: { root: 'string' } },
-    response: { ok: 'true', notes: 'array', tags: 'array', tagNotes: 'object', stats: 'object' },
+    // currentChapter（OS-96）：给了＝notes 只回 firstChapter≤该章的词条（防剧透筛选）
+    request: { query: { root: 'string', currentChapter: 'integer?' } },
+    response: { ok: 'true', notes: 'array', tags: 'array', tagNotes: 'object', stats: 'object', filtered: 'boolean?' },
     errors: ['NO_LIBRARY', 'PATH_ESCAPE']
   },
   referenceGraphGet: {
@@ -657,7 +658,7 @@ export const ENDPOINTS = Object.freeze({
     // 推演引擎（Pinax fact 推演链 vendor 进 core/）：开局/续拍 → 局面卡＋候选。
     // 引擎确定性（种子化 2d6）；LLM 只是「戏剧」候选可选来源。worldview 缺失＝WORLD_EMPTY 如实报。
     // seedPrompt（OS-93）＝开局选中的开头（剧情条目 definition）——戏剧候选围绕它锚定。
-    request: { body: { root: 'string', bookId: 'string?', sessionId: 'string?', pov: 'string?', seed: 'integer?', seedPrompt: 'string?', reset: 'boolean?' } },
+    request: { body: { root: 'string', bookId: 'string?', sessionId: 'string?', pov: 'string?', seed: 'integer?', seedPrompt: 'string?', chapterLimit: 'integer?', reset: 'boolean?' } },
     response: { ok: 'true', round: 'integer', sceneCard: 'object', candidates: 'array', tension: 'object?', fronts: 'array?', budget: 'object?' },
     errors: ['NO_LIBRARY', 'INVALID_ENTRY']
   },

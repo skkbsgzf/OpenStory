@@ -17,9 +17,18 @@ import {
   extractWikiLinks,
   frontmatterTags,
   maskCode,
+  notesVisibleAt,
   parseFrontmatter,
   scanReferences
 } from '../referenceStore.mjs'
+
+/** 夹具：临时参考库（OS-96 用例）。 */
+async function makeRefRoot() {
+  const base = await mkdtemp(join(tmpdir(), 'openstory-os96-'))
+  const root = join(base, '夹具库')
+  await mkdir(join(root, '参考'), { recursive: true })
+  return { base, root }
+}
 
 /* ---------- 标签 tokenizer ---------- */
 
@@ -297,6 +306,27 @@ test('迁移规划：白名单外的目录一律拒绝（动稿口子收窄）',
     assert.equal(bad.moves.length, 0)
     const none = await absorbLegacyDirs(join(base, '库'), [])
     assert.equal(none.ok, false)
+  } finally {
+    await rm(base, { recursive: true, force: true })
+  }
+})
+
+test('首次出现章节（OS-96）：firstChapter 解析＋notesVisibleAt 过滤', async () => {
+  const { base, root } = await makeRefRoot()
+  try {
+    await writeFile(join(root, '参考', '共识.md'), '---\nkind: note\n---\n开篇就成立的世界常识。', 'utf-8')
+    await writeFile(join(root, '参考', '后传.md'), '---\nkind: note\nfirstChapter: 12\n---\n第十二章才发生的事。', 'utf-8')
+    const index = await scanReferences(root)
+    const visible5 = notesVisibleAt(index.notes, 5)
+    const visible20 = notesVisibleAt(index.notes, 20)
+    const all = notesVisibleAt(index.notes, null)
+    assert.equal(visible5.length, 1, '第5章视角只见共识条')
+    assert.equal(visible5[0].title, '共识')
+    assert.equal(visible20.length, 2, '第20章视角全可见')
+    assert.equal(all.length, 2, 'null＝不过滤')
+    // firstChapter 缺省 0
+    assert.equal(index.notes.find((n) => n.title === '共识').firstChapter, 0)
+    assert.equal(index.notes.find((n) => n.title === '后传').firstChapter, 12)
   } finally {
     await rm(base, { recursive: true, force: true })
   }

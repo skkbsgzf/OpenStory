@@ -78,7 +78,7 @@ const state = {
       paperMode: false, flowPin: true, introOpen: null } },
   artifacts: { root: '', groups: [], totals: null, loading: false, error: '', previewFile: '', previewText: '', previewLoading: false },
   // 参考载体（OS-44）：索引 / 当前笔记 / 反链 / 筛选标签
-  reference: { loaded: false, loading: false, notes: [], tags: [], tagNotes: {}, stats: null, error: '', activePath: '', activeTag: '', note: null, backlinks: { linked: [], unlinked: [] }, draft: '', view: 'graph', q: '', focus: null, absorb: {}, flash: '', tagFilter: '', from: '', noteText: '', fmLen: 0 },
+  reference: { loaded: false, loading: false, notes: [], tags: [], tagNotes: {}, stats: null, error: '', activePath: '', activeTag: '', firstChapterFilter: 0, note: null, backlinks: { linked: [], unlinked: [] }, draft: '', view: 'graph', q: '', focus: null, absorb: {}, flash: '', tagFilter: '', from: '', noteText: '', fmLen: 0 },
   // 左内容栏三模块（OS-44）：章节树 / 参考图谱 / 参考摘要
   refCol: { graph: null, graphLoading: false, graphError: '', summary: '', summaryBusy: false, summaryError: '', pick: null },
   settings: { userDir: '', section: 'plugins', suiteId: '', open: false, prevView: '', helpOpen: false },
@@ -4611,6 +4611,7 @@ function referenceEditorHtml() {
       ${ref.from === 'graph' ? '<button class="btn-ghost" data-action="ref-back-graph" title="回到关系图谱">← 返回图谱</button>' : ''}
       <h1 class="ref-title">${esc(note.title || note.path)}</h1>
       <span class="ref-detail-path">${esc(note.path)}${note.chars !== undefined ? ` · ${note.chars} 字` : ''}</span>
+      <label class="fc-edit" title="首次出现章节：这条知识从第几章开始成立（0＝原生共识，开篇即成立）。agent 上下文按它过滤防剧透">首次出现 <input type="number" min="0" class="fc-input" id="ref-first-chapter" value="${Number(note.firstChapter) || 0}" data-fc-path="${esc(note.path)}"> 章起</label>
       <span class="sp"></span>
       <span class="doc-autosave" id="ref-autosave"></span>
       <span class="count">点正文直接改，失焦自动保存</span>
@@ -4724,8 +4725,11 @@ function referencePageHtml() {
   if (!refModule) return '<div class="loading">参考模块载入中…</div>'
   const mainHtml = (ref.view || 'note') === 'graph' ? referenceGraphHtml() : referenceEditorHtml()
   const absorbTotal = Object.values(ref.absorb || {}).reduce((sum, count) => sum + (Number(count) || 0), 0)
+  // OS-96：首次出现章节筛选——0＝全量；>0 只看 firstChapter≤该章的词条
+  const fcLimit = Number(ref.firstChapterFilter) || 0
+  const visibleNotes = fcLimit > 0 ? refModule.notesVisibleAt(ref.notes, fcLimit) : ref.notes
   const shell = refModule.referenceShellHtml({
-    notes: ref.notes,
+    notes: visibleNotes,
     tags: ref.tags,
     activeTag: ref.activeTag,
     activePath: ref.activePath,
@@ -4734,6 +4738,7 @@ function referencePageHtml() {
     mainHtml,
     stats: ref.stats,
     absorbable: absorbTotal,
+    firstChapterFilter: fcLimit,
     // OS-89：参考模块自己的修改日志（AGENTS.md 第 10 条）
     changelogHtml: moduleLogHtml('参考', { title: '参考修改记录' })
   })
@@ -9478,6 +9483,14 @@ document.addEventListener('click', (event) => {
     state.reference.tagFilter = state.reference.tagFilter === tag ? '' : tag
     state.reference.focus = null
     render()
+  } else if (action === 'fc-filter-input') {
+    // OS-96：视图筛选框——input 事件在下面 fcFilterInput 统一处理（键盘松开即筛）
+    render()
+  } else if (action === 'fc-save') {
+    saveFirstChapter(target.dataset.fcPath)
+  } else if (action === 'ref-new-note') {
+    // OS-96：看到第 N 章为止——number input 的 change 在 keyup/blur 触发；这里直接监听 input 元素
+    render()
   } else if (action === 'ref-new-note') {
     openNewReferenceModal('note')
   } else if (action === 'ref-new-tag') {
@@ -10778,4 +10791,55 @@ function chipInputKeydown(event) {
     return true
   }
   return false
+}
+
+// OS-96：世界书「首次出现章节」——筛选框实时过滤＋详情页数字框失焦写回 frontmatter
+document.addEventListener('input', (event) => {
+  if (event.target?.id === 'fc-filter') {
+    const v = Math.max(0, Math.floor(Number(event.target.value) || 0))
+    state.reference.firstChapterFilter = v
+    render()
+  }
+})
+document.addEventListener('change', (event) => {
+  if (event.target?.classList?.contains('fc-input')) {
+    saveFirstChapter(event.target.dataset.fcPath, Math.max(0, Math.floor(Number(event.target.value) || 0)))
+  }
+})
+
+/** 写回 frontmatter.firstChapter：读原文→替换/插入 fm 行→走参考保存通道（OS-96）。 */
+async function saveFirstChapter(notePath, value) {
+  const ref = state.reference
+  if (!state.current || !notePath) return
+  const note = (ref.notes || []).find((n) => n.path === notePath)
+  if (!note) return
+  try {
+    const payload = await api(`/api/reference/note?root=${encodeURIComponent(state.current.path)}&path=${encodeURIComponent(notePath)}`)
+    const raw = text(payload.note?.text)
+    const fmMatch = /^---\r?\n([\s\S]*?)\r?\n---/u.exec(raw)
+    let next
+    if (fmMatch) {
+      const fm = fmMatch[1]
+      const lineRe = /^firstChapter:\s*.*$/mu
+
+      next = lineRe.test(fm)
+        ? raw.replace(lineRe, `firstChapter: ${value}`)
+        : raw.replace(/^---\r?\n/, `---\nfirstChapter: ${value}\n`)
+    } else {
+      next = `---\nfirstChapter: ${value}\n---\n\n` + raw
+    }
+    // 与逐块编辑同通道（/api/chapter PUT——参考笔记就是普通文件）
+    await api('/api/chapter', {
+      method: 'PUT',
+      body: JSON.stringify({ root: state.current.path, file: notePath, text: next })
+    })
+    note.firstChapter = value
+    if (ref.note?.path === notePath) ref.note.firstChapter = value
+    ref.flash = `已记下：${note.title} 首次出现于第 ${value} 章`
+    render()
+  } catch (error) {
+    state.error = `首次出现章节没写进去（${(error && error.message) || error}）`
+    render()
+  }
+
 }

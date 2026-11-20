@@ -125,7 +125,7 @@ import {
 import { createFactFileStore } from './core/pinax/next/kernel/factFileStore.mjs'
 import { readChange, readLog, logSummary, recordChange } from './changelog.mjs'
 import { dropDraft, listDrafts, loadDraft, readUiState, saveDraft, writeUiState } from './libState.mjs'
-import { absorbLegacyDirs, backlinksOf, buildReferenceGraph, REFERENCE_DIR, scanReferences } from './referenceStore.mjs'
+import { absorbLegacyDirs, backlinksOf, buildReferenceGraph, REFERENCE_DIR, notesVisibleAt, scanReferences } from './referenceStore.mjs'
 import { deduceOpening, deducePresent, deduceSettle, deduceStatePath } from './deduceEngine.mjs'
 import { safeDeduceBookId } from './deduceSession.mjs'
 import {
@@ -1416,6 +1416,8 @@ async function listDeduceAssets(root, bookId) {
       peek: request.peek === true,
       // OS-93：选中的开头（剧情骨架段 definition）——戏剧候选围绕它锚定
       seedPrompt: text(request.seedPrompt),
+      // OS-96：扮演底座按章节筛世界书（写到30章的库不给31章以后的知识）
+      chapterLimit: Number.isFinite(Number(request.chapterLimit)) && Number(request.chapterLimit) > 0 ? Number(request.chapterLimit) : null,
       sessionId: text(request.sessionId).trim() || readActiveSessionId(authorized.root, await resolveFactBookId(authorized.root, request.bookId)),
       // OS-82：戏剧候选接全局文本模型（没配模型＝null，必然/命运照常）
       llmPort: await buildDeduceLlmPort({ context })
@@ -1953,7 +1955,10 @@ function readLegacyDeduceState(root, bookId) {
     const authorized = authorizeRoot(allowlist, request.root)
     if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
     const index = await scanReferences(authorized.root)
-    return sendJson(res, 200, { ok: true, ...index })
+    // OS-96：currentChapter 给了＝只回该章节前可见的词条（世界书按首次出现章节过滤，防剧透）
+    const currentChapter = Number(request.currentChapter)
+    const notes = Number.isFinite(currentChapter) && currentChapter > 0 ? notesVisibleAt(index.notes, currentChapter) : index.notes
+    return sendJson(res, 200, { ok: true, ...index, notes, filtered: Number.isFinite(currentChapter) && currentChapter > 0 })
   }
 
   if (endpointId === 'referenceGraphGet') {
@@ -2842,7 +2847,16 @@ async function systemPromptFor(root, libraries, genresDirs, skillsDirs, { canRea
   if (canReadFiles) {
     try {
       const index = await scanReferences(root)
-      const notes = (Array.isArray(index.notes) ? index.notes : []).filter((note) => !note.isTagNote)
+      // OS-96：按当前章强制过滤——firstChapter>当前章的词条不进索引（写得再好也是剧透）。
+      // 当前章号从正文清单推（最大章号；没有正文＝0＝全量共识）。
+      let currentChapter = 0
+      try {
+        const listing = await listChapters(root, '正文')
+        if (listing.ok) currentChapter = (listing.chapters || []).reduce((max, ch) => Math.max(max, Number(ch?.no) || 0), 0)
+      } catch { /* 无正文＝0 */ }
+      const allNotes = (Array.isArray(index.notes) ? index.notes : []).filter((note) => !note.isTagNote)
+      const notes = notesVisibleAt(allNotes, currentChapter)
+      const hiddenCount = allNotes.length - notes.length
       if (notes.length) {
         // 图谱：把「参考 ↔ 章节」的关系也算出来，好告诉 Agent 当前这一章挂着哪些参考
         let entries = []
@@ -2879,7 +2893,7 @@ async function systemPromptFor(root, libraries, genresDirs, skillsDirs, { canRea
         lines.push(
           '',
           '【参考资料索引】',
-          '这个库有一套参考资料（作者的设定、素材、想法）。下面是**索引，不是全文**：',
+          `这个库有一套参考资料（作者的设定、素材、想法）。下面是**索引，不是全文**：${hiddenCount > 0 ? `（已按当前进度第 ${currentChapter} 章过滤——${hiddenCount} 条「首次出现」在更后面的词条没有列出，那些是未来才成立的知识，不要提前使用）` : ''}`,
           ...lines2,
           notes.length > 60 ? `（还有 ${notes.length - 60} 篇没列出）` : '',
           ...(linked.length ? ['', '【参考与章节的关联】', ...linked] : []),
