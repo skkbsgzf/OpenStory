@@ -67,6 +67,19 @@ function normalizeBuffer(raw) {
   }
 }
 
+/** 滚动摘要（OS-102）：{ text, coveredToRound, updatedAt }——浓缩到第 coveredToRound 拍为止的剧情。 */
+function normalizeRolling(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
+  const text = String(raw.text ?? '').trim()
+  if (!text) return null
+  const covered = Number(raw.coveredToRound)
+  return {
+    text: text.slice(0, 4000),
+    coveredToRound: Number.isSafeInteger(covered) && covered >= 0 ? covered : 0,
+    updatedAt: String(raw.updatedAt ?? '') || new Date().toISOString()
+  }
+}
+
 /** 待确认事实卡（OS-82 回填闭环）：结算产物不自动落库，作者确认后才写进拆解。
  *  归一只保形状：数组照收、非数组清空——条目本体是内核 settle 产出的合法 fact 条目，不做二次校验。 */
 function normalizePending(raw) {
@@ -92,7 +105,9 @@ export function normalizeDeduceSession(input, bookId = '', sessionId = '') {
     nodes: input.nodes,
     buffer: normalizeBuffer(input.buffer),
     archived: Array.isArray(input.archived) ? input.archived : [],
-    pending: normalizePending(input.pending)
+    pending: normalizePending(input.pending),
+    // OS-102 长期记忆：滚动摘要（每 N 拍压缩一次）——跑长了 agent 不会忘前情
+    rollingSummary: normalizeRolling(input.rollingSummary)
   }
 }
 
@@ -144,7 +159,8 @@ function sessionMeta(root, bookId, sid) {
     rounds: (session.nodes ?? []).length,
     words,
     branchId: text(session.branchId) || 'main',
-    pending: (session.pending ?? []).length
+    pending: (session.pending ?? []).length,
+    hasSummary: Boolean(session.rollingSummary?.text)
   }
 }
 

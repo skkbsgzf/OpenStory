@@ -45,7 +45,8 @@ function newSession(bookId = 'book-1') {
     nodes: [],
     buffer: { chapterNo: 1, nodes: [], words: 0 },
     archived: [],
-    pending: []
+    pending: [],
+    rollingSummary: null
   }
 }
 
