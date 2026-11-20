@@ -272,6 +272,15 @@ export const ENDPOINTS = Object.freeze({
     response: { ok: 'true', shape: 'object', verdict: 'object' },
     errors: ['NO_LIBRARY', 'INVALID_ENTRY']
   },
+  nativePick: {
+    method: 'POST',
+    path: '/api/native/pick',
+    // 原生文件/文件夹选择器（OS-108）：浏览器拿不到绝对路径，daemon 弹 Windows 原生对话框。
+    // kind=folder（默认）/file；取消＝200 + ok:false + code:CANCELLED（前端静默）。
+    request: { body: { kind: 'string?', title: 'string?', initialDir: 'string?', filter: 'string?' } },
+    response: { ok: 'true', path: 'string' },
+    errors: ['INVALID_ENTRY', 'WRITE_PROTOCOL_IO_FAILED']
+  },
   libraryCreate: {
     method: 'POST',
     path: '/api/library/create',

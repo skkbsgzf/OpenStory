@@ -662,6 +662,11 @@ button.modlog-row:focus-visible { outline: 2px solid var(--accent); outline-offs
 .e-side .kv .v { overflow-wrap: anywhere; }
 
 /* ── 库首页 ─────────────────────────────────────────────── */
+/* 原生选择器：输入框 + 浏览按钮（OS-108） */
+.input-with-btn { display: flex; gap: 8px; align-items: center; }
+.input-with-btn input { flex: 1; min-width: 0; }
+.input-with-btn .btn-ghost { flex-shrink: 0; white-space: nowrap; }
+
 .lib-wrap { max-width: var(--content-max, 1180px); margin: 0 auto; padding: calc(34px * var(--ui-scale)) var(--content-px, 40px); }
 .lib-wrap h1 { font-size: var(--ui-fs-2xl); font-weight: 800; margin: 0 0 6px; }
 .lib-wrap .sub { color: var(--muted); margin: 0 0 24px; }
