@@ -1,32 +1,41 @@
 /**
- * 原生文件选择器（OS-108）：浏览器拿不到绝对路径（安全限制），
- * 由 daemon 起一个短命的 PowerShell 进程弹 Windows 原生对话框。
+ * 原生文件选择器（OS-110 重写）。
  *
- * Windows 用 System.Windows.Forms.FolderBrowserDialog / OpenFileDialog；
- * 非 Windows 平台（本仓主要面向 Windows）返回 unsupported，前端退回手填。
+ * 关键约束（本轮实测得出）：
+ *   如果 daemon 是被非交互父进程拉起的（例如 Agent/CI 通过 bash 启动），
+ *   它以及它 spawn 的所有子进程都**没有交互桌面栈**——WinForms 模态对话框会
+ *   立即返回 Cancel（实测：ShowDialog 6 秒内退出、窗口句柄 0、屏幕上看不到窗口）。
+ *   这不是代码 bug，是 Windows 前台权限 + 桌面会话的限制。
+ *
+ * 因此本模块对「对话框没显示」如实报 NO_DESKTOP（而不是伪装成用户取消），
+ * 前端据此提示「请手动启动 daemon，或直接手填路径」。
+ *
+ * 资源管理器（revealPath）不受此限：explorer.exe 由 shell 转发到前台桌面。
  */
 import { spawn } from 'node:child_process'
 import { existsSync, statSync } from 'node:fs'
 
 const t = (v) => String(v ?? '')
 
-/** 跑一段 PowerShell，拿 stdout（一次性，超时 5 分钟＝用户在对话框里慢慢选）。 */
-function runPowerShell(script, { timeoutMs = 300_000 } = {}) {
+/** 跑 PowerShell（一次性）。脚本用 `RESULT=<path>` 或 `RESULT=<NULL>` 回报。 */
+function runPowerShell(script, { timeoutMs = 8_000 } = {}) {
   return new Promise((resolve) => {
     if (process.platform !== 'win32') {
       resolve({ ok: false, code: 'UNSUPPORTED_PLATFORM', message: '原生选择器目前只支持 Windows' })
       return
     }
-    // -STA 是 WinForms 对话框的前提；-NoProfile 避免用户 profile 干扰
-    const child = spawn('powershell.exe', ['-NoProfile', '-STA', '-NonInteractive', '-Command', script], {
-      windowsHide: true,
+    // 不加 -NonInteractive（它阻止模态窗口）；windowsHide 必须 false。
+    const child = spawn('powershell.exe', ['-NoProfile', '-STA', '-Command', script], {
+      windowsHide: false,
       stdio: ['ignore', 'pipe', 'pipe']
     })
     let out = ''
     let err = ''
+    const startedAt = Date.now()
     const timer = setTimeout(() => {
       try { child.kill() } catch { /* 已退出 */ }
-      resolve({ ok: false, code: 'DIALOG_TIMEOUT', message: '对话框超时（5 分钟）' })
+      // 超时基本等于「对话框显示在看不到的地方」——按无桌面处理，让前端降级
+      resolve({ ok: false, code: 'NO_DESKTOP', message: '对话框没有显示出来（8 秒无响应）' })
     }, timeoutMs)
     child.stdout.on('data', (chunk) => { out += chunk.toString('utf8') })
     child.stderr.on('data', (chunk) => { err += chunk.toString('utf8') })
@@ -36,14 +45,27 @@ function runPowerShell(script, { timeoutMs = 300_000 } = {}) {
     })
     child.on('close', (code) => {
       clearTimeout(timer)
-      const path = out.trim().split(/\r?\n/u).filter(Boolean).pop() ?? ''
-      if (code !== 0) {
-        resolve({ ok: false, code: 'DIALOG_ERROR', message: err.trim() || `退出码 ${code}` })
-        return
+      const elapsed = Date.now() - startedAt
+      const lines = out.trim().split(/\r?\n/u).map((x) => x.trim()).filter(Boolean)
+      const hit = lines.find((line) => line.startsWith('RESULT='))
+      if (hit) {
+        const path = hit.slice('RESULT='.length).trim()
+        if (!path || path === '<NULL>') return resolve({ ok: false, code: 'CANCELLED', message: '已取消' })
+        return resolve({ ok: true, path })
       }
-      // 用户取消：PowerShell 输出空行
-      if (!path) { resolve({ ok: false, code: 'CANCELLED', message: '已取消' }); return }
-      resolve({ ok: true, path })
+      // 没有 RESULT：真取消 vs 对话框根本没显示。
+      // 判定：极快返回（<3s）且无 stderr → 无桌面栈（对话框没能创建出来）
+      if (elapsed < 3000 && !err.trim()) {
+        return resolve({
+          ok: false,
+          code: 'NO_DESKTOP',
+          message: '服务进程没有交互桌面（通常是被后台/子进程启动的），系统不允许它弹模态对话框。请在终端里手动启动 daemon，或直接手填路径。'
+        })
+      }
+      if (code !== 0 && !hit) {
+        return resolve({ ok: false, code: 'DIALOG_ERROR', message: err.trim() || `退出码 ${code}` })
+      }
+      resolve({ ok: false, code: 'CANCELLED', message: '已取消' })
     })
   })
 }
@@ -53,45 +75,39 @@ function psQuote(value) {
   return `'${t(value).replaceAll("'", "''")}'`
 }
 
-/**
- * 弹「选择文件夹」对话框。
- * @returns {Promise<{ok:boolean, path?:string, code?:string, message?:string}>}
- */
+/** 弹「选择文件夹」对话框。 */
 export async function pickFolder({ title = '选择文件夹', initialDir = '' } = {}) {
   const lines = [
     'Add-Type -AssemblyName System.Windows.Forms | Out-Null',
     '$d = New-Object System.Windows.Forms.FolderBrowserDialog',
     `$d.Description = ${psQuote(title)}`,
-    "$d.ShowNewFolderButton = $true",
+    '$d.ShowNewFolderButton = $true',
     "$d.RootFolder = 'MyComputer'",
     initialDir && existsSync(initialDir) ? `$d.SelectedPath = ${psQuote(initialDir)}` : '',
     '$r = $d.ShowDialog()',
-    "if ($r -eq 'OK') { Write-Output $d.SelectedPath }"
+    "if ($r -eq 'OK') { Write-Output ('RESULT=' + $d.SelectedPath) } else { Write-Output 'RESULT=<NULL>' }"
   ].filter(Boolean).join('; ')
   return runPowerShell(lines)
 }
 
-/**
- * 弹「选择文件」对话框。
- * @returns {Promise<{ok:boolean, path?:string, code?:string, message?:string}>}
- */
+/** 弹「选择文件」对话框。 */
 export async function pickFile({ title = '选择文件', initialDir = '', filter = '所有文件 (*.*)|*.*' } = {}) {
   const lines = [
     'Add-Type -AssemblyName System.Windows.Forms | Out-Null',
     '$d = New-Object System.Windows.Forms.OpenFileDialog',
     `$d.Title = ${psQuote(title)}`,
     `$d.Filter = ${psQuote(filter)}`,
-    "$d.CheckFileExists = $true",
+    '$d.CheckFileExists = $true',
     initialDir && existsSync(initialDir) ? `$d.InitialDirectory = ${psQuote(initialDir)}` : '',
     '$r = $d.ShowDialog()',
-    "if ($r -eq 'OK') { Write-Output $d.FileName }"
+    "if ($r -eq 'OK') { Write-Output ('RESULT=' + $d.FileName) } else { Write-Output 'RESULT=<NULL>' }"
   ].filter(Boolean).join('; ')
   return runPowerShell(lines)
 }
 
 /**
- * 在资源管理器里打开一个路径（OS-109）：文件夹＝打开；文件＝选中它。
- * 用 explorer.exe（Windows 原生，不阻塞 daemon——explorer 立刻 detach）。
+ * 在资源管理器里打开一个路径：文件夹＝打开；文件＝打开所在目录并选中它。
+ * explorer.exe 由 shell 转发到前台桌面，不受本进程无桌面栈的影响。
  */
 export function revealPath(target) {
   return new Promise((resolve) => {
@@ -103,7 +119,6 @@ export function revealPath(target) {
     if (!p) { resolve({ ok: false, code: 'INVALID_ENTRY', message: '路径为空' }); return }
     if (!existsSync(p)) { resolve({ ok: false, code: 'NOT_FOUND', message: `路径不存在：${p}` }); return }
     try {
-      // 文件夹直接开；文件用 /select,（打开所在目录并选中该文件）
       const isDir = statSync(p).isDirectory()
       const args = isDir ? [p] : ['/select,', p]
       const child = spawn('explorer.exe', args, { detached: true, stdio: 'ignore', windowsHide: false })

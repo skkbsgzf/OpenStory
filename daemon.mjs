@@ -2646,9 +2646,45 @@ function readLegacyDeduceState(root, bookId) {
     if (!result.ok) {
       // 取消不是错误：200 + ok:false + code，前端据此静默
       if (result.code === 'CANCELLED') return sendJson(res, 200, { ok: false, code: 'CANCELLED', message: '已取消' })
+      // NO_DESKTOP：服务进程没有交互桌面（被后台/子进程启动）——400 并把 code 透传，
+      // 前端据此提示「请手动启动 daemon 或手填路径」，而不是当成服务器故障
+      if (result.code === 'NO_DESKTOP') {
+        return sendJson(res, 400, { ok: false, error: { code: 'NO_DESKTOP', message: result.message } })
+      }
       return sendError(res, result.code === 'UNSUPPORTED_PLATFORM' ? API_ERROR_CODES.INVALID_ENTRY : API_ERROR_CODES.WRITE_PROTOCOL_IO_FAILED, result.message)
     }
     return sendJson(res, 200, { ok: true, path: result.path })
+  }
+
+  if (endpointId === 'fsBrowse') {
+    // OS-110 兜底：无桌面环境（后台启动的 daemon 弹不出模态对话框）时，
+    // 前端用这个端点自建目录浏览器——列盘符/子目录，不影响任何写操作。
+    const wanted = text(request.path).trim()
+    // 空路径＝列盘符
+    if (!wanted) {
+      const drives = []
+      for (const letter of 'CDEFGHIJKLMNOPQRSTUVWXYZ') {
+        const root = `${letter}:\\`
+        try { if (existsSync(root)) drives.push({ name: `${letter}:`, path: `${letter}:/`, kind: 'drive' }) } catch { /* 跳过 */ }
+      }
+      return sendJson(res, 200, { ok: true, path: '', parent: null, entries: drives })
+    }
+    // 规范化：允许 D:\foo / D:/foo
+    const target = wanted.replaceAll('\\', '/')
+    if (!existsSync(target)) return sendError(res, API_ERROR_CODES.NOT_FOUND, `目录不存在：${wanted}`)
+    let items = []
+    try {
+      items = await readdir(target, { withFileTypes: true })
+    } catch (error) {
+      return sendError(res, API_ERROR_CODES.WRITE_PROTOCOL_IO_FAILED, `读目录失败：${text(error?.message || error)}`)
+    }
+    const entries = items
+      .filter((item) => item.isDirectory() && !item.name.startsWith('.'))
+      .map((item) => ({ name: item.name, path: `${target.replace(/\/+$/u, '')}/${item.name}`, kind: 'dir' }))
+      .sort((left, right) => left.name.localeCompare(right.name, 'zh-Hans-CN'))
+    // 父目录（盘符根没有父级可回）
+    const parent = /^[A-Za-z]:\/?$/u.test(target) ? '' : target.replace(/\/[^/]+\/?$/u, '') || ''
+    return sendJson(res, 200, { ok: true, path: target, parent: parent || '', entries })
   }
 
   if (endpointId === 'nativeReveal') {
