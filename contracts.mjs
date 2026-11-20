@@ -272,6 +272,15 @@ export const ENDPOINTS = Object.freeze({
     response: { ok: 'true', shape: 'object', verdict: 'object' },
     errors: ['NO_LIBRARY', 'INVALID_ENTRY']
   },
+  fsBrowse: {
+    method: 'POST',
+    path: '/api/fs/browse',
+    // 目录浏览（OS-110 兜底）：无桌面环境时前端自建选择器用。空 path＝列盘符；
+    // 给了 path＝列子目录（只回目录，不回文件）。只读，不影响任何写操作。
+    request: { body: { path: 'string?' } },
+    response: { ok: 'true', path: 'string', parent: 'string?', entries: 'array' },
+    errors: ['NOT_FOUND', 'WRITE_PROTOCOL_IO_FAILED']
+  },
   nativeReveal: {
     method: 'POST',
     path: '/api/native/reveal',

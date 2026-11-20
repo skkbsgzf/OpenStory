@@ -6316,19 +6316,87 @@ function pickNativePath(triggerEl, kind) {
     })
   }).then((payload) => {
     if (!payload?.ok || !payload.path) return  // 取消：静默
-    if (inputEl) {
-      inputEl.value = kind === 'folder'
-        ? payload.path
-        : (triggerEl.dataset.mode === 'full' ? payload.path : payload.path.replace(/[\\/][^\\/]+$/u, ''))
-      inputEl.dispatchEvent(new Event('input', { bubbles: true }))
-    }
-    render()
+    applyPickedPath(triggerEl, inputEl, kind, payload.path)
   }).catch((error) => {
-    const msg = (error && error.code ? error.code + ' · ' : '') + text((error && error.message) || error)
+    const code = text(error?.code)
+    // OS-110：服务进程没有交互桌面（后台启动的 daemon 弹不出模态框）
+    // → 自动降级到内建目录浏览器，不依赖 Windows 对话框
+    if (code === 'NO_DESKTOP') {
+      openFsBrowser({
+        kind,
+        targetId,
+        startPath: current || '',
+        note: '系统没允许弹出文件选择框（服务是后台启动的），已切换到内建目录浏览器'
+      })
+      return
+    }
+    const msg = (code ? code + ' · ' : '') + text((error && error.message) || error)
     if (state.libCreate) state.libCreate.error = msg
     else state.error = msg
     render()
   })
+}
+
+/** 把选中的路径写回输入框（文件夹＝绝对路径；文件＝完整路径或所在目录）。 */
+function applyPickedPath(triggerEl, inputEl, kind, pickedPath) {
+  if (!inputEl) return
+  inputEl.value = kind === 'folder'
+    ? pickedPath
+    : (triggerEl.dataset.mode === 'full' ? pickedPath : pickedPath.replace(/[\\/][^\\/]+$/u, ''))
+  inputEl.dispatchEvent(new Event('input', { bubbles: true }))
+  render()
+}
+
+/* ---------- 内建目录浏览器（OS-110 兜底）----------
+ * 调 /api/fs/browse 列盘符/子目录，任何环境都能用（不依赖 Windows 桌面栈）。 */
+
+function openFsBrowser({ kind = 'folder', targetId = '', startPath = '', note = '' } = {}) {
+  state.fsBrowse = { open: true, kind, targetId, path: startPath, parent: '', entries: [], loading: true, error: '', note }
+  renderFsBrowserModal()
+  loadFsBrowse(startPath)
+}
+
+async function loadFsBrowse(pathToLoad) {
+  const fb = state.fsBrowse
+  if (!fb) return
+  fb.loading = true
+  fb.error = ''
+  renderFsBrowserModal()
+  try {
+    const payload = await api('/api/fs/browse', { method: 'POST', body: JSON.stringify({ path: pathToLoad || '' }) })
+    fb.path = payload.path || ''
+    fb.parent = payload.parent || ''
+    fb.entries = Array.isArray(payload.entries) ? payload.entries : []
+  } catch (error) {
+    fb.error = (error && error.code ? error.code + ' · ' : '') + text((error && error.message) || error)
+  }
+  fb.loading = false
+  renderFsBrowserModal()
+}
+
+/** 内建浏览器的浮层 HTML（用 openModal 挂载）。 */
+function renderFsBrowserModal() {
+  const fb = state.fsBrowse
+  if (!fb?.open) { return }
+  const rows = fb.entries.map((item) => `<button class="fsb-row" data-action="fsb-go" data-path="${esc(item.path)}">
+      <span class="fsb-ic">${item.kind === 'drive' ? '💽' : '📁'}</span>
+      <span class="fsb-name">${esc(item.name)}</span>
+    </button>`).join('')
+  openModal(`<h3>选择文件夹</h3>
+    ${fb.note ? `<p class="sub">${esc(fb.note)}</p>` : ''}
+    <div class="fsb-path">
+      <button class="btn-ghost" data-action="fsb-up"${fb.parent ? '' : ' disabled'} title="上一级">↑ 上一级</button>
+      <span class="fsb-cur">${esc(fb.path || '（选择盘符）')}</span>
+    </div>
+    <div class="fsb-list">
+      ${fb.loading ? '<p class="fsb-hint">读取中…</p>' : ''}
+      ${fb.error ? `<p class="fsb-err">${esc(fb.error)}</p>` : ''}
+      ${!fb.loading && !fb.error ? (rows || '<p class="fsb-hint">这里没有子文件夹</p>') : ''}
+    </div>
+    <div class="ded-image-ops">
+      <button class="btn-ghost" data-action="fsb-close">取消</button>
+      ${fb.path ? `<button class="btn-primary" data-action="fsb-pick">选这个文件夹</button>` : ''}
+    </div>`)
 }
 
 function importHtml() {
@@ -10345,6 +10413,23 @@ document.addEventListener('click', (event) => {
     render()
   } else if (action === 'reveal-path') {
     revealNativePath(target.dataset.path || '')
+  } else if (action === 'fsb-go') {
+    loadFsBrowse(target.dataset.path || '')
+  } else if (action === 'fsb-up') {
+    loadFsBrowse(state.fsBrowse?.parent || '')
+  } else if (action === 'fsb-pick') {
+    // 选中当前所在目录（文件夹场景）
+    const fb = state.fsBrowse
+    if (!fb) return
+    const inputEl = fb.targetId ? document.getElementById(fb.targetId) : null
+    applyPickedPath({ dataset: {} }, inputEl, 'folder', fb.path)
+    state.fsBrowse = null
+    closeModal()
+    render()
+  } else if (action === 'fsb-close') {
+    state.fsBrowse = null
+    closeModal()
+    render()
   } else if (action === 'pick-folder' || action === 'pick-file') {
     // OS-108：调 daemon 弹 Windows 原生对话框（浏览器拿不到绝对路径）
     pickNativePath(target, action === 'pick-file' ? 'file' : 'folder')

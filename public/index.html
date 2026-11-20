@@ -666,6 +666,20 @@ button.modlog-row:focus-visible { outline: 2px solid var(--accent); outline-offs
 .kv-open { margin-left: 8px; flex-shrink: 0; font-size: 11px; padding: 1px 8px; }
 .kv-line { display: flex; align-items: baseline; gap: 6px; }
 .kv-line .v { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+/* 内建目录浏览器（OS-110 兜底，无桌面环境用） */
+.fsb-path { display: flex; gap: 8px; align-items: center; margin: 8px 0; }
+.fsb-cur { flex: 1; min-width: 0; font-size: 12px; color: var(--ink-2);
+  background: var(--soft); padding: 5px 10px; border-radius: 6px; overflow-wrap: anywhere; }
+.fsb-list { max-height: 320px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px;
+  border: 1px solid var(--hair); border-radius: var(--radius-sm); padding: 6px; }
+.fsb-row { display: flex; align-items: center; gap: 8px; text-align: left; padding: 6px 9px;
+  border-radius: 6px; font-size: 13px; color: var(--ink); cursor: pointer; }
+.fsb-row:hover { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.fsb-ic { flex-shrink: 0; }
+.fsb-name { overflow-wrap: anywhere; }
+.fsb-hint { margin: 8px 4px; font-size: 12px; color: var(--meta); font-style: italic; }
+.fsb-err { margin: 8px 4px; font-size: 12px; color: var(--danger); }
+
 .input-with-btn { display: flex; gap: 8px; align-items: center; }
 .input-with-btn input { flex: 1; min-width: 0; }
 .input-with-btn .btn-ghost { flex-shrink: 0; white-space: nowrap; }
