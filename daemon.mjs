@@ -123,7 +123,7 @@ import {
   setPrimaryCarrier
 } from './libraryManage.mjs'
 import { createFactFileStore } from './core/pinax/next/kernel/factFileStore.mjs'
-import { readLog, logSummary, recordChange } from './changelog.mjs'
+import { readChange, readLog, logSummary, recordChange } from './changelog.mjs'
 import { dropDraft, listDrafts, loadDraft, readUiState, saveDraft, writeUiState } from './libState.mjs'
 import { absorbLegacyDirs, backlinksOf, buildReferenceGraph, REFERENCE_DIR, scanReferences } from './referenceStore.mjs'
 import { deduceOpening, deducePresent, deduceSettle, deduceStatePath } from './deduceEngine.mjs'
@@ -624,7 +624,8 @@ async function writeChapterWithBackup(root, file, newText, logOptions = {}) {
       before: beforeText,
       after: newText,
       actor: logOptions.actor || 'author',
-      meta: logOptions.meta || null
+      meta: logOptions.meta || null,
+      backup: backupRelative || ''   // OS-90：恢复时直接按这个路径取上一版
     })
     return {
       ok: true,
@@ -1080,6 +1081,56 @@ async function handleApi(req, res, url, context) {
       limit: Number(request.limit) || 50
     })
     return sendJson(res, 200, { ok: true, entries: result.entries ?? [], truncated: result.truncated === true })
+  }
+
+  if (endpointId === 'changeLogEntry') {
+    const authorized = authorizeRoot(allowlist, request.root)
+    if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
+    const result = await readChange({
+      root: authorized.root,
+      module: text(request.module),
+      at: text(request.at),
+      afterHash: text(request.afterHash)
+    })
+    if (!result.ok) return sendError(res, API_ERROR_CODES.NOT_FOUND, '找不到这条变更记录')
+    return sendJson(res, 200, { ok: true, entry: result.entry })
+  }
+
+  if (endpointId === 'changeLogRestore') {
+    const authorized = authorizeRoot(allowlist, request.root)
+    if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
+    const found = await readChange({
+      root: authorized.root,
+      module: text(request.module),
+      at: text(request.at),
+      afterHash: text(request.afterHash)
+    })
+    if (!found.ok) return sendError(res, API_ERROR_CODES.NOT_FOUND, '找不到这条变更记录')
+    const entry = found.entry
+    if (!entry?.backup) {
+      return sendError(res, API_ERROR_CODES.INVALID_ENTRY,
+        '这条变更没有留下可恢复的备份（新建类变更回退不了）')
+    }
+    // 1) 读备份内容
+    const backupAbs = resolveInsideRoot(authorized.root, entry.backup, { allowMetadata: true })
+    if (!backupAbs.ok) return sendError(res, backupAbs.code, backupAbs.message, backupAbs.details)
+    let beforeText
+    try { beforeText = await readFile(backupAbs.path, 'utf-8') } catch (error) {
+      return sendError(res, API_ERROR_CODES.NOT_FOUND, `备份文件读不到：${text(error?.message || error)}`)
+    }
+    // 2) 先给当前内容做一次安全备份（这次恢复本身也要可回退），再写回
+    const written = await writeChapterWithBackup(authorized.root, entry.file, beforeText, {
+      module: entry.module,
+      actor: 'author',
+      meta: { restoredFrom: entry.backup, restoredAt: entry.at }
+    })
+    if (!written.ok) return sendError(res, written.code, written.message, written.details)
+    return sendJson(res, 200, {
+      ok: true,
+      file: entry.file,
+      restoredFrom: entry.backup,
+      ...(written.backup ? { safetyBackup: written.backup } : {})
+    })
   }
 
   if (endpointId === 'changeLogSummary') {
@@ -2561,7 +2612,7 @@ function readLegacyDeduceState(root, bookId) {
   return sendError(res, API_ERROR_CODES.NOT_FOUND, `端点未实现：${endpointId}`)
 }
 
-const ENDPOINT_HAS_QUERY = new Set(['referenceAssetGet', 'habitsGet', 'chapterGet', 'agentSessions', 'agentSessionGet', 'agentSessionDelete', 'libraryDiagnose', 'filesGet', 'chaptersGet', 'chapterDelete', 'artifactsGet', 'suiteStateDataGet', 'agentPicksGet', 'briefGet', 'skillsGet', 'skillGet', 'enrichStatus', 'enrichGraph', 'kbStatusGet', 'agentDshModelsGet', 'factCurveGet', 'factEntriesGet', 'factBooksGet', 'referenceGet', 'referenceGraphGet', 'referenceNoteGet', 'deduceSessionGet', 'deduceSessionsGet', 'deduceOpeningGet', 'deduceAssets', 'deduceAssetFile', 'changeLogGet', 'changeLogSummary', 'uiStateGet', 'draftGet'])
+const ENDPOINT_HAS_QUERY = new Set(['referenceAssetGet', 'habitsGet', 'chapterGet', 'agentSessions', 'agentSessionGet', 'agentSessionDelete', 'libraryDiagnose', 'filesGet', 'chaptersGet', 'chapterDelete', 'artifactsGet', 'suiteStateDataGet', 'agentPicksGet', 'briefGet', 'skillsGet', 'skillGet', 'enrichStatus', 'enrichGraph', 'kbStatusGet', 'agentDshModelsGet', 'factCurveGet', 'factEntriesGet', 'factBooksGet', 'referenceGet', 'referenceGraphGet', 'referenceNoteGet', 'deduceSessionGet', 'deduceSessionsGet', 'deduceOpeningGet', 'deduceAssets', 'deduceAssetFile', 'changeLogGet', 'changeLogEntry', 'changeLogSummary', 'uiStateGet', 'draftGet'])
 
 /** 套件资产 MIME（page 模式自带页同源装载）。 */
 const SUITE_ASSET_MIME = Object.freeze({

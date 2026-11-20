@@ -9544,6 +9544,11 @@ document.addEventListener('click', (event) => {
     } else {
       deduceEngineTurn({ customText: customValue })
     }
+  } else if (action === 'modlog-open') {
+    // OS-90：点日志行 → 看这次改动的完整 diff
+    openChangeLogEntry(target.dataset.module, target.dataset.at, target.dataset.hash)
+  } else if (action === 'modlog-restore') {
+    restoreFromLog(target.dataset.module, target.dataset.at, target.dataset.hash)
   } else if (action === 'deduce-paper-toggle') {
     const engine = state.deduce.engine
     engine.paperMode = !engine.paperMode
@@ -10339,17 +10344,84 @@ function moduleLogHtml(module, { file = '', limit = 8, title = '最近修改' } 
     const fileLabel = text(entry.file).split('/').pop()
     const delta = entry.beforeChars === entry.afterChars ? ''
       : `${entry.beforeChars}→${entry.afterChars} 字`
-    return `<div class="modlog-row" title="${esc(entry.file)}">
+    // OS-90：整行可点 → 打开 diff 弹层（看完整差异 + 可恢复）
+    return `<button class="modlog-row" data-action="modlog-open" data-module="${esc(module)}" data-at="${esc(entry.at)}" data-hash="${esc(entry.afterHash)}" title="${esc(entry.file)}「点击查看这处改动」">
       <span class="modlog-at">${esc(when)}</span>
       <span class="modlog-op" data-op="${esc(entry.op)}">${esc(opLabel)}</span>
       <span class="modlog-file">${esc(fileLabel)}</span>
       <span class="modlog-delta">${esc(delta)}</span>
-    </div>`
+    </button>`
   }).join('')
   return `<div class="modlog">
     <div class="modlog-head">${esc(title)}<span class="count">${log.entries.length}</span></div>
     ${rows}
   </div>`
+}
+
+/**
+ * OS-90：打开一条变更的 diff 弹层。
+ * 显示完整 unified diff（+/- 着色）；若这条变更带 backup，则提供「恢复到此版本」。
+ */
+async function openChangeLogEntry(module, at, afterHash) {
+  openModal('<div class="loading">正在读取这次改动…</div>')
+  let entry = null
+  try {
+    const qs = new URLSearchParams({ root: state.current.path, module, at, afterHash })
+    const payload = await api(`/api/log/entry?${qs.toString()}`)
+    entry = payload?.entry ?? null
+  } catch (error) {
+    openModal(`<h3>这次改动</h3><p class="sub">读不出来：${esc(text(error?.message || error))}</p>
+      <div class="ops"><button class="btn-ghost" data-action="modal-close">关闭</button></div>`)
+    return
+  }
+  if (!entry) {
+    openModal('<h3>这次改动</h3><p class="sub">找不到这条记录（可能已被清理）。</p>'
+      + '<div class="ops"><button class="btn-ghost" data-action="modal-close">关闭</button></div>')
+    return
+  }
+  const diffLines = text(entry.diff).split(String.fromCharCode(10)).map((line) => {
+    let cls = 'ctx'
+    if (line.startsWith('+++') || line.startsWith('---')) cls = 'hdr'
+    else if (line.startsWith('@@')) cls = 'hunk'
+    else if (line.startsWith('+')) cls = 'add'
+    else if (line.startsWith('-')) cls = 'del'
+    return `<div class="diff-line ${cls}">${esc(line) || '&nbsp;'}</div>`
+  }).join('')
+  const opLabel = { create: '新建', update: '修改', delete: '删除', move: '移动', adopt: '采纳' }[entry.op] || entry.op
+  const canRestore = Boolean(entry.backup)
+  openModal(`<h3>${esc(opLabel)} · ${esc(text(entry.file).split('/').pop())}</h3>
+    <p class="sub">${esc(text(entry.at).replace('T', ' ').slice(0, 19))} · ${entry.beforeChars}→${entry.afterChars} 字
+      ${entry.diffTruncated ? ' · <span class="hint">diff 过长已截断</span>' : ''}</p>
+    <div class="diff-view">${diffLines || '<div class="diff-line ctx">（无内容变化）</div>'}</div>
+    <div class="ops">
+      ${canRestore
+        ? `<button class="btn-primary" data-action="modlog-restore" data-module="${esc(module)}" data-at="${esc(entry.at)}" data-hash="${esc(entry.afterHash)}">恢复到此版本之前</button>`
+        : '<span class="count">这条变更没有可恢复的备份</span>'}
+      <button class="btn-ghost" data-action="modal-close">关闭</button>
+    </div>`)
+}
+
+/** OS-90：从日志恢复——先确认，再调端点（服务端会先给当前内容做安全备份）。 */
+async function restoreFromLog(module, at, afterHash) {
+  const ok = globalThis.confirm?.('把这个文件恢复到这次改动之前的状态？')
+  if (!ok) return
+  try {
+    const payload = await api('/api/log/restore', {
+      method: 'POST',
+      body: JSON.stringify({ root: state.current.path, module, at, afterHash })
+    })
+    closeModal()
+    state.reference.flash = `已恢复：${payload.file}${payload.safetyBackup ? `（当前内容备份在 ${payload.safetyBackup}）` : ''}`
+    // 重载受影响的数据
+    await loadModuleLog(module, { limit: 20 })
+    if (module === '正文') await loadWriteChapters({ force: true })
+    if (module === '参考') await loadReferences({ force: true })
+    if (module === '习惯') { state.habits = null; await loadHabits({ force: true }) }
+    render()
+  } catch (error) {
+    state.error = `恢复失败：${text(error?.message || error)}`
+    render()
+  }
 }
 
 /* ---------- 未保存草稿落本地（AGENTS.md 第 11 条） ---------- */

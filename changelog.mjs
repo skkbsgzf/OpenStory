@@ -145,7 +145,7 @@ export function logFilePath(module, now = new Date()) {
  * @returns {Promise<{ok:boolean, record?:object, path?:string, code?:string, message?:string}>}
  */
 export async function recordChange({
-  root, module, file, op = 'update', before = '', after = '', actor = 'author', meta = null
+  root, module, file, op = 'update', before = '', after = '', actor = 'author', meta = null, backup = ''
 } = {}) {
   if (!root || !file) return { ok: false, code: 'INVALID_ENTRY', message: 'recordChange 需要 root 与 file' }
   const beforeText = text(before)
@@ -177,6 +177,8 @@ export async function recordChange({
     beforeChars: beforeText.length,
     afterChars: afterText.length,
     diff,
+    // OS-90：把「本次变更前的备份在哪」记进日志——恢复时不用靠时间戳猜
+    ...(backup ? { backup } : {}),
     ...(diffTruncated ? { diffTruncated } : {}),
     ...(meta && typeof meta === 'object' ? { meta } : {})
   }
@@ -270,5 +272,55 @@ export async function logSummary(root) {
       lastFile: text(latest?.file),
       lastOp: text(latest?.op)
     }))
+  }
+}
+
+/* ---------- 单条记录 / 历史版本恢复（OS-90） ---------- */
+
+/**
+ * 按指纹取单条完整记录（含完整 diff）。
+ * 日志卡只在行上显示摘要，点开时用这个拿全文。
+ * @param {{root:string, module:string, at:string, afterHash:string}} opts
+ */
+export async function readChange({ root, module, at, afterHash }) {
+  const listed = await readLog({ root, module, limit: 500 })
+  if (!listed.ok) return { ok: false, code: listed.code, entry: null }
+  const entry = (listed.entries || []).find((item) =>
+    text(item?.at) === text(at) && text(item?.afterHash) === text(afterHash))
+  if (!entry) return { ok: false, code: 'NOT_FOUND', entry: null }
+  return { ok: true, entry }
+}
+
+/**
+ * 恢复某次变更之前的版本。
+ *
+ * 两条路径：
+ *   1. 有 `before` 全文时（日志里若存了，目前不存全文只存 diff）→ 直接用；
+ *   2. 否则按 changeId 找到对应 `.history` 备份 → 复制回去（现有机制）。
+ *
+ * 当前实现走路径 2：由调用方（daemon）按 `historyBackupPath` 的命名规则找最近的
+ * 早于该变更时间的备份。返回失败时如实报，不假装成功。
+ *
+ * @param {{root:string, module:string, at:string}} opts
+ */
+export async function findRestoreCandidate({ root, module, at }) {
+  if (!root || !module || !at) {
+    return { ok: false, code: 'INVALID_ENTRY', message: 'root/module/at 必填' }
+  }
+  const listed = await readLog({ root, module, limit: 500 })
+  if (!listed.ok) return { ok: false, code: listed.code, message: '日志读不到', candidates: [] }
+  const entries = listed.entries || []
+  // 目标变更之前的那一条（用来定位「上一版」的 beforeHash）
+  const idx = entries.findIndex((item) => text(item?.at) === text(at))
+  if (idx < 0) return { ok: false, code: 'NOT_FOUND', message: '找不到这次变更', candidates: [] }
+  const target = entries[idx]
+  const previous = entries[idx + 1] || null // 新→旧，所以 +1 是更早
+  return {
+    ok: true,
+    target: { at: target.at, file: target.file, op: target.op, beforeHash: target.beforeHash, afterHash: target.afterHash },
+    previous: previous ? { at: previous.at, afterHash: previous.afterHash } : null,
+    // 恢复只能回到「这次变更之前」的状态。若这次是 create，则恢复＝删除该文件。
+    restorable: target.op !== 'create',
+    note: target.op === 'create' ? '这次是新建文件，无法回退到之前（之前不存在）' : ''
   }
 }

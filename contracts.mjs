@@ -855,6 +855,23 @@ export const ENDPOINTS = Object.freeze({
     response: { ok: 'true', modules: 'array' },
     errors: ['NO_LIBRARY']
   },
+  changeLogEntry: {
+    method: 'GET',
+    path: '/api/log/entry',
+    // OS-90：读单条变更的完整记录（含完整 diff）——日志卡点开就用它。
+    request: { query: { root: 'string', module: 'string', at: 'string', afterHash: 'string' } },
+    response: { ok: 'true', entry: 'object' },
+    errors: ['NO_LIBRARY', 'NOT_FOUND']
+  },
+  changeLogRestore: {
+    method: 'POST',
+    path: '/api/log/restore',
+    // OS-90：把某个文件恢复到某次变更之前的状态。
+    // 先给当前内容做一次备份（保证这次恢复本身也可回退），再从该次变更记下的 backup 拷回。
+    request: { body: { root: 'string', module: 'string', at: 'string', afterHash: 'string' } },
+    response: { ok: 'true', file: 'string', restoredFrom: 'string', safetyBackup: 'string?' },
+    errors: ['NO_LIBRARY', 'NOT_FOUND', 'INVALID_ENTRY', 'WRITE_PROTOCOL_IO_FAILED']
+  },
   uiStateGet: {
     method: 'GET',
     path: '/api/ui-state',
