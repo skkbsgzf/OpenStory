@@ -74,6 +74,7 @@ const state = {
       opening: { loaded: false, loading: false, books: [], characters: [], openings: [], selPov: '', selBook: '', selOpen: 'free' },
       // OS-97：playMode='roleplay'（默认，主持人＋N 角色多 agent）｜'engine'（确定性推演）
       playMode: 'roleplay',
+      roleplayOptions: [],
       view: 'scene', treePick: null,
       assets: null, assetsLoaded: false, assetBookId: '', bgmOn: false,
       // OS-81 叙事流：纸面模式（关掉立绘背景回纯纸面）/ 贴底跟随 / 序章折叠
@@ -6188,7 +6189,7 @@ function openTabAdd() {
   const builtins = [
     { view: 'artifacts', label: '产物', need: null },
     { view: 'write', label: '正文', need: '正文' },
-    { view: 'deduce', label: '推演', need: null }
+    { view: 'deduce', label: '扮演', need: null }
   ]
   const builtinRows = builtins
     .filter((item) => (item.need ? libDirs.includes(item.need) : true))
@@ -6331,7 +6332,7 @@ function renderTabs() {
         closable: true
       }))
     defs.push(...extra)
-    defs.push({ view: 'deduce', label: '推演', ic: '推', closable: true })
+    defs.push({ view: 'deduce', label: '扮演', ic: '扮', closable: true })
   }
   // 设置是一个可关闭的页签（OS-32）：跟正文/产物同级，打开才出现，× 关掉回到原页
   if (state.settings.open) defs.push({ view: 'settings', label: '设置', ic: '设', closable: true })
@@ -7608,17 +7609,29 @@ async function deduceRoleplayTurn({ playerAction }) {
           : ''
       })
     })
-    // 会话带回就更新（beats 已随节点存）
-    if (payload.node && engine.session) {
-      engine.session.cursor = payload.node.round
-      engine.session.nodes.push(payload.node)
-      const buffered = engine.session.buffer
-      if (buffered) { buffered.nodes.push(payload.node); buffered.words += text(payload.node.prose).length }
+    // 会话带回就更新（beats 已随节点存）。扮演局开局时 session 可能还是 null——
+    // 这里拉一次会话，保证后续回合有容器（OS-99）
+    if (payload.node) {
+      if (!engine.session) {
+        try {
+          const fresh = await api('/api/deduce/session?root=' + encodeURIComponent(state.current.path))
+          engine.session = fresh.session ?? null
+        } catch { engine.session = null }
+      }
+      if (engine.session) {
+        engine.session.cursor = payload.node.round
+        engine.session.nodes.push(payload.node)
+        const buffered = engine.session.buffer
+        if (buffered) { buffered.nodes.push(payload.node); buffered.words += text(payload.node.prose).length }
+      }
     }
     engine.draft = { nodeId: payload.node?.id ?? '', round: payload.node?.round ?? 0, prose: payload.feedback ?? '', proseError: '' }
+    // OS-98：情境分支（主持人收束时给的三条下一步）＋登场角色署名（气泡渲染用）
+    engine.roleplayOptions = Array.isArray(payload.options) ? payload.options.slice(0, 4) : []
+    engine.lastBeats = Array.isArray(payload.beats) ? payload.beats : []
     engine.flowPin = true
     if (Array.isArray(payload.beats) && payload.beats.length) {
-      engine.hint = `本幕登场：${payload.beats.map((b) => b.name).join('、')}——说你的下一步，或点谁的名字让他登场`
+      engine.hint = `本幕登场：${payload.beats.map((b) => b.name).join('、')}——选一条分支，或在下面说你的动作`
     } else {
       engine.hint = '本幕空场（没有角色登场）——继续你的动作，或换一个说法'
     }
@@ -7760,7 +7773,7 @@ async function deducePendingSettle(pendingId, action) {
     })
     engine.session = payload.session
     engine.hint = action === 'write'
-      ? `事实已写入拆解${payload.revision ? `（revision ${payload.revision}）` : ''}——下一拍推演就能引用它`
+      ? `事实已写入世界底账${payload.revision ? `（revision ${payload.revision}）` : ''}——下一拍推演就能引用它`
       : '已忽略这张事实卡（不落库）'
   } catch (error) {
     const message = (error && error.code ? error.code + ' · ' : '') + text((error && error.message) || error)
@@ -8127,7 +8140,7 @@ async function startDeduce() {
     return
   }
   if (!agent.configured) {
-    openSettingsModal('先配好模型端点再推演。')
+    openSettingsModal('先配好模型端点再开始扮演。')
     return
   }
   deduce.error = ''
@@ -8183,12 +8196,12 @@ function dedPackHtml() {
   const items = [
     { ok: who >= 2, label: '在场角色', hint: who >= 2 ? `${who} 人` : '太少——补 character 条目' },
     { ok: Boolean(where), label: '地点', hint: where ? '已标' : '世界书里还没有他知道的地点' },
-    { ok: Boolean(hook), label: '挂起伏笔', hint: hook ? '有' : '没有悬着的伏笔，推演张力会平' },
+    { ok: Boolean(hook), label: '挂起伏笔', hint: hook ? '有' : '没有悬着的伏笔，扮演张力会平' },
     { ok: fronts > 0, label: '前线时钟', hint: fronts ? `${fronts} 条在走` : '没有前线——威胁不会被推着走' },
     { ok: rich, label: '候选来源', hint: rich ? [...sources].join('／') : '只有命运骰——补条目才会出「必然」' }
   ]
   return `<section class="ded-card ded-pack">
-      <div class="ded-card-head"><h3>事实包</h3><span class="sub">推演质量取决于拆解条目</span></div>
+      <div class="ded-card-head"><h3>世界底账</h3><span class="sub">扮演的根基在这份拆解里</span></div>
       ${items.map((item) => `<div class="ded-pack-row ${item.ok ? 'ok' : 'gap'}">
         <span class="ded-pack-ic">${item.ok ? '✓' : '○'}</span>
         <span class="ded-pack-label">${esc(item.label)}</span>
@@ -8305,9 +8318,12 @@ function deduceProseMsgHtml(node, live) {
   const round = Number(node.round) || 0
   if (!live) {
     const prose = text(node.prose).trim()
+    // OS-99：历史拍回放——节点里存过参与角色（beats），署名气泡一起回放
+    const beatsHtml = (Array.isArray(node.beats) ? node.beats : []).map((beat) => `<div class="fl-beat"><span class="fl-beat-name">${esc(beat.name)}</span><span class="fl-beat-text">${esc(beat.text)}</span></div>`).join('')
     return `<section class="fl-msg">
       <span class="fl-rn">第 ${round} 拍</span>
       <div class="fl-prose"><p class="fl-text${prose ? '' : ' is-empty'}">${prose ? esc(prose) : '（这一拍没有正文）'}</p></div>
+      ${beatsHtml}
     </section>`
   }
   const draft = engine.draft
@@ -8409,7 +8425,7 @@ function deducePendingHtml(data) {
       <span class="fl-pending-where">${esc(where)}</span>
       ${deduceWhoChipsHtml(who.filter((name) => name !== data.pov))}
     </div>
-    <p class="fl-prompt">轮到你了——这一拍怎么走由你决定：选一条，或在下面自己说</p>
+    <p class="fl-prompt">轮到你了——选一条走向，或在下面说你自己的动作</p>
     ${busyNote}
     ${optRows || (engine.busy || engine.turnBusy ? '' : '<p class="fl-no-cand">这一拍没有候选——事实包不够（世界观／角色／剧情条目太少）或预算用尽。点下方自己写一拍，或去设置里重掷。</p>')}
   </section>`
@@ -8484,11 +8500,11 @@ function deduceEngineHtml() {
   const form = inFlow ? 'flow' : (state.deduce.mode === 'engine' ? 'tree' : 'agent')
   const segTab = (key, label, action, title) => `<button class="fl-seg-tab${form === key ? ' on' : ''}" data-action="${action}" title="${title}">${label}</button>`
   const bar = `<header class="fl-bar">
-    ${inFlow ? `<span class="fl-bar-progress">${data ? `第 ${Number(data.round) || 0} 拍` : '未开局'}${pov ? `<span class="ded-bar-sep">·</span>${esc(pov)}视角` : ''}<span class="ded-bar-sep">·</span>本章 ${bufferCount} 拍 ${buffer?.words || 0} 字</span>
+    ${inFlow ? `<span class="fl-bar-progress">${rpMode && engine.session ? `第 ${Number(engine.session.cursor) || 0} 拍` : (data ? `第 ${Number(data.round) || 0} 拍` : '未开局')}${pov ? `<span class="ded-bar-sep">·</span>${esc(pov)}视角` : ''}<span class="ded-bar-sep">·</span>本章 ${bufferCount} 拍 ${buffer?.words || 0} 字</span>
     ${heatLabel ? `<span class="ded-heat ${heatClass}" title="前线时钟读数：张力从平静到一触即发">${esc(heatLabel)}</span>` : ''}` : ''}
     <span class="fl-bar-right">
       <span class="fl-seg">
-        ${segTab('flow', '叙事流', 'deduce-view-scene', '沉浸叙事流：一拍一条消息，候选挂在流末（确定性引擎）')}
+        ${segTab('flow', '叙事流', 'deduce-view-scene', '沉浸叙事流：一幕一条消息（扮演＝主持人＋登场角色；推演＝确定性引擎）')}
         ${segTab('tree', '剧情树', 'deduce-view-tree', '二维分支导图：回跳或开新分支（确定性引擎）')}
         ${segTab('agent', 'Agent', 'deduce-mode-agent', 'Agent 分支推理（需要模型，表单形态）')}
       </span>
@@ -8528,7 +8544,7 @@ function deduceEngineHtml() {
     </div>`
   }).join('')
   const sessHtml = `<div class="ded-sess">
-      <div class="ded-sess-head">推演局<span class="sub">不同前提各开一局，互不串线</span></div>
+      <div class="ded-sess-head">扮演局<span class="sub">不同前提各开一局，互不串线</span></div>
       <div class="ded-sess-list">${sessRows || '<p class="ded-none">局清单还没读到——再开一次设置页试试</p>'}</div>
       <button class="btn-ghost ded-sess-new" data-action="deduce-sess-new"${engine.busy || engine.turnBusy ? ' disabled' : ''} title="新开一局（自动命名，切过去就是空白第一拍）">＋新开一局</button>
     </div>`
@@ -8537,7 +8553,7 @@ function deduceEngineHtml() {
       ${sessHtml}
       <div class="ded-set-head">推演设置<span class="sub">POV / 种子 / 推进</span></div>
       ${controls}
-      ${moduleLogHtml('推演', { title: '推演修改记录', limit: 6 })}
+      ${moduleLogHtml('扮演', { title: '扮演修改记录', limit: 6 })}
     </div>`
 
   /* —— OS-84：非叙事流形态（Agent 表单／剧情树）——同一壳同一工具栏，只换内容区 —— */
@@ -8552,7 +8568,7 @@ function deduceEngineHtml() {
   }
 
   /* —— 空态＝开局向导（OS-93 照酒馆：选角色卡 → 选世界书 → 选开头）—— */
-  if (!data) {
+  if (!data && !engine.roleplayStarted) {
     const ow = engine.opening
     const owCard = (sel, body) => `<div class="ow-card${sel ? ' on' : ''}">${body}</div>`
     const povCards = [{ name: '主持人', identity: '你是这一幕的导演与裁判——裁决谁登场、织世界反馈；其他角色由各自的子 agent 演绎' }, ...(ow.characters ?? [])].map((c, i) => owCard(ow.selPov === c.name, `
@@ -8575,7 +8591,7 @@ function deduceEngineHtml() {
           ${flowError(engine.error || '')}
           <div class="fl-hero">
             <div class="ow-wizard">
-              <h2>开局</h2>
+              <h2>开局 · 扮演</h2>
               <p class="ow-sub">选好这三样就开始——像酒馆一样往下读。</p>
               <div class="ow-mode">
                 <button class="ow-pick ow-mode-btn${engine.playMode !== 'engine' ? ' on' : ''}" data-action="ow-mode-roleplay" title="主持人＋N 个登场角色各自由子 agent 演绎，世界反馈对你说"><b>扮演</b><span>主持人＋登场角色，多 agent 同幕</span></button>
@@ -8605,7 +8621,14 @@ function deduceEngineHtml() {
   const branchId = session?.branchId || 'main'
   const nodes = (session?.nodes || []).filter((node) => (text(node?.branchId) || 'main') === branchId)
   const msgs = []
-  if (data.narrative) msgs.push(deducePrologueHtml(data.narrative))
+  const rpMode = (engine.playMode || 'roleplay') !== 'engine'
+  if (data?.narrative) msgs.push(deducePrologueHtml(data.narrative))
+  // OS-99：扮演局开场——玩家先说话，给一张「序幕」引导卡（不摆引擎局面）
+  if (!data && rpMode && engine.roleplayStarted && !engine.lastBeats?.length) {
+    const povName = engine.pov || ''
+    const openDetail = engine.seedPrompt || ''
+    msgs.push(`<section class="fl-msg fl-msg-prologue"><div class="fl-prose"><div class="fl-prologue-head"><span class="fl-prologue-mark">◆</span>序幕</div>${povName ? `<p class="fl-line">你扮演 <b>${esc(povName)}</b>${povName === '主持人' ? '——这一幕的导演与裁判' : ''}。</p>` : ''}${openDetail ? `<p class="fl-line fl-story">${esc(openDetail)}</p>` : ''}${povName === '主持人' ? '<p class="fl-line">说一句开场：这一幕在哪儿、什么时候、谁在场——我来替你召集演员。</p>' : `<p class="fl-line">说你这一幕睁开眼在做什么、说什么——点名谁，谁就登场。</p>`}</div></section>`)
+  }
   // OS-82 回填闭环：结算产出的条目卡按 nodeId 挂在对应拍后面；对不上拍的兜底挂流尾，不吞卡
   const pendingAll = Array.isArray(session?.pending) ? session.pending : []
   const pendingLeft = new Set(pendingAll.map((item) => text(item?.id)))
@@ -8624,15 +8647,25 @@ function deduceEngineHtml() {
   for (const item of pendingAll) {
     if (pendingLeft.has(text(item?.id))) msgs.push(deducePendingFactHtml(item))
   }
-  if (!draft) msgs.push(deducePendingHtml(data))
+  // OS-98/99：扮演模式的登场角色署名气泡＋情境分支选项——挂在流末（最新一拍之后）。
+  // 注意：draft 存在时它**就是**最新那一拍，选项照样要给玩家。
+  if (rpMode && (engine.lastBeats ?? []).length) {
+    for (const beat of engine.lastBeats) {
+      msgs.push(`<div class="fl-beat"><span class="fl-beat-name">${esc(beat.name)}</span><span class="fl-beat-text">${esc(beat.text)}</span></div>`)
+    }
+    if ((engine.roleplayOptions ?? []).length) {
+      msgs.push(`<div class="fl-options"><p class="fl-prompt">轮到你了——选一条，或在下面说你的动作</p>${engine.roleplayOptions.map((opt, i) => `<button class="fl-opt" data-action="roleplay-option" data-idx="${i}"><span class="fl-opt-arrow">▸</span>${esc(opt)}</button>`).join('')}</div>`)
+    }
+  }
+  if (!draft && !rpMode && data) msgs.push(deducePendingHtml(data))
   if (engine.hint) msgs.push(`<div class="fl-hint">${esc(engine.hint)}</div>`)
 
   const composer = `<div class="fl-composer">
     ${engine.error ? flowError(engine.error) : ''}
     ${engine.archiveNote ? `<div class="fl-note-row"><span class="ok-note">${esc(engine.archiveNote)}</span></div>` : ''}
     <div class="fl-composer-row">
-      <textarea class="fl-input" id="deduce-custom" rows="1" placeholder="自己写：这一拍发生什么，你说了算（Enter 发送 · Shift+Enter 换行）">${esc(engine.customText)}</textarea>
-      <button class="btn-primary fl-send" data-action="deduce-engine-custom"${engine.busy || engine.turnBusy ? ' disabled' : ''}>按我写的走</button>
+      <textarea class="fl-input" id="deduce-custom" rows="1" placeholder="说你这一幕做什么/说什么——点名谁，谁就登场（Enter 发送 · Shift+Enter 换行）">${esc(engine.customText)}</textarea>
+      <button class="btn-primary fl-send" data-action="deduce-engine-custom"${engine.busy || engine.turnBusy ? ' disabled' : ''}>就这么做</button>
     </div>
   </div>`
 
@@ -9751,11 +9784,24 @@ document.addEventListener('click', (event) => {
     state.deduce.engine.opening.selOpen = target.dataset.id
     render()
   } else if (action === 'ow-start') {
-    // OS-93：按向导选择开局——角色卡→POV，开头→seedPrompt 锚定
+    // OS-99：扮演模式不摆引擎局面——那是推演的确定性引擎。扮演首幕由玩家输入驱动：
+    // 直接把 POV/世界书/开头记进 engine，流里放一句「你说你的第一幕」，等玩家开口。
     const ow = state.deduce.engine.opening
     const open = (ow.openings ?? []).find((o) => o.id === ow.selOpen)
-    if (engine.playMode !== 'engine') engine.hint = '扮演局——在下面说你这一幕做什么/说什么（点名谁，谁就登场）'
-    deduceEnginePresent({ pov: ow.selPov, bookId: ow.selBook, seedPrompt: open && open.id !== 'free' ? open.detail : '', hint: engine.playMode !== 'engine' ? '扮演局已开——说你做什么，点名谁谁登场' : '开局——选一条走向，世界回你一段正文' })
+    if (engine.playMode === 'engine') {
+      deduceEnginePresent({ pov: ow.selPov, bookId: ow.selBook, seedPrompt: open && open.id !== 'free' ? open.detail : '', hint: '开局——选一条走向，世界回你一段正文' })
+    } else {
+      engine.pov = ow.selPov
+      engine.bookId = ow.selBook
+      engine.seedPrompt = open && open.id !== 'free' ? open.detail : ''
+      engine.roleplayStarted = true
+      engine.roleplayOptions = []
+      engine.lastBeats = []
+      engine.hint = ow.selPov === '主持人'
+        ? '你是主持人——说一句开场（这一幕在哪儿、什么时候、谁在场），我来替你召集演员'
+        : `你扮演「${ow.selPov}」——说你这一幕睁开眼在做什么、说什么`
+      render()
+    }
   } else if (action === 'deduce-sess-new') {
     deduceSessionManage('new', '')
   } else if (action === 'deduce-sess-switch') {
@@ -9764,6 +9810,11 @@ document.addEventListener('click', (event) => {
     deduceSessionManage('delete', target.dataset.id)
   } else if (action === 'deduce-engine-choose') {
     deduceEngineTurn({ choiceId: target.dataset.candidateId })
+  } else if (action === 'roleplay-option') {
+    // OS-98：情境分支——点了就是你的下一幕动作
+    const idx = Number(target.dataset.idx)
+    const opt = (state.deduce.engine.roleplayOptions ?? [])[idx]
+    if (opt) deduceRoleplayTurn({ playerAction: opt })
   } else if (action === 'deduce-engine-custom') {
     // OS-81：customText 在 input 事件里同步进 engine 状态——重渲不丢作者正在写的字
     const customValue = (state.deduce.engine.customText ?? '').trim()

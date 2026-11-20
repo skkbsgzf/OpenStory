@@ -726,7 +726,7 @@ export const ENDPOINTS = Object.freeze({
     // 主持人收束成对「你」说话的世界反馈。世界书按 chapterLimit 过滤（OS-96）。
     // 会话复用 deduceSession 容器（beats 随节点存）。
     request: { body: { root: 'string', bookId: 'string?', sessionId: 'string?', pov: 'string', playerAction: 'string', premise: 'string?', chapterLimit: 'integer?', activation: 'string?' } },
-    response: { ok: 'true', beats: 'array', feedback: 'string', node: 'object?' },
+    response: { ok: 'true', beats: 'array', feedback: 'string', options: 'array', node: 'object?' },
     errors: ['NO_LIBRARY', 'INVALID_ENTRY']
   },
   deduceExport: {

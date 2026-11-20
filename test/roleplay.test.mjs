@@ -88,3 +88,20 @@ test('世界书摘要：限条数、空条目剔除', () => {
   assert.equal(digest.split('\n').length, 1)
   assert.match(digest, /夹层/)
 })
+
+test('世界反馈带情境分支（OS-98）：正文与「>」选项拆开', async () => {
+  const chatComplete = async (prompt) => {
+    if (prompt.includes('收束')) return '你推开门，灯影里那只眼睁开了。\n\n> 我举灯走近看那只眼\n> 我退回门口装作什么都没发生\n> 我开口唤他'
+    if (prompt.includes('主持人')) return '{"cast":[{"name":"老人","instruction":"惊醒"}]}'
+    return '「谁？」'
+  }
+  const r = await roleplayTurn({
+    chatComplete,
+    cast: [{ name: '老人', identity: '同住者' }],
+    playerAction: '我推门',
+    pov: '叙述者'
+  })
+  assert.equal(r.ok, true)
+  assert.doesNotMatch(r.feedback, /^>/m, '反馈正文不含分支行')
+  assert.deepEqual(r.options, ['我举灯走近看那只眼', '我退回门口装作什么都没发生', '我开口唤他'])
+})

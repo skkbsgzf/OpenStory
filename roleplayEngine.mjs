@@ -15,6 +15,7 @@ import {
   actorSystemPrompt,
   worldFeedbackPrompt,
   parseHostDecision,
+  splitFeedbackOptions,
   fallbackActivation
 } from './roleplayPrompts.mjs'
 
@@ -128,5 +129,7 @@ export async function roleplayTurn({
   if (!feedback && !beats.length) {
     return { ok: false, beats: [], feedback: '', error: '模型不可用——本幕没有产出' }
   }
-  return { ok: true, beats, feedback }
+  // OS-98：反馈正文与情境分支拆开（分支是玩家的决定素材）
+  const { body, options } = splitFeedbackOptions(feedback)
+  return { ok: true, beats, feedback: body, options }
 }
