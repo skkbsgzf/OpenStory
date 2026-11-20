@@ -86,6 +86,8 @@ const state = {
   refCol: { graph: null, graphLoading: false, graphError: '', summary: '', summaryBusy: false, summaryError: '', pick: null },
   settings: { userDir: '', section: 'plugins', suiteId: '', open: false, prevView: '', helpOpen: false },
   kbStatus: null,
+  kbConfig: null,
+  kbMsg: '',
   tabHidden: {},
   ssJump: null,
   // 产物驳回记录（OS-51）：msgHtml index → true。会话级，不落档
@@ -4064,7 +4066,8 @@ function settingsCombinedDataSectionHtml() {
   return `<div class="step">
     <h3>货架路径<span class="sub">丢文件即上新，本机目录覆盖内置</span></h3>
     <div class="kv-line"><span class="k">业务套件</span><span class="v">%LOCALAPPDATA%\PinaxNext\openstory\suites</span></div>
-    <div class="kv-line"><span class="k">Agent 运行时</span><span class="v">%LOCALAPPDATA%\PinaxNext\openstoryuntimes</span></div>
+    <div class="kv-line"><span class="k">Agent 运行时</span><span class="v">%LOCALAPPDATA%\PinaxNext\openstory
+untimes</span></div>
     <div class="kv-line"><span class="k">风格包</span><span class="v">%LOCALAPPDATA%\PinaxNext\openstory\styles</span></div>
   </div>
   <div class="step">
@@ -4099,42 +4102,96 @@ function settingsAboutSectionHtml() {
   </div>`
 }
 
+/**
+ * 知识库（OS-97 重做）。
+ *
+ * 作者口径：「目前你给我绑定的是我本地的知识库。而且怎么去配置、怎么去使用接口、
+ * 怎么开、怎么调，我感觉好像也没有完全调通。」
+ *
+ * 之前这一节是**只读状态牌**：只能看灯，不能改配置、不能测试、不能看分库明细。
+ * 现在三件事齐了：
+ *   ① 配置表单（baseUrl / apiKey / spaceId / 分库映射），密钥掩码显示、留空则保留原值
+ *   ② 连接测试按钮（当场探 WeKnora + embedding，逐项给结果）
+ *   ③ 状态区（服务灯 + 六库文档数/解析进度 + 最近检查时间）
+ */
 function settingsKbSectionHtml() {
   const s = state.kbStatus
-  if (!s) {
-    return `<div class="step"><h3>知识库</h3><div class="kv-line"><span class="k">状态</span><span class="v">读取中…</span></div></div>`
+  const cfg = state.kbConfig
+  const lamp = (up) => up
+    ? '<span class="kb-lamp is-up">●</span>在线'
+    : '<span class="kb-lamp is-down">●</span>离线'
+
+  if (!cfg) {
+    return '<div class="step"><h3>知识库</h3><div class="loading">正在读取配置…</div></div>'
   }
-  if (!s.configured) {
-    return `<div class="step">
-      <h3>知识库</h3>
-      <div class="kv-line"><span class="k">连接</span><span class="v">未配置</span></div>
-      <div class="kv-line"><span class="k">说明</span><span class="v">在 %LOCALAPPDATA%\\PinaxNext\\openstory\\kb-config.json 写入 WeKnora 连接后重启 daemon</span></div>
-      <div class="kv-line"><span class="k">配置路径</span><span class="v">${esc(s.configPath || '—')}</span></div>
-      ${s.configError ? `<div class="kv-line"><span class="k">读取问题</span><span class="v">${esc(s.configError)}</span></div>` : ''}
-    </div>`
-  }
-  const lamp = (up) => up ? '<span style="color:var(--green)">●</span>在线' : '<span style="color:var(--destructive)">●</span>离线'
-  const svc = s.services || {}
-  const rows = (s.collections || []).map((c) => {
-    const docs = c.docs === null || c.docs === undefined ? '—' : String(c.docs)
-    const parsed = c.parsed === null || c.parsed === undefined ? '—' : `${c.parsed}/${c.docs ?? '?'}`
-    return `<div class="kv-line"><span class="k">${esc(c.alias)}</span><span class="v">文档 ${docs}｜已解析 ${parsed}</span></div>`
-  }).join('')
+
+  const collections = cfg.collections && typeof cfg.collections === 'object' ? cfg.collections : {}
+  const collectionRows = Object.entries(collections).map(([alias, id]) => `
+    <div class="kb-collection-row">
+      <input class="uikit-input" data-kb-collection-alias value="${esc(alias)}" placeholder="别名" aria-label="分库别名">
+      <input class="uikit-input" data-kb-collection-id value="${esc(id)}" placeholder="collection id" aria-label="分库 id">
+      <button type="button" class="btn-ghost" data-action="kb-collection-remove" title="删除这一行">×</button>
+    </div>`).join('')
+
+  const live = s || {}
+  const svc = live.services || {}
   const embed = svc.embedding || {}
-  const embedInfo = embed.up
-    ? `${esc(embed.model || 'embedding')}${embed.dim ? `（${embed.dim} 维）` : ''}${embed.autoStarted ? '·本进程自动拉起' : ''}`
-    : '离线'
-  return `<div class="step">
-    <h3>知识库</h3>
-    <div class="kv-line"><span class="k">WeKnora</span><span class="v">${lamp(!!(svc.weknora && svc.weknora.up))}${svc.weknora && svc.weknora.version ? ` · v${esc(svc.weknora.version)}${svc.weknora.edition ? ` · ${esc(svc.weknora.edition)}` : ''}` : ''}</span></div>
-    <div class="kv-line"><span class="k">Embedding</span><span class="v">${lamp(!!embed.up)}${embed.up ? ` · ${embedInfo}` : ''}</span></div>
-    <div class="kv-line"><span class="k">连接</span><span class="v">${esc(s.backend || '—')}</span></div>
-    <div class="kv-line"><span class="k">配置路径</span><span class="v">${esc(s.configPath || '—')}</span></div>
-    <div class="kv-line"><span class="k">最近检查</span><span class="v">${esc(s.lastCheck ? s.lastCheck.replace('T', ' ').slice(0, 19) : '—')}</span></div>
-    ${s.configError ? `<div class="kv-line"><span class="k">读取问题</span><span class="v">${esc(s.configError)}</span></div>` : ''}
-    <h3>分库清单</h3>
-    ${rows || '<div class="kv-line"><span class="k">状态</span><span class="v">读不到分库（WeKnora 离线或配置为空）</span></div>'}
-  </div>`
+  const liveRows = (live.collections || []).map((item) => {
+    const docs = item.docs === null || item.docs === undefined ? '—' : String(item.docs)
+    const parsed = item.parsed === null || item.parsed === undefined ? '—' : `${item.parsed}/${item.docs ?? '?'}`
+    return `<div class="kv-line"><span class="k">${esc(item.alias)}</span><span class="v">文档 ${esc(docs)}｜已解析 ${esc(parsed)}</span></div>`
+  }).join('')
+
+  const statusBlock = !s
+    ? '<div class="kv-line"><span class="k">状态</span><span class="v">读取中…</span></div>'
+    : `<div class="kv-line"><span class="k">WeKnora</span><span class="v">${lamp(!!(svc.weknora && svc.weknora.up))}${svc.weknora && svc.weknora.version ? ' · v' + esc(svc.weknora.version) : ''}</span></div>
+       <div class="kv-line"><span class="k">Embedding</span><span class="v">${lamp(!!embed.up)}${embed.up && embed.model ? ' · ' + esc(embed.model) : ''}</span></div>
+       <div class="kv-line"><span class="k">最近检查</span><span class="v">${esc(s.lastCheck ? String(s.lastCheck).replace('T', ' ').slice(0, 19) : '—')}</span></div>
+       ${liveRows ? '<div class="kv-line-sep"></div>' + liveRows : '<div class="kv-line"><span class="k">分库</span><span class="v">读不到（服务离线或分库为空）</span></div>'}
+       ${s.configError ? '<div class="kv-line"><span class="k">读取问题</span><span class="v">' + esc(s.configError) + '</span></div>' : ''}`
+
+  return `
+    <div class="step">
+      <h3>连接<span class="sub">WeKnora 本体（默认本机 8080）＋ 本地 embedding（8808）</span></h3>
+      ${uiKit.field({
+        label: '服务地址',
+        hint: 'WeKnora 的 HTTP 入口，不带 /api 后缀',
+        control: uiKit.textInput({ id: 'kb-base-url', value: cfg.baseUrl || 'http://127.0.0.1:8080', placeholder: 'http://127.0.0.1:8080' })
+      })}
+      ${uiKit.field({
+        label: 'API Key',
+        hint: cfg.apiKeyMasked ? '当前：' + cfg.apiKeyMasked + '（留空＝不改）' : '必填，WeKnora 的 X-API-Key',
+        control: uiKit.textInput({ id: 'kb-api-key', value: '', placeholder: cfg.apiKeyMasked ? '留空则保留现有密钥' : 'sk-…' })
+      })}
+      ${uiKit.field({
+        label: 'Space ID',
+        hint: '可选；多空间部署时填',
+        control: uiKit.textInput({ id: 'kb-space-id', value: cfg.spaceId || '', placeholder: '留空＝默认空间' })
+      })}
+    </div>
+
+    <div class="step">
+      <h3>分库映射<span class="sub">别名 → WeKnora collection id（六个库各管一类知识）</span></h3>
+      <div class="kb-collections" id="kb-collections">
+        ${collectionRows || '<p class="sub">还没有分库——点下面「＋ 添加分库」</p>'}
+      </div>
+      <div class="ops">
+        <button class="btn-ghost" data-action="kb-collection-add">＋ 添加分库</button>
+        <span class="count">别名决定检索时怎么选库</span>
+      </div>
+    </div>
+
+    <div class="step">
+      <h3>状态</h3>
+      ${statusBlock}
+      <div class="kv-line"><span class="k">配置文件</span><span class="v">${esc(cfg.configPath || '—')}</span></div>
+    </div>
+
+    <div class="ops kb-ops">
+      <button class="btn-primary" data-action="kb-save">保存配置</button>
+      <button class="btn-ghost" data-action="kb-test">测试连接</button>
+      <span class="count" id="kb-msg">${esc(state.kbMsg || '')}</span>
+    </div>`
 }
 
 function settingsHtml() {
@@ -10154,6 +10211,14 @@ document.addEventListener('click', (event) => {
     } else {
       deduceEngineTurn({ customText: customValue })
     }
+  } else if (action === 'kb-save') {
+    saveKbConfig()
+  } else if (action === 'kb-test') {
+    testKbConnection()
+  } else if (action === 'kb-collection-add') {
+    addKbCollectionRow()
+  } else if (action === 'kb-collection-remove') {
+    removeKbCollectionRow(target)
   } else if (action === 'chip-toggle-edit') {
     // OS-92：进入/退出删除态——所有标签显 ×（作者原话：点删按钮，下面的标签都出现 x 号）
     const field = target.closest('.uikit-chipfield')
@@ -10826,11 +10891,95 @@ async function loadStyles() {
 }
 
 async function loadKbStatus() {
+  // OS-97：状态与配置一起拉——设置页要能立即渲染表单，而不是等用户点开才读
   try {
-    state.kbStatus = await api('/api/kb/status')
+    const [status, config] = await Promise.all([
+      api('/api/kb/status').catch(() => null),
+      api('/api/kb/config').catch(() => null)
+    ])
+    state.kbStatus = status
+    state.kbConfig = config ? { ...config.config, configPath: config.configPath, configError: config.configError } : null
   } catch {
     state.kbStatus = null
+    state.kbConfig = null
   }
+}
+
+/** OS-97：读知识库表单当前值（UI → 配置对象）。 */
+function readKbForm() {
+  const root = document.getElementById('kb-collections')
+  const collections = {}
+  if (root) {
+    const rows = root.querySelectorAll('.kb-collection-row')
+    for (const row of rows) {
+      const alias = row.querySelector('[data-kb-collection-alias]')?.value?.trim()
+      const id = row.querySelector('[data-kb-collection-id]')?.value?.trim()
+      if (alias && id) collections[alias] = id
+    }
+  }
+  const key = document.getElementById('kb-api-key')?.value?.trim() || ''
+  return {
+    baseUrl: document.getElementById('kb-base-url')?.value?.trim() || '',
+    // 留空＝保留原密钥（协议约定 __KEEP__）
+    apiKey: key || '__KEEP__',
+    spaceId: document.getElementById('kb-space-id')?.value?.trim() || '',
+    collections
+  }
+}
+
+/** OS-97：保存知识库配置。 */
+async function saveKbConfig() {
+  state.kbMsg = '保存中…'
+  render()
+  try {
+    const payload = await api('/api/kb/config', { method: 'PUT', body: JSON.stringify(readKbForm()) })
+    state.kbStatus = payload.status ?? state.kbStatus
+    state.kbMsg = '已保存并重探服务'
+    // 重新拉配置（拿回新的掩码）
+    await loadKbStatus()
+  } catch (error) {
+    state.kbMsg = `保存失败：${text(error?.message || error)}`
+  }
+  render()
+}
+
+/** OS-97：测试知识库连接（不写盘）。 */
+async function testKbConnection() {
+  state.kbMsg = '测试中…'
+  render()
+  try {
+    const form = readKbForm()
+    const payload = await api('/api/kb/test', {
+      method: 'POST',
+      body: JSON.stringify({ baseUrl: form.baseUrl, apiKey: form.apiKey })
+    })
+    const w = payload.weknora || {}
+    const e = payload.embedding || {}
+    state.kbMsg = `WeKnora ${w.up ? '在线' : '离线'} · Embedding ${e.up ? '在线' : '离线'}`
+    await loadKbStatus()
+  } catch (error) {
+    state.kbMsg = `测试失败：${text(error?.message || error)}`
+  }
+  render()
+}
+
+/** OS-97：分库行增删（前端本地操作，保存时才落盘）。 */
+function addKbCollectionRow() {
+  const root = document.getElementById('kb-collections')
+  if (!root) return
+  const empty = root.querySelector('p.sub')
+  if (empty) empty.remove()
+  const row = document.createElement('div')
+  row.className = 'kb-collection-row'
+  row.innerHTML = '<input class="uikit-input" data-kb-collection-alias placeholder="别名" aria-label="分库别名">'
+    + '<input class="uikit-input" data-kb-collection-id placeholder="collection id" aria-label="分库 id">'
+    + '<button type="button" class="btn-ghost" data-action="kb-collection-remove" title="删除这一行">×</button>'
+  root.appendChild(row)
+  row.querySelector('[data-kb-collection-alias]')?.focus()
+}
+
+function removeKbCollectionRow(button) {
+  button.closest('.kb-collection-row')?.remove()
 }
 
 async function bootStyles() {

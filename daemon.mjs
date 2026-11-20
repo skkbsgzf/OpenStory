@@ -89,7 +89,7 @@ import {
   skillsForGenre
 } from './skills.mjs'
 import { precedentPromptSectionForGenre, resolveCollections } from './kbRouter.mjs'
-import { bootstrapKbHealth, collectKbStatus, kbServiceState } from './kbHealth.mjs'
+import { bootstrapKbHealth, collectKbStatus, kbServiceState, probeServices } from './kbHealth.mjs'
 import { defaultKbConfigPath } from './kbAdapter.mjs'
 import {
   allowedDirs,
@@ -912,6 +912,79 @@ async function handleApi(req, res, url, context) {
     })
   }
   if (endpointId === 'agentRuntimePut') return handleAgentRuntimePut(res, request, context)
+  /* ---------- OS-97：知识库配置（可读可写可测，不再只是只读状态牌） ---------- */
+
+  if (endpointId === 'kbConfigGet') {
+    const configPath = defaultKbConfigPath(context.env ?? process.env)
+    let config = {}
+    let error = ''
+    try {
+      if (existsSync(configPath)) config = JSON.parse(readFileSync(configPath, 'utf-8'))
+    } catch (err) { error = text(err?.message || err) }
+    // 密钥只回掩码：sk-abc…xyz
+    const rawKey = text(config.apiKey)
+    const masked = rawKey ? `${rawKey.slice(0, 6)}…${rawKey.slice(-4)}` : ''
+    return sendJson(res, 200, {
+      ok: true,
+      configPath,
+      config: {
+        backend: text(config.backend) || 'weknora',
+        baseUrl: text(config.baseUrl) || 'http://127.0.0.1:8080',
+        apiKeyMasked: masked,
+        spaceId: text(config.spaceId),
+        collections: config.collections && typeof config.collections === 'object' ? config.collections : {}
+      },
+      ...(error ? { configError: error } : {})
+    })
+  }
+
+  if (endpointId === 'kbConfigPut') {
+    const configPath = defaultKbConfigPath(context.env ?? process.env)
+    let current = {}
+    try { if (existsSync(configPath)) current = JSON.parse(readFileSync(configPath, 'utf-8')) } catch { current = {} }
+    // apiKey 传 __KEEP__ ＝保留原值（前端不回传明文）
+    const incomingKey = text(request.apiKey)
+    const apiKey = incomingKey === '__KEEP__' ? text(current.apiKey) : incomingKey
+    const next = {
+      ...current,
+      backend: text(request.backend) || text(current.backend) || 'weknora',
+      baseUrl: text(request.baseUrl) || text(current.baseUrl) || 'http://127.0.0.1:8080',
+      apiKey,
+      spaceId: request.spaceId !== undefined ? text(request.spaceId) : text(current.spaceId),
+      collections: request.collections && typeof request.collections === 'object'
+        ? request.collections
+        : (current.collections ?? {})
+    }
+    try {
+      await mkdir(dirname(configPath), { recursive: true })
+      const tmp = `${configPath}.tmp-${Date.now()}`
+      await writeFile(tmp, JSON.stringify(next, null, 2), 'utf-8')
+      await rename(tmp, configPath)
+    } catch (err) {
+      return sendError(res, API_ERROR_CODES.WRITE_PROTOCOL_IO_FAILED, `知识库配置写入失败：${text(err?.message || err)}`)
+    }
+    // 写后立刻重探
+    await probeServices({ weknoraUrl: next.baseUrl, weknoraApiKey: next.apiKey }).catch(() => {})
+    const status = await collectKbStatus({ configPath, services: kbServiceState, resolveCollections })
+    return sendJson(res, 200, { ok: true, status })
+  }
+
+  if (endpointId === 'kbTest') {
+    const configPath = defaultKbConfigPath(context.env ?? process.env)
+    let saved = {}
+    try { if (existsSync(configPath)) saved = JSON.parse(readFileSync(configPath, 'utf-8')) } catch { saved = {} }
+    const baseUrl = text(request.baseUrl) || text(saved.baseUrl) || 'http://127.0.0.1:8080'
+    const apiKey = text(request.apiKey) && text(request.apiKey) !== '__KEEP__' ? text(request.apiKey) : text(saved.apiKey)
+    await probeServices({ weknoraUrl: baseUrl, weknoraApiKey: apiKey }).catch(() => {})
+    const status = await collectKbStatus({ configPath, services: kbServiceState, resolveCollections })
+    return sendJson(res, 200, {
+      ok: true,
+      weknora: kbServiceState.weknora ?? { up: false },
+      embedding: kbServiceState.embedding ?? { up: false },
+      collections: status.collections ?? []
+    })
+  }
+
   if (endpointId === 'kbStatusGet') {
     const status = await collectKbStatus({
       configPath: defaultKbConfigPath(context.env ?? process.env),
