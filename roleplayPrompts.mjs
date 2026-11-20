@@ -158,3 +158,31 @@ export function splitFeedbackOptions(feedback) {
   const body = lines.filter((line) => !line.trim().startsWith('>')).join('\n').trim()
   return { body, options: options.slice(0, 4) }
 }
+
+
+/** 滚动摘要提示（OS-102）：把「旧摘要＋一批新拍」压成新摘要——长期记忆的压缩器。
+ *  只留对后续扮演有用的事实：谁做了什么、关系变化、未解决的悬念、位置/时间推进。
+ *  不复述文笔、不写心理细描。 */
+export function summaryPrompt({ prevSummary, nodes, coveredFrom, coveredTo }) {
+  const lines = (Array.isArray(nodes) ? nodes : []).map((node) => {
+    const chosen = (Array.isArray(node?.candidates) ? node.candidates : []).find((c) => String(c.id) === String(node.choiceId))
+    const act = chosen ? `（玩家：${String(chosen.text ?? '').slice(0, 80)}）` : ''
+    const beats = (Array.isArray(node?.beats) ? node.beats : []).map((b) => `[${b.name}] ${String(b.text ?? '').slice(0, 70)}`).join(' ')
+    return `第${Number(node?.round) || 0}拍 ${act}${String(node?.prose ?? '').slice(0, 140)}${beats ? ' ' + beats : ''}`
+  })
+  return [
+    '你是剧情记忆压缩器。把下面的旧摘要与新拍的记录压成一份**新摘要**，供后续扮演做长期记忆。',
+    '',
+    '【旧摘要】',
+    prevSummary || '（无——这是第一次压缩）',
+    '',
+    `【新拍（第 ${coveredFrom}–${coveredTo} 拍）】`,
+    lines.join('\n') || '（无）',
+    '',
+    '【压缩规则】',
+    '- 400 字以内，bullet 列表（每行以「- 」开头）；',
+    '- 只留后续扮演有用的：谁做了什么、关系怎么变了、哪里还没解决、位置/时间推进；',
+    '- 丢掉文笔细节、心理描写、重复信息；玩家做过的关键决定要保留（后续剧情依赖它）；',
+    '- 不要编造原文没有的事。只输出摘要正文。'
+  ].join('\n')
+}

@@ -7643,6 +7643,91 @@ async function deduceEnginePresent(opts) {
   render()
 }
 
+/** 角色卡编辑（OS-102）：把角色档案就地改好写回库内世界书条目。
+ *  优先改 参考/ 里的同名笔记；没有就提示去世界书新建（不偷偷造文件）。 */
+function roleplayEditCard(name) {
+  const engine = state.deduce.engine
+  const narrative = engine.data?.narrative
+  const id = narrative?.identity
+  const cardName = text(name).trim() || text(id?.name) || text(engine.pov)
+  if (!cardName) { engineSetError('还没有可编辑的角色档案。'); return }
+  const isSelf = !text(name).trim() || cardName === text(id?.name) || cardName === text(engine.pov)
+  const cur = {
+    identity: isSelf ? text(id?.identity) : '',
+    archetype: isSelf ? text(id?.archetype) : '',
+    personality: isSelf && Array.isArray(id?.personality) ? id.personality.join('，') : '',
+    goal: isSelf ? text(id?.goal) : ''
+  }
+  openModal(`<h3>编辑角色档案 · ${esc(cardName)}</h3>
+    <p class="sub">改完写回库内世界书条目（参考/ 下标题含该角色的那篇）。关掉重开扮演就用新档案。</p>
+    <div class="field"><label>身份／一句话</label>
+      <input id="rc-identity" value="${esc(cur.identity)}" placeholder="如：与老人同住的年轻男子，自述神经质但坚称没疯">
+    </div>
+    <div class="field"><label>类型</label>
+      <input id="rc-archetype" value="${esc(cur.archetype)}" placeholder="如：不可靠叙述者（自辩型）">
+    </div>
+    <div class="field"><label>性格（逗号分隔）</label>
+      <input id="rc-personality" value="${esc(cur.personality)}" placeholder="偏执，自辩，极度敏锐">
+    </div>
+    <div class="field"><label>目标</label>
+      <input id="rc-goal" value="${esc(cur.goal)}" placeholder="如：向听者证明自己没疯">
+    </div>
+    <div class="ded-image-ops">
+      <button class="btn-ghost" data-action="close-modal">取消</button>
+      <button class="btn-primary" data-action="roleplay-save-card" data-name="${esc(cardName)}">保存到世界书</button>
+    </div>`)
+}
+
+/** 保存角色卡：找参考笔记（标题或路径含角色名）→ 改写 frontmatter 的 identity/archetype/personality/goal。 */
+async function roleplaySaveCard(name) {
+  const engine = state.deduce.engine
+  const cardName = text(name).trim()
+  if (!state.current || !cardName) return
+  const identity = text(document.getElementById('rc-identity')?.value).trim()
+  const archetype = text(document.getElementById('rc-archetype')?.value).trim()
+  const personality = text(document.getElementById('rc-personality')?.value).split(/[，,]/u).map((x) => x.trim()).filter(Boolean)
+  const goal = text(document.getElementById('rc-goal')?.value).trim()
+  try {
+    if (!state.reference.loaded) await loadReferences()
+    const hit = (state.reference.notes || []).find((note) => !note.isTagNote
+      && (text(note.title).includes(cardName) || text(note.path).includes(cardName)))
+    if (!hit) {
+      closeModal()
+      engineSetError(`没找到「${cardName}」的世界书条目——先去世界书新建一篇再回来编辑。`)
+      render()
+      return
+    }
+    const payload = await api('/api/reference/note?root=' + encodeURIComponent(state.current.path) + '&path=' + encodeURIComponent(hit.path))
+    const raw = text(payload.note?.text)
+    const fmMatch = /^---\r?\n([\s\S]*?)\r?\n---/u.exec(raw)
+    let fm = fmMatch ? fmMatch[1] : ''
+    const setLine = (source, key, value) => {
+      const re = new RegExp('^' + key + ':\\s*.*$', 'mu')
+      if (!value) return source.replace(re, '').replace(/\n{3,}/gu, '\n\n').trim()
+      return re.test(source) ? source.replace(re, key + ': ' + value) : (source ? source + '\n' : '') + key + ': ' + value
+    }
+    fm = setLine(fm, 'identity', identity)
+    fm = setLine(fm, 'archetype', archetype)
+    fm = setLine(fm, 'goal', goal)
+    fm = setLine(fm, 'personality', personality.length ? '[' + personality.join(', ') + ']' : '')
+    const body = fmMatch ? raw.slice(fmMatch[0].length) : raw
+    const nextText = '---\n' + fm.trim() + '\n---' + body
+    await api('/api/chapter', {
+      method: 'PUT',
+      body: JSON.stringify({ root: state.current.path, file: hit.path, text: nextText })
+    })
+    closeModal()
+    engine.hint = `角色档案已更新：${cardName}（${hit.path}）——下一幕起就用新档案`
+    engine.opening.loaded = false
+    await loadReferences({ force: true })
+    render()
+  } catch (error) {
+    closeModal()
+    engineSetError(`角色档案没存上（${(error && error.message) || error}）`)
+    render()
+  }
+}
+
 /** 扮演开场（OS-100）：主持人替世界拉开第一幕——开场白＋三条初始分支，不再是空白页。 */
 async function deduceRoleplayOpening({ pov, openingDetail }) {
   const engine = state.deduce.engine
@@ -8538,7 +8623,7 @@ function deduceSideHtml(data) {
   const sec = (title, body) => body ? `<section class="ds-sec"><h4>${title}</h4>${body}</section>` : ''
   const whoYouAre = !id
     ? '<p class="ds-empty">还没选定视角——⚙ 设置里选「以谁的眼睛看」</p>'
-    : `<p class="ds-name">${esc(id.name)}${id.archetype ? `<i>${esc(id.archetype)}</i>` : ''}</p>
+    : `<p class="ds-name">${esc(id.name)}${id.archetype ? `<i>${esc(id.archetype)}</i>` : ''}<button class="ds-edit" data-action="roleplay-edit-card" data-name="${esc(id.name)}" title="编辑这个角色的档案（写回库内世界书）">✎</button></p>
       ${id.identity ? `<p class="ds-line">${esc(id.identity)}</p>` : ''}
       ${id.goal ? `<p class="ds-goal">你要 ${esc(id.goal)}</p>` : ''}
       ${id.personality && id.personality.length ? `<p class="ds-tags">${id.personality.map((p) => `<span>${esc(p)}</span>`).join('')}</p>` : ''}`
@@ -9927,6 +10012,10 @@ document.addEventListener('click', (event) => {
     deduceSessionManage('delete', target.dataset.id)
   } else if (action === 'deduce-engine-choose') {
     deduceEngineTurn({ choiceId: target.dataset.candidateId })
+} else if (action === 'roleplay-edit-card') {
+    roleplayEditCard(target.dataset.name || '')
+  } else if (action === 'roleplay-save-card') {
+    roleplaySaveCard(target.dataset.name || '')
   } else if (action === 'roleplay-option') {
     // OS-98：情境分支——点了就是你的下一幕动作
     const idx = Number(target.dataset.idx)

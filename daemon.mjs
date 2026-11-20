@@ -127,7 +127,7 @@ import { readChange, readLog, logSummary, recordChange } from './changelog.mjs'
 import { dropDraft, listDrafts, loadDraft, readUiState, saveDraft, writeUiState } from './libState.mjs'
 import { absorbLegacyDirs, backlinksOf, buildReferenceGraph, REFERENCE_DIR, notesVisibleAt, scanReferences } from './referenceStore.mjs'
 import { deduceOpening, deducePresent, deduceSettle, deduceStatePath, loadEntries } from './deduceEngine.mjs'
-import { roleplayOpening, roleplayTurn } from './roleplayEngine.mjs'
+import { buildRoleplayMemory, compressMemory, deAiPass, roleplayOpening, roleplayTurn, shouldSummarize } from './roleplayEngine.mjs'
 import { safeDeduceBookId } from './deduceSession.mjs'
 import {
   appendNode,
@@ -1688,7 +1688,14 @@ function readLegacyDeduceState(root, bookId) {
       chapterLimit
     })
     if (!result.ok) return sendError(res, API_ERROR_CODES.INVALID_ENTRY, result.error ?? '开场没有产出')
-    return sendJson(res, 200, { ok: true, feedback: result.feedback, options: result.options ?? [] })
+    // OS-102：开场也过 AI 味闸（超阈重写一次；只换文风不动事实）
+    const gated = await deAiPass({ chatComplete, prose: result.feedback })
+    return sendJson(res, 200, {
+      ok: true,
+      feedback: gated.text,
+      options: result.options ?? [],
+      ...(gated.rewritten ? { deAiSmell: gated.before?.score ?? null } : {})
+    })
   }
 
   if (endpointId === 'roleplayTurn') {
@@ -1726,12 +1733,9 @@ function readLegacyDeduceState(root, bookId) {
     // 最近几拍摘要（会话层复用 deduceSession——扮演与推演共用容器）
     const sid = text(request.sessionId).trim() || readActiveSessionId(root, bookId)
     const session = loadDeduceSession(root, bookId, sid)
-    const recentNodes = (Array.isArray(session?.nodes) ? session.nodes : []).slice(-3)
-    const recent = recentNodes.map((node) => {
-      const chosen = (Array.isArray(node.candidates) ? node.candidates : []).find((c) => text(c.id) === text(node.choiceId))
-      const head = chosen ? `（你：${text(chosen.text).slice(0, 60)}）` : ''
-      return head + text(node.prose).slice(0, 120)
-    }).filter(Boolean).join('\n')
+    // OS-102 长期记忆：滚动摘要（长期）＋最近几拍明细（短期）——跑长了 agent 不会忘前情
+    const mem = buildRoleplayMemory(session, { recentLimit: 3 })
+    const recent = [mem.summaryText, mem.recentText].filter(Boolean).join('\n\n')
     const upstream = await resolveUpstreamSafe({ context })
     const chatComplete = async (prompt, opts = {}) => {
       const out = await chatCompleteViaUpstream({ upstream, system: prompt, maxTokens: opts.maxTokens ?? 600, temperature: 0.85, cwd: root })
@@ -1750,6 +1754,9 @@ function readLegacyDeduceState(root, bookId) {
       chapterLimit
     })
     if (!result.ok) return sendError(res, API_ERROR_CODES.INVALID_ENTRY, result.error ?? '本幕没有产出')
+    // OS-102：世界反馈落稿前过 AI 味闸（角色演绎 beats 保持原样——那是演员的口吻）
+    const gated = await deAiPass({ chatComplete, prose: result.feedback })
+    result.feedback = gated.text
     // 会话落一行节点（复用 deduceSession 容器；kind 标 roleplay）
     const draft = {
       round: (Number(session?.cursor) || 0) + 1,
@@ -1765,6 +1772,19 @@ function readLegacyDeduceState(root, bookId) {
       const saved = await saveDeduceSession(root, bookId, savedSession)
       if (!saved.ok) { /* 会话写失败不吞本幕结果——如实带回 */ savedSession = null; var sessionSaveError = saved.message }
       else var savedNode = node
+    }
+    // OS-102：回合完成后检查是否该压缩记忆——异步跑，不拖慢响应；失败静默（下次再压）
+    if (session && shouldSummarize(session, { every: 6 })) {
+      ;(async () => {
+        try {
+          const fresh = loadDeduceSession(root, bookId, sid)
+          if (!fresh) return
+          const compressed = await compressMemory({ chatComplete, session: fresh, batch: 6 })
+          if (!compressed.ok) return
+          fresh.rollingSummary = compressed.rollingSummary
+          await saveDeduceSession(root, bookId, fresh)
+        } catch { /* 压缩失败不影响扮演 */ }
+      })()
     }
     return sendJson(res, 200, {
       ok: true,

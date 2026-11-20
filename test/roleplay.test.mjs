@@ -122,3 +122,52 @@ test('扮演开场（OS-100）：主持人拉开第一幕＋三条初始分支',
   const dead = await roleplayOpening({ chatComplete: async () => { throw new Error('x') }, pov: '叙述者' })
   assert.equal(dead.ok, false)
 })
+
+test('长期记忆（OS-102）：摘要＋最近明细＋压缩阈值', async () => {
+  const { buildRoleplayMemory, shouldSummarize, compressMemory } = await import('../roleplayEngine.mjs')
+  const { summaryPrompt } = await import('../roleplayPrompts.mjs')
+  const mk = (n) => ({ rollingSummary: null, nodes: Array.from({ length: n }, (_, i) => ({ round: i + 1, prose: `第${i + 1}拍正文`, choiceId: 'custom', candidates: [{ id: 'custom', text: `动作${i + 1}` }], beats: [] })) })
+  const s8 = mk(8)
+  const mem = buildRoleplayMemory(s8)
+  assert.equal(mem.freshCount, 8)
+  assert.match(mem.recentText, /第8拍/)
+  assert.equal(mem.summaryText, '', '无摘要时没有长期记忆段')
+  // 阈值：攒够 6 拍才压
+  assert.equal(shouldSummarize(mk(5), { every: 6 }), false)
+  assert.equal(shouldSummarize(mk(6), { every: 6 }), true)
+  // 压缩：覆盖到第 6 拍，之后 recent 只剩 7-8
+  const stub = async () => '- 玩家连续推进六拍'
+  const r = await compressMemory({ chatComplete: stub, session: s8, batch: 6 })
+  assert.equal(r.ok, true)
+  assert.equal(r.rollingSummary.coveredToRound, 6)
+  const s2 = { ...s8, rollingSummary: r.rollingSummary }
+  const mem2 = buildRoleplayMemory(s2)
+  assert.match(mem2.summaryText, /长期记忆/)
+  assert.doesNotMatch(mem2.recentText, /第1拍/)
+  assert.match(mem2.recentText, /第8拍/)
+  // 提示词含旧摘要段与压缩规则
+  const p = summaryPrompt({ prevSummary: '- 旧', nodes: [{ round: 7, prose: 'x' }], coveredFrom: 7, coveredTo: 7 })
+  assert.match(p, /旧摘要/)
+  assert.match(p, /不要编造/)
+})
+
+test('AI 味过检（OS-102）：超阈重写、干净稿直通、模型挂保留原稿', async () => {
+  const { deAiPass } = await import('../roleplayEngine.mjs')
+  // 套话堆砌：必须触发重写
+  const cliche = '他轻轻地缓缓地走向窗边，仿佛有什么在召唤他。不禁感叹，似乎一切都值得回味。深深地吸了一口气。'
+  let calls = 0
+  const r = await deAiPass({ chatComplete: async () => { calls++; return '他走到窗边。风把帘子掀起来。' }, prose: cliche })
+  assert.equal(r.rewritten, true, '高 AI 味稿应重写')
+  assert.equal(calls, 1, '只重写一次，不无限循环')
+  assert.match(r.text, /风把帘子掀起来/)
+  assert.ok(Number(r.before?.score) > 45, '原稿分应超阈：' + r.before?.score)
+  // 干净稿：不调模型
+  let called = 0
+  const r2 = await deAiPass({ chatComplete: async () => { called++; return 'x' }, prose: '他走到窗边，把帘子掀开一条缝。外头没人。' })
+  assert.equal(r2.rewritten, false)
+  assert.equal(called, 0)
+  // 模型挂：保留原稿，不炸
+  const r3 = await deAiPass({ chatComplete: async () => { throw new Error('down') }, prose: cliche })
+  assert.equal(r3.rewritten, false)
+  assert.equal(r3.text, cliche)
+})
