@@ -399,6 +399,7 @@ function render() {
       }
     }
     else if (state.reference.activePath && state.reference.note) mountDetailGraph()
+    else if (state.reference.activeEntry) mountEntryGraph()
   }
   else if (state.view === 'lib-create') viewEl.innerHTML = createHtml()
   else if (state.view === 'lib-import') viewEl.innerHTML = importHtml()
@@ -3187,7 +3188,7 @@ const SETTINGS_GROUPS = Object.freeze([
     sections: [
       // OS-98：相关概念合并——外观（皮肤+字号）；模型/知识库/路径都是「接什么、存哪」
       { id: 'appearance', label: '外观', hint: '皮肤主题与字号档位' },
-      { id: 'engines', label: '引擎与存储', hint: '模型 / 知识库 / 本机路径' },
+      { id: 'engines', label: '引擎与存储', hint: 'Agent 运行时 / 模型 / 知识库 / 路径' },
       { id: 'modules', label: '工作台模块', hint: '左右栏的分析模块插拔' },
       { id: 'about', label: '关于', hint: '版本与定位' }
     ]
@@ -3195,10 +3196,9 @@ const SETTINGS_GROUPS = Object.freeze([
   {
     id: 'plugins',
     label: '插件中心',
-    hint: '业务套件与 Agent 运行时',
+    hint: '用户接进来的业务套件',
     sections: [
-      { id: 'suites', label: '业务套件', hint: '小说 / 剧本 / 漫剧…' },
-      { id: 'runtimes', label: 'Agent 运行时', hint: 'DSH / CLI 通道' }
+      { id: 'suites', label: '业务套件', hint: '小说 / 剧本 / 漫剧…' }
     ]
   }
 ])
@@ -3524,18 +3524,19 @@ function settingsRuntimeSectionHtml() {
     </div>
     ${dshDepthFieldHtml()}
     <div class="field">
-      <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
-        <input type="checkbox" id="cfg-chinese-reasoning"${agent.chineseReasoning !== false ? ' checked' : ''} style="width:auto">
+      <!-- OS-100：原来 inline flex + width:auto 覆盖了统一样式，导致标签竖排、勾选框悬空 -->
+      <label class="cfg-switch">
+        <input type="checkbox" id="cfg-chinese-reasoning"${agent.chineseReasoning !== false ? ' checked' : ''}>
         <span>用中文推理（推荐）</span>
       </label>
-      <span class="count" style="line-height:1.7">
+      <p class="field-note">
         中文写作讨论用中文思考更贴题，术语和语感不容易在翻译里走样。<br>
         代价是可能损失一部分推理性能——复杂的形式化推理用英文通常更稳。<br>
         关掉后模型用默认语言思考，回复本身仍然是中文。
-      </span>
+      </p>
     </div>
     <div class="err" id="settings-err"></div>
-    <div class="row" style="display:flex;gap:10px;align-items:center;margin-top:8px">
+    <div class="ops">
       <button class="btn-primary" data-action="agent-config-save">保存</button>
     </div>
   </div>`
@@ -4055,7 +4056,7 @@ function settingsDiscoverSectionHtml() {
   const rows = shelves.map((shelf) => `<div class="discover-row"><div><b>${esc(shelf.label)}</b></div><div class="hint">${esc(shelf.dir)}</div></div>`).join('')
   return `<div class="step"><h3>插件货架</h3>${rows}</div>
     <div class="step"><h3>库与稿件</h3>
-    <div class="row" style="display:flex;gap:10px"><button class="btn-ghost" data-action="flow-create">＋新建库</button><button class="btn-ghost" data-action="flow-import">导入稿件</button></div></div>`
+    <div class="row"><button class="btn-ghost" data-action="flow-create">＋新建库</button><button class="btn-ghost" data-action="flow-import">导入稿件</button></div></div>`
 }
 
 /**
@@ -4230,6 +4231,7 @@ function settingsCombinedEnginesHtml() {
     .replace(/<div class="step">\s*<h3>[^<]*(?:<span class="sub">.*?<\/span>)?[^<]*<\/h3>/gu, '<div>')
 
   return [
+    section('Agent 运行时', 'DSH 原生 / CLI 通道 / Pi 兜底端点', strip(settingsRuntimeSectionHtml())),
     section('对话模型', 'Agent 成文用的模型端点', strip(settingsModelsSectionHtml())),
     section('知识库', 'WeKnora 连接、分库与测试', strip(settingsKbSectionHtml())),
     section('本机路径与导入', '货架位置、库清单、导入稿件', strip(settingsCombinedDataSectionHtml()))
@@ -4561,7 +4563,7 @@ function suiteDetailHtml(id) {
       ${paused}
       ${schema.length ? schema.map(settingFieldHtml).join('') : '<p class="sub">这套件没有声明设置项。</p>'}
       <div class="err" id="suite-err"></div>
-      <div class="row" style="display:flex;gap:10px;align-items:center;margin-top:10px">
+      <div class="row">
         <button class="btn-primary" data-action="suite-settings-save" data-id="${esc(suite.id)}">保存</button>
       </div>`
   } else {
@@ -4578,7 +4580,7 @@ function suiteDetailHtml(id) {
     ${head}
     ${body}
     ${bundledHtml}
-    <div class="row" style="display:flex;gap:10px;align-items:center;margin-top:14px">
+    <div class="row">
       <button class="btn-ghost" data-action="suite-toggle" data-id="${esc(suite.id)}" data-enabled="${suite.enabled ? 'true' : 'false'}">${suite.enabled ? '停用' : '启用'}</button>
       <button class="btn-ghost" data-settings-section="plugins">← 回插件</button>
     </div>
@@ -4943,6 +4945,12 @@ function referenceEntryDetailHtml(entryId) {
       <span class="count">只读 · 来源 拆解/（改动请走世界书笔记或 enrich）</span>
     </div>
     <div class="ref-flow">
+      <aside class="ref-side-cards">
+        <div class="ref-graph-slot">
+          <div class="ref-slot-head">关系图谱</div>
+          <div class="graph-box detail"><canvas id="ref-entry-canvas"></canvas></div>
+        </div>
+      </aside>
       ${entry.definition ? `<p class="brief-text">${esc(String(entry.definition))}</p>` : '<p class="ds-empty">这条词条还没有定义。</p>'}
       ${entry.fact && entry.fact !== entry.definition ? `<div class="ref-doc"><p class="ds-line">${esc(String(entry.fact))}</p></div>` : ''}
       ${speech.length ? `<section class="ds-sec"><h4>关键台词</h4>${speech.slice(0, 6).map((line) => `<p class="ds-line">${esc(String(line))}</p>`).join('')}</section>` : ''}
@@ -5308,6 +5316,36 @@ async function mountDetailGraph() {
     focusId: state.reference.activePath,
     onPick: (node) => {
       if (node.id === state.reference.activePath) return
+      navigateFromGraphNode(node)
+    }
+  })
+}
+
+/** 词条详情的邻域图谱（OS-105）：与笔记详情同规格——focus 用 entry:<id>。 */
+async function mountEntryGraph() {
+  const canvas = document.getElementById('ref-entry-canvas')
+  if (!canvas) return
+  if (!state.refCol.graph) {
+    await loadRefGraph()
+    if (!document.getElementById('ref-entry-canvas')) return
+  }
+  const entryId = text(state.reference.activeEntry)
+  if (!entryId) return
+  const focusId = entryId.startsWith('entry:') ? entryId : 'entry:' + entryId
+  const view = graphFocusView(focusId, '')
+  const mod = await import('./graph.mjs')
+  detailGraphCleanup?.()
+  if (!view.nodes.length) {
+    canvas.parentElement.innerHTML = '<p class="ds-empty">这条词条暂时没有关联节点。</p>'
+    return
+  }
+  detailGraphCleanup = mod.mountGraph({
+    canvas,
+    graph: view,
+    mode: 'jump',
+    focusId,
+    onPick: (node) => {
+      if (node.id === focusId) return
       navigateFromGraphNode(node)
     }
   })
@@ -6223,7 +6261,7 @@ function createHtml() {
       ${genreDetail}
     </div>
     ${flowError(create.error)}
-    <div class="row" style="display:flex;gap:10px;align-items:center">
+    <div class="row">
       <button class="btn-primary" data-action="create-submit"${create.running ? ' disabled' : ''}>${create.running ? '创建中…' : '创建库'}</button>
     </div>`}
   </div>`
@@ -6607,7 +6645,7 @@ function openTabAdd() {
     <div class="tab-pick-sec"><h4>库里已有目录</h4><div class="tab-pick-grid">${dirRows || '<span class="count">没有其它目录</span>'}</div></div>
     ${creatableRows ? `<div class="tab-pick-sec"><h4>可以新建的业务模块</h4><div class="tab-pick-grid">${creatableRows}</div></div>` : ''}
     <div class="tab-pick-sec"><h4>新建目录</h4>
-      <div class="row" style="display:flex;gap:8px;align-items:center">
+      <div class="row">
         <input id="tab-new-dir" placeholder="例如：分镜" style="flex:1">
         <button class="btn-primary" data-action="tab-create-dir">建目录并加页签</button>
       </div>
@@ -9339,7 +9377,7 @@ function deduceAgentHtml() {
         <textarea class="deduce-input" id="deduce-variables" placeholder="林砚知道真相&#10;大雾提前散了">${esc(deduce.variables)}</textarea>
         <h3><span class="no">3</span>要推演的问题</h3>
         <input id="deduce-question" placeholder="如果林砚选择沉默，第 3 章会走向哪里？" value="${esc(deduce.question)}">
-        <div class="row" style="display:flex;gap:10px;margin-top:12px;align-items:center">
+        <div class="row">
           <button class="btn-primary" data-action="deduce-start"${deduce.streaming || !agent.configured ? ' disabled' : ''}>${deduce.streaming ? '推演中…' : '开始推演'}</button>
           <button class="btn-ghost" data-action="deduce-stop"${deduce.streaming ? '' : ' hidden'}>停止</button>
           ${!agent.configured ? '<span class="count">先在右上角设置里配好模型端点。</span>' : '<span class="count">Agent 分支推理；产出经待确认卡落正文。</span>'}
