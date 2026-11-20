@@ -2780,6 +2780,44 @@ export function resolveSuiteAssetPath(suiteDir, relPath) {
   return { ok: true, abs: target }
 }
 
+/**
+ * OS-95：给套件 iframe 用的令牌样式表（具体 px，不依赖父文档变量继承）。
+ * 插件页 link 它即可获得与宿主一致的配色/字号/间距/圆角。
+ * 档位取标准档（紧凑/大/特大由宿主设置驱动；iframe 内按标准档下发，
+ * 因为插件页通常只有少量表单，跨档缩放的收益小于一致性）。
+ */
+function suiteTokensCss({ dark = false } = {}) {
+  const bg = dark ? '#1c1b1a' : '#ffffff'
+  const ink = dark ? '#f2efe9' : '#222222'
+  const soft = dark ? '#242321' : '#faf9f7'
+  const ink2 = dark ? '#d8d3ca' : '#3d3a36'
+  const muted = dark ? '#a39d94' : '#6f6a63'
+  const meta = dark ? '#7a746c' : '#a39d94'
+  const line = dark ? '#3a3733' : '#e7e3dd'
+  const hair = dark ? '#2e2b28' : '#f0ede8'
+  return `/* OpenStory UI tokens for suite iframes (OS-95)${dark ? ' · dark' : ''} */
+:root {
+  --ui-scale: 1;
+  --ui-fs-2xs: 10px; --ui-fs-xs: 11px; --ui-fs-sm: 12px; --ui-fs-md: 13px;
+  --ui-fs-base: 14px; --ui-fs-lg: 16px; --ui-fs-xl: 18px; --ui-fs-2xl: 22px;
+  --ui-lh-tight: 1.35; --ui-lh-normal: 1.6; --ui-lh-loose: 1.75;
+  --ui-ctl-h: 32px; --ui-ctl-px: 12px; --ui-row-py: 6px;
+  --ui-gap-3xs: 2px; --ui-gap-2xs: 4px; --ui-gap-xs: 6px; --ui-gap-sm: 8px;
+  --ui-gap-md: 12px; --ui-gap-lg: 16px; --ui-gap-xl: 20px; --ui-gap-2xl: 24px;
+  --bg: ${bg}; --soft: ${soft};
+  --ink: ${ink}; --ink-2: ${ink2}; --muted: ${muted}; --meta: ${meta};
+  --line: ${line}; --hair: ${hair};
+  --accent: #ff385c; --accent-hover: #e31c5f; --accent-soft: ${dark ? '#2b1f22' : '#fff1f3'};
+  --ok: #008a05; --danger: #c13515; --warn: #c48a00; --warn-ink: #a06a00;
+  --on-accent: #ffffff;
+  --radius: 10px; --radius-md: 14px; --radius-lg: 20px; --pill: 999px;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", "PingFang SC", sans-serif;
+  --serif: "Noto Serif SC", "Songti SC", Georgia, serif;
+  --mono: "SF Mono", "Cascadia Code", Consolas, monospace;
+}
+`;
+}
+
 /** 套件资产（page 模式自带设置页同源装载）：GET /suite-assets/<id>/<相对路径>，只读＋路径安全化。 */
 async function serveSuiteAsset(req, res, suitesDirs, id, relPath) {
   if (req.method !== 'GET' && req.method !== 'HEAD') {
@@ -4294,6 +4332,24 @@ export function createOpenStoryHandler({
   return async function handler(req, res) {
     const url = new URL(req.url || '/', 'http://127.0.0.1')
     try {
+      /* OS-95：套件前端令牌桥。
+       * 插件设置页跑在同源 iframe 里，**拿不到父文档的 CSS 变量**（iframe 不继承）。
+       * 所以宿主要主动下发一套：插件页只需 <link rel="stylesheet" href="/suite-assets/_tokens.css">
+       * 就能用 --ui-fs-* / --ui-gap-* / --ui-scale / --radius / --accent… 全套令牌。
+       * 保留 _ 前缀避免与任何套件 id 冲突（套件 id 规定 [\w-]，不含下划线开头）。
+       * 令牌值在此转写成**具体 px**（iframe 内没有 --ui-scale 的继承链，宿主按当前档位算好再下发）。 */
+      if (url.pathname === '/suite-assets/_tokens.css') {
+        // OS-95：跟随宿主当前皮肤——?theme=dark 时下发暗色基底，
+        // 否则 iframe 内的深墨文字会落在夜皮的黑底上（实测肉眼看不见）。
+        const dark = url.searchParams.get('theme') === 'dark'
+        const css = suiteTokensCss({ dark })
+        res.writeHead(200, {
+          'content-type': 'text/css; charset=utf-8',
+          'cache-control': 'no-store'
+        })
+        res.end(css)
+        return
+      }
       if (url.pathname.startsWith('/suite-assets/')) {
         const rest = url.pathname.slice('/suite-assets/'.length)
         const slash = rest.indexOf('/')
