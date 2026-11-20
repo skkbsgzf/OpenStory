@@ -1,0 +1,90 @@
+/**
+ * OS-97 扮演体系用例：提示词四层＋调度器编排（stub LLM，不真调模型）。
+ *   node --test test/roleplay.test.mjs
+ */
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import {
+  ROLEPLAY_BASE_SYSTEM,
+  hostSystemPrompt,
+  actorSystemPrompt,
+  worldFeedbackPrompt,
+  parseHostDecision,
+  fallbackActivation
+} from '../roleplayPrompts.mjs'
+import { roleplayTurn, worldbookDigestOf } from '../roleplayEngine.mjs'
+
+test('提示词四层：底座铁律/主持人/角色 nudge/世界反馈人称', () => {
+  assert.match(ROLEPLAY_BASE_SYSTEM, /不替其他角色/, '底座有越界禁令')
+  const host = hostSystemPrompt({ worldbookDigest: '- 松木地板：藏尸处', premise: '第八夜', cast: [{ name: '老人' }], currentChapterLimit: 12 })
+  assert.match(host, /主持人/)
+  assert.match(host, /第 12 章/, '知识边界注入')
+  assert.match(host, /只输出 JSON/)
+  const actor = actorSystemPrompt({ name: '老人', identity: '同住者', instruction: '惊醒喝问', worldbookDigest: '', premise: '' })
+  assert.match(actor, /\[Write the next reply only as 老人\.\]/, '酒馆口径 nudge')
+  assert.match(actor, /不写别人的反应/)
+  const fb = worldFeedbackPrompt({ pov: '叙述者', castBeats: [{ name: '老人', text: '「谁？」他坐起来。' }], playerAction: '我推门' })
+  assert.match(fb, /对「你」说话/, 'OS-92 人称铁律')
+})
+
+test('裁决 JSON 解析：容错截取/坏 JSON 返回 null', () => {
+  const ok = parseHostDecision('noise {"cast":[{"name":"老人","instruction":"喝问"}]} tail')
+  assert.deepEqual(ok, { cast: [{ name: '老人', instruction: '喝问' }] })
+  assert.equal(parseHostDecision('不是 JSON'), null)
+  assert.equal(parseHostDecision('{"cast":[{"instruction":"没有名字"}]}').cast.length, 0, '无名条目剔除')
+})
+
+test('保底激活三档：mention 点名/roundrobin 轮换/fill 补位', () => {
+  assert.deepEqual(fallbackActivation({ castNames: ['老人', '警察'], lastText: '你朝老人喊了一声' }), ['老人'])
+  assert.deepEqual(fallbackActivation({ castNames: ['老人', '警察'], lastText: '', mode: 'roundrobin' }), ['老人'])
+  const rr2 = fallbackActivation({ castNames: ['老人', '警察'], lastText: '', lastServed: ['老人'], mode: 'roundrobin' })
+  assert.deepEqual(rr2, ['警察'])
+  assert.deepEqual(fallbackActivation({ castNames: ['老人', '警察'], lastServed: ['警察'], mode: 'fill' }), ['老人'])
+})
+
+test('调度器：主持人裁决→角色各自成文→世界反馈（3 次调用链）', async () => {
+  const calls = []
+  const chatComplete = async (prompt) => {
+    calls.push(prompt)
+    if (calls.length === 1) return '{"cast":[{"name":"老人","instruction":"被灯光惊醒，喝问是谁"},{"name":"幽灵","instruction":"不该登场"}]}'
+    return calls.length === 2 ? '「谁？」老人坐起来，手里的拐杖敲了两下床沿。' : '你推开房门，灯光扫过床沿。老人坐起身，拐杖敲着床沿：「谁？」'
+  }
+  const r = await roleplayTurn({
+    chatComplete,
+    entries: [{ name: '松木地板夹层', definition: '藏尸处' }],
+    premise: '第八夜',
+    cast: [{ name: '老人', identity: '同住者' }, { name: '叙述者', identity: 'POV 本人' }],
+    playerAction: '我端着灯推开他的房门',
+    pov: '叙述者'
+  })
+  assert.equal(r.ok, true)
+  assert.equal(calls.length, 3, '裁决+演员+收束=3 次')
+  assert.equal(r.beats.length, 1, '幽灵不在 cast 里被剔除；玩家 POV 不自演')
+  assert.equal(r.beats[0].name, '老人')
+  assert.match(r.feedback, /你推开房门/, '世界反馈对「你」说话')
+  assert.match(calls[0], /松木地板夹层/, '世界书注入主持人')
+  assert.match(calls[1], /only as 老人/, '角色 nudge')
+})
+
+test('调度器：模型全挂→ok:false 如实报；主持人裁决坏 JSON→确定性保底仍有一幕', async () => {
+  const dead = async () => { throw new Error('down') }
+  const r1 = await roleplayTurn({ chatComplete: dead, cast: [{ name: '老人' }], playerAction: '推门', pov: '叙述者' })
+  assert.equal(r1.ok, false)
+  assert.ok(r1.error)
+  // 主持人挂但角色可用：裁决走保底
+  let n = 0
+  const hostOnlyDead = async () => { n += 1; if (n === 1) throw new Error('host down'); return '「谁在那儿？」' }
+  const r2 = await roleplayTurn({ chatComplete: hostOnlyDead, cast: [{ name: '老人' }], playerAction: '推门', pov: '叙述者' })
+  assert.equal(r2.ok, true)
+  assert.equal(r2.beats.length, 1, '保底激活让老人登场')
+})
+
+test('世界书摘要：限条数、空条目剔除', () => {
+  const digest = worldbookDigestOf([
+    { name: '夹层', definition: '藏尸处' },
+    { name: '', definition: '无名剔除' },
+    { name: '第八夜', desc: '杀意定局' }
+  ], { limit: 1 })
+  assert.equal(digest.split('\n').length, 1)
+  assert.match(digest, /夹层/)
+})

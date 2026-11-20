@@ -126,7 +126,8 @@ import { createFactFileStore } from './core/pinax/next/kernel/factFileStore.mjs'
 import { readChange, readLog, logSummary, recordChange } from './changelog.mjs'
 import { dropDraft, listDrafts, loadDraft, readUiState, saveDraft, writeUiState } from './libState.mjs'
 import { absorbLegacyDirs, backlinksOf, buildReferenceGraph, REFERENCE_DIR, notesVisibleAt, scanReferences } from './referenceStore.mjs'
-import { deduceOpening, deducePresent, deduceSettle, deduceStatePath } from './deduceEngine.mjs'
+import { deduceOpening, deducePresent, deduceSettle, deduceStatePath, loadEntries } from './deduceEngine.mjs'
+import { roleplayTurn } from './roleplayEngine.mjs'
 import { safeDeduceBookId } from './deduceSession.mjs'
 import {
   appendNode,
@@ -1642,6 +1643,90 @@ function readLegacyDeduceState(root, bookId) {
     const saved = await saveDeduceSession(root, bookId, session)
     if (!saved.ok) return sendError(res, saved.code ?? API_ERROR_CODES.WRITE_PROTOCOL_IO_FAILED, saved.message)
     return sendJson(res, 200, { ok: true, node, session, prose: node.prose, ...(gen.proseError ? { proseError: gen.proseError } : {}) })
+  }
+
+  if (endpointId === 'roleplayTurn') {
+    // OS-97 扮演一回合：主持人裁决 → N 角色各自成文 → 主持人收束（对「你」说话）。
+    // 世界书按 chapterLimit 过滤（OS-96）；玩家可以扮演任意角色或「主持人」。
+    const authorized = authorizeRoot(allowlist, request.root)
+    if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
+    const root = authorized.root
+    const bookId = await resolveFactBookId(root, request.bookId)
+    const loaded = loadEntries(root)
+    if (!loaded.ok) return sendError(res, API_ERROR_CODES.INVALID_ENTRY, loaded.message)
+    // 世界书按章过滤（OS-96）：chapterLimit 给了＝晚于该章成立的词条不存在
+    const chapterLimit = Number.isFinite(Number(request.chapterLimit)) && Number(request.chapterLimit) > 0 ? Number(request.chapterLimit) : null
+    const entries = chapterLimit == null
+      ? loaded.entries
+      : loaded.entries.filter((entry) => {
+          const fc = Number(entry?.firstChapter)
+          if (Number.isFinite(fc) && fc >= 0) return fc <= chapterLimit
+          const chapters = Array.isArray(entry?.chapters) ? entry.chapters.filter(Number.isInteger) : []
+          return chapters.length ? Math.min(...chapters) <= chapterLimit : true
+        })
+    const cast = entries
+      .filter((entry) => text(entry?.layer).toLowerCase() === 'character')
+      .map((entry) => ({
+        name: text(entry?.name).trim(),
+        identity: text(entry?.identity) || text(entry?.definition),
+        archetype: text(entry?.archetype),
+        personality: Array.isArray(entry?.personality) ? entry.personality.filter(Boolean).slice(0, 5) : []
+      }))
+      .filter((c) => c.name)
+    const pov = text(request.pov).trim()
+    const playerAction = text(request.playerAction).trim() || text(request.customText).trim()
+    if (!pov) return sendError(res, API_ERROR_CODES.INVALID_ENTRY, '先选你要扮演谁（pov）')
+    if (!playerAction) return sendError(res, API_ERROR_CODES.INVALID_ENTRY, '这一幕你做什么/说什么（playerAction）必填')
+    // 最近几拍摘要（会话层复用 deduceSession——扮演与推演共用容器）
+    const sid = text(request.sessionId).trim() || readActiveSessionId(root, bookId)
+    const session = loadDeduceSession(root, bookId, sid)
+    const recentNodes = (Array.isArray(session?.nodes) ? session.nodes : []).slice(-3)
+    const recent = recentNodes.map((node) => {
+      const chosen = (Array.isArray(node.candidates) ? node.candidates : []).find((c) => text(c.id) === text(node.choiceId))
+      const head = chosen ? `（你：${text(chosen.text).slice(0, 60)}）` : ''
+      return head + text(node.prose).slice(0, 120)
+    }).filter(Boolean).join('\n')
+    const upstream = await resolveUpstreamSafe({ context })
+    const chatComplete = async (prompt, opts = {}) => {
+      const out = await chatCompleteViaUpstream({ upstream, system: prompt, maxTokens: opts.maxTokens ?? 600, temperature: 0.85, cwd: root })
+      if (out.error) throw new Error(out.error)
+      return out.text ?? ''
+    }
+    const result = await roleplayTurn({
+      chatComplete,
+      entries,
+      premise: text(request.premise),
+      cast,
+      playerAction,
+      pov,
+      recent,
+      activation: text(request.activation) || 'mention',
+      chapterLimit
+    })
+    if (!result.ok) return sendError(res, API_ERROR_CODES.INVALID_ENTRY, result.error ?? '本幕没有产出')
+    // 会话落一行节点（复用 deduceSession 容器；kind 标 roleplay）
+    const draft = {
+      round: (Number(session?.cursor) || 0) + 1,
+      choiceId: 'custom',
+      scene: { who: result.beats.map((b) => b.name).join('、'), where: '', tension: '', hook: '' },
+      candidates: [{ id: 'custom', source: '作者', text: playerAction }],
+      prose: result.feedback
+    }
+    draft.beats = result.beats
+    let savedSession = session
+    if (savedSession) {
+      const node = appendNode(savedSession, draft)
+      const saved = await saveDeduceSession(root, bookId, savedSession)
+      if (!saved.ok) { /* 会话写失败不吞本幕结果——如实带回 */ savedSession = null; var sessionSaveError = saved.message }
+      else var savedNode = node
+    }
+    return sendJson(res, 200, {
+      ok: true,
+      beats: result.beats,
+      feedback: result.feedback,
+      ...(savedNode ? { node: savedNode } : {}),
+      ...(sessionSaveError ? { sessionError: sessionSaveError } : {})
+    })
   }
 
   if (endpointId === 'deduceExport') {

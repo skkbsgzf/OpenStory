@@ -1488,6 +1488,15 @@ html[data-doc-auto-gap="off"] .doc-block { margin-bottom: 0; }
 .ded-empty { max-width: 640px; }
 .ded-empty h2 { font-size: var(--ui-fs-lg); margin: 0 0 8px; }
 .ded-empty p { font-size: var(--ui-fs-md); color: var(--muted); line-height: 1.75; margin: 0 0 10px; }
+/* 扮演/推演模式选择（OS-97） */
+.ow-mode { display: flex; gap: 8px; margin: 0 0 14px; }
+.ow-mode-btn { flex: 1; display: flex; flex-direction: column; align-items: flex-start; gap: 3px;
+  border: 1px solid var(--hair); background: color-mix(in srgb, var(--bg) 70%, transparent);
+  border-radius: var(--radius-sm); padding: 10px 13px; cursor: pointer; text-align: left; }
+.ow-mode-btn.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.ow-mode-btn b { font-size: 13px; color: var(--ink); }
+.ow-mode-btn span { font-size: 11px; color: var(--meta); }
+
 /* 开局向导（OS-93 照酒馆：选角色卡 → 选世界书 → 选开头） */
 .ow-wizard { max-width: 640px; background: color-mix(in srgb, var(--bg) 90%, transparent);
   border: 1px solid var(--hair); border-radius: var(--radius-md); padding: 18px 20px 16px;

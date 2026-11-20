@@ -121,6 +121,7 @@ test('契约：端点都带 method/path/request/response/errors，路径可反�
   assert.equal(endpointFor('GET', '/api/deduce/sessions'), 'deduceSessionsGet')
   assert.equal(endpointFor('GET', '/api/deduce/opening'), 'deduceOpeningGet')
   assert.equal(endpointFor('POST', '/api/deduce/export'), 'deduceExport')
+  assert.equal(endpointFor('POST', '/api/roleplay/turn'), 'roleplayTurn')
   assert.equal(endpointFor('POST', '/api/deduce/promote'), 'deducePromote')
   assert.equal(endpointFor('POST', '/api/deduce/session/manage'), 'deduceSessionManage')
   assert.equal(endpointFor('GET', '/api/deduce/assets'), 'deduceAssets')

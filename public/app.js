@@ -72,6 +72,8 @@ const state = {
       sessionId: 'main', sessions: null,
       // OS-93 开局向导：角色卡/世界书/开头三件套（照酒馆：选人 → 选世界 → 选开头）
       opening: { loaded: false, loading: false, books: [], characters: [], openings: [], selPov: '', selBook: '', selOpen: 'free' },
+      // OS-97：playMode='roleplay'（默认，主持人＋N 角色多 agent）｜'engine'（确定性推演）
+      playMode: 'roleplay',
       view: 'scene', treePick: null,
       assets: null, assetsLoaded: false, assetBookId: '', bgmOn: false,
       // OS-81 叙事流：纸面模式（关掉立绘背景回纯纸面）/ 贴底跟随 / 序章折叠
@@ -7585,6 +7587,48 @@ async function deduceEnginePresent(opts) {
   render()
 }
 
+/** 扮演一回合（OS-97）：玩家操作 → 主持人裁决谁登场 → 各角色子 agent 演绎 → 世界反馈。 */
+async function deduceRoleplayTurn({ playerAction }) {
+  const engine = state.deduce.engine
+  if (!state.current || engine.turnBusy) return
+  engine.turnBusy = true
+  engine.error = ''
+  engine.customText = ''
+  render()
+  try {
+    const payload = await api('/api/roleplay/turn', {
+      method: 'POST',
+      body: JSON.stringify({
+        root: state.current.path,
+        sessionId: engine.sessionId || undefined,
+        pov: engine.session?.pov || engine.pov || '',
+        playerAction,
+        premise: engine.opening?.selOpen && engine.opening.selOpen !== 'free'
+          ? (engine.opening.openings ?? []).find((o) => o.id === engine.opening.selOpen)?.detail || ''
+          : ''
+      })
+    })
+    // 会话带回就更新（beats 已随节点存）
+    if (payload.node && engine.session) {
+      engine.session.cursor = payload.node.round
+      engine.session.nodes.push(payload.node)
+      const buffered = engine.session.buffer
+      if (buffered) { buffered.nodes.push(payload.node); buffered.words += text(payload.node.prose).length }
+    }
+    engine.draft = { nodeId: payload.node?.id ?? '', round: payload.node?.round ?? 0, prose: payload.feedback ?? '', proseError: '' }
+    engine.flowPin = true
+    if (Array.isArray(payload.beats) && payload.beats.length) {
+      engine.hint = `本幕登场：${payload.beats.map((b) => b.name).join('、')}——说你的下一步，或点谁的名字让他登场`
+    } else {
+      engine.hint = '本幕空场（没有角色登场）——继续你的动作，或换一个说法'
+    }
+  } catch (error) {
+    engine.error = (error && error.code ? error.code + ' · ' : '') + text((error && error.message) || error)
+  }
+  engine.turnBusy = false
+  render()
+}
+
 /** 多局管理（OS-86）：new＝新开一局并切过去；switch＝切局；delete＝非破坏删除。
  *  成功后引擎画面清空，peek 回放新激活局的最后一面——像换了一本书读。 */
 async function deduceSessionManage(action, sessionId) {
@@ -8511,7 +8555,7 @@ function deduceEngineHtml() {
   if (!data) {
     const ow = engine.opening
     const owCard = (sel, body) => `<div class="ow-card${sel ? ' on' : ''}">${body}</div>`
-    const povCards = (ow.characters ?? []).map((c, i) => owCard(ow.selPov === c.name, `
+    const povCards = [{ name: '主持人', identity: '你是这一幕的导演与裁判——裁决谁登场、织世界反馈；其他角色由各自的子 agent 演绎' }, ...(ow.characters ?? [])].map((c, i) => owCard(ow.selPov === c.name, `
         <button class="ow-pick" data-action="ow-pov" data-name="${esc(c.name)}">
           <b>${esc(c.name)}</b>${c.archetype ? `<i>${esc(c.archetype)}</i>` : ''}
           ${c.identity ? `<span>${esc(c.identity.slice(0, 56))}${c.identity.length > 56 ? '…' : ''}</span>` : ''}
@@ -8532,7 +8576,11 @@ function deduceEngineHtml() {
           <div class="fl-hero">
             <div class="ow-wizard">
               <h2>开局</h2>
-              <p class="ow-sub">选好这三样，推演就开始——像酒馆一样往下读。</p>
+              <p class="ow-sub">选好这三样就开始——像酒馆一样往下读。</p>
+              <div class="ow-mode">
+                <button class="ow-pick ow-mode-btn${engine.playMode !== 'engine' ? ' on' : ''}" data-action="ow-mode-roleplay" title="主持人＋N 个登场角色各自由子 agent 演绎，世界反馈对你说"><b>扮演</b><span>主持人＋登场角色，多 agent 同幕</span></button>
+                <button class="ow-pick ow-mode-btn${engine.playMode === 'engine' ? ' on' : ''}" data-action="ow-mode-engine" title="确定性推演引擎（种子化，不需要模型）"><b>推演</b><span>确定性引擎：同一事实同一拍</span></button>
+              </div>
               ${ow.loaded ? 
                 step(1, '选角色卡', '你扮演谁', `<div class="ow-card">${povCards || '<p class="ds-empty">这个库还没有角色条目——去世界书写一条再回来</p>'}</div>`) +
                 ((ow.books ?? []).length > 1 ? step(2, '选世界书', '哪一份事实包', `<div class="ow-card">${bookRows}</div>`) : '') +
@@ -8545,7 +8593,7 @@ function deduceEngineHtml() {
       </div>
       <div class="fl-composer">
         <div class="fl-composer-row">
-          <button class="btn-primary fl-send" data-action="ow-start"${ow.loaded && ow.selPov ? '' : ' disabled'} title="按选好的角色卡＋世界书＋开头开局">就这样开始推演</button>
+          <button class="btn-primary fl-send" data-action="ow-start"${ow.loaded && ow.selPov ? '' : ' disabled'} title="按选好的角色卡＋世界书＋开头开局">${engine.playMode === 'engine' ? '就这样开始推演' : '就这样开始扮演'}</button>
         </div>
       </div>
       ${setPanel}
@@ -9687,6 +9735,12 @@ document.addEventListener('click', (event) => {
   } else if (action === 'deduce-engine-reset') {
     state.deduce.engine.draft = null
     deduceEnginePresent({ reset: true, hint: '本局已清空从第一拍重来' })
+  } else if (action === 'ow-mode-roleplay') {
+    state.deduce.engine.playMode = 'roleplay'
+    render()
+  } else if (action === 'ow-mode-engine') {
+    state.deduce.engine.playMode = 'engine'
+    render()
   } else if (action === 'ow-pov') {
     state.deduce.engine.opening.selPov = target.dataset.name
     render()
@@ -9700,7 +9754,8 @@ document.addEventListener('click', (event) => {
     // OS-93：按向导选择开局——角色卡→POV，开头→seedPrompt 锚定
     const ow = state.deduce.engine.opening
     const open = (ow.openings ?? []).find((o) => o.id === ow.selOpen)
-    deduceEnginePresent({ pov: ow.selPov, bookId: ow.selBook, seedPrompt: open && open.id !== 'free' ? open.detail : '', hint: '开局——选一条走向，世界回你一段正文' })
+    if (engine.playMode !== 'engine') engine.hint = '扮演局——在下面说你这一幕做什么/说什么（点名谁，谁就登场）'
+    deduceEnginePresent({ pov: ow.selPov, bookId: ow.selBook, seedPrompt: open && open.id !== 'free' ? open.detail : '', hint: engine.playMode !== 'engine' ? '扮演局已开——说你做什么，点名谁谁登场' : '开局——选一条走向，世界回你一段正文' })
   } else if (action === 'deduce-sess-new') {
     deduceSessionManage('new', '')
   } else if (action === 'deduce-sess-switch') {
@@ -9715,6 +9770,8 @@ document.addEventListener('click', (event) => {
     if (!customValue) {
       state.deduce.engine.error = '先写两句「这一拍发生什么」，再按「按我写的走」。'
       render()
+    } else if ((state.deduce.engine.playMode || 'roleplay') !== 'engine') {
+      deduceRoleplayTurn({ playerAction: customValue })
     } else {
       deduceEngineTurn({ customText: customValue })
     }
