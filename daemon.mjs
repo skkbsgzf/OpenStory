@@ -567,15 +567,26 @@ async function writeHabitsWithBackup(root, habits) {
   const path = habitsPath(root)
   await mkdir(dirname(path), { recursive: true })
   let backup = null
+  let beforeText = ''
+  let existed = false
   try {
     const prev = readFileSync(path)
+    beforeText = prev.toString('utf-8')
+    existed = true
     backup = join(dirname(path), '.history', `habits-${Date.now()}.json`)
     await mkdir(dirname(backup), { recursive: true })
     await writeFile(backup, prev)
   } catch { /* 首次没有旧稿 */ }
   const tmp = `${path}.tmp-${Date.now()}`
-  await writeFile(tmp, JSON.stringify(habits, null, 2), 'utf-8')
+  const nextText = JSON.stringify(habits, null, 2)
+  await writeFile(tmp, nextText, 'utf-8')
   await rename(tmp, path)
+  // OS-89：习惯表修改也留 diff + log（AGENTS.md 第 10 条）
+  await recordChange({
+    root, module: '习惯', file: '习惯/habits.json',
+    op: existed ? 'update' : 'create',
+    before: beforeText, after: nextText, actor: 'author'
+  }).catch(() => {})
   return backup
 }
 

@@ -243,16 +243,37 @@ export async function saveDeduceSession(root, bookId, session) {
   try {
     await mkdir(dirname(path), { recursive: true })
     let backup = null
+    let beforeText = ''
+    let existed = false
     if (existsSync(path)) {
       const sid = text(session?.sessionId).trim() || 'main'
       const backupPath = join(dirname(path), '.history', `session-${sid}-${Date.now()}.json`)
       await mkdir(dirname(backupPath), { recursive: true })
-      await writeFile(backupPath, readFileSync(path))
+      const prev = readFileSync(path)
+      beforeText = prev.toString('utf-8')
+      existed = true
+      await writeFile(backupPath, prev)
       backup = relativeTo(root, backupPath)
     }
+    const nextText = JSON.stringify(session, null, 2)
     const tmp = `${path}.tmp-${Date.now()}`
-    await writeFile(tmp, JSON.stringify(session, null, 2), 'utf-8')
+    await writeFile(tmp, nextText, 'utf-8')
     await rename(tmp, path)
+    // OS-89：推演会话每次落盘都留 diff + log（AGENTS.md 第 10/11 条：
+    // 推演中未被采纳的拍同样是本地数据，改动必须可追溯）
+    try {
+      const { recordChange } = await import('./changelog.mjs')
+      await recordChange({
+        root,
+        module: '推演',
+        file: relativeTo(root, path).split('\\').join('/'),
+        op: existed ? 'update' : 'create',
+        before: beforeText,
+        after: nextText,
+        actor: 'author',
+        meta: { bookId, sessionId: text(session?.sessionId) || 'main' }
+      })
+    } catch { /* 日志失败不阻断会话保存 */ }
     return { ok: true, backup }
   } catch (error) {
     return { ok: false, code: 'WRITE_PROTOCOL_IO_FAILED', message: `推演会话写入失败：${text(error?.message || error)}` }
