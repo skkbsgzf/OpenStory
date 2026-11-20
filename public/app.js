@@ -436,6 +436,9 @@ function render() {
     // 剧情树（OS-61 P3）：树视图挂 SVG 导图；离开树视图就清理（mode 在 state.deduce 上，不在 engine 上）
     if (state.deduce.mode === 'engine' && engine.view === 'tree') mountDeduceTree()
     else { deduceTreeCleanup?.(); deduceTreeCleanup = null }
+    // OS-94：推演偏好从库内 ui-state 复原（纸面模式/状态牌——换机器不丢）
+    engine.paperMode = uiGet('deducePaperMode', engine.paperMode === true)
+    engine.infoOpen = uiGet('deduceInfoOpen', engine.infoOpen)
     // 文游素材（OS-61 P4）：进页拉一次盘点；打字机只在「当前局面」视图挂
     if (!engine.assetsLoaded) {
       engine.assetsLoaded = true
@@ -8113,6 +8116,7 @@ function deduceProseMsgHtml(node, live) {
           <span class="fl-actions-note" id="deduce-draft-chars">${text(draft.prose).length} 字 · 失焦自动保存</span>
           <button class="fl-btn is-primary" data-action="deduce-engine-next"${engine.turnBusy || engine.busy ? ' disabled' : ''} title="收下这一拍进本章缓冲，推新的局面">下一拍 →</button>
           <button class="fl-btn" data-action="deduce-engine-regen"${engine.turnBusy ? ' disabled' : ''} title="让模型重写这一拍的正文（覆盖草稿）">${engine.turnBusy ? '成文中…' : '↻ 重写'}</button>
+          <button class="fl-btn" data-action="deduce-promote-flow" title="把这一拍正文写进 正文/ 成正式章节（自动下一章号）">⇪ 转正</button>
           <button class="fl-btn" data-action="deduce-draft-edit" title="收起编辑器，回到展示">✓ 收起</button>
         </div>
       </div>
@@ -8288,6 +8292,7 @@ function deduceEngineHtml() {
         <i class="fl-bar-div"></i>
         <button class="fl-btn" data-action="deduce-image" title="按本拍局面生成一张场景立绘（需在设置里配生图端点）"${engine.turnBusy ? ' disabled' : ''}>生图</button>
         <button class="fl-btn" data-action="deduce-archive"${engine.turnBusy || !bufferCount ? ' disabled' : ''} title="把本章缓冲的拍整理成 markdown 归档（不写正文文件）">归档</button>
+        <button class="fl-btn" data-action="deduce-export"${engine.turnBusy ? ' disabled' : ''} title="整个会话导出成 markdown（每拍的决定＋正文），落 推演/&lt;bookId&gt;/导出/">导出</button>
       ` : ''}
       <i class="fl-bar-div"></i>
       <button class="fl-btn${engine.paperMode ? ' on' : ''}" data-action="deduce-paper-toggle" title="纸面模式：关掉立绘背景，纯纸面读文">纸面</button>
@@ -8440,6 +8445,71 @@ function deduceEngineHtml() {
     </div>
     ${setPanel}
   </div>`
+}
+
+/** 导出整个推演会话（OS-94）：每拍的决定＋正文出 markdown，落 推演/<bookId>/导出/。 */
+async function deduceExportSession() {
+  const engine = state.deduce.engine
+  if (!state.current) return
+  try {
+    const payload = await api('/api/deduce/export', {
+      method: 'POST',
+      body: JSON.stringify({ root: state.current.path, sessionId: engine.sessionId || undefined })
+    })
+    engine.archiveNote = `已导出：${payload.path}（${payload.words} 字）`
+  } catch (error) {
+    engine.error = (error && error.code ? error.code + ' · ' : '') + text((error && error.message) || error)
+  }
+  render()
+}
+
+/** 转正弹窗（OS-94）：这一拍正文 → 正文/ 成正式章节（自动下一章号＋备份通道）。 */
+function deducePromoteFlow() {
+  const engine = state.deduce.engine
+  const draft = engine.draft
+  if (!state.current || !draft) { engineSetError('先选一条走向出正文，最新一拍才能转正。'); return }
+  if (!text(draft.prose).trim()) { engineSetError('这一拍还没有正文——先「重写」出稿或自己写完，再转正。'); return }
+  openModal(`<h3>转正为正式章节</h3>
+    <p class="sub">把这一拍的正文写进 正文/（自动下一章号，走备份通道——原文永远可找回）。</p>
+    <div class="field"><label>章节标题</label>
+      <input id="promote-title" placeholder="例如：第八夜·那只眼睁开" value="推演第${Number(draft.round) || 0}拍">
+    </div>
+    <div class="ded-image-ops">
+      <button class="btn-ghost" data-action="close-modal">取消</button>
+      <button class="btn-primary" id="deduce-promote-go">转正</button>
+    </div>`)
+  document.getElementById('promote-title')?.focus()
+}
+
+async function deducePromoteRun() {
+  const engine = state.deduce.engine
+  const draft = engine.draft
+  const title = text(document.getElementById('promote-title')?.value).trim()
+  if (!state.current || !draft) return
+  if (!title) { engineSetError('章节标题要有实际内容。'); return }
+  const go = document.getElementById('deduce-promote-go')
+  if (go) { go.disabled = true; go.textContent = '转正中…' }
+  try {
+    const payload = await api('/api/deduce/promote', {
+      method: 'POST',
+      body: JSON.stringify({ root: state.current.path, sessionId: engine.sessionId || undefined, nodeId: draft.nodeId, title })
+    })
+    closeModal()
+    engine.archiveNote = `已转正：${payload.file}（${payload.chars} 字）——去「正文」页即可编辑`
+  } catch (error) {
+    const box = document.querySelector('.ded-image-ops')
+    if (box) {
+      const err = document.createElement('div')
+      err.className = 'warn-box'
+      err.textContent = `${error.code ? error.code + ' · ' : ''}${text(error?.message || error)}`
+      box.before(err)
+      if (go) { go.disabled = false; go.textContent = '转正' }
+    } else {
+      engineSetError(text(error?.message || error))
+    }
+    return
+  }
+  render()
 }
 
 /**
@@ -9477,6 +9547,7 @@ document.addEventListener('click', (event) => {
   } else if (action === 'deduce-paper-toggle') {
     const engine = state.deduce.engine
     engine.paperMode = !engine.paperMode
+    uiSet('deducePaperMode', engine.paperMode)
     render()
   } else if (action === 'deduce-flow-jump') {
     const sc = document.getElementById('deduce-flow')
@@ -9501,6 +9572,12 @@ document.addEventListener('click', (event) => {
     dedTypewriterSkip()
   } else if (action === 'ref-gen-image') {
     generateReferenceImage()
+  } else if (action === 'deduce-export') {
+    deduceExportSession()
+  } else if (action === 'deduce-promote-flow') {
+    deducePromoteFlow()
+  } else if (action === 'deduce-promote-go') {
+    deducePromoteRun()
   } else if (action === 'deduce-image') {
     deduceImageFlow()
   } else if (action === 'job-ball-toggle') {
@@ -9526,6 +9603,7 @@ document.addEventListener('click', (event) => {
     const data = engine.data
     const visible = data ? (engine.infoOpen === true || (!data.narrative && engine.infoOpen !== false)) : false
     engine.infoOpen = !visible
+    uiSet('deduceInfoOpen', engine.infoOpen)
     render()
   } else if (action === 'deduce-tools-toggle') {
     const engine = state.deduce.engine

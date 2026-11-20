@@ -79,7 +79,7 @@ async function makeFixture() {
 
 test('契约：端点都带 method/path/request/response/errors，路径可反查', () => {
   // OS-89：80 → 86（+ changeLogGet / changeLogSummary / uiStateGet / uiStatePut / draftGet / draftPut）
-  assert.equal(Object.keys(ENDPOINTS).length, 86)
+  assert.equal(Object.keys(ENDPOINTS).length, 88)
   for (const [id, endpoint] of Object.entries(ENDPOINTS)) {
     assert.ok(endpoint.method, `${id} 缺 method`)
     assert.ok(endpoint.path.startsWith('/api/'), `${id} 路径不是 /api/`)
@@ -119,6 +119,8 @@ test('契约：端点都带 method/path/request/response/errors，路径可反�
   assert.equal(endpointFor('POST', '/api/deduce/pending'), 'deducePendingSettle')
   assert.equal(endpointFor('GET', '/api/deduce/sessions'), 'deduceSessionsGet')
   assert.equal(endpointFor('GET', '/api/deduce/opening'), 'deduceOpeningGet')
+  assert.equal(endpointFor('POST', '/api/deduce/export'), 'deduceExport')
+  assert.equal(endpointFor('POST', '/api/deduce/promote'), 'deducePromote')
   assert.equal(endpointFor('POST', '/api/deduce/session/manage'), 'deduceSessionManage')
   assert.equal(endpointFor('GET', '/api/deduce/assets'), 'deduceAssets')
   assert.equal(endpointFor('GET', '/api/deduce/asset'), 'deduceAssetFile')

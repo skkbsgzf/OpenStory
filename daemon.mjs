@@ -1591,6 +1591,59 @@ function readLegacyDeduceState(root, bookId) {
     return sendJson(res, 200, { ok: true, node, session, prose: node.prose, ...(gen.proseError ? { proseError: gen.proseError } : {}) })
   }
 
+  if (endpointId === 'deduceExport') {
+    // OS-94：推演导出——整个会话（每拍的决定＋正文＋归档清单）出 markdown，
+    // 落 推演/<bookId>/导出/会话-<sid>-<ts>.md。读侧动作，不改会话。
+    const authorized = authorizeRoot(allowlist, request.root)
+    if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
+    const root = authorized.root
+    const bookId = await resolveFactBookId(root, request.bookId)
+    const sid = text(request.sessionId).trim() || readActiveSessionId(root, bookId)
+    const session = loadDeduceSession(root, bookId, sid)
+    if (!session) return sendError(res, API_ERROR_CODES.NOT_FOUND, `还没有推演会话：${bookId}`)
+    const nodes = Array.isArray(session.nodes) ? session.nodes : []
+    const lines = [`# 推演会话 · ${text(session.title)}`, '']
+    lines.push(`> 导出于 ${new Date().toISOString().slice(0, 19).replace('T', ' ')} · ${bookId} · 局「${text(session.title)}」（${sid}） · 共 ${nodes.length} 拍`, '')
+    for (const node of nodes) {
+      const chosen = (Array.isArray(node.candidates) ? node.candidates : []).find((c) => text(c.id) === text(node.choiceId))
+      lines.push(`## 第${Number(node?.round) || 0}拍`, '')
+      if (chosen && text(chosen.text)) lines.push(`> **你的决定**：${text(chosen.text)}`, '')
+      const prose = text(node.prose).trim()
+      lines.push(prose || '（本拍没有正文）', '')
+    }
+    if (Array.isArray(session.archived) && session.archived.length) {
+      lines.push('## 已归档章节', '', ...session.archived.map((a) => `- ${text(a.path)}（${Number(a.words) || 0} 字）`), '')
+    }
+    const exportDir = join(root, '推演', safeDeduceBookId(bookId), '导出')
+    await mkdir(exportDir, { recursive: true })
+    const fileName = `会话-${safeDeduceBookId(bookId)}-${sid}-${Date.now().toString(36)}.md`
+    const outPath = join(exportDir, fileName)
+    await writeFile(outPath, lines.join('\n'), 'utf-8')
+    return sendJson(res, 200, { ok: true, path: `推演/${safeDeduceBookId(bookId)}/导出/${fileName}`, words: lines.join('\n').length })
+  }
+
+  if (endpointId === 'deducePromote') {
+    // OS-94：转正——把一拍的正文写进 正文/ 成正式章节（createChapter 自动下一章号＋
+    // writeChapterWithBackup 备份通道）。prose 为空＝拒绝（先重写或自己写完）。
+    const authorized = authorizeRoot(allowlist, request.root)
+    if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
+    const root = authorized.root
+    const bookId = await resolveFactBookId(root, request.bookId)
+    const sid = text(request.sessionId).trim() || readActiveSessionId(root, bookId)
+    const session = loadDeduceSession(root, bookId, sid)
+    if (!session) return sendError(res, API_ERROR_CODES.NOT_FOUND, `还没有推演会话：${bookId}`)
+    const nodeId = text(request.nodeId).trim()
+    const node = (Array.isArray(session.nodes) ? session.nodes : []).find((n) => text(n?.id) === nodeId)
+    if (!node) return sendError(res, API_ERROR_CODES.NOT_FOUND, `会话里没有这一拍：${nodeId}`)
+    const prose = text(node.prose).trim()
+    if (!prose) return sendError(res, API_ERROR_CODES.INVALID_ENTRY, '这一拍还没有正文——先「重写」出稿或自己写完，再转正')
+    const created = await createChapter(root, '正文', text(request.title).trim() || `推演第${Number(node.round) || 0}拍`)
+    if (!created.ok) return sendError(res, created.code ?? API_ERROR_CODES.INVALID_ENTRY, created.message ?? '章节创建失败')
+    const written = await writeChapterWithBackup(root, created.chapter.file, prose)
+    if (!written.ok) return sendError(res, written.code ?? API_ERROR_CODES.WRITE_PROTOCOL_IO_FAILED, written.message ?? '章节写入失败')
+    return sendJson(res, 200, { ok: true, file: created.chapter.file, chapter: created.chapter, chars: prose.length })
+  }
+
   if (endpointId === 'deducePendingSettle') {
     // OS-82 回填闭环：待确认卡落库（write）/丢弃（dismiss）。写走内核 writeFactFile 的
     // 单条 upsert（entry 形态：按 id 命中替换、没有就追加）——推演一拍只进一条事件，
