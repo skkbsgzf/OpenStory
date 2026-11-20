@@ -72,7 +72,7 @@ test('MCP：initialize 握手（serverInfo/instructions/tools 能力）', async 
   } finally { mcp.close() }
 })
 
-test('MCP：tools/list 20 个工具、五模块分组、schema 带 required', async () => {
+test('MCP：tools/list 24 个工具、五模块分组、schema 带 required', async () => {
   const mcp = startMcp()
   try {
     const reply = await mcp.request('tools/list')
