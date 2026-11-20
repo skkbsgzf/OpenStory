@@ -4490,7 +4490,8 @@ function referenceEditorHtml() {
 
 async function loadHabits({ force = false } = {}) {
   if (!state.current) return
-  void loadModuleLog('习惯', { limit: 20 }) // OS-89
+  // OS-89：必须 await 且在早退之前——习惯表已缓存时会直接 return，日志就永远拉不到
+  await loadModuleLog('习惯', { limit: 20 })
   if (state.habits && !force) return
   try {
     const payload = await api(`/api/habits?root=${encodeURIComponent(state.current.path)}`)
@@ -4532,7 +4533,8 @@ function habitsViewHtml() {
       ${fields}
       <div class="ops"><button class="btn-primary" data-action="habits-save">保存习惯表</button>
         <span class="count">保存后立即生效：Agent 成文注入＋分析扫描</span></div>
-    </div>`
+    </div>
+    ${moduleLogHtml('习惯', { title: '习惯表修改记录' })}`
 }
 
 async function saveHabits() {
@@ -4569,7 +4571,9 @@ function referencePageHtml() {
     q: ref.q || '',
     mainHtml,
     stats: ref.stats,
-    absorbable: absorbTotal
+    absorbable: absorbTotal,
+    // OS-89：参考模块自己的修改日志（AGENTS.md 第 10 条）
+    changelogHtml: moduleLogHtml('参考', { title: '参考修改记录' })
   })
   // 参考页自己就是双链文档工作面（侧栏导航/正文/反链），
   // 不再套题材左栏——那三块是给「小说」这类非双链页用的。
@@ -4849,7 +4853,9 @@ function refSummaryHtml() {
 const SCRIPT_REF_MODULES = Object.freeze([
   { id: 'cast', label: '出场人物', hint: '本剧出现过的角色', render: () => scriptCastHtml(), badge: () => String((state.scriptModule?.scriptStats?.(dirWork('剧本').text || '')?.cast || []).length) },
   { id: 'graph', label: '世界书图谱', hint: '世界书与产物的关系', render: () => graphModuleHtml(), badge: () => String(state.refCol.graph?.stats?.nodes ?? 0) },
-  { id: 'summary', label: '世界书摘要', hint: 'AI 基于图谱总结本剧', render: () => refSummaryHtml(), badge: () => '' }
+  { id: 'summary', label: '世界书摘要', hint: 'AI 基于图谱总结本剧', render: () => refSummaryHtml(), badge: () => '' },
+  // OS-89：剧本模块自己的修改日志
+  { id: 'changelog', label: '本模块修改', hint: '每次保存的 diff 与时间', render: () => moduleLogHtml('剧本', { title: '剧本修改记录' }), badge: () => String(moduleLogOf('剧本')?.entries?.length ?? 0) }
 ])
 
 /** 剧本出场人物卡：从角色台词里统计谁说了多少句。 */
@@ -6205,7 +6211,8 @@ function dirWork(dir) {
 
 async function openDirWork(dir) {
   state.view = `dir:${dir}`
-  void loadModuleLog(dir, { limit: 20 }) // OS-89：模块加载时检索自己的 log
+  // OS-89：await 且在早退之前——目录已缓存时会直接 return，日志就拉不到
+  await loadModuleLog(dir, { limit: 20 })
   const work = dirWork(dir)
   if (work.files.length && (work.loaded || READONLY_DIRS.has(dir))) {
     render()
@@ -8317,6 +8324,7 @@ function deduceEngineHtml() {
       ${sessHtml}
       <div class="ded-set-head">推演设置<span class="sub">POV / 种子 / 推进</span></div>
       ${controls}
+      ${moduleLogHtml('推演', { title: '推演修改记录', limit: 6 })}
     </div>`
 
   /* —— OS-84：非叙事流形态（Agent 表单／剧情树）——同一壳同一工具栏，只换内容区 —— */
@@ -8912,12 +8920,16 @@ function go(view) {
     return
   }
   if (view === 'reference') {
-    // 参考页：拉索引，并预挂载模块
+    // 参考页：拉索引，并预挂载模块。loadReferences 内部已含 OS-89 的日志检索。
     loadReferences().then(() => { if (state.view === 'reference') render() }).catch((e) => console.error('[ref-render]', e))
     loadRefModule().then(() => { if (state.view === 'reference') render() }).catch(() => {})
     return
   }
   if (view === 'deduce') {
+    // OS-89：推演模块加载时检索自己的 log
+    loadModuleLog('推演', { limit: 20 }).then(() => {
+      if (state.view === 'deduce') render()
+    })
     return
   }
   if (view === 'artifacts') {

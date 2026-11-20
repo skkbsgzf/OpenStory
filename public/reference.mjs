@@ -177,7 +177,7 @@ function refMainEmptyHtml() {
  * 参考页整体骨架（OS-51）：侧栏导航 + 主区全宽（反链并入详情页底部，不再占独立列）。
  * mainHtml 由调用方按 view 给：笔记视图传详情页整块，图谱视图传大画布块。
  */
-export function referenceShellHtml({ notes, tags, activeTag, activePath, view = 'graph', q = '', mainHtml = '', stats, absorbable = 0 }) {
+export function referenceShellHtml({ notes, tags, activeTag, activePath, view = 'graph', q = '', mainHtml = '', stats, absorbable = 0, changelogHtml = '' }) {
   const statsLine = stats
     ? `<span class="count">${stats.notes} 篇 · ${stats.tags} 个标签 · ${stats.links} 条链接</span>`
     : ''
@@ -192,7 +192,7 @@ export function referenceShellHtml({ notes, tags, activeTag, activePath, view = 
       <button class="btn-ghost" data-action="ref-new-tag">＋ 新建标签</button>
     </div>
     <div class="ref-grid">
-      <aside class="ref-sidenav">${nav}</aside>
+      <aside class="ref-sidenav">${nav}${changelogHtml}</aside>
       <div class="ref-main">${mainHtml || refMainEmptyHtml()}</div>
     </div>
   </div>`
