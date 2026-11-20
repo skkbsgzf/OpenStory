@@ -1491,6 +1491,19 @@ html[data-doc-auto-gap="off"] .doc-block { margin-bottom: 0; }
 .cfg-note { font-size: var(--ui-fs-xs); color: var(--meta); line-height: 1.6; }
 
 /* ── 套件激活管理面板（OS-17）────────────────────────────── */
+/* ══ OS-101 插件中心：导航直接列套件 + 套件内模块设置 ══════════ */
+.nav-off-tag {
+  margin-left: var(--ui-gap-xs); font-size: var(--ui-fs-2xs); font-weight: 400;
+  font-style: normal; color: var(--meta);
+  border: 1px solid var(--hair); border-radius: var(--pill); padding: 0 var(--ui-gap-xs);
+}
+.nav-empty { margin: 0; padding: var(--ui-gap-sm) var(--ui-ctl-px); font-size: var(--ui-fs-xs); color: var(--meta); }
+.h5-sub { margin-left: var(--ui-gap-sm); font-weight: 400; font-size: var(--ui-fs-2xs); color: var(--meta); }
+.suite-mod-group { margin-bottom: var(--ui-gap-md); }
+.suite-mod-group h6 {
+  margin: 0 0 var(--ui-gap-xs); font-size: var(--ui-fs-xs); font-weight: 600; color: var(--ink-2);
+}
+
 /* ══ OS-99 业务套件中心（主从两栏，对齐 DSH 插件管理）══════════
    左列＝套件清单（谁是谁一眼看出），右列＝选中项详情（来源/能力/启停/设置） */
 .suite-center .suite-split {
