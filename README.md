@@ -2,7 +2,7 @@
 
 **跑在浏览器 / DSH 里的小说工作台**——OpenDesign 形态的小说版。零 npm 构建依赖，daemon 只监听本机，库就是磁盘上的文件夹。
 
-![版本](https://img.shields.io/badge/version-v0.2.0-blue) ![node](https://img.shields.io/badge/node-%3E%3D18-green) ![tests](https://img.shields.io/badge/tests-299%20cases-brightgreen) ![endpoints](https://img.shields.io/badge/endpoints-95-blueviolet)
+![版本](https://img.shields.io/badge/version-v0.2.0-blue) ![node](https://img.shields.io/badge/node-%3E%3D18-green) ![tests](https://img.shields.io/badge/tests-299%20cases-brightgreen) ![endpoints](https://img.shields.io/badge/endpoints-98-blueviolet)
 
 ## 这是什么
 
@@ -11,11 +11,11 @@
 - **写作**：纯净写作面——实时渲染逐块编辑（失焦自动保存）、章节自动编号、版本历史（.history）、右键段浮窗（润笔/讨论/分析）、间距令牌化＋组件统一规范、分析面板模块化插拔（人话结论层：文风/AI 味/剧情曲线/伏笔回收/剧情密度）
 - **世界书（参考）**：Obsidian 式笔记系统——frontmatter 嵌套标签、`[[双链]]`、标签笔记带描述、关系图谱（笔记＋拆解词条同图，词条只读第二来源）、「看到第 N 章为止」防剧透过滤、`迁入旧目录` 一键并入旧目录
 - **扮演**（默认）与**确定性推演**（可选）：「扮演」页签＝主持人＋N 角色多子 agent 同幕——酒馆式舞台（场景立绘背景/气泡流/情境分支选项/角色署名气泡/长期记忆/AI 味过检），局面自动续上、多局并存、拍可「转正」写正文、会话导出 md；确定性引擎模式保留（同种子同事实包＝同一拍、2d6 骰点 trace）
-- **故事源**（拆解）：fact 链的可视化盘点——结构化知识视图＋事件面积图；数据被推演/剧情曲线/世界书词条/参考图谱四方消费
+- **故事源**（拆解）：fact 链的可视化盘点——结构化知识视图＋事件面积图＋**角色时间线泳道图**（fact events 可视化）；数据被推演/剧情曲线/世界书词条/参考图谱四方消费
 - **剧本**：原生剧本工作面＋外部剧本→拆解条目导入（fact 写通道首次开放）
 - **Agent**：左列一等公民——会话连续（DSH resume）、思维链渐进、工具调用行、待确认卡（采纳走快照闸）、灯泡选择链（题材/风格词条单选＋方法论多选＋知识库标注卡）、套件捆绑技能
 - **生图与识图**：ComfyUI 双后端生图（世界书条目配图）＋vision 文学化白描（读库内图片）
-- **全局设施**：任务中心（悬浮球轮询）、修改日志（模块自检索 diff＋单条恢复）、界面状态/草稿落 `.pinax/`、设置页本体/插件中心两组、MCP server（24 工具，零依赖 stdio）
+- **全局设施**：任务中心（悬浮球轮询）、修改日志（模块自检索 diff＋单条恢复）、界面状态/草稿落 `.pinax/`、设置页本体/插件中心两组、MCP server（24 工具，零依赖 stdio）、Windows 原生文件夹选择器/资源管理器唤起（新建库与本地路径位）
 
 ## 三条边界
 
@@ -48,7 +48,7 @@ npm test           # node --test（299 例，零外部依赖）
                │ HTTP（127.0.0.1，JSON＋SSE）
 ┌──────────────▼──────────────────────────────────┐
 │  daemon（daemon.mjs，唯一磁盘层）                   │
-│  · 95 端点契约（contracts.mjs，请求/响应双端校验）   │
+│  · 98 端点契约（contracts.mjs，请求/响应双端校验）   │
 │  · fact 链：拆解 store/富集/曲线/守护/写通道        │
 │  · 推演/扮演引擎＋会话容器；生图/识图适配器          │
 │  · 全局任务中心/修改日志/ui-state/草稿              │
@@ -66,12 +66,12 @@ npm test           # node --test（299 例，零外部依赖）
 
 | 路径 | 内容 |
 |---|---|
-| `daemon.mjs` / `contracts.mjs` | daemon＋95 端点契约（纯数据，两端共享） |
+| `daemon.mjs` / `contracts.mjs` | daemon＋98 端点契约（纯数据，两端共享） |
 | `mcp.mjs` | 全模块 MCP server（24 工具，零依赖 stdio；`npm run mcp`） |
 | `referenceStore.mjs` / `deduceEngine.mjs` / `deduceSession.mjs` / `deduceNarrative.mjs` | 参考索引（标签/双链/图谱）/ 推演封装 / 多局会话容器 / 叙事上下文 |
 | `roleplayEngine.mjs` / `roleplayPrompts.mjs` | 扮演调度（主持人＋N 角色子 agent）＋四层提示词 |
 | `factGuard.mjs` / `enrichEngine.mjs` / `comfyEngine.mjs` | 事实守护 / 富集引擎 / ComfyUI 生图适配 |
-| `changelog.mjs` / `jobCenter.mjs` / `libState.mjs` | 修改日志 / 后台任务中心 / 库内状态与草稿 |
+| `changelog.mjs` / `jobCenter.mjs` / `libState.mjs` / `nativePicker.mjs` | 修改日志 / 后台任务中心 / 库内状态与草稿 / Windows 原生选择器 |
 | `chapters.mjs` / `libraryManage.mjs` / `agentStore.mjs` / `suites.mjs` / `stylePacks.mjs` / `runtimes.mjs` | 章节协议 / 建库导入 / Agent 存储 / 三类货架装载 |
 | `public/` | 工作台单页（app.js＋reference/graph/md/analysis/charts/ui-kit/storySource 等零依赖模块；echarts 本地 vendor） |
 | `suites/` `styles/` `runtimes/` `genres/` `skills/`（31＋套件捆绑 2） | 插件货架（内置样例）＋ [PROTOCOL.md](./PROTOCOL.md)（套件注册协议） |
@@ -91,5 +91,6 @@ OpenStory 自 [Pinax-next](https://github.com/skkbsgzf/Pinax-StoryHarness) 的 o
 
 ## 版本
 
-- **v0.2.0**（2026-11-21）：扮演与文游舞台全面成型（多子 agent 同幕/长期记忆/拍转正/多局管理）、世界书纳入拆解词条（词条图谱槽）、剧本线（原生工作面＋外部导入）、生图识图、任务中心/修改日志/ui-state、设置重构（本体＋插件中心）、MCP 24 工具、95 端点契约、299 例测试。
+- **v0.2.x**（2026-11-21）：角色时间线泳道图、Windows 原生文件夹选择器/资源管理器唤起、Agent 栏可折叠、剧情密度热力图修复。
+- **v0.2.0**（2026-11-21）：扮演与文游舞台全面成型（多子 agent 同幕/长期记忆/拍转正/多局管理）、世界书纳入拆解词条（词条图谱槽）、剧本线（原生工作面＋外部导入）、生图识图、任务中心/修改日志/ui-state、设置重构（本体＋插件中心）、MCP 24 工具、95→98 端点契约、299 例测试。
 - **v0.1.0**（2026-11-19）：首个对外版本。路线图见 [docs/plan/](./docs/plan/)。
