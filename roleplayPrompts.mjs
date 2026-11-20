@@ -85,6 +85,34 @@ export function worldFeedbackPrompt({ pov, castBeats, playerAction }) {
   ].join('\n')
 }
 
+/** 开局开场（OS-100）：主持人替世界拉开第一幕——时间/地点/在场/你看到什么＋三条初始分支。
+ *  不是「等你开口」的空白页，而是剧本杀式的开场白。 */
+export function openingPrompt({ pov, premise, worldbookDigest, cast, openingDetail }) {
+  const castLines = (Array.isArray(cast) ? cast : [])
+    .map((c) => `- ${c.name}${c.identity ? `：${c.identity}` : ''}`)
+    .join('\n')
+  return [
+    `你是这一幕的主持人，正在为玩家（扮演 ${pov}）拉开开场。`,
+    '玩家刚从剧本里睁眼——你必须告诉他：现在是什么时候、在什么地方、面前有谁、第一眼看见什么。',
+    '',
+    '【世界书（已按进度过滤）】',
+    worldbookDigest || '（无额外条目）',
+    '',
+    '【前置条件】',
+    premise || '（以世界书与角色档案为准）',
+    '',
+    '【在场角色】',
+    castLines || '（无）',
+    openingDetail ? `\n【本局开场锚点】${openingDetail}` : '',
+    '',
+    '【开场规则】',
+    '- 用第二人称对「你」说话（你就是玩家）；',
+    '- 150–300 字：时间/地点/身体感受/眼前有谁/第一眼看见什么；',
+    '- 不要替玩家做决定，不要写他/她的心理；',
+    '- 结尾另起三行分支（每行以「>」开头）：玩家此刻能做的三个不同方向的动作，第一人称「我…」开头。'
+  ].filter((line) => line !== '').join('\n')
+}
+
 /** 解析主持人裁决 JSON（容错：截取首个 {...}；失败返回 null 让调用方走保底）。 */
 export function parseHostDecision(raw) {
   const text = String(raw ?? '')

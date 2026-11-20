@@ -406,7 +406,24 @@ function render() {
     // 进入推演页自动续上已有局面（OS-60）：以前进来永远是空态，库里推过的拍看不到，
     // 得手动点「开始推演」——但那会额外推一拍，语义是错的。
     const engine = state.deduce.engine
-    if (!engine.data && !engine.busy && !engine.error && state.current?.path) {
+    // OS-100：扮演模式不做引擎 peek（present 是推演模式的确定性引擎）——
+    // 扮演局由 roleplayStarted/开场白驱动，进来只回放会话
+    if ((engine.playMode || 'roleplay') !== 'engine') {
+      // OS-100：有会话＝这局已经开始过——自动进流（roleplayStarted 是内存态，刷新会丢）
+      if (!engine.session && state.current?.path) {
+        api('/api/deduce/session?root=' + encodeURIComponent(state.current.path))
+          .then((payload) => {
+            engine.session = payload.session ?? null
+            engine.sessionId = payload.activeId || engine.session?.sessionId || 'main'
+            // 会话有拍＝这局进行中；没有拍但向导没显示时也给个空流落点
+            if (engine.session) engine.roleplayStarted = true
+          })
+          .catch(() => {})
+          .finally(() => { if (state.view === 'deduce') render() })
+      } else if (engine.session) {
+        engine.roleplayStarted = true
+      }
+    } else if (!engine.data && !engine.busy && !engine.error && state.current?.path) {
       engine.busy = true
       api('/api/deduce/present', { method: 'POST', body: JSON.stringify({ root: state.current.path, peek: true }) })
         .then((payload) => {
@@ -7588,6 +7605,36 @@ async function deduceEnginePresent(opts) {
   render()
 }
 
+/** 扮演开场（OS-100）：主持人替世界拉开第一幕——开场白＋三条初始分支，不再是空白页。 */
+async function deduceRoleplayOpening({ pov, openingDetail }) {
+  const engine = state.deduce.engine
+  if (!state.current || engine.turnBusy) return
+  engine.turnBusy = true
+  engine.error = ''
+  render()
+  try {
+    const payload = await api('/api/roleplay/opening', {
+      method: 'POST',
+      body: JSON.stringify({
+        root: state.current.path,
+        pov,
+        premise: openingDetail || '',
+        openingDetail: openingDetail || ''
+      })
+    })
+    engine.draft = { nodeId: '', round: 1, prose: payload.feedback ?? '', proseError: '', isOpening: true }
+    engine.roleplayOptions = Array.isArray(payload.options) ? payload.options.slice(0, 4) : []
+    engine.lastBeats = []
+    engine.flowPin = true
+    engine.hint = '开场已摆好——选一条，或在下面说你的动作'
+  } catch (error) {
+    engine.error = (error && error.code ? error.code + ' · ' : '') + text((error && error.message) || error)
+    engine.hint = '开场没能拉起来——直接在下面说你这一幕做什么'
+  }
+  engine.turnBusy = false
+  render()
+}
+
 /** 扮演一回合（OS-97）：玩家操作 → 主持人裁决谁登场 → 各角色子 agent 演绎 → 世界反馈。 */
 async function deduceRoleplayTurn({ playerAction }) {
   const engine = state.deduce.engine
@@ -8473,6 +8520,8 @@ function deduceSideHtml(data) {
 /** 推演主面（OS-84 统一壳）：工具栏常驻，内容区三形态（叙事流/剧情树/Agent）就地切换。 */
 function deduceEngineHtml() {
   const engine = state.deduce.engine
+  // OS-100：模式判定必须在函数开头——bar 与流渲染都要用（曾因后置定义导致 TDZ 崩页）
+  const rpMode = (engine.playMode || 'roleplay') !== 'engine'
   const data = engine.data
   const inFlow = state.deduce.mode === 'engine' && engine.view !== 'tree'
   const session = engine.session
@@ -8621,7 +8670,6 @@ function deduceEngineHtml() {
   const branchId = session?.branchId || 'main'
   const nodes = (session?.nodes || []).filter((node) => (text(node?.branchId) || 'main') === branchId)
   const msgs = []
-  const rpMode = (engine.playMode || 'roleplay') !== 'engine'
   if (data?.narrative) msgs.push(deducePrologueHtml(data.narrative))
   // OS-99：扮演局开场——玩家先说话，给一张「序幕」引导卡（不摆引擎局面）
   if (!data && rpMode && engine.roleplayStarted && !engine.lastBeats?.length) {
@@ -8647,10 +8695,14 @@ function deduceEngineHtml() {
   for (const item of pendingAll) {
     if (pendingLeft.has(text(item?.id))) msgs.push(deducePendingFactHtml(item))
   }
+  // OS-100：开场白（主持人拉开的第一幕）——nodeId 为空不匹配任何节点，单独成一条气泡
+  if (draft && draft.isOpening && text(draft.prose).trim()) {
+    msgs.push(`<section class="fl-msg"><span class="fl-rn">开场</span><div class="fl-prose"><p class="fl-text">${esc(draft.prose)}</p></div></section>`)
+  }
   // OS-98/99：扮演模式的登场角色署名气泡＋情境分支选项——挂在流末（最新一拍之后）。
   // 注意：draft 存在时它**就是**最新那一拍，选项照样要给玩家。
-  if (rpMode && (engine.lastBeats ?? []).length) {
-    for (const beat of engine.lastBeats) {
+  if (rpMode && ((engine.lastBeats ?? []).length || (engine.roleplayOptions ?? []).length)) {
+    for (const beat of (engine.lastBeats ?? [])) {
       msgs.push(`<div class="fl-beat"><span class="fl-beat-name">${esc(beat.name)}</span><span class="fl-beat-text">${esc(beat.text)}</span></div>`)
     }
     if ((engine.roleplayOptions ?? []).length) {
@@ -8713,6 +8765,7 @@ function deducePromoteFlow() {
   const engine = state.deduce.engine
   const draft = engine.draft
   if (!state.current || !draft) { engineSetError('先选一条走向出正文，最新一拍才能转正。'); return }
+  if (!draft.nodeId) { engineSetError('开场白还没落成拍——先说一句你的动作，第一拍落地后才能转正。'); return }
   if (!text(draft.prose).trim()) { engineSetError('这一拍还没有正文——先「重写」出稿或自己写完，再转正。'); return }
   openModal(`<h3>转正为正式章节</h3>
     <p class="sub">把这一拍的正文写进 正文/（自动下一章号，走备份通道——原文永远可找回）。</p>
@@ -9786,6 +9839,8 @@ document.addEventListener('click', (event) => {
   } else if (action === 'ow-start') {
     // OS-99：扮演模式不摆引擎局面——那是推演的确定性引擎。扮演首幕由玩家输入驱动：
     // 直接把 POV/世界书/开头记进 engine，流里放一句「你说你的第一幕」，等玩家开口。
+    // OS-100：handler 作用域里没有 engine 变量——先取出来（曾 ReferenceError 卡住开局）
+    const engine = state.deduce.engine
     const ow = state.deduce.engine.opening
     const open = (ow.openings ?? []).find((o) => o.id === ow.selOpen)
     if (engine.playMode === 'engine') {
@@ -9797,10 +9852,18 @@ document.addEventListener('click', (event) => {
       engine.roleplayStarted = true
       engine.roleplayOptions = []
       engine.lastBeats = []
-      engine.hint = ow.selPov === '主持人'
-        ? '你是主持人——说一句开场（这一幕在哪儿、什么时候、谁在场），我来替你召集演员'
-        : `你扮演「${ow.selPov}」——说你这一幕睁开眼在做什么、说什么`
-      render()
+      if (ow.selPov === '主持人') {
+        engine.hint = '你是主持人——说一句开场（这一幕在哪儿、什么时候、谁在场），我来替你召集演员'
+        render()
+      } else {
+        // OS-100：不再干等玩家开口——主持人先替世界拉开第一幕（时间/地点/在场/第一眼）
+        engine.hint = '正在拉开开场…'
+        render()
+        deduceRoleplayOpening({
+          pov: ow.selPov,
+          openingDetail: open && open.id !== 'free' ? open.detail : ''
+        })
+      }
     }
   } else if (action === 'deduce-sess-new') {
     deduceSessionManage('new', '')
