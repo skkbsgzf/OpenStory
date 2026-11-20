@@ -261,7 +261,7 @@ export const ENDPOINTS = Object.freeze({
     path: '/api/styles',
     request: { query: {} },
     // 风格包清单：内置目录＋本机目录合并（本机按 id 覆盖内置）。
-    response: { ok: 'true', styles: 'array', warnings: 'array' },
+    response: { ok: 'true', styles: 'array', warnings: 'array' , dirs: 'array?' },
     errors: []
   },
   libraryDiagnose: {
@@ -271,6 +271,14 @@ export const ENDPOINTS = Object.freeze({
     request: { query: { root: 'string' } },
     response: { ok: 'true', shape: 'object', verdict: 'object' },
     errors: ['NO_LIBRARY', 'INVALID_ENTRY']
+  },
+  nativeReveal: {
+    method: 'POST',
+    path: '/api/native/reveal',
+    // 在资源管理器里打开路径（OS-109）：文件夹＝打开；文件＝选中它。路径不存在如实报 NOT_FOUND。
+    request: { body: { path: 'string' } },
+    response: { ok: 'true' },
+    errors: ['INVALID_ENTRY', 'NOT_FOUND', 'WRITE_PROTOCOL_IO_FAILED']
   },
   nativePick: {
     method: 'POST',

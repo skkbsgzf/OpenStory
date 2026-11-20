@@ -3761,7 +3761,7 @@ function settingsModelsSectionHtml() {
           <span class="cfg-note">ComfyUI 默认 8188；启动后浏览器打开同地址可确认。</span>
         </div>
         <div class="field"><label>工作流 JSON（API 格式导出的那份）</label>
-          <input id="mcfg-comfy-workflow" placeholder="参考/素材/comfy/scene.json 或绝对路径" value="${esc(text(image.comfyWorkflow))}">
+          <div class="input-with-btn"><input id="mcfg-comfy-workflow" placeholder="参考/素材/comfy/scene.json 或绝对路径" value="${esc(text(image.comfyWorkflow))}"><button class="btn-ghost" data-action="pick-file" data-target="mcfg-comfy-workflow" data-mode="full" data-filter="JSON 工作流 (*.json)|*.json|所有文件 (*.*)|*.*" title="选择 ComfyUI 工作流 JSON 文件">浏览…</button></div>
           <span class="cfg-note">在 ComfyUI 里用「Save (API Format)」导出。相对路径按库根解析。</span>
         </div>
         <div class="field"><label>节点映射（可选，逗号分隔 key:节点id）</label>
@@ -4096,11 +4096,11 @@ function settingsDataSectionHtml() {
     { label: '库清单', path: state.preferencesPath || '%LOCALAPPDATA%\\PinaxNext\\next-preferences.json' },
     { label: 'Agent 配置', path: agent.configPath || '%LOCALAPPDATA%\\PinaxNext\\openstory\\agent-config.json' },
     { label: '运行时套件货架', path: state.settings.userDir || '%LOCALAPPDATA%\\PinaxNext\\openstory\\runtimes' },
-    { label: '风格包货架', path: '%LOCALAPPDATA%\\PinaxNext\\openstory\\styles' }
+    { label: '风格包货架', path: (state.stylesDirs || [])[0] || '%LOCALAPPDATA%\\PinaxNext\\openstory\\styles' }
   ]
   return `<div class="step">
     <h3>本机路径</h3>
-    ${paths.map((item) => `<div class="kv-line"><span class="k">${esc(item.label)}</span><span class="v">${esc(item.path)}</span></div>`).join('')}
+    ${paths.map((item) => `<div class="kv-line"><span class="k">${esc(item.label)}</span><span class="v">${esc(item.path)}</span><button class="btn-ghost kv-open" data-action="reveal-path" data-path="${esc(item.path)}" title="在资源管理器里打开">打开</button></div>`).join(String())}
     ${warningsHtml(state.warnings)}
   </div>`
 }
@@ -6290,6 +6290,18 @@ function createHtml() {
 }
 
 /** 原生选择器（OS-108）：调 daemon 弹 Windows 对话框 → 回填目标输入框。 */
+/** 在资源管理器打开路径（OS-109）：文件夹＝打开；文件＝选中。失败如实提示。 */
+function revealNativePath(targetPath) {
+  const p = text(targetPath).trim()
+  if (!p) return
+  api('/api/native/reveal', { method: 'POST', body: JSON.stringify({ path: p }) })
+    .catch((error) => {
+      const msg = (error && error.code ? error.code + ' · ' : '') + text((error && error.message) || error)
+      state.error = msg
+      render()
+    })
+}
+
 function pickNativePath(triggerEl, kind) {
   const targetId = triggerEl.dataset.target || ''
   const inputEl = targetId ? document.getElementById(targetId) : null
@@ -6338,7 +6350,10 @@ function importHtml() {
     <div class="step">
       <h3><span class="no">2</span>源目录（只读）</h3>
       <div class="field">
-        <input id="import-source" placeholder="D:\\旧稿\\长夜　（顶层目录名＝类别：正文/剧本/大纲/世界书/约束/构思/资料/日志）" value="${esc(impo.source)}">
+                  <div class="input-with-btn">
+            <input id="import-source" placeholder="D:\\旧稿\\长夜　（顶层目录名＝类别：正文/剧本/大纲/世界书/约束/构思/资料/日志）" value="${esc(impo.source)}">
+            <button class="btn-ghost" data-action="pick-folder" data-target="import-source" title="弹出 Windows 文件夹选择框">浏览…</button>
+          </div>
       </div>
       <div class="row">
         <button class="btn-primary" data-action="import-scan"${impo.running || !options ? ' disabled' : ''}>${impo.running ? '扫描中…' : '扫描预览'}</button>
@@ -10328,6 +10343,8 @@ document.addEventListener('click', (event) => {
     state.view = 'libraries'
     state.repair = null
     render()
+  } else if (action === 'reveal-path') {
+    revealNativePath(target.dataset.path || '')
   } else if (action === 'pick-folder' || action === 'pick-file') {
     // OS-108：调 daemon 弹 Windows 原生对话框（浏览器拿不到绝对路径）
     pickNativePath(target, action === 'pick-file' ? 'file' : 'folder')
@@ -11127,6 +11144,8 @@ async function loadStyles() {
     const payload = await api('/api/styles')
     state.styles = Array.isArray(payload.styles) ? payload.styles : []
     state.stylesWarnings = Array.isArray(payload.warnings) ? payload.warnings : []
+    // OS-109：风格包真实目录（本机路径区显示＋一键打开）
+    state.stylesDirs = Array.isArray(payload.dirs) ? payload.dirs : []
   } catch {
     state.styles = []
   }

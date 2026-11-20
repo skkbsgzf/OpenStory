@@ -6,7 +6,7 @@
  * 非 Windows 平台（本仓主要面向 Windows）返回 unsupported，前端退回手填。
  */
 import { spawn } from 'node:child_process'
-import { existsSync } from 'node:fs'
+import { existsSync, statSync } from 'node:fs'
 
 const t = (v) => String(v ?? '')
 
@@ -87,4 +87,30 @@ export async function pickFile({ title = '选择文件', initialDir = '', filter
     "if ($r -eq 'OK') { Write-Output $d.FileName }"
   ].filter(Boolean).join('; ')
   return runPowerShell(lines)
+}
+
+/**
+ * 在资源管理器里打开一个路径（OS-109）：文件夹＝打开；文件＝选中它。
+ * 用 explorer.exe（Windows 原生，不阻塞 daemon——explorer 立刻 detach）。
+ */
+export function revealPath(target) {
+  return new Promise((resolve) => {
+    if (process.platform !== 'win32') {
+      resolve({ ok: false, code: 'UNSUPPORTED_PLATFORM', message: '资源管理器打开目前只支持 Windows' })
+      return
+    }
+    const p = t(target).trim()
+    if (!p) { resolve({ ok: false, code: 'INVALID_ENTRY', message: '路径为空' }); return }
+    if (!existsSync(p)) { resolve({ ok: false, code: 'NOT_FOUND', message: `路径不存在：${p}` }); return }
+    try {
+      // 文件夹直接开；文件用 /select,（打开所在目录并选中该文件）
+      const isDir = statSync(p).isDirectory()
+      const args = isDir ? [p] : ['/select,', p]
+      const child = spawn('explorer.exe', args, { detached: true, stdio: 'ignore', windowsHide: false })
+      child.unref()
+      resolve({ ok: true })
+    } catch (error) {
+      resolve({ ok: false, code: 'SPAWN_FAILED', message: t(error?.message || error) })
+    }
+  })
 }

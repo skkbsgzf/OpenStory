@@ -663,6 +663,9 @@ button.modlog-row:focus-visible { outline: 2px solid var(--accent); outline-offs
 
 /* ── 库首页 ─────────────────────────────────────────────── */
 /* 原生选择器：输入框 + 浏览按钮（OS-108） */
+.kv-open { margin-left: 8px; flex-shrink: 0; font-size: 11px; padding: 1px 8px; }
+.kv-line { display: flex; align-items: baseline; gap: 6px; }
+.kv-line .v { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .input-with-btn { display: flex; gap: 8px; align-items: center; }
 .input-with-btn input { flex: 1; min-width: 0; }
 .input-with-btn .btn-ghost { flex-shrink: 0; white-space: nowrap; }
