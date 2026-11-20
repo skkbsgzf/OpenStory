@@ -447,6 +447,85 @@ function buildCharts(chapters, wiki, entries = []) {
 }
 
 /**
+ * 角色泳道时间线（OS-111）：把 fact 条目的事件按「谁（who）× 何时（span/index）」铺开。
+ *
+ * 作者口径：「一章里可能涉及一个时间线，不同角色在同一轴上不断出场、退场、说话、行动」。
+ * fact 条目里的 events 正是这个原料：每个事件带 who（谁）/ channel（说/做/感知/情绪/状态）/
+ * index（该条目内的序号）/ 条目 span.from~to（对应正文章节）。
+ *
+ * 产出四条轴：
+ *   tracks      角色泳道（每人在自己的行上，事件按章位置摆放）
+ *   chapters    横轴刻度（章号）
+ *   channels    事件类型图例（say/do/perceive/feel/state）
+ *   spans       条目跨章区间（用于画「这一幕持续第 1–2 章」的横条）
+ *
+ * 纯函数：不读盘、不依赖浏览器。
+ */
+export function buildTimeline(entries) {
+  const list = (Array.isArray(entries) ? entries : []).filter((e) => e && typeof e === "object")
+  const chapterSet = new Set()
+  const byWho = new Map()
+  const spans = []
+  const CHANNEL_LABEL = { say: "说", do: "做", perceive: "感知", feel: "情绪", state: "状态", action: "行动" }
+
+  for (const entry of list) {
+    const name = text(entry.name).trim()
+    const spanFrom = num(entry?.span?.from)
+    const spanTo = num(entry?.span?.to)
+    if (spanFrom != null) chapterSet.add(spanFrom)
+    if (spanTo != null) chapterSet.add(spanTo)
+    if (spanFrom != null && spanTo != null) {
+      spans.push({ name, from: spanFrom, to: spanTo })
+    }
+    const events = listOf(entry.events)
+    for (const ev of events) {
+      const who = text(ev?.who).trim() || "（未标注）"
+      // 章位置：优先事件自带的 chapter，否则用条目 span.from（条目整体发生在该章）
+      const chapter = num(ev?.chapter) ?? spanFrom ?? null
+      if (chapter != null) chapterSet.add(chapter)
+      const channel = text(ev?.channel).trim() || "other"
+      if (!byWho.has(who)) byWho.set(who, [])
+      byWho.get(who).push({
+        entry: name,
+        chapter,
+        index: num(ev?.index) ?? 0,
+        channel,
+        channelLabel: CHANNEL_LABEL[channel] ?? channel,
+        track: text(ev?.track) || "fact",
+        content: text(ev?.content).trim().slice(0, 220)
+      })
+    }
+  }
+
+  const chapters = [...chapterSet].filter((n) => n != null).sort((a, b) => a - b)
+  const tracks = [...byWho.entries()]
+    .map(([who, events]) => ({
+      who,
+      count: events.length,
+      // 同章内按 index 稳定排序，方便横轴从左到右读
+      events: events.sort((a, b) => (a.chapter ?? 0) - (b.chapter ?? 0) || a.index - b.index)
+    }))
+    .sort((a, b) => b.count - a.count || a.who.localeCompare(b.who, "zh-Hans-CN"))
+
+  const usedChannels = new Set()
+  for (const track of tracks) for (const ev of track.events) usedChannels.add(ev.channel)
+
+  return {
+    tracks,
+    chapters,
+    spans: spans.sort((a, b) => a.from - b.from),
+    channels: [...usedChannels].map((key) => ({ key, label: CHANNEL_LABEL[key] ?? key })),
+    stats: {
+      trackCount: tracks.length,
+      eventCount: tracks.reduce((sum, t) => sum + t.count, 0),
+      chapterCount: chapters.length,
+      // 数据够不够画：没有事件就是空图，前端据此给「这份拆解没有事件级数据」的提示
+      drawable: tracks.length > 0 && chapters.length > 0
+    }
+  }
+}
+
+/**
  * 故事源总装（纯函数）。
  * 返回 { tree, board, stats }：
  *   tree  = 章→拍→条目 三层＋对齐标记＋entryIndex/byKey

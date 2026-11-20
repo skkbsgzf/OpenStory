@@ -432,6 +432,115 @@ function plotDensityRender(result, view = {}) {
 
 /* ---------- 注册表 ---------- */
 
+/* ---------- 角色泳道时间线（scope: work）----------
+ * 数据源＝fact 条目的 events（who × chapter × channel）。
+ * 作者口径：「不同角色在同一个轴上不断出场、退场、说话、行动」——这就是那条轴。
+ */
+
+/** buildTimeline 的内联同步版（与 storySource.buildTimeline 同算法；本模块无静态 import）。 */
+function buildTimelineSync(entries) {
+  const list = listOf(entries).filter((e) => e && typeof e === "object")
+  const chapterSet = new Set()
+  const byWho = new Map()
+  const spans = []
+  const CHANNEL_LABEL = { say: "说", do: "做", perceive: "感知", feel: "情绪", state: "状态", action: "行动" }
+  for (const entry of list) {
+    const name = text(entry.name).trim()
+    const from = numOf(entry?.span?.from)
+    const to = numOf(entry?.span?.to)
+    if (from != null) chapterSet.add(from)
+    if (to != null) chapterSet.add(to)
+    if (from != null && to != null) spans.push({ name, from, to })
+    for (const ev of listOf(entry.events)) {
+      const who = text(ev?.who).trim() || "（未标注）"
+      const chapter = numOf(ev?.chapter) ?? from ?? null
+      if (chapter != null) chapterSet.add(chapter)
+      const channel = text(ev?.channel).trim() || "other"
+      if (!byWho.has(who)) byWho.set(who, [])
+      byWho.get(who).push({
+        entry: name, chapter, index: numOf(ev?.index) ?? 0, channel,
+        channelLabel: CHANNEL_LABEL[channel] ?? channel,
+        track: text(ev?.track) || "fact",
+        content: text(ev?.content).trim().slice(0, 220)
+      })
+    }
+  }
+  const chapters = [...chapterSet].filter((n) => n != null).sort((a, b) => a - b)
+  const tracks = [...byWho.entries()].map(([who, events]) => ({
+    who, count: events.length,
+    events: events.sort((a, b) => (a.chapter ?? 0) - (b.chapter ?? 0) || a.index - b.index)
+  })).sort((a, b) => b.count - a.count || a.who.localeCompare(b.who, "zh-Hans-CN"))
+  const used = new Set()
+  for (const t of tracks) for (const ev of t.events) used.add(ev.channel)
+  return {
+    tracks, chapters, spans: spans.sort((a, b) => a.from - b.from),
+    channels: [...used].map((key) => ({ key, label: CHANNEL_LABEL[key] ?? key })),
+    stats: { trackCount: tracks.length, eventCount: tracks.reduce((n, t) => n + t.count, 0), chapterCount: chapters.length, drawable: tracks.length > 0 && chapters.length > 0 }
+  }
+}
+
+function numOf(value) { const n = Number(value); return Number.isFinite(n) ? n : null }
+
+function timelineRun({ layout, entries: ctxEntries } = {}) {
+  // layout 里没有 events 明细，直接用 entries（run 收到的 ctx 里有）
+  const entries = listOf(ctxEntries ?? layout?.entries)
+  if (!entries.length) return { empty: true, reason: "没有 fact 条目", timeline: null }
+  const timeline = buildTimelineSync(entries)
+  if (!timeline.stats.drawable) {
+    return { empty: true, reason: "这份拆解没有事件级数据（events/span 为空）", timeline }
+  }
+  return { empty: false, timeline }
+}
+
+/** 泳道图：每角色一行，横轴＝章，圆点＝事件（颜色按 channel）。纯 HTML/CSS，不引图表库。 */
+function timelineRender(data) {
+  const timeline = data?.timeline
+  if (!timeline || data.empty) {
+    return `<div class="tl-empty"><p>${escText(data?.reason || "没有可画的时间线")}</p>
+      <p class="sub">时间线需要 fact 条目里的 events（谁、在哪个 channel、对应章节）——跑一次拆解/enrich 就有了。</p></div>`
+  }
+  const { tracks, chapters, channels, spans, stats } = timeline
+  const colOf = (chapter) => {
+    if (chapter == null) return -1
+    const idx = chapters.indexOf(chapter)
+    return idx < 0 ? -1 : idx
+  }
+  const colCount = Math.max(1, chapters.length)
+  const CH_COLOR = { say: "#f472b6", do: "#60a5fa", perceive: "#34d399", feel: "#fbbf24", state: "#a78bfa", other: "#94a3b8" }
+  const head = `<div class="tl-axis"><span class="tl-axis-label">角色 \\ 章</span>${chapters.map((ch) => `<span class="tl-tick">${ch}</span>`).join("")}</div>`
+  const legend = `<div class="tl-legend">${channels.map((c) => `<span class="tl-lg"><i style="background:${CH_COLOR[c.key] || CH_COLOR.other}"></i>${escText(c.label)}</span>`).join("")}</div>`
+  const spanRow = spans.length
+    ? `<div class="tl-spans"><span class="tl-axis-label">条目跨度</span>${spans.map((sp) => {
+        const a = colOf(sp.from), b = colOf(sp.to)
+        if (a < 0 || b < 0) return ""
+        const left = (a / colCount) * 100, width = ((b - a + 1) / colCount) * 100
+        return `<span class="tl-span" style="left:${left}%;width:${width}%" title="${escText(sp.name)}：第${sp.from}–${sp.to}章">${escText(sp.name)}</span>`
+      }).join("")}</div>`
+    : ""
+  const rows = tracks.map((track) => {
+    const dots = track.events.map((ev) => {
+      const col = colOf(ev.chapter)
+      if (col < 0) return ""
+      const left = ((col + 0.5) / colCount) * 100
+      const color = CH_COLOR[ev.channel] || CH_COLOR.other
+      const label = `第${ev.chapter ?? "?"}章 · ${ev.channelLabel}${ev.entry ? ` · ${ev.entry}` : ""}`
+      return `<button class="tl-dot" style="left:${left}%;background:${color}" title="${escText(ev.content)}" data-action="tl-dot" data-label="${escText(label)}" data-text="${escText(ev.content)}"></button>`
+    }).join("")
+    return `<div class="tl-row"><span class="tl-who">${escText(track.who)}<i>${track.count}</i></span><div class="tl-lane">${dots}</div></div>`
+  }).join("")
+  return `<div class="tl-wrap">
+    <div class="tl-stats">${stats.trackCount} 个角色 · ${stats.eventCount} 个事件 · ${stats.chapterCount} 章</div>
+    ${legend}
+    <div class="tl-chart">${head}${spanRow}${rows}</div>
+    <div class="tl-pick" id="tl-pick" hidden></div>
+  </div>`
+}
+
+/** 最小 HTML 转义（模块内自足，避免依赖 app.js 的 esc）。 */
+function escText(value) {
+  return String(value ?? "").replace(/[&<>"\x27]/gu, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]))
+}
+
 export const ANALYSIS_MODULES = Object.freeze([
   Object.freeze({
     id: 'chapter-editorial',
@@ -458,6 +567,15 @@ export const ANALYSIS_MODULES = Object.freeze([
     run: foreshadowAuditRun,
     render: foreshadowAuditRender
   }),
+  Object.freeze({
+    id: 'timeline',
+    label: '角色时间线',
+    scope: 'work',
+    hint: '角色泳道 × 章轴，看谁何时出场/说话/行动',
+    run: timelineRun,
+    render: timelineRender
+  }),
+
   Object.freeze({
     id: 'plot-density',
     label: '剧情密度',
