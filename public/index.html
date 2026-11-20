@@ -81,7 +81,12 @@ input, textarea, select { font: inherit; color: inherit; }
 .top-settings .gear-glyph { font-size: var(--ui-fs-md); }
 .pill { padding: 2px 10px; border: 1px solid var(--line); border-radius: var(--pill); font-size: var(--ui-fs-sm); color: var(--muted); }
 .topbar .sp { flex: 1; }
-.icon-btn { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; color: var(--muted); }
+.icon-btn {
+  width: var(--ui-ctl-h); height: var(--ui-ctl-h); border-radius: 50%;
+  display: grid; place-items: center; color: var(--muted);
+  font-size: var(--ui-fs-base); line-height: 1;
+  transition: background .12s ease, color .12s ease;
+}
 .icon-btn:hover { background: var(--soft); color: var(--ink); }
 .gear { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; border: 1px solid var(--line); color: var(--muted); }
 .gear:hover { color: var(--ink); border-color: var(--ink); }
@@ -681,14 +686,37 @@ button.modlog-row:focus-visible { outline: 2px solid var(--accent); outline-offs
 .chip:hover { border-color: var(--ink); }
 .count { font-size: var(--ui-fs-sm); color: var(--meta); }
 .pager { display: flex; gap: 10px; align-items: center; margin-top: 16px; font-size: var(--ui-fs-sm); color: var(--muted); }
-.btn-primary { background: var(--accent); color: var(--on-accent); border-radius: var(--pill); padding: 7px 18px; font-weight: 600; }
-.btn-primary:hover { background: var(--accent-hover); }
+/* ── OS-93 兼容层：老按钮类 → 套件口径 ───────────────────────────
+   183 处 HTML 引用不动，把老类重写成「与 .uikit-btn 同源的令牌组合」。
+   这样作者已有的页面立即获得统一的字号/内边距/圆角/交互，且日后
+   新代码写 .uikit-btn 或 .btn-primary 得到的是同一套视觉。
+   —— 三方开发者请优先用 .uikit-btn；老类保留为别名，不再新增变体。 */
+.btn-primary, .btn-ghost {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  height: var(--ui-ctl-h); padding: 0 calc(16px * var(--ui-scale));
+  border: 1px solid transparent; border-radius: var(--pill);
+  font-family: var(--sans); font-size: var(--ui-fs-base); font-weight: 600;
+  line-height: 1; cursor: pointer; white-space: nowrap;
+  transition: background .12s ease, border-color .12s ease, color .12s ease;
+}
+.btn-primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.btn-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
 .btn-primary:disabled { opacity: .5; cursor: default; }
-.btn-ghost { border: 1px solid var(--line); border-radius: var(--pill); padding: 6px 16px; color: var(--ink-2); }
-.btn-ghost:hover { border-color: var(--ink); }
-.select { border: 1px solid var(--line); border-radius: var(--radius); padding: 6px 10px; background: var(--bg); outline: none; max-width: 420px; }
-.file-input { border: 1px solid var(--line); border-radius: var(--radius); padding: 6px 10px; background: var(--bg); outline: none; font-family: var(--mono); font-size: var(--ui-fs-sm); min-width: 300px; }
-.file-input:focus, .select:focus { border-color: var(--ink); }
+.btn-primary:disabled:hover { background: var(--accent); border-color: var(--accent); }
+.btn-ghost { background: transparent; border-color: var(--line); color: var(--ink-2); font-weight: 400; }
+.btn-ghost:hover { border-color: var(--ink-2); background: var(--soft); }
+.btn-ghost:disabled { opacity: .5; cursor: default; }
+/* 表单控件：与 .uikit-input / .uikit-select 同口径 */
+.select, .file-input, .text {
+  height: var(--ui-ctl-h); box-sizing: border-box;
+  border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 0 var(--ui-ctl-px); background: var(--bg); color: var(--ink);
+  font-family: var(--sans); font-size: var(--ui-fs-md); outline: none;
+  transition: border-color .12s ease;
+}
+.select { max-width: 420px; }
+.file-input { font-family: var(--mono); font-size: var(--ui-fs-sm); min-width: 260px; }
+.select:focus, .file-input:focus, .text:focus { border-color: var(--accent); }
 .editor { width: 100%; min-height: 58vh; border: 1px solid var(--line); border-radius: var(--radius-md); padding: 20px 24px; background: var(--bg); font-family: var(--serif); font-size: var(--ui-fs-lg); line-height: 1.9; resize: vertical; outline: none; color: var(--ink-2); }
 .editor:focus { border-color: var(--ink); }
 .saved-chip { font-size: var(--ui-fs-sm); color: var(--ok); border: 1px solid var(--ok); border-radius: var(--pill); padding: 1px 10px; }
@@ -752,7 +780,12 @@ button.modlog-row:focus-visible { outline: 2px solid var(--accent); outline-offs
 .chapter-editor-col { min-width: 0; }
 
 /* ── 设置页＋产物中心（OS-11）────────────────────────────── */
-.kv-line { display: grid; grid-template-columns: 170px minmax(0, 1fr); gap: 10px; padding: 7px 0; border-bottom: 1px dashed var(--hair); font-size: var(--ui-fs-md); align-items: baseline; }
+.kv-line {
+  display: grid; grid-template-columns: 170px minmax(0, 1fr);
+  gap: 10px; padding: var(--ui-row-py) 0;
+  border-bottom: 1px dashed var(--hair);
+  font-size: var(--ui-fs-md); align-items: baseline;
+}
 .kv-line .k { color: var(--muted); }
 .kv-line .v { font-family: var(--mono); font-size: var(--ui-fs-sm); color: var(--ink-2); overflow-wrap: anywhere; }
 .artifacts-grid { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 16px; max-width: 1280px; align-items: start; }
@@ -817,9 +850,11 @@ button.modlog-row:focus-visible { outline: 2px solid var(--accent); outline-offs
 .uikit-chipfield-hint { font-size: var(--ui-fs-xs); color: var(--meta); }
 .uikit-chipfield-count {
   margin-left: auto; font-size: var(--ui-fs-xs); color: var(--meta);
-  font-variant-numeric: tabular-nums;
+  font-variant-numeric: tabular-nums; min-width: 18px; text-align: right;
 }
-.uikit-chipfield-actions { flex: 0 0 auto; }
+.uikit-chipfield-actions { flex: 0 0 auto; margin-left: 10px; }
+/* 「删」是低干扰的次要操作：文字按钮，进入删除态才高亮 */
+.uikit-chipfield[data-editing="1"] .uikit-chipfield-actions .uikit-btn { color: var(--danger); }
 .uikit-chipfield-body {
   display: flex; flex-wrap: wrap; gap: calc(6px * var(--ui-scale));
   min-height: calc(34px * var(--ui-scale)); align-items: flex-start;
