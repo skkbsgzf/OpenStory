@@ -146,7 +146,7 @@ import {
 import { factHealth } from './factGuard.mjs'
 import { enrichBook, enrichGraph } from './enrichEngine.mjs'
 import { generateViaComfy, probeComfy } from './comfyEngine.mjs'
-import { pickFile, pickFolder } from './nativePicker.mjs'
+import { pickFile, pickFolder, revealPath } from './nativePicker.mjs'
 import { activeCount, cancelJob, clearSettled, getJob, listJobs, submitJob } from './jobCenter.mjs'
 
 const enrichJobs = new Map()
@@ -2165,7 +2165,8 @@ function readLegacyDeduceState(root, bookId) {
   }
   if (endpointId === 'stylesGet') {
     const packs = await loadStylePacks(context.stylesDirs)
-    return sendJson(res, 200, { ok: true, styles: packs.styles, warnings: packs.warnings })
+    // OS-109：带上真实目录——前端「本机路径」要显示绝对路径并能一键打开
+    return sendJson(res, 200, { ok: true, styles: packs.styles, warnings: packs.warnings, dirs: (context.stylesDirs || []).filter(Boolean) })
   }
 
   if (endpointId === 'libraryDiagnose') {
@@ -2648,6 +2649,18 @@ function readLegacyDeduceState(root, bookId) {
       return sendError(res, result.code === 'UNSUPPORTED_PLATFORM' ? API_ERROR_CODES.INVALID_ENTRY : API_ERROR_CODES.WRITE_PROTOCOL_IO_FAILED, result.message)
     }
     return sendJson(res, 200, { ok: true, path: result.path })
+  }
+
+  if (endpointId === 'nativeReveal') {
+    // OS-109：在资源管理器里打开路径（文件夹＝打开；文件＝选中）。路径不存在如实报。
+    const p = text(request.path).trim()
+    if (!p) return sendError(res, API_ERROR_CODES.INVALID_ENTRY, 'path 必填')
+    const result = await revealPath(p)
+    if (!result.ok) {
+      const code = result.code === 'NOT_FOUND' ? API_ERROR_CODES.NOT_FOUND : API_ERROR_CODES.WRITE_PROTOCOL_IO_FAILED
+      return sendError(res, code, result.message)
+    }
+    return sendJson(res, 200, { ok: true })
   }
 
   if (endpointId === 'libraryCreate') {
