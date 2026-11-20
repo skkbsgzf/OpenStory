@@ -856,6 +856,32 @@ export const ENDPOINTS = Object.freeze({
     response: { ok: 'true', values: 'object' },
     errors: ['INVALID_ENTRY']
   },
+  kbConfigGet: {
+    method: 'GET',
+    path: '/api/kb/config',
+    // OS-97：读知识库配置（apiKey 掩码返回，不回明文）
+    request: { query: {} },
+    response: { ok: 'true', config: 'object', configPath: 'string', masked: 'boolean' },
+    errors: []
+  },
+  kbConfigPut: {
+    method: 'PUT',
+    path: '/api/kb/config',
+    // OS-97：写知识库配置（backend/baseUrl/apiKey/collections），写后立即重探服务
+    // apiKey 传 '__KEEP__' 表示保留原值（前端不改密钥时不回传明文）
+    request: { body: { backend: 'string?', baseUrl: 'string?', apiKey: 'string?', spaceId: 'string?', collections: 'object?' } },
+    response: { ok: 'true', status: 'object' },
+    errors: ['INVALID_ENTRY', 'WRITE_PROTOCOL_IO_FAILED']
+  },
+  kbTest: {
+    method: 'POST',
+    path: '/api/kb/test',
+    // OS-97：连接测试——用当前配置探一次 WeKnora + embedding，返回逐项结果（不写盘）
+    request: { body: { baseUrl: 'string?', apiKey: 'string?' } },
+    response: { ok: 'true', weknora: 'object', embedding: 'object', collections: 'array' },
+    errors: []
+  },
+
   changeLogGet: {
     method: 'GET',
     path: '/api/log',

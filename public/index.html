@@ -1031,6 +1031,15 @@ button.modlog-row:focus-visible { outline: 2px solid var(--accent); outline-offs
   color: var(--ink-2); text-indent: var(--doc-indent); margin: 0;
 }
 /* OS-97：设置左导航分组（本体设置 / 插件中心） */
+/* OS-97：知识库配置区 */
+.kb-collections { display: flex; flex-direction: column; gap: var(--ui-gap-xs); }
+.kb-collection-row { display: grid; grid-template-columns: 1fr 2fr auto; gap: var(--ui-gap-xs); align-items: center; }
+.kb-collection-row .btn-ghost { width: var(--ui-ctl-h); height: var(--ui-ctl-h); padding: 0; }
+.kb-lamp { margin-right: var(--ui-gap-2xs); }
+.kb-lamp.is-up { color: var(--ok); }
+.kb-lamp.is-down { color: var(--danger); }
+.kb-ops { margin-top: var(--ui-gap-lg); }
+.kv-line-sep { height: 1px; background: var(--hair); margin: var(--ui-gap-xs) 0; }
 .settings-nav-group { display: flex; flex-direction: column; gap: var(--ui-gap-3xs); }
 .settings-nav-group + .settings-nav-group { margin-top: var(--ui-gap-lg); padding-top: var(--ui-gap-md); border-top: 1px solid var(--hair); }
 .settings-nav-grouphead {
