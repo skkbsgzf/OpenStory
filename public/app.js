@@ -6262,7 +6262,10 @@ function createHtml() {
       <h3><span class="no">1</span>位置与名字</h3>
       <div class="row">
         <div class="field"><label>放在哪个目录下（绝对路径）</label>
-          <input id="create-parent" placeholder="D:\\写作" value="${esc(create.parent)}"></div>
+          <div class="input-with-btn">
+            <input id="create-parent" placeholder="D:\\写作" value="${esc(create.parent)}">
+            <button class="btn-ghost" data-action="pick-folder" data-target="create-parent" title="弹出 Windows 文件夹选择框">浏览…</button>
+          </div></div>
         <div class="field"><label>库名（也是文件夹名）</label>
           <input id="create-name" placeholder="长夜" value="${esc(create.name)}"></div>
       </div>
@@ -6284,6 +6287,36 @@ function createHtml() {
       <button class="btn-primary" data-action="create-submit"${create.running ? ' disabled' : ''}>${create.running ? '创建中…' : '创建库'}</button>
     </div>`}
   </div>`
+}
+
+/** 原生选择器（OS-108）：调 daemon 弹 Windows 对话框 → 回填目标输入框。 */
+function pickNativePath(triggerEl, kind) {
+  const targetId = triggerEl.dataset.target || ''
+  const inputEl = targetId ? document.getElementById(targetId) : null
+  const current = text(inputEl?.value).trim()
+  api('/api/native/pick', {
+    method: 'POST',
+    body: JSON.stringify({
+      kind,
+      title: kind === 'file' ? '选择文件' : '选择文件夹',
+      initialDir: current,
+      ...(triggerEl.dataset.filter ? { filter: triggerEl.dataset.filter } : {})
+    })
+  }).then((payload) => {
+    if (!payload?.ok || !payload.path) return  // 取消：静默
+    if (inputEl) {
+      inputEl.value = kind === 'folder'
+        ? payload.path
+        : (triggerEl.dataset.mode === 'full' ? payload.path : payload.path.replace(/[\\/][^\\/]+$/u, ''))
+      inputEl.dispatchEvent(new Event('input', { bubbles: true }))
+    }
+    render()
+  }).catch((error) => {
+    const msg = (error && error.code ? error.code + ' · ' : '') + text((error && error.message) || error)
+    if (state.libCreate) state.libCreate.error = msg
+    else state.error = msg
+    render()
+  })
 }
 
 function importHtml() {
@@ -10295,6 +10328,9 @@ document.addEventListener('click', (event) => {
     state.view = 'libraries'
     state.repair = null
     render()
+  } else if (action === 'pick-folder' || action === 'pick-file') {
+    // OS-108：调 daemon 弹 Windows 原生对话框（浏览器拿不到绝对路径）
+    pickNativePath(target, action === 'pick-file' ? 'file' : 'folder')
   } else if (action === 'create-submit') {
     submitCreate()
   } else if (action === 'create-open') {

@@ -146,6 +146,7 @@ import {
 import { factHealth } from './factGuard.mjs'
 import { enrichBook, enrichGraph } from './enrichEngine.mjs'
 import { generateViaComfy, probeComfy } from './comfyEngine.mjs'
+import { pickFile, pickFolder } from './nativePicker.mjs'
 import { activeCount, cancelJob, clearSettled, getJob, listJobs, submitJob } from './jobCenter.mjs'
 
 const enrichJobs = new Map()
@@ -2629,6 +2630,24 @@ function readLegacyDeduceState(root, bookId) {
     const deleted = await deleteChapter(authorized.root, request.file)
     if (!deleted.ok) return sendError(res, deleted.code ?? API_ERROR_CODES.INVALID_ENTRY, deleted.message, deleted.details)
     return sendJson(res, 200, { ok: true, backup: deleted.backup })
+  }
+
+  if (endpointId === 'nativePick') {
+    // OS-108：原生选择器——浏览器拿不到绝对路径，由 daemon 弹 Windows 原生对话框。
+    // kind: 'folder'（默认）/ 'file'；取消＝ok:false + CANCELLED（前端静默处理）。
+    // 不读库、不写盘，纯对话框；非 Windows 如实报 UNSUPPORTED_PLATFORM。
+    const kind = text(request.kind || 'folder').trim()
+    const title = text(request.title).trim() || (kind === 'file' ? '选择文件' : '选择文件夹')
+    const initialDir = text(request.initialDir).trim()
+    const result = kind === 'file'
+      ? await pickFile({ title, initialDir, filter: text(request.filter).trim() || undefined })
+      : await pickFolder({ title, initialDir })
+    if (!result.ok) {
+      // 取消不是错误：200 + ok:false + code，前端据此静默
+      if (result.code === 'CANCELLED') return sendJson(res, 200, { ok: false, code: 'CANCELLED', message: '已取消' })
+      return sendError(res, result.code === 'UNSUPPORTED_PLATFORM' ? API_ERROR_CODES.INVALID_ENTRY : API_ERROR_CODES.WRITE_PROTOCOL_IO_FAILED, result.message)
+    }
+    return sendJson(res, 200, { ok: true, path: result.path })
   }
 
   if (endpointId === 'libraryCreate') {
