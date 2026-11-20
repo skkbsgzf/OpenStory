@@ -101,6 +101,12 @@
       `.kv-line`）已重写为与 uikit 同源的令牌组合，**不再新增变体**
     - 多值输入用 `chipField`（标签式），**不要**再用「一行一个」的 textarea
 
+17. **间距也只准用令牌。** `--ui-gap-3xs|2xs|xs|sm|md|lg|xl|2xl`（全部跟 `--ui-scale`
+    缩放）；页面级栅格允许 `calc(Npx * var(--ui-scale))`。
+    专用可视化组件（`.ss-*` / `.ded-*` / `.ct-*` 等）**可以有自己的类名前缀，
+    但字号/颜色/间距必须走全局令牌**——不允许另建一套像素体系。
+    详见 [docs/UI-KIT.md](./docs/UI-KIT.md) 第 7 节。
+
 ## 发布规范（推送前必读）
 
 推 GitHub 前必过 [PUBLISHING.md](./PUBLISHING.md) 的检查单（协议干净/demo 干净/人机双读）；
