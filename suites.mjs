@@ -275,7 +275,17 @@ export function suitePublic(suite, suiteState) {
     capabilities: suite.capabilities,
     ...(settingsSchema ? { settingsSchema } : {}),
     bundledSkills,
-    source: suite.source
+    source: suite.source,
+    // OS-99：配齐来源——作者要看得出这个套件从哪来、装在哪、有没有被本机覆盖
+    sourceDetail: {
+      kind: suite.source,                       // 内置 / 本机
+      dir: text(suite.dir),                     // 物理目录（绝对路径）
+      entry: settingsMode === 'page'
+        ? join(text(suite.dir), text(suite.capabilities.settings.entry))
+        : '',                                   // page 模式的自带页路径
+      shadowed: suite.shadowed === true,        // 是否覆盖了同名内置套件
+      loadedFrom: text(suite.loadedFrom) || text(suite.source)
+    }
   }
 }
 

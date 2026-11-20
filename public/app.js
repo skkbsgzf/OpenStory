@@ -4385,31 +4385,131 @@ function suiteValue(key, id, fallback) {
   return value === undefined || value === null || value === '' ? fallback : value
 }
 
+/**
+ * 业务套件中心（OS-99 主从两栏，对齐 DSH 插件管理中心）。
+ *
+ * 作者口径：「业务套件需要拆开做，配齐来源。」
+ * 参照 DSH：左边一列是用户接进来的插件（小说是小说、剧本是剧本），右边是选中项详情。
+ *
+ * 布局：
+ *   左列（260px）  套件清单：名称 / 域名标签 / 启用状态点。点选即切换右栏。
+ *   右栏           详情：来源信息（内置还是本机、物理路径、自带页、捆绑技能）
+ *                 ＋ 能力清单 ＋ 启停开关 ＋ 设置区（schema 表单 或 page iframe）
+ */
 function suitesSectionHtml() {
-  const enabledCount = state.suites.filter((suite) => suite.enabled !== false).length
-  const rows = state.suites.map((suite) => {
+  const list = Array.isArray(state.suites) ? state.suites : []
+  const enabledCount = list.filter((suite) => suite.enabled !== false).length
+  // 选中项：默认第一个；点击左列切换
+  const activeId = state.settings.suiteId && list.some((suite) => suite.id === state.settings.suiteId)
+    ? state.settings.suiteId
+    : (list[0]?.id ?? '')
+  const active = list.find((suite) => suite.id === activeId) ?? null
+
+  const listRows = list.map((suite) => {
     const on = suite.enabled !== false
-    const desc = text(suite.description).trim()
-    return `<div class="suite-manage-row${on ? '' : ' off'}" title="${esc(desc)}">
-      <div class="sm-main">
-        <button class="sm-name" data-action="suite-open" data-id="${esc(suite.id)}" title="进这个套件的设置页">${esc(suite.name)}</button>
-        <span class="pill">v${esc(suite.version)}</span>
-        <span class="pill">${esc(suite.vendor)}</span>
-        ${suite.domains?.length ? `<span class="count">${esc(suite.domains.join('／'))}</span>` : ''}
-        <div class="count one-line">${esc(desc)}</div>
+    const isActive = suite.id === activeId
+    const domains = Array.isArray(suite.domains) ? suite.domains : []
+    return `<button class="suite-list-item${isActive ? ' on' : ''}${on ? '' : ' off'}"
+      data-action="suite-select" data-id="${esc(suite.id)}" title="${esc(suite.description || '')}">
+      <span class="sli-name">${esc(suite.name)}</span>
+      <span class="sli-meta">
+        ${domains.length ? `<span class="sli-domain">${esc(domains.join('／'))}</span>` : ''}
+        <span class="sli-state${on ? ' is-on' : ''}">${on ? '启用' : '停用'}</span>
+      </span>
+    </button>`
+  }).join('')
+
+  const empty = `<div class="suite-empty">
+    <p class="uikit-empty-title">还没有套件</p>
+    <p class="uikit-empty-hint">把套件目录丢进本机 suites 货架即上新</p>
+  </div>`
+
+  return `<div class="step suite-center">
+    <h3>业务套件<span class="sub">共 ${list.length} 个 · 启用 ${enabledCount}</span></h3>
+    <div class="suite-split">
+      <aside class="suite-col">
+        ${listRows || empty}
+      </aside>
+      <section class="suite-detail-col">
+        ${active ? suiteDetailPaneHtml(active) : '<p class="sub" style="padding:var(--ui-gap-lg)">选一个套件看详情</p>'}
+      </section>
+    </div>
+  </div>`
+}
+
+/** 右栏：单个套件的详情（来源 / 能力 / 启停 / 设置区）。 */
+function suiteDetailPaneHtml(suite) {
+  const caps = suite.capabilities ?? { settings: { mode: 'none' }, pages: [], services: [] }
+  const mode = caps.settings?.mode ?? 'none'
+  const src = suite.sourceDetail ?? {}
+  const on = suite.enabled !== false
+  const domains = Array.isArray(suite.domains) ? suite.domains : []
+  const pages = Array.isArray(caps.pages) ? caps.pages : []
+  const services = Array.isArray(caps.services) ? caps.services : []
+  const skills = Array.isArray(suite.bundledSkills) ? suite.bundledSkills : []
+
+  const rows = []
+  rows.push(['来源', `${esc(src.kind || suite.source || '—')}${src.shadowed ? '（覆盖同名内置）' : ''}`])
+  if (src.dir) rows.push(['安装目录', `<span class="mono">${esc(src.dir)}</span>`])
+  if (src.entry) rows.push(['自带设置页', `<span class="mono">${esc(src.entry)}</span>`])
+  rows.push(['版本', `v${esc(suite.version)}`])
+  rows.push(['归属', esc(suite.vendor)])
+  if (domains.length) rows.push(['业务域', esc(domains.join('／'))])
+  rows.push(['设置模式', { schema: '宿主表单（schema）', page: '套件自带页（page）', none: '无设置项' }[mode] || mode])
+
+  const sourceBlock = `<dl class="suite-source">${rows.map(([k, v]) =>
+    `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl>`
+
+  const capsBlock = `
+    <div class="suite-caps">
+      ${pages.length ? `<div class="suite-cap-row"><b>自带业务页</b><span>${pages.map((p) => esc(p.title || p.id)).join('、')}</span></div>` : ''}
+      ${services.length ? `<div class="suite-cap-row"><b>自带服务</b><span>${services.length} 项</span></div>` : ''}
+      ${skills.length ? `<div class="suite-cap-row"><b>捆绑技能</b><span>${skills.length} 个：${skills.slice(0, 6).map((s) => esc(s.name)).join('、')}${skills.length > 6 ? ' …' : ''}</span></div>` : ''}
+    </div>`
+
+  const header = `<div class="suite-detail-head">
+      <div class="sdh-main">
+        <h4>${esc(suite.name)}</h4>
+        <p class="sub">${esc(suite.description || '')}</p>
       </div>
-      <div class="sm-ops">
-        <button class="btn-ghost" data-action="suite-open" data-id="${esc(suite.id)}">设置 →</button>
-        <button class="sm-toggle${on ? ' on' : ''}" data-action="suite-toggle" data-id="${esc(suite.id)}" title="${on ? '停用（规则退回默认，值保留）' : '启用'}">
-          <span class="knob"></span><span class="lab">${on ? '启用中' : '已停用'}</span>
-        </button>
+      <button class="sm-toggle${on ? ' on' : ''}" data-action="suite-toggle" data-id="${esc(suite.id)}"
+        title="${on ? '停用（规则退回默认，值保留）' : '启用'}">
+        <span class="knob"></span><span class="lab">${on ? '启用中' : '已停用'}</span>
+      </button>
+    </div>`
+
+  const paused = on ? '' : '<div class="warn-box"><b>已停用</b>——这套件的规则当前走内置默认；下面的值保留，启用即恢复。</div>'
+
+  let settingsBody = ''
+  if (mode === 'page') {
+    const theme = isDarkSurface() ? 'dark' : 'light'
+    const entry = text(caps.settings.entry)
+    const sep = entry.includes('?') ? '&' : '?'
+    settingsBody = `<iframe class="suite-frame" src="/suite-assets/${esc(suite.id)}/${esc(entry)}${sep}theme=${theme}" title="${esc(suite.name)} 设置"></iframe>`
+  } else if (mode === 'schema') {
+    const schema = Array.isArray(suite.settingsSchema) ? suite.settingsSchema : []
+    settingsBody = `${schema.length ? schema.map(settingFieldHtml).join('') : '<p class="sub">这套件没有声明设置项。</p>'}
+      <div class="err" id="suite-err"></div>
+      <div class="ops">
+        <button class="btn-primary" data-action="suite-save" data-id="${esc(suite.id)}">保存设置</button>
+      </div>`
+  } else {
+    settingsBody = '<p class="sub">这套件没有设置项——它只提供规则或技能。</p>'
+  }
+
+  return `${header}
+    ${paused}
+    <div class="suite-detail-body">
+      <div class="suite-detail-section">
+        <h5>来源与身份</h5>
+        ${sourceBlock}
+        ${capsBlock}
+      </div>
+      <div class="suite-detail-section">
+        <h5>设置</h5>
+        ${settingsBody}
       </div>
     </div>`
-  }).join('')
-  return `<div class="step">
-    <h3>业务套件<span class="cnt">启用 ${enabledCount} · 停用 ${state.suites.length - enabledCount}</span></h3>
-    <div class="suite-manage">${rows || '<div class="count" style="padding:10px">货架为空——把套件目录丢进本机 suites 目录即上新。</div>'}</div>
-  </div>`
 }
 
 function settingFieldHtml(setting) {
@@ -10255,6 +10355,11 @@ document.addEventListener('click', (event) => {
     } else {
       deduceEngineTurn({ customText: customValue })
     }
+  } else if (action === 'suite-select') {
+    // OS-99：主从两栏——点左列切换右栏详情，不整页跳转
+    state.settings.suiteId = target.dataset.id
+    state.settings.section = 'suites'
+    render()
   } else if (action === 'kb-save') {
     saveKbConfig()
   } else if (action === 'kb-test') {
