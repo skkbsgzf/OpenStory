@@ -777,7 +777,17 @@ button.modlog-row:focus-visible { outline: 2px solid var(--accent); outline-offs
 .lib-head-row .sp { flex: 1; }
 .lib-head-row h1 { margin: 0; }
 .step { border: 1px solid var(--line); border-radius: var(--radius-md); padding: var(--ui-gap-lg) var(--ui-gap-xl); margin-bottom: var(--ui-gap-lg); background: var(--bg); }
-.step h3 { margin: 0 0 12px; font-size: var(--ui-fs-base); display: flex; align-items: center; gap: var(--ui-gap-sm); }
+.step h3 {
+  margin: 0 0 var(--ui-gap-md); font-size: var(--ui-fs-base);
+  display: flex; align-items: baseline; gap: var(--ui-gap-sm); flex-wrap: wrap;
+  font-weight: 600; color: var(--ink);
+}
+/* OS-98：.sub 之前完全没定义——设置页所有「标题＋副说明」都挤成一坨（作者实测） */
+.step h3 .sub,
+.step h3 > span.sub {
+  font-size: var(--ui-fs-xs); font-weight: 400; color: var(--meta);
+  line-height: var(--ui-lh-normal);
+}
 .step h3 .no { width: 20px; height: 20px; border-radius: 50%; background: var(--ink); color: var(--bg); display: grid; place-items: center; font-size: var(--ui-fs-xs); flex: 0 0 20px; }
 .step .row { display: flex; gap: var(--ui-gap-md); flex-wrap: wrap; align-items: center; margin-top: var(--ui-gap-md); }
 .step .field { display: flex; flex-direction: column; gap: var(--ui-gap-2xs); }
@@ -788,7 +798,14 @@ button.modlog-row:focus-visible { outline: 2px solid var(--accent); outline-offs
 .big-opts { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: var(--ui-gap-md); }
 .big-opt { display: flex; flex-direction: column; gap: var(--ui-gap-2xs); border: 1px solid var(--line); border-radius: var(--radius-md); padding: var(--ui-gap-lg) var(--ui-gap-lg); text-align: left; background: var(--bg); }
 .big-opt:hover { border-color: var(--ink); }
-.big-opt.on { border: 2px solid var(--ink); background: var(--accent-soft); }
+/* OS-98：选中态原来是 2px 实心黑框，看着像失控的焦点环（作者实测），
+   改为主色 1px + 主色浅底 + 内描边，与 .uikit-btn 的选中语义一致。 */
+.big-opt.on {
+  border: 1px solid var(--accent);
+  background: var(--accent-soft);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+.big-opt:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .big-opt b { font-size: var(--ui-fs-base); }
 .big-opt b .src { font-size: var(--ui-fs-2xs); color: var(--meta); border: 1px solid var(--line); border-radius: var(--pill); padding: 0 6px; margin-left: var(--ui-gap-xs); vertical-align: 1px; font-weight: 400; }
 .big-opt span { font-size: var(--ui-fs-sm); color: var(--muted); line-height: 1.6; }
@@ -1031,6 +1048,57 @@ button.modlog-row:focus-visible { outline: 2px solid var(--accent); outline-offs
   color: var(--ink-2); text-indent: var(--doc-indent); margin: 0;
 }
 /* OS-97：设置左导航分组（本体设置 / 插件中心） */
+/* ══ OS-98 表单控件统一（作者：按钮设计全都有问题）══════════════
+   此前 checkbox / radio / range 全是浏览器原生控件：
+   · checkbox 是刺眼的系统蓝（截图里生图那个勾）
+   · 与珊瑚主色、暗皮完全不搭
+   统一用 accent-color + 尺寸令牌，一行 CSS 让所有原生控件跟主题走。 */
+input[type="checkbox"],
+input[type="radio"],
+input[type="range"],
+progress {
+  accent-color: var(--accent);
+}
+input[type="checkbox"],
+input[type="radio"] {
+  width: calc(15px * var(--ui-scale));
+  height: calc(15px * var(--ui-scale));
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+input[type="checkbox"]:focus-visible,
+input[type="radio"]:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* 开关行：勾选框 + 标签 + 说明，三者基线对齐（此前是散的） */
+.cfg-switch {
+  display: flex; align-items: center; gap: var(--ui-gap-sm);
+  font-size: var(--ui-fs-sm); color: var(--ink-2);
+  cursor: pointer; line-height: var(--ui-lh-normal);
+  min-height: var(--ui-ctl-h);
+}
+.cfg-switch input { margin: 0; }
+.cfg-switch span { flex: 1; min-width: 0; }
+
+/* 设置页里的所有按钮/输入框统一走 uikit 口径（含 .step 内部） */
+.step .btn-primary,
+.step .btn-ghost,
+.step .uikit-btn {
+  height: var(--ui-ctl-h);
+  font-size: var(--ui-fs-base);
+}
+.step input.text,
+.step select.select,
+.step input.file-input,
+.step .uikit-input,
+.step .uikit-select {
+  height: var(--ui-ctl-h);
+  font-size: var(--ui-fs-md);
+  border-radius: var(--radius);
+}
+
 /* OS-97：知识库配置区 */
 .kb-collections { display: flex; flex-direction: column; gap: var(--ui-gap-xs); }
 .kb-collection-row { display: grid; grid-template-columns: 1fr 2fr auto; gap: var(--ui-gap-xs); align-items: center; }
@@ -2255,6 +2323,7 @@ border-left: 2px solid var(--accent); padding: var(--ui-gap-xs) var(--ui-gap-md)
 <!-- 单段分析结果（OS-37：右键一段 → 分析这一段） -->
 <aside class="para-result" id="para-result"></aside>
 
-<script src="./app.js" defer></script>
+<!-- OS-98：?v= 让浏览器在代码更新后必然拿到新版本（此前强缓存导致改动不生效） -->
+<script src="./app.js?v=98" defer></script>
 </body>
 </html>
