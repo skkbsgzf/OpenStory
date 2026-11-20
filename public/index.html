@@ -17,7 +17,7 @@
   --warn: #c48a00; --warn-ink: #a06a00; --warn-on-dark: #ffd7a8;
   --on-accent: #ffffff;
   --scene-deep: #2b2a4a; --scene-mid: #4a3d6b; --scene-far: #6b4f6b; --scene-overlay: rgba(20,18,30,.55);
-  --radius: 10px; --radius-md: 14px; --radius-lg: 20px; --pill: 999px;
+  --radius-sm: 6px; --radius: 10px; --radius-md: 14px; --radius-lg: 20px; --pill: 999px;
   --shadow: 0 8px 30px rgba(34,34,34,.08);
   /* 卡片与浮层的语义色/影（OS-49，照 OpenDesign 逆出的口径）：
      · --surface-card 是「比画布深一档的中性面」，从 ink 混进 bg 派生（不用偏暖的 --soft，
@@ -561,13 +561,57 @@ button.modlog-row:focus-visible { outline: 2px solid var(--accent); outline-offs
    没有这条，红色停止按钮会永远显示（OS-51 作者指出） */
 .composer .send[hidden] { display: none; }
 .composer .send[hidden] { display: none; }
-/* 首次出现章节（OS-96）：树徽标＋工具栏筛选＋详情就地编辑 */
-.fc-badge { flex-shrink: 0; font-size: 9.5px; color: var(--accent); border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent); padding: 0 6px; border-radius: var(--pill); white-space: nowrap; }
+/* 首次出现章节（OS-96 → OS-96b 治理）：
+   原实现三个控件各写各的（9.5/11.5/12px 三档字号、宽度 52/58 两种、只有 fc-input 有内边距），
+   且 align-items:baseline 让 number input 与文字基线错位（作者实测截图）。
+   现在统一走控件令牌 + 居中对齐 + 数字框固定宽度。 */
+.fc-badge {
+  flex-shrink: 0; display: inline-flex; align-items: center;
+  height: calc(var(--ui-ctl-h) * 0.62);
+  padding: 0 var(--ui-gap-xs);
+  font-size: var(--ui-fs-2xs); line-height: 1;
+  color: var(--accent);
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+  border-radius: var(--pill); white-space: nowrap;
+}
 .fc-badge.fc-base { color: var(--meta); border-color: var(--hair); }
-.fc-filter { display: inline-flex; align-items: baseline; gap: var(--ui-gap-2xs); font-size: 12px; color: var(--ink-2); white-space: nowrap; }
-.fc-filter input { width: 58px; }
-.fc-edit { display: inline-flex; align-items: baseline; gap: var(--ui-gap-2xs); font-size: 11.5px; color: var(--meta); white-space: nowrap; }
-.fc-input { width: 52px; padding: var(--ui-gap-3xs) var(--ui-gap-xs); font-size: 12px; }
+
+/* 工具栏筛选：文字与输入框居中对齐，不再 baseline 错位 */
+.fc-filter {
+  display: inline-flex; align-items: center; gap: var(--ui-gap-xs);
+  font-size: var(--ui-fs-sm); color: var(--ink-2); white-space: nowrap;
+}
+.fc-filter input,
+.fc-input {
+  box-sizing: border-box;
+  width: calc(52px * var(--ui-scale));
+  height: calc(var(--ui-ctl-h) * 0.8);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 0 var(--ui-gap-xs);
+  font-family: var(--sans);
+  font-size: var(--ui-fs-sm);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  color: var(--ink);
+  background: var(--bg);
+  outline: none;
+  transition: border-color .12s ease;
+}
+.fc-filter input:focus,
+.fc-input:focus { border-color: var(--accent); }
+/* 去掉 number 输入框的原生上下箭头——58px 宽里它挤掉数字（作者截图里两个灰块就是它） */
+.fc-filter input::-webkit-outer-spin-button,
+.fc-filter input::-webkit-inner-spin-button,
+.fc-input::-webkit-outer-spin-button,
+.fc-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.fc-filter input,
+.fc-input { -moz-appearance: textfield; appearance: textfield; }
+
+.fc-edit {
+  display: inline-flex; align-items: center; gap: var(--ui-gap-2xs);
+  font-size: var(--ui-fs-xs); color: var(--meta); white-space: nowrap;
+}
 
 /* 弹层（Agent 设置 / 待确认卡） */
 .overlay { position: fixed; inset: 0; background: rgba(20,18,16,.42); display: none; place-items: center; z-index: 90; }
