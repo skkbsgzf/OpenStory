@@ -1724,6 +1724,7 @@ function readLegacyDeduceState(root, bookId) {
       ok: true,
       beats: result.beats,
       feedback: result.feedback,
+      options: result.options ?? [],
       ...(savedNode ? { node: savedNode } : {}),
       ...(sessionSaveError ? { sessionError: sessionSaveError } : {})
     })

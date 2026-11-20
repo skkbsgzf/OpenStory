@@ -80,7 +80,8 @@ export function worldFeedbackPrompt({ pov, castBeats, playerAction }) {
     '- 一律对「你」说话：写你看到/听到/感受到什么（OS-92 人称铁律）；',
     '- 各角色的反应如实织入（台词保留原话引号），但不照抄素材的心理描写——那是演员视角；',
     '- 不替玩家决定下一步；不总结「本幕说明了什么」；',
-    '- 200–400 字，只输出反馈正文，不要标题和列表。'
+    '- 反馈之后另起一行输出三行分支选项（每行以「>」开头）：基于眼前情境给玩家的下一步行动分支，第一人称「我…」开头，方向明显不同（例：> 我举灯走近看那只眼 / > 我退回门口装作什么都没发生 / > 我开口唤他）。分支是玩家的决定素材，不算反馈正文。',
+    '- 反馈正文 200–400 字，不要标题和列表。'
   ].join('\n')
 }
 
@@ -119,4 +120,13 @@ export function fallbackActivation({ castNames, lastText = '', lastServed = [], 
   // mention：被点名的全上；没人被点名→最多 1 个（首个）
   const hit = names.filter((name) => lastText.includes(name))
   return hit.length ? hit.slice(0, 2) : names.slice(0, 1)
+}
+
+
+/** 解析世界反馈里的「>」分支选项（OS-98）：反馈正文与分支拆开。 */
+export function splitFeedbackOptions(feedback) {
+  const lines = String(feedback ?? '').split(/\r?\n/u)
+  const options = lines.filter((line) => line.trim().startsWith('>')).map((line) => line.trim().replace(/^>\s*/u, '').trim()).filter(Boolean)
+  const body = lines.filter((line) => !line.trim().startsWith('>')).join('\n').trim()
+  return { body, options: options.slice(0, 4) }
 }

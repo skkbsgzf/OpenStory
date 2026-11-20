@@ -1594,6 +1594,21 @@ html[data-doc-auto-gap="off"] .doc-block { margin-bottom: 0; }
 .ded-flow:not([data-paper="1"]) .fl-scroll-page {
   background: color-mix(in srgb, var(--bg) 90%, transparent); backdrop-filter: blur(14px); }
 /* 消息：左侧拍号栏＋右侧内容 */
+/* 登场角色署名气泡＋情境分支（OS-98） */
+.fl-beat { align-self: flex-start; max-width: 88%; padding: 8px 14px 9px;
+  background: color-mix(in srgb, var(--bg) 84%, transparent); backdrop-filter: blur(6px);
+  border-left: 2px solid color-mix(in srgb, var(--ink) 30%, transparent);
+  border-radius: 4px 12px 12px 12px; font-size: 13px; line-height: 1.8; color: var(--ink-2); }
+.ded-flow[data-paper="1"] .fl-beat { background: var(--surface-card); border: 1px solid var(--hair); border-left: 2px solid var(--hair); backdrop-filter: none; }
+.fl-beat-name { display: inline-block; font-size: 11px; font-weight: 700; color: var(--accent); margin-right: 7px; }
+.fl-beat-text { font-family: var(--serif); }
+.fl-options { display: flex; flex-direction: column; gap: 6px; align-self: flex-start; }
+.fl-opt { display: flex; align-items: baseline; gap: 8px; text-align: left; max-width: 100%;
+  border: 1px solid var(--hair); background: color-mix(in srgb, var(--bg) 88%, transparent);
+  border-radius: var(--radius-sm); padding: 8px 13px; font-size: 13px; color: var(--ink); cursor: pointer; }
+.fl-opt:hover { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.fl-opt-arrow { color: var(--accent); flex-shrink: 0; }
+
 /* AI 叙述＝左气泡（OS-91 酒馆式）：拍号是气泡内小签，不再压在纸边 */
 .fl-msg { position: relative; align-self: flex-start; max-width: 100%;
   background: color-mix(in srgb, var(--bg) 92%, transparent); backdrop-filter: blur(10px);
