@@ -787,11 +787,38 @@ button.modlog-row:focus-visible { outline: 2px solid var(--accent); outline-offs
 .step h3 > span.sub {
   font-size: var(--ui-fs-xs); font-weight: 400; color: var(--meta);
   line-height: var(--ui-lh-normal);
+  white-space: normal; overflow-wrap: anywhere;
+  flex: 1 1 auto; min-width: 0;
 }
 .step h3 .no { width: 20px; height: 20px; border-radius: 50%; background: var(--ink); color: var(--bg); display: grid; place-items: center; font-size: var(--ui-fs-xs); flex: 0 0 20px; }
 .step .row { display: flex; gap: var(--ui-gap-md); flex-wrap: wrap; align-items: center; margin-top: var(--ui-gap-md); }
 .step .field { display: flex; flex-direction: column; gap: var(--ui-gap-2xs); }
 .step .field label { font-size: var(--ui-fs-sm); color: var(--muted); }
+/* OS-100：label 默认 block，但开关型 label 必须是 flex（否则勾选框与文字竖排——
+   作者截图里的「用中文推理（推荐）」竖着一列就是这么来的） */
+.step .field label.cfg-switch,
+.field label.cfg-switch {
+  display: flex !important; align-items: center;
+  gap: var(--ui-gap-sm); font-size: var(--ui-fs-sm);
+  color: var(--ink-2); cursor: pointer; font-weight: 400;
+}
+/* OS-100：.field input 的 width:100% 会把 checkbox 撑满整行（实测 662px）——
+   勾选框必须钉死尺寸，否则「红方块悬空」就是因为它在 662px 里居中显示 */
+.step .field label.cfg-switch input[type="checkbox"],
+.field label.cfg-switch input[type="checkbox"],
+.step .field label.cfg-switch input[type="radio"],
+.field label.cfg-switch input[type="radio"] {
+  width: calc(15px * var(--ui-scale)) !important;
+  min-width: calc(15px * var(--ui-scale)) !important;
+  max-width: calc(15px * var(--ui-scale)) !important;
+  height: calc(15px * var(--ui-scale)) !important;
+  margin: 0 !important;
+  flex: 0 0 auto !important;
+}
+/* 表单里的 checkbox/radio 一律不参与 width:100% —— 全局兜底 */
+input[type="checkbox"], input[type="radio"] {
+  width: auto; min-width: 0;
+}
 .step input { border: 1px solid var(--line); border-radius: var(--radius); padding: var(--ui-gap-sm) var(--ui-gap-md); outline: none; background: var(--bg); min-width: 300px; }
 .step input:focus { border-color: var(--ink); }
 .path-preview { font-family: var(--mono); font-size: var(--ui-fs-sm); color: var(--meta); overflow-wrap: anywhere; margin-top: var(--ui-gap-sm); }
@@ -1048,6 +1075,31 @@ button.modlog-row:focus-visible { outline: 2px solid var(--accent); outline-offs
   color: var(--ink-2); text-indent: var(--doc-indent); margin: 0;
 }
 /* OS-97：设置左导航分组（本体设置 / 插件中心） */
+/* ══ OS-100 按钮容器基础类（.row / .ops 此前根本不存在）══════════
+   全站 30 处 inline `style="display:flex;gap:10px;align-items:center"` 
+   就是在给这两个类「临时补课」——也正因如此按钮间距、对齐各不相同。
+   现在补上真类，inline 全部撤掉。 */
+.row {
+  display: flex; align-items: center; gap: var(--ui-gap-md);
+  flex-wrap: wrap; margin-top: var(--ui-gap-md);
+}
+.row:first-child { margin-top: 0; }
+.row.stack { flex-direction: column; align-items: stretch; }
+
+.ops {
+  display: flex; align-items: center; gap: var(--ui-gap-sm);
+  flex-wrap: wrap; margin-top: var(--ui-gap-lg);
+}
+.ops:first-child { margin-top: 0; }
+.ops .sp, .row .sp { flex: 1 1 auto; }
+
+/* 字段下方的说明文字（此前用 .count + inline line-height 拼出来的） */
+.field-note {
+  margin: var(--ui-gap-2xs) 0 0;
+  font-size: var(--ui-fs-xs); line-height: var(--ui-lh-loose);
+  color: var(--meta);
+}
+
 /* ══ OS-98 表单控件统一（作者：按钮设计全都有问题）══════════════
    此前 checkbox / radio / range 全是浏览器原生控件：
    · checkbox 是刺眼的系统蓝（截图里生图那个勾）
@@ -1435,7 +1487,6 @@ html[data-doc-auto-gap="off"] .doc-block { margin-bottom: 0; }
 .cfg-card .field select.select { width: 100%; max-width: none; }
 .cfg-card .row { display: flex; gap: var(--ui-gap-md); flex-wrap: wrap; align-items: center; margin-top: var(--ui-gap-2xs); }
 .cfg-card .err { color: var(--danger); font-size: var(--ui-fs-sm); margin-top: var(--ui-gap-xs); }
-.cfg-switch { display: flex; align-items: center; gap: var(--ui-gap-sm); font-size: var(--ui-fs-sm); color: var(--ink-2); cursor: pointer; }
 .cfg-switch input { width: auto; min-width: 0; }
 .cfg-note { font-size: var(--ui-fs-xs); color: var(--meta); line-height: 1.6; }
 

@@ -3198,6 +3198,8 @@ const SETTINGS_GROUPS = Object.freeze([
     label: '插件中心',
     hint: '用户接进来的业务套件',
     sections: [
+      // OS-100：业务套件从「插件中心 → 业务套件」两级压成一级——
+      // 作者口径「业务套件分开呈现」，它本身就是一件独立的事，不需要再套一层壳。
       { id: 'suites', label: '业务套件', hint: '小说 / 剧本 / 漫剧…' }
     ]
   }
@@ -4230,9 +4232,11 @@ function settingsCombinedEnginesHtml() {
     .replace(/^\s*<div class="step">\s*<h3>[^<]*(?:<span class="sub">.*?<\/span>)?[^<]*<\/h3>/, '<div>')
     .replace(/<div class="step">\s*<h3>[^<]*(?:<span class="sub">.*?<\/span>)?[^<]*<\/h3>/gu, '<div>')
 
+  // OS-100：运行时不再单列——「对话模型」自带运行时选择器与端点/模型/key，
+  // 两处都放会出现两个「运行时」下拉（作者实测截图里就是重复的）。
+  // 这里的顺序＝「接什么 → 查什么 → 存哪」。
   return [
-    section('Agent 运行时', 'DSH 原生 / CLI 通道 / Pi 兜底端点', strip(settingsRuntimeSectionHtml())),
-    section('对话模型', 'Agent 成文用的模型端点', strip(settingsModelsSectionHtml())),
+    section('对话模型与运行时', 'Agent 走哪条通道、用哪个模型', strip(settingsModelsSectionHtml())),
     section('知识库', 'WeKnora 连接、分库与测试', strip(settingsKbSectionHtml())),
     section('本机路径与导入', '货架位置、库清单、导入稿件', strip(settingsCombinedDataSectionHtml()))
   ].join('')
