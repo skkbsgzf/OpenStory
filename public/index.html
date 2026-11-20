@@ -699,6 +699,34 @@ button.modlog-row:focus-visible { outline: 2px solid var(--accent); outline-offs
 .kv-open { margin-left: 8px; flex-shrink: 0; font-size: 11px; padding: 1px 8px; }
 .kv-line { display: flex; align-items: baseline; gap: 6px; }
 .kv-line .v { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+/* 角色泳道时间线（OS-111）：每角色一行，横轴＝章，圆点＝事件 */
+.tl-wrap { display: flex; flex-direction: column; gap: 10px; }
+.tl-stats { font-size: 11.5px; color: var(--meta); }
+.tl-legend { display: flex; gap: 12px; flex-wrap: wrap; font-size: 11px; color: var(--ink-2); }
+.tl-lg { display: inline-flex; align-items: center; gap: 5px; }
+.tl-lg i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.tl-chart { position: relative; border: 1px solid var(--hair); border-radius: var(--radius-sm); padding: 8px 10px 10px; }
+.tl-axis { display: grid; grid-template-columns: 96px repeat(auto-fit, minmax(20px, 1fr)); align-items: center;
+  font-size: 10px; color: var(--meta); border-bottom: 1px dashed var(--hair); padding-bottom: 4px; margin-bottom: 6px; }
+.tl-axis-label { font-weight: 600; color: var(--ink-2); }
+.tl-tick { text-align: center; font-variant-numeric: tabular-nums; }
+.tl-spans { position: relative; height: 20px; margin: 0 0 6px 96px; }
+.tl-span { position: absolute; top: 2px; height: 16px; border-radius: 8px; line-height: 16px; padding: 0 6px;
+  font-size: 9.5px; color: var(--on-accent); background: color-mix(in srgb, var(--accent) 65%, transparent);
+  overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.tl-row { display: grid; grid-template-columns: 96px 1fr; align-items: center; min-height: 26px; }
+.tl-who { font-size: 12px; color: var(--ink); display: flex; align-items: baseline; gap: 5px; padding-right: 8px;
+  overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.tl-who i { font-style: normal; font-size: 9.5px; color: var(--meta); border: 1px solid var(--hair);
+  border-radius: var(--pill); padding: 0 5px; }
+.tl-lane { position: relative; height: 22px; border-bottom: 1px solid color-mix(in srgb, var(--hair) 60%, transparent); }
+.tl-dot { position: absolute; top: 50%; transform: translate(-50%, -50%); width: 11px; height: 11px; border-radius: 50%;
+  border: 1.5px solid var(--bg); cursor: pointer; transition: transform .12s; }
+.tl-dot:hover { transform: translate(-50%, -50%) scale(1.45); }
+.tl-pick { font-size: 12px; color: var(--ink-2); background: var(--soft); border-radius: 6px; padding: 8px 11px; }
+.tl-empty { padding: 18px 4px; }
+.tl-empty .sub { font-size: 11.5px; color: var(--meta); }
+
 /* 内建目录浏览器（OS-110 兜底，无桌面环境用） */
 .fsb-path { display: flex; gap: 8px; align-items: center; margin: 8px 0; }
 .fsb-cur { flex: 1; min-width: 0; font-size: 12px; color: var(--ink-2);

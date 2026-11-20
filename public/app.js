@@ -7152,11 +7152,11 @@ function ssLayoutOf(fv) {
 /* ---------- 故事源「图表」＝分析模块容器（S3）---------- */
 
 /** 模块 id → ECharts 图种（注册表只管数据与结论，挂图在 app.js 这层做）。 */
-const SS_CHART_KIND = Object.freeze({ 'plot-curve': 'curve', 'foreshadow-audit': 'foreshadow', 'plot-density': 'heatmap' })
+const SS_CHART_KIND = Object.freeze({ 'plot-curve': 'curve', 'foreshadow-audit': 'foreshadow', 'plot-density': 'heatmap', timeline: 'timeline' })
 
 function ssChartKind(id) {
   if (SS_CHART_KIND[id]) return SS_CHART_KIND[id]
-  return ['curve', 'foreshadow', 'heatmap'].includes(id) ? id : 'curve'
+  return ['curve', 'foreshadow', 'heatmap', 'timeline'].includes(id) ? id : 'curve'
 }
 
 /** 当前选中的 work 模块（旧值 'curve'/'foreshadow'/'heatmap' 自动落到对应模块）。 */
@@ -7312,7 +7312,7 @@ function ssModuleBodyHtml(layout, ss) {
   const tabs = mods.map((item) => `<button class="ss-tab${item.id === mod.id ? ' on' : ''}" data-ss-chart="${esc(item.id)}">${esc(item.label)}</button>`).join('')
   let body
   try {
-    // work 模块是同步纯计算（注册表注释里写明）；数据口径与 storySource 的 stats.charts 同源。
+    // work 模块多为同步纯计算；timeline 用惰性 import 所以是 async——统一 await（同步值 await 无害）。
     const result = mod.run({ entries: fv?.entries || [], wiki: ssWikiOf(fv), layout })
     body = mod.render(result, { plot: true })
   } catch (error) {
