@@ -417,9 +417,38 @@ function buildCharts(chapters, wiki, entries = []) {
   })
 
   // 剧情密度热力图：横轴章、纵轴章内拍序（只算有段号的 plot 拍）。
+  // OS-112 修：没有 wiki 章纲时 chapters 只有 1 个兜底章 → 热力图退化成单列。
+  // 这里按条目 span / events.chapter 的真实章号补出章轴，保证图能铺开。
+  let chartChapters = chapters
+  if (chapters.length <= 1) {
+    const chapterNos = new Set()
+    for (const entry of listOf(entries)) {
+      const from = num(entry?.span?.from)
+      const to = num(entry?.span?.to)
+      if (from != null) chapterNos.add(from)
+      if (to != null) chapterNos.add(to)
+      for (const ev of listOf(entry?.events)) {
+        const ch = num(ev?.chapter)
+        if (ch != null) chapterNos.add(ch)
+      }
+    }
+    if (chapterNos.size > 1) {
+      chartChapters = [...chapterNos].sort((a, b) => a - b).map((no) => ({
+        chapter: no,
+        title: `第${no}章`,
+        beats: listOf(entries)
+          .filter((entry) => {
+            const from = num(entry?.span?.from)
+            const to = num(entry?.span?.to)
+            return from != null && to != null && no >= from && no <= to
+          })
+          .map((entry, index) => ({ layer: 'plot', segment: index + 1, eventCount: listOf(entry.events).length }))
+      }))
+    }
+  }
   const cells = []
-  const xChapters = chapters.map((chapter) => chapter.chapter)
-  chapters.forEach((chapter, x) => {
+  const xChapters = chartChapters.map((chapter) => chapter.chapter)
+  chartChapters.forEach((chapter, x) => {
     const plotBeats = chapter.beats.filter((beat) => beat.layer === 'plot' && beat.segment)
     plotBeats.forEach((beat, y) => {
       cells.push([x, y, beat.eventCount])
@@ -427,7 +456,7 @@ function buildCharts(chapters, wiki, entries = []) {
   })
   const maxBeat = cells.length ? Math.max(...cells.map((cell) => cell[1])) + 1 : 0
   const heatmap = {
-    xLabels: chapters.map((chapter) => String(chapter.chapter)),
+    xLabels: chartChapters.map((chapter) => String(chapter.chapter)),
     xChapters,
     yLabels: Array.from({ length: maxBeat }, (_, index) => `第${index + 1}拍`),
     data: cells,

@@ -7802,19 +7802,28 @@ function ssChartOption(layout, chart, theme) {
           return `第${chapter}章 · 第${Number(value[1]) + 1}段<br>${value[2]} 事件`
         }
       },
-      grid: { left: 52, right: 24, top: 24, bottom: 58 },
+      // OS-112：格子按数据量留白——1 行数据不该撑满 420px 高，否则格子变成大色块
+      grid: {
+        left: 52, right: 24, top: 24,
+        bottom: 58,
+        containLabel: true,
+        // 高度按行数自适应：每行 44px，最少 80px
+        height: Math.max(80, Math.min(280, heatmap.yLabels.length * 44))
+      },
       xAxis: { type: 'category', data: heatmap.xLabels, ...axis },
       yAxis: { type: 'category', data: heatmap.yLabels, ...axis },
+      // OS-112：离散分档——事件数通常只有 0–5 几档，连续渐变会糊成一片同色
       visualMap: {
         min: 0,
         max: Math.max(1, heatmap.max),
-        calculable: true,
+        type: 'piecewise',
+        pieces: Array.from({ length: Math.max(1, heatmap.max) + 1 }, (_, i) => ({ value: i, label: String(i) })),
         orient: 'horizontal',
         left: 'center',
-        bottom: 6,
-        itemWidth: 140,
-        itemHeight: 10,
-        textStyle: { color: theme.muted },
+        bottom: 0,
+        itemWidth: 16,
+        itemHeight: 12,
+        textStyle: { color: theme.muted, fontSize: 10 },
         inRange: { color: [theme.card, theme.accent] }
       },
       series: [{
