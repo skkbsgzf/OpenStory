@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 import {
-  contentHash, logFilePath, logSummary, readLog, recordChange, safeModuleName, unifiedDiff
+  contentHash, logFilePath, logSummary, readChange, readLog, recordChange, safeModuleName, unifiedDiff
 } from '../changelog.mjs'
 
 async function fixture() {
@@ -168,5 +168,55 @@ test('超长 diff 被截断并标记，不撑爆日志', async () => {
     assert.equal(res.ok, true)
     assert.equal(res.record.diffTruncated, true)
     assert.ok(res.record.diff.length < 30000)
+  } finally { await cleanup() }
+})
+
+/* ---------- OS-90：单条读取与恢复 ---------- */
+
+test('readChange：按 at+afterHash 精确定位一条记录', async () => {
+  const { root, cleanup } = await fixture()
+  try {
+    await recordChange({ root, module: '正文', file: '正文/001.md', op: 'update', before: 'a', after: 'b' })
+    await new Promise((r) => setTimeout(r, 8))
+    await recordChange({ root, module: '正文', file: '正文/002.md', op: 'update', before: 'x', after: 'y' })
+    const all = await readLog({ root, module: '正文' })
+    const target = all.entries[0]
+    const found = await readChange({ root, module: '正文', at: target.at, afterHash: target.afterHash })
+    assert.equal(found.ok, true)
+    assert.equal(found.entry.file, '正文/002.md')
+  } finally { await cleanup() }
+})
+
+test('readChange：hash 不匹配＝找不到（不返回错的那条）', async () => {
+  const { root, cleanup } = await fixture()
+  try {
+    await recordChange({ root, module: '正文', file: '正文/001.md', op: 'update', before: 'a', after: 'b' })
+    const all = await readLog({ root, module: '正文' })
+    const target = all.entries[0]
+    const found = await readChange({ root, module: '正文', at: target.at, afterHash: 'wronghash' })
+    assert.equal(found.ok, false)
+    assert.equal(found.code, 'NOT_FOUND')
+  } finally { await cleanup() }
+})
+
+test('recordChange：backup 字段落进日志（恢复靠它定位上一版）', async () => {
+  const { root, cleanup } = await fixture()
+  try {
+    await recordChange({
+      root, module: '正文', file: '正文/001.md', op: 'update',
+      before: 'a', after: 'b', backup: '正文/.history/001.md.bak-2026-11-20T00-00-00-000Z'
+    })
+    const all = await readLog({ root, module: '正文' })
+    assert.equal(all.entries[0].backup, '正文/.history/001.md.bak-2026-11-20T00-00-00-000Z')
+  } finally { await cleanup() }
+})
+
+test('新建类变更没有 backup——恢复应被拒绝（回退到不存在的状态没有意义）', async () => {
+  const { root, cleanup } = await fixture()
+  try {
+    await recordChange({ root, module: '正文', file: '正文/new.md', op: 'create', after: '内容' })
+    const all = await readLog({ root, module: '正文' })
+    assert.equal(all.entries[0].op, 'create')
+    assert.equal(all.entries[0].backup, undefined)
   } finally { await cleanup() }
 })
