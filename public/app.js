@@ -9539,6 +9539,7 @@ function deduceAgentHtml() {
 
 async function boot() {
   applyTypography()   // OS-91：无库时也先套默认字号档，避免首帧跳变
+  applyAgentCollapse() // OS-103
   // 运行时清单与 config 一起拉：chip 要能显示「DSH 原生」这类具体名字，不能等进设置页才加载
   await Promise.all([bootAgentConfig(), loadGlobalConfig(), loadAgentRuntimes()])
   updateAgentChip()
@@ -9647,6 +9648,7 @@ async function openLibrary(path) {
     // 否则第一帧会用默认值渲染再跳一下。这就是「不用浏览器缓存」的落地。
     await loadUiState()
     applyTypography()   // OS-91：进库即应用项目级字号档位
+    applyAgentCollapse() // OS-103：进库即应用 Agent 栏折叠状态
     // OS-84：探已退场旧目录还剩多少篇——页签栏第一帧就要据此决定藏/露，不能等进参考页
     await probeRetiredDirs()
     // OS-19：体裁声明后按 excludedPages 裁剪页签（未声明＝不裁剪，保持 OS-8 行为）
@@ -10559,6 +10561,11 @@ document.addEventListener('click', (event) => {
     } else {
       deduceEngineTurn({ customText: customValue })
     }
+  } else if (action === 'agent-collapse') {
+    // OS-103：折叠/展开 Agent 栏——状态落库内 ui-state（不用 localStorage）
+    const next = !uiGet('agentCollapsed', false)
+    uiSet('agentCollapsed', next || null, { immediate: true })
+    applyAgentCollapse()
   } else if (action === 'suite-select') {
     // OS-99：主从两栏——点左列切换右栏详情，不整页跳转
     state.settings.suiteId = target.dataset.id
@@ -11785,4 +11792,13 @@ async function saveFirstChapter(notePath, value) {
     render()
   }
 
+}
+
+/* ---------- OS-103：Agent 栏折叠 ---------- */
+
+/** 把折叠状态投影到 DOM（进库后、切换后都调）。 */
+function applyAgentCollapse() {
+  const col = document.getElementById('agent-col')
+  if (!col) return
+  col.classList.toggle('is-collapsed', uiGet('agentCollapsed', false) === true)
 }
