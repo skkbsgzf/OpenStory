@@ -46,8 +46,32 @@ body { margin: 0; background: var(--bg); color: var(--ink); font-size: var(--ui-
 button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
 input, textarea, select { font: inherit; color: inherit; }
 ::selection { background: var(--accent-soft); }
-::-webkit-scrollbar { width: 8px; height: 8px; }
-::-webkit-scrollbar-thumb { background: var(--line); border-radius: 999px; }
+/* ══ OS-102 滚动条统一（作者实测：页签栏下面那条跟别处不一致）══════
+   症状：全局只有一条 8px 的 webkit 规则，但
+     · Firefox 走 scrollbar-width: thin（≈6px 且颜色跟主题无关）
+     · Chrome 走 webkit 规则，但没设轨道/悬停色
+     · 9 个 overflow-x 容器各自表现不同（有的撑出横向条、有的挤占内容）
+   统一策略：
+     纵向 8px / 横向 6px（横向条更细，不抢页签栏的高度）
+     滑块用 --meta 而非 --line（--line 太浅，夜皮里几乎看不见）
+     悬停变 --muted；轨道透明（不留白条）
+     .tabs 这类「只该横向滚但不想看见条」的容器用 .scrollbar-overlay 隐藏 */
+::-webkit-scrollbar { width: 8px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--meta) 55%, transparent);
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--muted); background-clip: padding-box; }
+::-webkit-scrollbar-corner { background: transparent; }
+/* Firefox：thin 太细、auto 太粗，统一用 thin 并配主题色 */
+* { scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--meta) 55%, transparent) transparent; }
+
+/* 隐藏横向滚动条但保留滚动能力（页签栏、缩略图条这类） */
+.scrollbar-overlay { scrollbar-width: none; -ms-overflow-style: none; }
+.scrollbar-overlay::-webkit-scrollbar { height: 0; width: 0; }
 
 .app { height: 100vh; display: flex; flex-direction: column; }
 
@@ -643,7 +667,16 @@ button.modlog-row:focus-visible { outline: 2px solid var(--accent); outline-offs
 
 /* 中栏 */
 .center { flex: 1; display: flex; flex-direction: column; min-width: 0; }
-.tabs { height: 44px; flex: 0 0 44px; display: flex; align-items: flex-end; gap: var(--ui-gap-3xs); padding: 0 10px; border-bottom: 1px solid var(--hair); overflow-x: auto; overflow-y: hidden; flex-wrap: nowrap; scrollbar-width: thin; }
+/* OS-102：页签栏的横向条挤在 44px 里，与全站其他滚动条观感不一致——
+   改为隐藏滚动条但保留滚动能力（滚轮/触控板/拖拽仍可） */
+.tabs {
+  height: 44px; flex: 0 0 44px; display: flex; align-items: flex-end;
+  gap: var(--ui-gap-3xs); padding: 0 10px;
+  border-bottom: 1px solid var(--hair);
+  overflow-x: auto; overflow-y: hidden; flex-wrap: nowrap;
+  scrollbar-width: none; -ms-overflow-style: none;
+}
+.tabs::-webkit-scrollbar { height: 0; width: 0; }
 .tabs .tab { padding: var(--ui-gap-md) var(--ui-gap-lg) var(--ui-gap-sm); border-radius: var(--radius) var(--radius) 0 0; color: var(--muted); white-space: nowrap; display: flex; gap: var(--ui-gap-xs); align-items: center; }
 .tabs .tab .ic { width: 16px; height: 16px; border-radius: 4px; background: var(--soft); display: inline-grid; place-items: center; font-size: var(--ui-fs-2xs); }
 .tabs .tab.on { color: var(--ink); border: 1px solid var(--hair); border-bottom-color: var(--bg); background: var(--bg); margin-bottom: -1px; }
@@ -1386,7 +1419,8 @@ html[data-doc-auto-gap="off"] .doc-block { margin-bottom: 0; }
 .ref-slot-n { font-size: var(--ui-fs-xs); color: var(--meta); font-weight: 400; }
 .ref-slot-cover { border-radius: var(--radius); overflow: hidden; background: var(--soft); }
 .ref-slot-cover img { display: block; width: 100%; aspect-ratio: 16 / 10; object-fit: cover; }
-.ref-slot-thumbs { display: flex; gap: var(--ui-gap-2xs); margin-top: var(--ui-gap-xs); overflow-x: auto; }
+.ref-slot-thumbs { display: flex; gap: var(--ui-gap-2xs); margin-top: var(--ui-gap-xs); overflow-x: auto; scrollbar-width: none; }
+.ref-slot-thumbs::-webkit-scrollbar { height: 0; }
 .ref-slot-thumbs img { width: 46px; height: 46px; object-fit: cover; border-radius: var(--radius-sm); flex: 0 0 auto; }
 .ref-slot-ops { margin-top: var(--ui-gap-sm); }
 .ref-slot-gen { font-size: var(--ui-fs-sm); color: var(--ink-2); background: var(--bg); border-radius: var(--pill); padding: var(--ui-gap-3xs) var(--ui-gap-md); box-shadow: var(--shadow-card); }
@@ -1488,7 +1522,8 @@ html[data-doc-auto-gap="off"] .doc-block { margin-bottom: 0; }
 .ref-gallery { display: flex; flex-direction: column; gap: var(--ui-gap-sm); margin-bottom: var(--ui-gap-md); }
 .ref-gallery-cover { border-radius: var(--radius-md); overflow: hidden; background: var(--surface-card); box-shadow: var(--shadow-card); }
 .ref-gallery-cover img { display: block; width: 100%; height: auto; }
-.ref-gallery-thumbs { display: flex; gap: var(--ui-gap-xs); overflow-x: auto; }
+.ref-gallery-thumbs { display: flex; gap: var(--ui-gap-xs); overflow-x: auto; scrollbar-width: none; }
+.ref-gallery-thumbs::-webkit-scrollbar { height: 0; }
 .ref-gallery-thumbs img { width: 64px; height: 64px; object-fit: cover; border-radius: var(--radius); box-shadow: var(--shadow-card); flex: 0 0 auto; }
 .ref-gallery-ops { display: flex; gap: var(--ui-gap-xs); }
 .ref-gallery.empty { align-items: flex-start; }
