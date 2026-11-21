@@ -429,7 +429,7 @@ function renderJobBall() {
   const active = jobs.active || 0
   const list = jobs.list || []
   const hasAny = list.length > 0
-  if (!hasAny && !active) { host.innerHTML = ''; return }
+  // OS-117：没任务也留一个安静态小球——常驻入口不该忽隐忽现（作者：进度球不见了）
   const dot = active > 0 ? `<span class="jb-count">${active}</span>` : ''
   const running = list.filter((j) => j.state === 'running' || j.state === 'queued')
   const settled = list.filter((j) => ['done', 'failed', 'cancelled'].includes(j.state))
@@ -448,8 +448,9 @@ function renderJobBall() {
       ${job.error ? `<div class="jb-err">${esc(job.error)}</div>` : ''}
     </div>`
   }
+  const idle = !hasAny && !active
   host.innerHTML = `<div class="job-ball-wrap${jobs.open ? ' open' : ''}">
-    <button class="job-ball${active > 0 ? ' busy' : ''}" data-action="job-ball-toggle" title="后台任务（${active} 进行中 / ${list.length} 总计）">
+    <button class="job-ball${active > 0 ? ' busy' : ''}${idle ? ' idle' : ''}" data-action="job-ball-toggle" title="${idle ? '后台任务（暂无）' : `后台任务（${active} 进行中 / ${list.length} 总计）`}">
       <span class="jb-ic">◱</span>${dot}
     </button>
     ${jobs.open ? `<div class="job-panel">
@@ -458,7 +459,7 @@ function renderJobBall() {
         <button class="jb-clear" data-action="job-clear" title="清空已结束">清空已完成</button>
       </div>
       <div class="jb-list">
-        ${running.length ? `<div class="jb-group">进行中</div>${running.map(row).join('')}` : '<div class="jb-empty">没有进行中的任务</div>'}
+        ${running.length ? `<div class="jb-group">进行中</div>${running.map(row).join('')}` : `<div class="jb-empty">${idle ? '暂无后台任务——生图、识图、enrich 这类长活会出现在这里' : '没有进行中的任务'}</div>`}
         ${settled.length ? `<div class="jb-group">已结束</div>${settled.slice(0, 10).map(row).join('')}` : ''}
       </div>
     </div>` : ''}
