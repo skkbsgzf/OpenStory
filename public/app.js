@@ -4229,44 +4229,31 @@ untimes</span></div>
  *   ② 发现了不同步怎么办（提醒我 / 自动跑 / 只标状态条）
  * 策略落库内 ui-state（.pinax/ui-state.json），不是浏览器缓存。
  */
+/**
+ * 「同步」节（OS-115/116）：作者口径「别加那么多提示」。
+ * 压成一块：一行策略选择＋一行当前状态。不放说明段落、不重复动作按钮——
+ * 「立即同步」已经在世界书/故事源的状态条上有了，这里再放一遍就是重复。
+ */
 function settingsSyncSectionHtml() {
   const p = syncPolicy()
-  const opt = (group, value, current, label, hint) => `<button class="sync-opt${current === value ? ' on' : ''}" data-action="sync-policy-${group}" data-value="${esc(value)}">
-      <b>${esc(label)}</b>${hint ? `<span>${esc(hint)}</span>` : ''}
-    </button>`
+  const seg = (group, value, current, label) => `<button class="seg-btn${current === value ? ' on' : ''}" data-action="sync-policy-${group}" data-value="${esc(value)}">${esc(label)}</button>`
   const data = state.sync?.data
-  const same = data?.sameSource || {}
   const problems = syncProblemsFrom(data)
-  const status = !data
-    ? '<span class="sync-set-status">还没有检查过（进世界书/故事源页会自动查）</span>'
-    : (problems.length
-        ? `<span class="sync-set-status warn">${esc(problems[0].label)}${problems.length > 1 ? ` 等 ${problems.length} 项` : ''}</span>`
-        : '<span class="sync-set-status ok">一致</span>')
-  return `<div class="step step-lead">
-    <h3>同步<span class="sub">派生档与事实源、正文的版本对齐</span></h3>
-    <p class="sub">这里配两件事：什么时候检查、发现不同步怎么办。策略存在库内 .pinax/ui-state.json。</p>
-  </div>
-  <div class="step">
-    <h3>什么时候检查<span class="sub">发现不同步就提示你</span></h3>
-    <div class="sync-opts">
-      ${opt('checkon', 'enter', p.checkOn, '进页面自动检查', '进世界书/故事源时查一次（推荐）')}
-      ${opt('checkon', 'manual', p.checkOn, '只在我要的时候查', '点状态条上的「检查」或本页按钮')}
+  const dot = !data ? 'idle' : (problems.length ? 'warn' : 'ok')
+  const statusText = !data
+    ? '还没检查过'
+    : (problems.length ? problems[0].label : '一致')
+  return `<div class="sync-set">
+    <div class="sync-set-row">
+      <span class="sync-set-label">检查</span>
+      <span class="seg">${seg('checkon', 'enter', p.checkOn, '进页面')}${seg('checkon', 'manual', p.checkOn, '手动')}</span>
+      <span class="sync-set-label">不同步时</span>
+      <span class="seg">${seg('action', 'remind', p.action, '提醒')}${seg('action', 'auto', p.action, '自动同步')}${seg('action', 'silent', p.action, '不打扰')}</span>
     </div>
-  </div>
-  <div class="step">
-    <h3>发现不同步时<span class="sub">派生档落后 / 正文比拆解新</span></h3>
-    <div class="sync-opts">
-      ${opt('action', 'remind', p.action, '提醒我', '弹一条带「立即同步」的提示（推荐）')}
-      ${opt('action', 'auto', p.action, '自动同步', '直接跑 enrich 重建派生档（需配模型）')}
-      ${opt('action', 'silent', p.action, '只标状态条', '不打扰，只靠颜色提示')}
-    </div>
-  </div>
-  <div class="step">
-    <h3>当前状态</h3>
-    ${status}
-    <div class="ops">
-      <button class="btn-ghost" data-action="sync-recheck">立即检查</button>
-      <button class="btn-primary" data-action="sync-regen-wiki"${state.sync?.regenBusy ? ' disabled' : ''}>${state.sync?.regenBusy ? '同步中…' : '立即同步（重建派生档）'}</button>
+    <div class="sync-set-status-row">
+      <span class="sync-dot ${dot}"></span>
+      <span class="sync-set-status-text">${esc(statusText)}</span>
+      <button class="sync-mini" data-action="sync-recheck" title="重新检查一次">↻</button>
     </div>
   </div>`
 }
@@ -4280,7 +4267,7 @@ function settingsDataSectionHtml() {
   ]
   return `<div class="step">
     <h3>本机路径</h3>
-    ${paths.map((item) => `<div class="kv-line"><span class="k">${esc(item.label)}</span><span class="v">${esc(item.path)}</span><button class="btn-ghost kv-open" data-action="reveal-path" data-path="${esc(item.path)}" title="在资源管理器里打开">打开</button></div>`).join(String())}
+    ${paths.map((item) => `<div class="kv-line"><span class="k">${esc(item.label)}</span><button class="v kv-path" data-action="reveal-path" data-path="${esc(item.path)}" title="在资源管理器里打开">${esc(item.path)}</button></div>`).join(String())}
     ${warningsHtml(state.warnings)}
   </div>`
 }
