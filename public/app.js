@@ -184,7 +184,15 @@ const state = {
   // data 是后端原样回包；root 记录这份结果属于哪个库（换库就整块作废重拉）；
   // loaded＝「这个库已经查过一次」（查失败也算，否则每次 render 都会重打失败的后端）；
   // notice/regenBusy 只服务状态条上的「重新生成」入口提示。
-  sync: { loaded: false, loading: false, data: null, error: '', root: '', notice: '', regenBusy: false, openList: false },
+  sync: {
+    loaded: false, loading: false, data: null, error: '', root: '', notice: '', regenBusy: false, openList: false,
+    // OS-115 同步策略（落库内 ui-state，非浏览器缓存）：
+    //   checkOn: 'enter'（进页面自动查）| 'manual'（只在设置或点状态条时查）
+    //   action:  'remind'（提醒我，手动点同步）| 'auto'（发现不同步自动跑 enrich）| 'silent'（只标状态条）
+    policy: null, policyLoaded: false,
+    // 进场提示：同一份「不同步指纹」只弹一次，避免每次 render 都骚扰
+    prompt: null, promptedFor: '', lastAutoAt: 0
+  },
   settings: { userDir: '', section: 'plugins', suiteId: '', open: false, prevView: '', helpOpen: false },
   kbStatus: null,
   kbConfig: null,
@@ -4208,7 +4216,59 @@ untimes</span></div>
       <button class="btn-ghost" data-action="flow-import">导入稿件</button>
     </div>
   </div>
+  ${settingsSyncSectionHtml()}
   ${settingsDataSectionHtml().replace(/^<div class="step">\s*<h3>本机路径<\/h3>/, '<div class="step"><h3>本机路径</h3>')}`
+}
+
+/**
+ * 「同步」节（OS-115）：作者口径「每次进入页面发现不同步要有提示去同步；
+ * 也可以在设置里设置什么时候同步一次」。
+ *
+ * 两块：
+ *   ① 什么时候检查（进页面自动 / 只在手动点的时候）
+ *   ② 发现了不同步怎么办（提醒我 / 自动跑 / 只标状态条）
+ * 策略落库内 ui-state（.pinax/ui-state.json），不是浏览器缓存。
+ */
+function settingsSyncSectionHtml() {
+  const p = syncPolicy()
+  const opt = (group, value, current, label, hint) => `<button class="sync-opt${current === value ? ' on' : ''}" data-action="sync-policy-${group}" data-value="${esc(value)}">
+      <b>${esc(label)}</b>${hint ? `<span>${esc(hint)}</span>` : ''}
+    </button>`
+  const data = state.sync?.data
+  const same = data?.sameSource || {}
+  const problems = syncProblemsFrom(data)
+  const status = !data
+    ? '<span class="sync-set-status">还没有检查过（进世界书/故事源页会自动查）</span>'
+    : (problems.length
+        ? `<span class="sync-set-status warn">${esc(problems[0].label)}${problems.length > 1 ? ` 等 ${problems.length} 项` : ''}</span>`
+        : '<span class="sync-set-status ok">一致</span>')
+  return `<div class="step step-lead">
+    <h3>同步<span class="sub">派生档与事实源、正文的版本对齐</span></h3>
+    <p class="sub">这里配两件事：什么时候检查、发现不同步怎么办。策略存在库内 .pinax/ui-state.json。</p>
+  </div>
+  <div class="step">
+    <h3>什么时候检查<span class="sub">发现不同步就提示你</span></h3>
+    <div class="sync-opts">
+      ${opt('checkon', 'enter', p.checkOn, '进页面自动检查', '进世界书/故事源时查一次（推荐）')}
+      ${opt('checkon', 'manual', p.checkOn, '只在我要的时候查', '点状态条上的「检查」或本页按钮')}
+    </div>
+  </div>
+  <div class="step">
+    <h3>发现不同步时<span class="sub">派生档落后 / 正文比拆解新</span></h3>
+    <div class="sync-opts">
+      ${opt('action', 'remind', p.action, '提醒我', '弹一条带「立即同步」的提示（推荐）')}
+      ${opt('action', 'auto', p.action, '自动同步', '直接跑 enrich 重建派生档（需配模型）')}
+      ${opt('action', 'silent', p.action, '只标状态条', '不打扰，只靠颜色提示')}
+    </div>
+  </div>
+  <div class="step">
+    <h3>当前状态</h3>
+    ${status}
+    <div class="ops">
+      <button class="btn-ghost" data-action="sync-recheck">立即检查</button>
+      <button class="btn-primary" data-action="sync-regen-wiki"${state.sync?.regenBusy ? ' disabled' : ''}>${state.sync?.regenBusy ? '同步中…' : '立即同步（重建派生档）'}</button>
+    </div>
+  </div>`
 }
 
 function settingsDataSectionHtml() {
@@ -5264,6 +5324,8 @@ async function loadSyncCheck({ force = false } = {}) {
     sync.loaded = true
     // 拿到新结果＝上一次「已提交 enrich」的口头提示该退休了（否则会一直挂在那儿）
     sync.notice = ''
+    // OS-115：按策略处理「发现不同步」——提醒 / 自动 / 静默，同一指纹只处理一次
+    handleSyncProblems(sync.data, root)
   } catch (error) {
     if (state.current?.path !== startedFor) return
     // 刷新失败保留上一次的结果（比清空更有用），只是标注一句不可信。
@@ -5276,6 +5338,102 @@ async function loadSyncCheck({ force = false } = {}) {
     if (state.current?.path === startedFor) sync.loading = false
   }
   if (state.view === 'reference' || state.view === 'dir:拆解') render()
+}
+
+/** 同步策略（OS-115）：默认「进页面查 + 提醒我」（最不打扰、又不会漏）。 */
+const SYNC_POLICY_DEFAULTS = Object.freeze({ checkOn: 'enter', action: 'remind' })
+
+function syncPolicy() {
+  const sync = state.sync
+  if (sync.policy && sync.policyLoaded) return sync.policy
+  const saved = uiGet('syncPolicy', null)
+  const merged = {
+    checkOn: (saved?.checkOn === 'manual' ? 'manual' : 'enter'),
+    action: (['auto', 'silent'].includes(saved?.action) ? saved.action : 'remind')
+  }
+  sync.policy = merged
+  sync.policyLoaded = true
+  return merged
+}
+
+function setSyncPolicy(patch) {
+  const next = { ...syncPolicy(), ...(patch || {}) }
+  state.sync.policy = next
+  state.sync.policyLoaded = true
+  uiSet('syncPolicy', next)
+  render()
+}
+
+/** 不同步指纹（OS-115）：同一份不同步只提醒一次——fact/wiki/正文三者时间戳拼成的串。 */
+function syncStaleFingerprint(data) {
+  const same = data?.sameSource || {}
+  const changes = Array.isArray(data?.external?.externalChanges) ? data.external.externalChanges.length : 0
+  return [
+    text(same.factAt), text(same.wikiAt), text(same.chaptersAt),
+    same.wikiStale === true ? 'stale' : 'ok',
+    changes
+  ].join('|')
+}
+
+/** 判断当前是否有「需要用户处理」的不同步（派生档过期 / 正文超前 / 外部改动）。 */
+function syncProblemsFrom(data) {
+  const same = data?.sameSource || {}
+  const external = data?.external || {}
+  const problems = []
+  if (same.wikiStale === true) problems.push({ kind: 'wiki', label: text(same.wikiNote) || '世界书派生档落后' })
+  if (same.chaptersNewerThanFact === true) problems.push({ kind: 'chapters', label: text(same.chaptersNote) || '正文比拆解新' })
+  const changes = Array.isArray(external.externalChanges) ? external.externalChanges.filter(Boolean) : []
+  if (changes.length) problems.push({ kind: 'external', label: `检测到 ${changes.length} 处未经写通道的改动` })
+  return problems
+}
+
+/** 发现不同步时按策略处理（OS-115）。
+ *  · remind：置 sync.prompt（横幅「发现不同步，立即同步 / 稍后」），同一指纹只提一次
+ *  · auto：直接跑 enrich 重建派生档（10 分钟内不重复触发，防抖）
+ *  · silent：什么都不做，只靠状态条颜色提示
+ */
+function handleSyncProblems(data, root) {
+  const sync = state.sync
+  const policy = syncPolicy()
+  const problems = syncProblemsFrom(data)
+  // 只有「派生档过期 / 正文超前」需要重建；外部改动只能由作者去编辑器里处理
+  const rebuildable = problems.filter((p) => p.kind === 'wiki' || p.kind === 'chapters')
+  if (!rebuildable.length) { sync.prompt = null; return }
+  const fp = syncStaleFingerprint(data)
+  if (policy.action === 'silent') { sync.prompt = null; return }
+  if (policy.action === 'auto') {
+    // 防抖：同一指纹 10 分钟内只自动跑一次；失败也不循环重试
+    if (sync.promptedFor === fp && Date.now() - sync.lastAutoAt < 600000) return
+    sync.promptedFor = fp
+    sync.lastAutoAt = Date.now()
+    sync.prompt = null
+    runSyncRegen({ auto: true })
+    return
+  }
+  // remind：同一份不同步只提醒一次（作者点了「稍后」也不该每次 render 再弹）
+  if (sync.promptedFor === fp) return
+  sync.promptedFor = fp
+  sync.prompt = { root, fingerprint: fp, problems: rebuildable, externalOnly: problems.length > rebuildable.length }
+}
+
+/** 进场提示横幅（OS-115）：发现不同步时给一条带动作的提示，不做模态弹窗。 */
+function syncPromptHtml() {
+  const sync = state.sync
+  const prompt = sync?.prompt
+  if (!prompt || prompt.root !== state.current?.path) return ''
+  const first = prompt.problems[0]
+  const more = prompt.problems.length > 1 ? `（另有 ${prompt.problems.length - 1} 项）` : ''
+  return `<div class="sync-prompt">
+    <span class="sync-prompt-ic">⟳</span>
+    <span class="sync-prompt-body">
+      <b>发现不同步</b>
+      <span class="sync-prompt-why">${esc(first?.label || '派生档落后于事实源')}${esc(more)}</span>
+    </span>
+    <span class="sync-prompt-ops">
+      <button class="btn-primary" data-action="sync-prompt-go"${sync.regenBusy ? ' disabled' : ''}>${sync.regenBusy ? '同步中…' : '立即同步'}</button>
+      <button class="btn-ghost" data-action="sync-prompt-later">稍后</button>
+    </span>
+  </div>`
 }
 
 /** 参考笔记里最新的一条 mtime（世界书页顺手显示；没有就返回空串）。 */
@@ -5386,44 +5544,46 @@ function syncBarHtmlUnsafe() {
  * 「重新生成」入口（状态条上的 sync-regen-wiki）：真走 enrich（POST /api/enrich/run）。
  * enrich 是 2–6 分钟的模型任务，且要求设置里配好文本运行时——没配就只在状态条上说明、不发请求。
  */
-async function regenWikiFromSync() {
+/** 跑 enrich 重建派生档（OS-115）：状态条「重新生成」与进场提示「立即同步」共用同一个实现。
+ *  auto=true 时是策略触发的自动重建，文案与手动区分。 */
+async function runSyncRegen({ auto = false } = {}) {
   const sync = state.sync
   const root = state.current?.path
   if (!root || sync.regenBusy) return
-  if (!state.agent.configured) {
-    sync.notice = '重新生成走 enrich：先在「设置」里配好文本模型。'
-    render()
-    return
-  }
   sync.regenBusy = true
   sync.notice = ''
+  render()
   try {
     // OS-113 修：bookId 必须按「当前库」现取——state.factView.bookId 是上一个库的，
-    // 换库后直接用它会让 enrich 在新库里凭空造一本幽灵书（writeFactFile 对未知 bookId 是新建语义）。
-    // 口径：先问后端当前库的书目清单（权威），只有清单不可用时才退回 factView 的记忆值。
+    // 换库后直接用它会让 enrich 在新库里凭空造一本幽灵书。
     let bookId = ''
     const listed = await api(`/api/fact/books?root=${encodeURIComponent(root)}`).catch(() => null)
     const books = Array.isArray(listed?.books) ? listed.books : []
     const remembered = text(state.factView?.bookId).trim()
-    // 记忆值只在「它确实存在于本库书目里」时才认——否则宁可报错也不造幽灵书
     if (remembered && books.some((b) => text(b?.bookId) === remembered)) bookId = remembered
     if (!bookId) bookId = text(books[0]?.bookId).trim()
-    // 迟到检查：等接口期间库可能又切走
     if (state.current?.path !== root) return
     if (!bookId) {
       sync.notice = '这个库还没有拆解数据，enrich 无从跑起。'
       return
     }
     const payload = await api('/api/enrich/run', { method: 'POST', body: JSON.stringify({ root, bookId }) })
-    sync.notice = `已提交 enrich（${text(payload?.jobId) || '任务已入队'}），进度看左下角任务球。`
+    sync.notice = auto
+      ? `已自动提交同步（${text(payload?.jobId) || '任务已入队'}），完成后点「重试」刷新状态`
+      : `已提交 enrich（${text(payload?.jobId) || '任务已入队'}），进度看左下角任务球。`
+    sync.prompt = null
   } catch (error) {
-    sync.notice = `提交 enrich 失败：${text(error?.message || error)}`
+    sync.notice = auto
+      ? `自动同步没跑起来：${text(error?.message || error)}（可在设置里关掉自动同步）`
+      : `提交 enrich 失败：${text(error?.message || error)}`
   } finally {
     sync.regenBusy = false
     render()
   }
 }
 
+// 老调用点兼容：状态条的「重新生成」按钮原本叫 regenWikiFromSync
+function syncRegenWiki() { return runSyncRegen({ auto: false }) }
 function referencePageHtml() {
   const ref = state.reference
   if (!state.current) return needLibraryHtml()
@@ -5461,10 +5621,13 @@ function referencePageHtml() {
   // 标记找不到就退回整块前置——宁可位置差一点，不能让状态条消失。
   // 用函数式 replacement：路径/reason 里可能出现 $& 这类序列，字符串替换会把它当分组引用吃掉。
   const syncBar = syncBarHtml()
-  const shellWithSync = syncBar
+  // OS-115：进场提示＝发现不同步时的一条带动作横幅（状态条之下、ref-grid 之上）
+  const syncPrompt = syncPromptHtml()
+  const syncBlock = `${syncBar}${syncPrompt}`
+  const shellWithSync = syncBlock
     ? (shell.includes('<div class="ref-grid">')
-      ? shell.replace('<div class="ref-grid">', () => `${syncBar}<div class="ref-grid">`)
-      : `${syncBar}${shell}`)
+      ? shell.replace('<div class="ref-grid">', () => `${syncBlock}<div class="ref-grid">`)
+      : `${syncBlock}${shell}`)
     : shell
   // 参考页自己就是双链文档工作面（侧栏导航/正文/反链），
   // 不再套题材左栏——那三块是给「小说」这类非双链页用的。
@@ -10668,6 +10831,17 @@ document.addEventListener('click', (event) => {
     } else if (body) {
       fallback()
     }
+  } else if (action === 'sync-prompt-go') {
+    runSyncRegen({ auto: false })
+  } else if (action === 'sync-prompt-later') {
+    // 稍后＝收起横幅，同一指纹不再提醒（下次数据变了才重新提）
+    state.sync.prompt = null
+    render()
+  } else if (action === 'sync-policy-checkon') {
+    setSyncPolicy({ checkOn: target.dataset.value === 'manual' ? 'manual' : 'enter' })
+  } else if (action === 'sync-policy-action') {
+    const v = text(target.dataset.value)
+    setSyncPolicy({ action: ['auto', 'silent'].includes(v) ? v : 'remind' })
   } else if (action === 'sync-regen-wiki') {
     // 同源状态条·重新生成：真入口走 enrich（设置里配了文本模型才可用），
     // 未配置/无拆解数据时只在状态条上说明，不发请求。
