@@ -834,6 +834,11 @@ export async function listLibraryFiles(root, dir = '') {
 
 /** 正文扫描深度与数量上限（OS-113）。必须在 handleApi 之外：
  *  端点处理块先于函数定义求值，写在函数体内会 TDZ。 */
+/** OS-118：本进程能否弹原生对话框。首次真正试一次（8 秒超时），判定 NO_DESKTOP 后
+ *  记住，后续请求立刻返回——不再让用户每次白等 8 秒。daemon 重启会重试一次
+ *  （万一是被正常终端启动的，就恢复原生框）。 */
+let NATIVE_DIALOG_UNUSABLE = false
+
 const SYNC_SCAN_DEPTH = 4
 const SYNC_SCAN_LIMIT = 500
 
@@ -2847,6 +2852,10 @@ function readLegacyDeduceState(root, bookId) {
     const kind = text(request.kind || 'folder').trim()
     const title = text(request.title).trim() || (kind === 'file' ? '选择文件' : '选择文件夹')
     const initialDir = text(request.initialDir).trim()
+    // OS-118：已知本进程弹不出原生框——立刻降级，不让前端白等 8 秒
+    if (NATIVE_DIALOG_UNUSABLE) {
+      return sendJson(res, 400, { ok: false, error: { code: 'NO_DESKTOP', message: '服务进程没有交互桌面，显示内建浏览器' } })
+    }
     const result = kind === 'file'
       ? await pickFile({ title, initialDir, filter: text(request.filter).trim() || undefined })
       : await pickFolder({ title, initialDir })
@@ -2856,6 +2865,8 @@ function readLegacyDeduceState(root, bookId) {
       // NO_DESKTOP：服务进程没有交互桌面（被后台/子进程启动）——400 并把 code 透传，
       // 前端据此提示「请手动启动 daemon 或手填路径」，而不是当成服务器故障
       if (result.code === 'NO_DESKTOP') {
+        // 记住：本进程后续请求直接降级，不再等超时
+        NATIVE_DIALOG_UNUSABLE = true
         return sendJson(res, 400, { ok: false, error: { code: 'NO_DESKTOP', message: result.message } })
       }
       return sendError(res, result.code === 'UNSUPPORTED_PLATFORM' ? API_ERROR_CODES.INVALID_ENTRY : API_ERROR_CODES.WRITE_PROTOCOL_IO_FAILED, result.message)

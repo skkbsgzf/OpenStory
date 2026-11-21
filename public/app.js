@@ -191,7 +191,8 @@ const state = {
     //   action:  'remind'（提醒我，手动点同步）| 'auto'（发现不同步自动跑 enrich）| 'silent'（只标状态条）
     policy: null, policyLoaded: false,
     // 进场提示：同一份「不同步指纹」只弹一次，避免每次 render 都骚扰
-    prompt: null, promptedFor: '', lastAutoAt: 0
+    prompt: null, promptedFor: '', lastAutoAt: 0,
+    // OS-118：本会话已知弹不出原生框——后续「浏览…」直接开内建浏览器，不再等
   },
   settings: { userDir: '', section: 'plugins', suiteId: '', open: false, prevView: '', helpOpen: false },
   kbStatus: null,
@@ -6815,6 +6816,11 @@ function pickNativePath(triggerEl, kind) {
   const targetId = triggerEl.dataset.target || ''
   const inputEl = targetId ? document.getElementById(targetId) : null
   const current = text(inputEl?.value).trim()
+  // OS-118：本会话已知原生框弹不出——直接开内建浏览器（0 延迟，不再等 8 秒超时）
+  if (state.nativeDialogUnusable) {
+    openFsBrowser({ kind, targetId, startPath: current || '', note: '' })
+    return
+  }
   api('/api/native/pick', {
     method: 'POST',
     body: JSON.stringify({
@@ -6831,6 +6837,8 @@ function pickNativePath(triggerEl, kind) {
     // OS-110：服务进程没有交互桌面（后台启动的 daemon 弹不出模态框）
     // → 自动降级到内建目录浏览器，不依赖 Windows 对话框
     if (code === 'NO_DESKTOP') {
+      // 记住：本会话后续直接走内建（下一次点击 0 等待）
+      state.nativeDialogUnusable = true
       openFsBrowser({
         kind,
         targetId,
