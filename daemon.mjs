@@ -1292,6 +1292,23 @@ async function handleApi(req, res, url, context) {
     // 旧信封里的 wiki 没有 derivedFrom（内嵌形态）——按「无派生档」如实报，不编基准版本。
     const wikiDerivedFrom = isPlainObject(wikiRead.derivedFrom) ? wikiRead.derivedFrom : null
 
+    // OS-114：时间戳对齐——revision 是内核计数器，作者看不懂「差几版」；
+    // 真实写作频繁小改，要的是「谁比谁新」。三个时间戳：
+    //   factAt      = 拆解主档文件的 mtime（最后一次写盘时间）
+    //   wikiAt      = 派生档的 generated_at（生成时刻；没有就退文件 mtime）
+    //   chaptersAt  = 正文最新一个文件的 mtime
+    let factAt = null
+    try {
+      factAt = statSync(join(root, '拆解', `${bookId}.json`)).mtime.toISOString()
+    } catch { factAt = null }
+    let wikiAt = null
+    try {
+      const wikiPath = join(root, '拆解', `${bookId}.wiki.json`)
+      const wikiDoc = JSON.parse(await readFile(wikiPath, 'utf-8'))
+      // generated_at 是 enrich 写的权威生成时刻；没有就退文件 mtime
+      wikiAt = text(wikiDoc?.generated_at) || statSync(wikiPath).mtime.toISOString()
+    } catch { wikiAt = null }
+
     // ② 参考笔记最新 mtime（scanReferences 已导出，索引里就是 ISO 串）
     const referenceIndex = await scanReferences(root)
     const refsMtimeMax = (Array.isArray(referenceIndex.notes) ? referenceIndex.notes : [])
@@ -1304,6 +1321,12 @@ async function handleApi(req, res, url, context) {
     // 不按 module 过滤：同一文件可能被别的通道（剧本转正/迁移）以不同模块名记过，
     // 只看 '正文' 会把那些正常写入误判成外部改动。files 白名单已经收窄了范围。
     const prose = await scanProseFiles(root)
+    // 正文最新改动时刻（OS-114）：与 factAt 比，判断「正文改了但拆解没跟上」
+    const chaptersAt = prose
+      .map((item) => text(item?.mtime))
+      .filter(Boolean)
+      .sort()
+      .pop() ?? null
     const logged = await readLatestByFile({ root, files: prose.map((item) => item.path) })
     if (!logged.ok) {
       return sendError(res, logged.code ?? API_ERROR_CODES.INVALID_ENTRY, '读变更日志失败：同源检查没法判定哪些改动没留痕')
@@ -1324,9 +1347,12 @@ async function handleApi(req, res, url, context) {
 
     const sameSource = checkSameSource({
       root,
+      factMtime: factAt,
+      wikiGeneratedAt: wikiAt,
+      refsMtimeMax,
+      chaptersMtimeMax: chaptersAt,
       factRevision: factRevision ?? (entries.length ? 1 : 0),
       wikiDerivedFrom,
-      refsMtimeMax,
       entries
     })
     const payload = {

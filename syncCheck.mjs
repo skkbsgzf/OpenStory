@@ -2,9 +2,12 @@
  * 同源版本检查 ＋ 外部变更检测（OS-107）。
  *
  * 两件事：
- *   A) `checkSameSource()` —— **纯函数，不碰磁盘**：拆解 fact 的 revision、兄弟 wiki 的
- *      `derivedFrom.factRevision`、参考笔记最新 mtime 三者摆在一起，回答两个问题：
- *      「派生档是不是基于旧 revision 算的」（wikiStale）与「参考笔记最新改动是什么时候」。
+ *   A) `checkSameSource()` —— **纯函数，不碰磁盘**：拆解 fact 的修改时间、兄弟 wiki 的
+ *      生成时间、参考笔记最新 mtime 三者摆在一起，回答两个问题：
+ *      「派生档是不是比 fact 旧」（wikiStale）与「参考笔记最新改动是什么时候」。
+ *
+ *   **对齐口径：一律用时间戳**（OS-114）。revision 是内核内部计数器，作者看不懂
+ *   「revision 1 与 4 差几版」；真实写作是频繁小改，需要的是「谁比谁新」。
  *   B) `snapshotAndDiff()` —— 唯一读盘入口：读 `<库>/.pinax/sync-state.json` 的上次快照，
  *      与本次正文快照比对，捞出「hash 变了、但变更日志里没有对应记录」的文件
  *      （＝绕过了写通道被外部改过），然后原子写回新快照（tmp ＋ rename）。
@@ -58,44 +61,91 @@ function isLaterThan(mtime, loggedAt) {
  */
 export function checkSameSource({
   root = '',
-  factRevision,
-  wikiDerivedFrom = null,
+  factMtime = null,
+  wikiGeneratedAt = null,
   refsMtimeMax = null,
+  chaptersMtimeMax = null,
+  factRevision,
   entries = []
 } = {}) {
   void root // 纯函数：root 只为与 snapshotAndDiff 的调用形状对称，这里不读盘
   const entryList = Array.isArray(entries) ? entries : []
+
+  // revision 只作诊断字段保留（内核语义），不再参与「过期」判定
   const given = Number(factRevision)
   const revision = Number.isSafeInteger(given) && given >= 0
     ? given
     : (entryList.length ? 1 : 0)
 
-  const derived = wikiDerivedFrom && typeof wikiDerivedFrom === 'object' ? wikiDerivedFrom : null
-  const derivedRaw = derived ? Number(derived.factRevision) : Number.NaN
-  // 有派生档但 derivedFrom 里没有可用的 factRevision＝读不出基准，按「没有」处理（不假装一致）。
-  const wikiFactRevision = Number.isSafeInteger(derivedRaw) && derivedRaw >= 0 ? derivedRaw : null
-  // OS-113 修：derivedFrom.factRevision 的语义是「派生档所基于的那一版 fact」，
-  // 而写它的时候（内核 factFileStore 与 daemon 的 import 通道）主档 revision 已被 +1，
-  // 所以「wiki 的基准」与「当前 revision」天然差 1，直接比大小会永久误报过期。
-  // 正确口径：派生档覆盖到 revision N，只要求 N >= 1 且不是「明显落后于多次写入」——
-  // 这里用「差值 > 1」作为判定（差 1 是写入语义本身的偏移，不算过期）。
-  const wikiGap = wikiFactRevision === null ? 0 : revision - wikiFactRevision
-  const wikiStale = wikiFactRevision !== null && wikiGap > 1
+  const factAt = isoOrNull(factMtime)
+  const wikiAt = isoOrNull(wikiGeneratedAt)
+  const refsAt = isoOrNull(refsMtimeMax)
+  const chaptersAt = isoOrNull(chaptersMtimeMax)
+
+  // 时间戳比较（OS-114）：同一次写入会连写主档＋派生档，两者 mtime 常只差几毫秒到几秒，
+  // 不能判过期。容差 5 秒内一律算「同批写入」。
+  const TOLERANCE_MS = 5_000
+  const ms = (iso) => {
+    const t = Date.parse(String(iso ?? ''))
+    return Number.isFinite(t) ? t : null
+  }
+  const newer = (a, b) => {
+    const ta = ms(a)
+    const tb = ms(b)
+    if (ta === null || tb === null) return null
+    return ta - tb > TOLERANCE_MS
+  }
+
+  // wiki 过期：fact 比 wiki 新 = 派生档落后
+  const factNewerThanWiki = newer(factAt, wikiAt)
+  const wikiStale = factNewerThanWiki === true
+
+  // 正文比 fact 新 = 拆解可能没跟上正文（提示，不判错）
+  const chaptersNewerThanFact = newer(chaptersAt, factAt)
+
+  // 参考笔记比 fact 新 = 跟 fact 无关（笔记是手写设定，随时改），只作展示
 
   let wikiNote = '无派生档'
-  if (wikiFactRevision !== null) {
-    wikiNote = wikiStale
-      ? `派生档基于 revision ${wikiFactRevision}，当前 ${revision}（落后 ${wikiGap} 版，建议重新生成）`
-      : (wikiGap === 1 ? '一致（派生档随上次写入）' : '一致')
+  if (!wikiAt) {
+    wikiNote = factAt ? '还没有派生档（跑 enrich 生成）' : '无派生档'
+  } else if (!factAt) {
+    wikiNote = '派生档有生成时间，fact 无修改时间（异常）'
+  } else if (wikiStale) {
+    wikiNote = `派生档生成于 ${fmt(wikiAt)}，事实源改于 ${fmt(factAt)}——派生档落后，建议重新生成`
+  } else {
+    wikiNote = `一致（派生档 ${fmt(wikiAt)}，事实源 ${fmt(factAt)}）`
   }
 
+  const chaptersNote = chaptersNewerThanFact === true
+    ? `正文最新改动 ${fmt(chaptersAt)}，晚于事实源 ${fmt(factAt)}——拆解可能没跟上`
+    : ''
+
   return {
-    factRevision: revision,
-    wikiFactRevision,
+    // 时间戳（新口径：唯一判定依据）
+    factAt,
+    wikiAt,
+    refsAt,
+    chaptersAt,
+    // 派生档状态
     wikiStale,
     wikiNote,
-    refsNewerThan: isoOrNull(refsMtimeMax)
+    factNewerThanWiki,
+    chaptersNewerThanFact,
+    chaptersNote,
+    // 兼容旧调用方（诊断用，不再参与判定）
+    factRevision: revision,
+    wikiFactRevision: null,
+    refsNewerThan: refsAt
   }
+}
+
+/** ISO 时间 → 人类可读（月-日 时:分），解析失败原样返回。 */
+function fmt(iso) {
+  const t = Date.parse(String(iso ?? ''))
+  if (!Number.isFinite(t)) return String(iso ?? '')
+  const d = new Date(t)
+  const pad = (n) => String(n).padStart(2, '0')
+  return `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
 /** 快照文件绝对路径（库内固定位置）。 */

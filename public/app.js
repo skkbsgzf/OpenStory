@@ -5326,12 +5326,14 @@ function syncBarHtmlUnsafe() {
   const firstSeen = Array.isArray(external.firstSeen) ? external.firstSeen.filter(Boolean) : []
 
   const parts = []
+  // OS-114：过期判定改用时间戳——作者看不懂「revision 差几版」，要看「谁比谁新」。
+  const factAt = text(same.factAt || same.factMtime).trim()
+  const wikiAt = text(same.wikiAt || same.wikiGeneratedAt).trim()
   if (stale) {
-    // 后端 wikiNote 对过期态的措辞就是「派生档基于 revision X，当前 Y」——跟主文案重复，只在它说了别的东西时补
+    // 后端 wikiNote 已经是完整人话（含两个时间），直接用它当主文案
     const why = text(same.wikiNote).trim()
-    const redundant = /派生档.*revision\s*\d+.*当前/u.test(why) || why === '一致'
-    const base = wikiRevKnown ? `revision <b>${rawWikiRev}</b>` : '未知版本'
-    parts.push(`<span class="sync-main">世界书派生档基于 ${base}，当前 <b>${current}</b>${why && !redundant ? `（${esc(why)}）` : ''}</span>
+    const main = why || `派生档生成于 ${wikiAt ? formatAt(wikiAt) : '未知'}，事实源改于 ${factAt ? formatAt(factAt) : '未知'}——建议重新生成`
+    parts.push(`<span class="sync-main">${esc(main)}</span>
       <button class="sync-btn" data-action="sync-regen-wiki"${sync.regenBusy ? ' disabled' : ''} title="重新生成走 enrich（设置里配了模型才可用）">${sync.regenBusy ? '提交中…' : '重新生成'}</button>`)
   }
   if (changes.length) {
@@ -5350,7 +5352,9 @@ function syncBarHtmlUnsafe() {
       ${sync.openList ? `<ul class="sync-list">${rows}${rest}</ul>` : ''}`)
   }
   if (!parts.length) {
-    parts.push(`<span class="sync-main">同源一致${current ? ` · Fact 链 revision <b>${current}</b>` : ''}</span>`)
+    const stamp = factAt ? `事实源 ${formatAt(factAt)}` : ''
+    const wikiStamp = wikiAt ? `派生档 ${formatAt(wikiAt)}` : ''
+    parts.push(`<span class="sync-main">同源一致${stamp ? ` · ${esc(stamp)}` : ''}${wikiStamp ? ` · ${esc(wikiStamp)}` : ''}</span>`)
   }
 
   const metas = []
@@ -5361,6 +5365,10 @@ function syncBarHtmlUnsafe() {
   const refAt = /^\d{4}-\d{2}-\d{2}T/u.test(refsRaw) ? refsRaw : syncLatestNoteAt()
   if (refAt) metas.push(`参考笔记最近更新 ${esc(formatAt(refAt))}`)
   if (firstSeen.length) metas.push(`另有 ${firstSeen.length} 处首次发现`)
+  // OS-114：正文比事实源新——拆解可能没跟上（提示，不判错）
+  if (same.chaptersNewerThanFact === true && text(same.chaptersNote).trim()) {
+    metas.push(esc(text(same.chaptersNote).trim()))
+  }
   const checkedAt = text(external.checkedAt).trim()
   if (checkedAt) metas.push(`核对于 ${esc(formatAt(checkedAt))}`)
   if (sync.error) metas.push('本次刷新失败，显示上次结果')
