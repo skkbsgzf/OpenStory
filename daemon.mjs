@@ -21,7 +21,7 @@
  * 启动：`node openstory/daemon.mjs [--port=8807] [--root=<库路径>]`
  */
 import { randomUUID } from 'node:crypto'
-import { createReadStream, existsSync, readFileSync, realpathSync, statSync } from 'node:fs'
+import { createReadStream, existsSync, mkdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs'
 import { copyFile, mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path'
@@ -198,6 +198,49 @@ const STATUS_BY_CODE = Object.freeze({
 
 function text(value) {
   return String(value ?? '')
+}
+
+/** OS-119：目录浏览器「上次选的文件夹」记忆（本机偏好，与库无关）。
+ *  为什么放全局而不是库内 ui-state：新建库时还没有库可写，而「浏览」按钮在
+ *  建库表单里就要用——所以只能落本机 %LOCALAPPDATA%/PinaxNext/openstory/。 */
+export function browseMemoryPath(env = process.env) {
+  const base = text(env.LOCALAPPDATA || env.APPDATA).trim()
+  return base ? join(base, 'PinaxNext', 'openstory', 'fs-browse.json') : ''
+}
+
+function readBrowseMemory(env = process.env) {
+  const target = browseMemoryPath(env)
+  if (!target) return { lastPicked: '', nativeDialog: '' }
+  try {
+    const raw = JSON.parse(readFileSync(target, 'utf-8'))
+    return {
+      lastPicked: text(raw?.lastPicked).trim(),
+      // 原生框能力判定（OS-119）：本机这台机器上「上次试的结果」，跨 daemon 重启复用
+      nativeDialog: text(raw?.nativeDialog).trim()
+    }
+  } catch {
+    return { lastPicked: '', nativeDialog: '' }
+  }
+}
+
+function writeBrowseMemory(patch, env = process.env) {
+  const target = browseMemoryPath(env)
+  if (!target) return
+  try {
+    const next = { ...readBrowseMemory(env), ...patch }
+    mkdirSync(dirname(target), { recursive: true })
+    writeFileSync(target, JSON.stringify(next, null, 2) + '\n', 'utf-8')
+  } catch (error) {
+    // 记不住不算错（浏览器照常能用），但要留痕——静默失败排查过一次就够
+    console.error('[fs-browse] 记忆写入失败:', text(error?.message || error))
+  }
+}
+
+/** 默认根：C 盘用户目录下的 OpenStory（作者口径「默认目录始终选择用户 C 盘的
+ *  openstory project」）。不存在就建出来，省得每次从头选。 */
+export function defaultBrowseRoot(env = process.env) {
+  const home = text(env.USERPROFILE || env.HOME).trim()
+  return home ? join(home, 'OpenStory') : ''
 }
 
 /* ---------- 库清单与 root 白名单 ---------- */
@@ -838,6 +881,9 @@ export async function listLibraryFiles(root, dir = '') {
  *  记住，后续请求立刻返回——不再让用户每次白等 8 秒。daemon 重启会重试一次
  *  （万一是被正常终端启动的，就恢复原生框）。 */
 let NATIVE_DIALOG_UNUSABLE = false
+/** 已知有桌面 → 用户真要动手选，超时必须放宽；否则 8 秒就掐掉了正常操作。
+ *  未知 → 8 秒探测（失败即判无桌面）。 */
+let NATIVE_DIALOG_TIMEOUT_MS = 8_000
 
 const SYNC_SCAN_DEPTH = 4
 const SYNC_SCAN_LIMIT = 500
@@ -2852,25 +2898,30 @@ function readLegacyDeduceState(root, bookId) {
     const kind = text(request.kind || 'folder').trim()
     const title = text(request.title).trim() || (kind === 'file' ? '选择文件' : '选择文件夹')
     const initialDir = text(request.initialDir).trim()
-    // OS-118：已知本进程弹不出原生框——立刻降级，不让前端白等 8 秒
-    if (NATIVE_DIALOG_UNUSABLE) {
+    // OS-118/119：本机上次已判定弹不出原生框——立刻降级，不让前端白等探测超时。
+    // 判定落在 fs-browse.json（跨 daemon 重启复用）：删掉那行 nativeDialog 即可重试。
+    if (NATIVE_DIALOG_UNUSABLE || readBrowseMemory(context.env).nativeDialog === 'NO_DESKTOP') {
+      NATIVE_DIALOG_UNUSABLE = true
       return sendJson(res, 400, { ok: false, error: { code: 'NO_DESKTOP', message: '服务进程没有交互桌面，显示内建浏览器' } })
     }
     const result = kind === 'file'
-      ? await pickFile({ title, initialDir, filter: text(request.filter).trim() || undefined })
-      : await pickFolder({ title, initialDir })
+      ? await pickFile({ title, initialDir, filter: text(request.filter).trim() || undefined, timeoutMs: NATIVE_DIALOG_TIMEOUT_MS })
+      : await pickFolder({ title, initialDir, timeoutMs: NATIVE_DIALOG_TIMEOUT_MS })
     if (!result.ok) {
       // 取消不是错误：200 + ok:false + code，前端据此静默
       if (result.code === 'CANCELLED') return sendJson(res, 200, { ok: false, code: 'CANCELLED', message: '已取消' })
       // NO_DESKTOP：服务进程没有交互桌面（被后台/子进程启动）——400 并把 code 透传，
       // 前端据此提示「请手动启动 daemon 或手填路径」，而不是当成服务器故障
       if (result.code === 'NO_DESKTOP') {
-        // 记住：本进程后续请求直接降级，不再等超时
+        // 记住：本进程＋本机后续请求直接降级，不再等超时
         NATIVE_DIALOG_UNUSABLE = true
+        writeBrowseMemory({ nativeDialog: 'NO_DESKTOP' }, context.env)
         return sendJson(res, 400, { ok: false, error: { code: 'NO_DESKTOP', message: result.message } })
       }
       return sendError(res, result.code === 'UNSUPPORTED_PLATFORM' ? API_ERROR_CODES.INVALID_ENTRY : API_ERROR_CODES.WRITE_PROTOCOL_IO_FAILED, result.message)
     }
+    // 真弹出了（说明有桌面）→ 清掉「弹不出」的记忆，下次 daemon 重启也照样走原生框
+    if (readBrowseMemory(context.env).nativeDialog) writeBrowseMemory({ nativeDialog: '' }, context.env)
     return sendJson(res, 200, { ok: true, path: result.path })
   }
 
@@ -2878,8 +2929,37 @@ function readLegacyDeduceState(root, bookId) {
     // OS-110 兜底：无桌面环境（后台启动的 daemon 弹不出模态对话框）时，
     // 前端用这个端点自建目录浏览器——列盘符/子目录，不影响任何写操作。
     const wanted = text(request.path).trim()
-    // 空路径＝列盘符
+    // 空路径＝「默认根」：%USERPROFILE%\OpenStory（OS-119 作者口径「默认目录始终选择
+    // 用户 C 盘的 openstory project」）。不存在就建出来——建库大多落这里，省得每次从头选。
     if (!wanted) {
+      const env = context.env || process.env
+      const home = text(env.USERPROFILE || env.HOME).trim()
+      const defaultRoot = defaultBrowseRoot(env)
+      // 上次选过的目录：只作「一键回到」的快捷入口，不改变默认起点（作者要「始终」）
+      const memory = readBrowseMemory(env)
+      const lastPicked = memory.lastPicked && existsSync(memory.lastPicked) ? memory.lastPicked.replace(/\\/gu, '/') : ''
+      if (defaultRoot) {
+        try { if (!existsSync(defaultRoot)) await mkdir(defaultRoot, { recursive: true }) } catch { /* 建不出就退盘符 */ }
+        if (existsSync(defaultRoot)) {
+          let items = []
+          try { items = await readdir(defaultRoot, { withFileTypes: true }) } catch { items = [] }
+          const entries = items
+            .filter((item) => item.isDirectory() && !item.name.startsWith('.'))
+            .map((item) => ({ name: item.name, path: `${defaultRoot.replace(/\\/gu, '/')}/${item.name}`, kind: 'dir' }))
+            .sort((left, right) => left.name.localeCompare(right.name, 'zh-Hans-CN'))
+          // defaultRoot 让前端知道「这是默认起始位置」，上一级回到用户目录
+          return sendJson(res, 200, {
+            ok: true,
+            path: defaultRoot.replace(/\\/gu, '/'),
+            parent: home.replace(/\\/gu, '/'),
+            entries,
+            isDefaultRoot: true,
+            defaultRoot: defaultRoot.replace(/\\/gu, '/'),
+            lastPicked
+          })
+        }
+      }
+      // 退路：列盘符
       const drives = []
       for (const letter of 'CDEFGHIJKLMNOPQRSTUVWXYZ') {
         const root = `${letter}:\\`
@@ -2902,7 +2982,15 @@ function readLegacyDeduceState(root, bookId) {
       .sort((left, right) => left.name.localeCompare(right.name, 'zh-Hans-CN'))
     // 父目录（盘符根没有父级可回）
     const parent = /^[A-Za-z]:\/?$/u.test(target) ? '' : target.replace(/\/[^/]+\/?$/u, '') || ''
-    return sendJson(res, 200, { ok: true, path: target, parent: parent || '', entries })
+    // OS-119：用户「选了这个文件夹」时才记——单纯浏览不留痕，免得记忆被瞎逛带跑
+    if (request.remember === true) writeBrowseMemory({ lastPicked: target }, context.env || process.env)
+    const defaultRootNow = defaultBrowseRoot(context.env || process.env)
+    return sendJson(res, 200, {
+      ok: true, path: target, parent: parent || '', entries,
+      lastPicked: readBrowseMemory(context.env || process.env).lastPicked,
+      defaultRoot: defaultRootNow ? defaultRootNow.replace(/\\/gu, '/') : '',
+      isDefaultRoot: false
+    })
   }
 
   if (endpointId === 'nativeReveal') {

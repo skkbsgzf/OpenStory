@@ -275,10 +275,14 @@ export const ENDPOINTS = Object.freeze({
   fsBrowse: {
     method: 'POST',
     path: '/api/fs/browse',
-    // 目录浏览（OS-110 兜底）：无桌面环境时前端自建选择器用。空 path＝列盘符；
-    // 给了 path＝列子目录（只回目录，不回文件）。只读，不影响任何写操作。
-    request: { body: { path: 'string?' } },
-    response: { ok: 'true', path: 'string', parent: 'string?', entries: 'array' },
+    // 目录浏览（OS-110 兜底）：无桌面环境时前端自建选择器用。空 path＝默认根
+    // （OS-119：%USERPROFILE%/OpenStory，不存在自动创建；建不出才退列盘符）；
+    // 给了 path＝列子目录（只回目录，不回文件）。remember:true 才记忆这次选的目录。
+    request: { body: { path: 'string?', remember: 'boolean?' } },
+    response: {
+      ok: 'true', path: 'string', parent: 'string?', entries: 'array',
+      isDefaultRoot: 'boolean?', defaultRoot: 'string?', lastPicked: 'string?'
+    },
     errors: ['NOT_FOUND', 'WRITE_PROTOCOL_IO_FAILED']
   },
   nativeReveal: {

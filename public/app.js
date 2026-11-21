@@ -194,6 +194,9 @@ const state = {
     prompt: null, promptedFor: '', lastAutoAt: 0,
     // OS-118：本会话已知弹不出原生框——后续「浏览…」直接开内建浏览器，不再等
   },
+  // 内建目录浏览器（OS-110/119）：open 时才渲染浮层；fsLastPicked＝本会话记住的
+  // 「上次选过的文件夹」（真源在 daemon 的 fs-browse.json，这里只是镜像，免得多打一次请求）
+  fsBrowse: null, fsLastPicked: '',
   settings: { userDir: '', section: 'plugins', suiteId: '', open: false, prevView: '', helpOpen: false },
   kbStatus: null,
   kbConfig: null,
@@ -6857,6 +6860,12 @@ function pickNativePath(triggerEl, kind) {
 /** 把选中的路径写回输入框（文件夹＝绝对路径；文件＝完整路径或所在目录）。 */
 function applyPickedPath(triggerEl, inputEl, kind, pickedPath) {
   if (!inputEl) return
+  // OS-119：原生框与内建浏览器共用一份「上次选的目录」记忆
+  const remembered = kind === 'folder' ? pickedPath : pickedPath.replace(/[\\/][^\\/]+$/u, '')
+  if (remembered) {
+    state.fsLastPicked = remembered
+    api('/api/fs/browse', { method: 'POST', body: JSON.stringify({ path: remembered, remember: true }) }).catch(() => {})
+  }
   inputEl.value = kind === 'folder'
     ? pickedPath
     : (triggerEl.dataset.mode === 'full' ? pickedPath : pickedPath.replace(/[\\/][^\\/]+$/u, ''))
@@ -6868,22 +6877,39 @@ function applyPickedPath(triggerEl, inputEl, kind, pickedPath) {
  * 调 /api/fs/browse 列盘符/子目录，任何环境都能用（不依赖 Windows 桌面栈）。 */
 
 function openFsBrowser({ kind = 'folder', targetId = '', startPath = '', note = '' } = {}) {
-  state.fsBrowse = { open: true, kind, targetId, path: startPath, parent: '', entries: [], loading: true, error: '', note }
+  // OS-119：起点＝输入框已有值，否则交给 daemon 的默认根
+  // （作者口径：默认目录「始终」是 C 盘 OpenStory——不是上次逛到哪就从哪开始）。
+  // 「上次选择」只作弹层里的一个快捷入口，不改变默认起点。
+  const remembered = text(state.fsLastPicked).trim()
+  const start = text(startPath).trim()
+  state.fsBrowse = {
+    open: true, kind, targetId,
+    path: start, parent: '', entries: [], loading: true, error: '', note,
+    isDefaultRoot: false, defaultRoot: '', lastPicked: remembered
+  }
   renderFsBrowserModal()
-  loadFsBrowse(startPath)
+  loadFsBrowse(start)
 }
 
-async function loadFsBrowse(pathToLoad) {
+async function loadFsBrowse(pathToLoad, { remember = false } = {}) {
   const fb = state.fsBrowse
   if (!fb) return
   fb.loading = true
   fb.error = ''
   renderFsBrowserModal()
   try {
-    const payload = await api('/api/fs/browse', { method: 'POST', body: JSON.stringify({ path: pathToLoad || '' }) })
+    const payload = await api('/api/fs/browse', {
+      method: 'POST',
+      body: JSON.stringify({ path: pathToLoad || '', ...(remember ? { remember: true } : {}) })
+    })
     fb.path = payload.path || ''
     fb.parent = payload.parent || ''
     fb.entries = Array.isArray(payload.entries) ? payload.entries : []
+    fb.isDefaultRoot = payload.isDefaultRoot === true
+    fb.defaultRoot = text(payload.defaultRoot).trim()
+    fb.lastPicked = text(payload.lastPicked).trim()
+    // 服务端认的记忆＝真源：同步回前端，下次开窗直接用
+    if (fb.lastPicked) state.fsLastPicked = fb.lastPicked
   } catch (error) {
     fb.error = (error && error.code ? error.code + ' · ' : '') + text((error && error.message) || error)
   }
@@ -6899,12 +6925,17 @@ function renderFsBrowserModal() {
       <span class="fsb-ic">${item.kind === 'drive' ? '💽' : '📁'}</span>
       <span class="fsb-name">${esc(item.name)}</span>
     </button>`).join('')
+  // OS-119：默认根与「上次选择」都做成一步可回的快捷入口（作者：不用每次都从头选）
+  const shortcuts = []
+  if (fb.defaultRoot && !fb.isDefaultRoot) shortcuts.push(`<button class="fsb-jump" data-action="fsb-jump" data-path="${esc(fb.defaultRoot)}" title="默认放在这里：建库大多落这个目录">⌂ 默认目录</button>`)
+  if (fb.lastPicked && fb.lastPicked !== fb.path && fb.lastPicked !== fb.defaultRoot) shortcuts.push(`<button class="fsb-jump" data-action="fsb-jump" data-path="${esc(fb.lastPicked)}" title="上次选过的文件夹">↺ 上次选择</button>`)
   openModal(`<h3>选择文件夹</h3>
     ${fb.note ? `<p class="sub">${esc(fb.note)}</p>` : ''}
     <div class="fsb-path">
       <button class="btn-ghost" data-action="fsb-up"${fb.parent ? '' : ' disabled'} title="上一级">↑ 上一级</button>
-      <span class="fsb-cur">${esc(fb.path || '（选择盘符）')}</span>
+      <span class="fsb-cur">${esc(fb.path || '（选择盘符）')}${fb.isDefaultRoot ? '<span class="fsb-tag">默认目录</span>' : ''}</span>
     </div>
+    ${shortcuts.length ? `<div class="fsb-jumps">${shortcuts.join(String())}</div>` : ''}
     <div class="fsb-list">
       ${fb.loading ? '<p class="fsb-hint">读取中…</p>' : ''}
       ${fb.error ? `<p class="fsb-err">${esc(fb.error)}</p>` : ''}
@@ -10969,12 +11000,19 @@ document.addEventListener('click', (event) => {
     revealNativePath(target.dataset.path || '')
   } else if (action === 'fsb-go') {
     loadFsBrowse(target.dataset.path || '')
+  } else if (action === 'fsb-jump') {
+    loadFsBrowse(target.dataset.path || '')
   } else if (action === 'fsb-up') {
     loadFsBrowse(state.fsBrowse?.parent || '')
   } else if (action === 'fsb-pick') {
     // 选中当前所在目录（文件夹场景）
     const fb = state.fsBrowse
     if (!fb) return
+    // OS-119：选过就记住——下次开窗直接落这里（fire-and-forget，不拖慢关窗）
+    if (fb.path) {
+      state.fsLastPicked = fb.path
+      api('/api/fs/browse', { method: 'POST', body: JSON.stringify({ path: fb.path, remember: true }) }).catch(() => {})
+    }
     const inputEl = fb.targetId ? document.getElementById(fb.targetId) : null
     applyPickedPath({ dataset: {} }, inputEl, 'folder', fb.path)
     state.fsBrowse = null

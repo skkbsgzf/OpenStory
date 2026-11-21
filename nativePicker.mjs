@@ -76,7 +76,7 @@ function psQuote(value) {
 }
 
 /** 弹「选择文件夹」对话框。 */
-export async function pickFolder({ title = '选择文件夹', initialDir = '' } = {}) {
+export async function pickFolder({ title = '选择文件夹', initialDir = '', timeoutMs = 8_000 } = {}) {
   const lines = [
     'Add-Type -AssemblyName System.Windows.Forms | Out-Null',
     '$d = New-Object System.Windows.Forms.FolderBrowserDialog',
@@ -87,11 +87,11 @@ export async function pickFolder({ title = '选择文件夹', initialDir = '' } 
     '$r = $d.ShowDialog()',
     "if ($r -eq 'OK') { Write-Output ('RESULT=' + $d.SelectedPath) } else { Write-Output 'RESULT=<NULL>' }"
   ].filter(Boolean).join('; ')
-  return runPowerShell(lines)
+  return runPowerShell(lines, { timeoutMs })
 }
 
 /** 弹「选择文件」对话框。 */
-export async function pickFile({ title = '选择文件', initialDir = '', filter = '所有文件 (*.*)|*.*' } = {}) {
+export async function pickFile({ title = '选择文件', initialDir = '', filter = '所有文件 (*.*)|*.*', timeoutMs = 8_000 } = {}) {
   const lines = [
     'Add-Type -AssemblyName System.Windows.Forms | Out-Null',
     '$d = New-Object System.Windows.Forms.OpenFileDialog',
@@ -102,7 +102,7 @@ export async function pickFile({ title = '选择文件', initialDir = '', filter
     '$r = $d.ShowDialog()',
     "if ($r -eq 'OK') { Write-Output ('RESULT=' + $d.FileName) } else { Write-Output 'RESULT=<NULL>' }"
   ].filter(Boolean).join('; ')
-  return runPowerShell(lines)
+  return runPowerShell(lines, { timeoutMs })
 }
 
 /**

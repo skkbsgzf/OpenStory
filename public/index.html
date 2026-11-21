@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="zh-CN" data-skin="coral" data-build="os93">
+<html lang="zh-CN" data-skin="coral" data-build="os119">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>OpenStory · OS-107</title>
+<title>OpenStory · OS-119</title>
 <!-- OS-113 嵌入模式：被 DSH 右侧栏以 iframe 嵌入（或显式 ?embed=1）时，
      宿主左侧已经有真正的 DSH 会话，本页收掉自带的 Agent 左列。
      在 <head> 里先加类，避免首帧闪一下 Pi-Agent 再消失。 -->
@@ -787,6 +787,14 @@ button.modlog-row:focus-visible { outline: 2px solid var(--accent); outline-offs
 .fsb-name { overflow-wrap: anywhere; }
 .fsb-hint { margin: 8px 4px; font-size: 12px; color: var(--meta); font-style: italic; }
 .fsb-err { margin: 8px 4px; font-size: 12px; color: var(--danger); }
+/* OS-119：默认目录 / 上次选择两个一步可回的入口 */
+.fsb-jumps { display: flex; gap: 6px; flex-wrap: wrap; margin: -2px 0 6px; }
+.fsb-jump { padding: 3px 9px; font-size: 11.5px; border-radius: 999px;
+  border: 1px solid var(--hair); background: transparent; color: var(--ink-2); cursor: pointer; }
+.fsb-jump:hover { border-color: color-mix(in srgb, var(--accent) 45%, var(--hair));
+  color: var(--ink); background: color-mix(in srgb, var(--accent) 7%, transparent); }
+.fsb-tag { margin-left: 6px; padding: 1px 6px; font-size: 10.5px; border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--ink-2); }
 
 .input-with-btn { display: flex; gap: 8px; align-items: center; }
 .input-with-btn input { flex: 1; min-width: 0; }
