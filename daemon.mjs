@@ -122,8 +122,9 @@ import {
   scanLibrary,
   setPrimaryCarrier
 } from './libraryManage.mjs'
-import { createFactFileStore } from './core/pinax/next/kernel/factFileStore.mjs'
-import { readChange, readLog, logSummary, recordChange } from './changelog.mjs'
+import { createFactFileStore, readFactWiki } from './core/pinax/next/kernel/factFileStore.mjs'
+import { readChange, readLatestByFile, readLog, logSummary, recordChange, contentHash } from './changelog.mjs'
+import { checkSameSource, snapshotAndDiff } from './syncCheck.mjs'
 import { dropDraft, listDrafts, loadDraft, readUiState, saveDraft, writeUiState } from './libState.mjs'
 import { absorbLegacyDirs, backlinksOf, buildReferenceGraph, REFERENCE_DIR, notesVisibleAt, scanReferences } from './referenceStore.mjs'
 import { deduceOpening, deducePresent, deduceSettle, deduceStatePath, loadEntries } from './deduceEngine.mjs'
@@ -831,6 +832,11 @@ export async function listLibraryFiles(root, dir = '') {
   return { ok: true, files, ...(warnings.length ? { warnings } : {}) }
 }
 
+/** 正文扫描深度与数量上限（OS-113）。必须在 handleApi 之外：
+ *  端点处理块先于函数定义求值，写在函数体内会 TDZ。 */
+const SYNC_SCAN_DEPTH = 4
+const SYNC_SCAN_LIMIT = 500
+
 async function handleApi(req, res, url, context) {
   const endpointId = endpointFor(req.method, url.pathname)
   if (!endpointId) {
@@ -1260,6 +1266,80 @@ async function handleApi(req, res, url, context) {
     return sendJson(res, 200, { ok: true, draft: saved.draft })
   }
 
+  if (endpointId === 'syncCheck') {
+    // OS-107：同源版本检查 ＋ 外部变更检测。一次读盘回答两件事：
+    //   ① fact revision 与兄弟 wiki 的 derivedFrom.factRevision 是否同源（wikiStale）；
+    //   ② 正文文件的 hash/mtime 与 changelog 对照，捞出绕过写通道的外部改动。
+    // 检查本身会刷新 .pinax/sync-state.json 快照（POST 而非 GET 的原因）。
+    const authorized = authorizeRoot(allowlist, request.root)
+    if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
+    const root = authorized.root
+
+    // ① 拆解：最新一本书的主档 revision ＋ 兄弟 wiki 的派生基准（两代兼容走 readFactWiki）
+    let bookId = await resolveFactBookId(root, '')
+    // resolveFactBookId 挑「最新 .json」时会把兄弟 `<id>.wiki.json` 也算进去（同样以 .json 结尾）。
+    // 同源检查要的是主档：命中派生档就退回同 id 的主档（主档存在时）。
+    if (/\.wiki$/u.test(bookId) && existsSync(join(root, '拆解', `${bookId.slice(0, -'.wiki'.length)}.json`))) {
+      bookId = bookId.slice(0, -'.wiki'.length)
+    }
+    let document = null
+    try { document = JSON.parse(await readFile(join(root, '拆解', `${bookId}.json`), 'utf-8')) } catch { document = null }
+    if (document && !isPlainObject(document)) document = null
+    const entries = Array.isArray(document?.entries) ? document.entries : []
+    const rawRevision = Number(document?.revision)
+    const factRevision = Number.isSafeInteger(rawRevision) && rawRevision >= 0 ? rawRevision : null
+    const wikiRead = readFactWiki({ root, id: bookId, document })
+    // 旧信封里的 wiki 没有 derivedFrom（内嵌形态）——按「无派生档」如实报，不编基准版本。
+    const wikiDerivedFrom = isPlainObject(wikiRead.derivedFrom) ? wikiRead.derivedFrom : null
+
+    // ② 参考笔记最新 mtime（scanReferences 已导出，索引里就是 ISO 串）
+    const referenceIndex = await scanReferences(root)
+    const refsMtimeMax = (Array.isArray(referenceIndex.notes) ? referenceIndex.notes : [])
+      .map((note) => text(note?.mtime))
+      .filter(Boolean)
+      .sort()
+      .pop() ?? null
+
+    // ③ 正文快照 ＋ 每个文件最近一条变更日志的时间（判定「改动走没走写通道」的依据）
+    // 不按 module 过滤：同一文件可能被别的通道（剧本转正/迁移）以不同模块名记过，
+    // 只看 '正文' 会把那些正常写入误判成外部改动。files 白名单已经收窄了范围。
+    const prose = await scanProseFiles(root)
+    const logged = await readLatestByFile({ root, files: prose.map((item) => item.path) })
+    if (!logged.ok) {
+      return sendError(res, logged.code ?? API_ERROR_CODES.INVALID_ENTRY, '读变更日志失败：同源检查没法判定哪些改动没留痕')
+    }
+    const snapshot = prose.map((item) => ({
+      path: item.path,
+      hash: item.hash,
+      mtime: item.mtime,
+      loggedAt: text(logged.latest?.[item.path]) || null
+    }))
+
+    let external
+    try {
+      external = await snapshotAndDiff({ root, files: snapshot })
+    } catch (error) {
+      return sendError(res, error?.code ?? API_ERROR_CODES.WRITE_PROTOCOL_IO_FAILED, text(error?.message || error))
+    }
+
+    const sameSource = checkSameSource({
+      root,
+      factRevision: factRevision ?? (entries.length ? 1 : 0),
+      wikiDerivedFrom,
+      refsMtimeMax,
+      entries
+    })
+    const payload = {
+      ok: true,
+      sameSource,
+      external,
+      factRevision: sameSource.factRevision
+    }
+    const checked = validateResponse('syncCheck', payload)
+    if (!checked.ok) return sendError(res, API_ERROR_CODES.INVALID_ENTRY, '同源检查响应形状不符合契约', { errors: checked.errors })
+    return sendJson(res, 200, payload)
+  }
+
   if (endpointId === 'habitsGet') {
     const authorized = authorizeRoot(allowlist, request.root)
     if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
@@ -1435,6 +1515,42 @@ async function resolveFactBookId(root, wanted) {
     .map((name) => ({ name, mtime: statSync(join(dir, name)).mtimeMs }))
     .sort((left, right) => right.mtime - left.mtime)[0]
   return pick ? pick.name.replace(/\.json$/u, '') : 'default'
+}
+
+/* ---------- 同源检查（OS-107）：正文快照 ---------- */
+
+/**
+ * 扫 `<库>/正文/` 下所有 .md，给每个文件现算 `{ path, hash, mtime }`（库内相对路径，正斜杠）。
+ * 跳过 `.history/` 与隐藏目录（备份快照不是稿子，算进来会天天误报外部改动）。
+ * hash 走 `changelog.mjs` 的 contentHash（与写通道留痕同一个指纹口径）。
+ */
+async function scanProseFiles(root) {
+  const base = join(root, '正文')
+  if (!existsSync(base)) return []
+  const out = []
+  const walk = async (current, depth) => {
+    if (out.length >= SYNC_SCAN_LIMIT || depth > SYNC_SCAN_DEPTH) return
+    let entries
+    try { entries = await readdir(current, { withFileTypes: true }) } catch { return }
+    for (const entry of entries) {
+      if (out.length >= SYNC_SCAN_LIMIT) return
+      if (entry.name.startsWith('.') || entry.name === '.history') continue
+      const abs = join(current, entry.name)
+      if (entry.isDirectory()) { await walk(abs, depth + 1); continue }
+      if (!entry.isFile() || !/\.md$/iu.test(entry.name)) continue
+      try {
+        const stats = statSync(abs)
+        out.push({
+          path: relative(root, abs).split(sep).join('/'),
+          hash: contentHash(await readFile(abs)),
+          mtime: stats.mtime.toISOString()
+        })
+      } catch { /* 竞态消失的文件跳过 */ }
+    }
+  }
+  await walk(base, 0)
+  out.sort((left, right) => left.path.localeCompare(right.path, 'zh-Hans-CN'))
+  return out
 }
 
 /** 素材单文件上限：立绘/BGM 都是本机小文件，16MB 足够且防误挂大档。 */
@@ -1959,14 +2075,17 @@ function readLegacyDeduceState(root, bookId) {
     }
     // 写前重读 revision 走乐观并发（与 factEntriesImport 同口径），避免覆盖别人刚写的拆解
     let expectedRevision = null
+    let beforeFactRaw = '' // OS-107：写前原文（写后就读不到旧内容了）——变更日志的 diff 靠它
     try {
       const factPath = join(root, '拆解', `${bookId}.json`)
       if (existsSync(factPath)) {
-        const existing = JSON.parse(await readFile(factPath, 'utf-8'))
+        beforeFactRaw = await readFile(factPath, 'utf-8')
+        const existing = JSON.parse(beforeFactRaw)
         const rev = Number(existing?.revision)
         if (Number.isSafeInteger(rev) && rev >= 1) expectedRevision = rev
       }
     } catch { /* 读不到就当新建 */ }
+    const entryExisted = beforeFactRaw !== ''
     const { writeFactFile } = await import('./core/pinax/next/kernel/factFileStore.mjs')
     const written = await writeFactFile({
       root,
@@ -1976,6 +2095,32 @@ function readLegacyDeduceState(root, bookId) {
       ...(expectedRevision !== null ? { expectedRevision } : {})
     })
     if (!written.ok) return sendError(res, written.code ?? API_ERROR_CODES.WRITE_PROTOCOL_IO_FAILED, written.message ?? '写入拆解失败', written.details)
+    // OS-107：fact 落盘即留痕（AGENTS.md 第 10 条）。失败分支已提前 return，这里是最窄的
+    // 「写成功即记」点；日志写失败不阻断主写入，但要如实回传给调用方。
+    let factLogError = ''
+    try {
+      const factRel = `拆解/${bookId}.json`
+      const afterFactRaw = await readFile(join(root, '拆解', `${bookId}.json`), 'utf-8')
+      const logged = await recordChange({
+        root,
+        module: '拆解',
+        file: factRel,
+        op: entryExisted ? 'update' : 'create',
+        before: beforeFactRaw,
+        after: afterFactRaw,
+        actor: 'agent',
+        meta: {
+          pendingId,
+          bookId,
+          entryId: text(item.entry.id),
+          operationId: `deduce-backfill-${pendingId}`,
+          ...(Number(written.revision) ? { revision: Number(written.revision) } : {})
+        }
+      })
+      if (logged.ok === false) factLogError = logged.message
+    } catch (error) {
+      factLogError = `读回拆解档失败：${text(error?.message || error)}`
+    }
     session.pending.splice(index, 1)
     const saved = await saveDeduceSession(root, bookId, session)
     if (!saved.ok) return sendError(res, saved.code ?? API_ERROR_CODES.WRITE_PROTOCOL_IO_FAILED, saved.message)
@@ -1983,7 +2128,8 @@ function readLegacyDeduceState(root, bookId) {
       ok: true,
       action: 'write',
       session,
-      ...(Number(written.revision) ? { revision: Number(written.revision) } : {})
+      ...(Number(written.revision) ? { revision: Number(written.revision) } : {}),
+      ...(factLogError ? { logError: factLogError } : {})
     })
   }
 
@@ -2225,14 +2371,17 @@ function readLegacyDeduceState(root, bookId) {
     const { writeFactFile } = await import('./core/pinax/next/kernel/factFileStore.mjs')
     // 已存在就带 expectedRevision 走乐观并发（避免覆盖别人刚写的）
     let expectedRevision = null
+    let beforeFactRaw = '' // OS-107：写前原文（写后读不到旧内容）——变更日志的 before 靠它
     try {
       const documentPath = join(authorized.root, '拆解', `${bookId}.json`)
       if (existsSync(documentPath)) {
-        const existing = JSON.parse(await readFile(documentPath, 'utf-8'))
+        beforeFactRaw = await readFile(documentPath, 'utf-8')
+        const existing = JSON.parse(beforeFactRaw)
         const rev = Number(existing?.revision)
         if (Number.isSafeInteger(rev) && rev >= 1) expectedRevision = rev
       }
     } catch { /* 读不到就当新建 */ }
+    const documentExisted = existsSync(factPath)  // OS-113 修：0 字节文件也算已存在（用 existsSync 而非内容非空）
     // 书元数据：写进 patch 的 book 字段（内核要求 patch 顶层浅合并）
     const patch = {
       book: { id: bookId, title: text(request.title).trim() || bookId },
@@ -2248,6 +2397,7 @@ function readLegacyDeduceState(root, bookId) {
     if (!written.ok) return sendError(res, written.code ?? API_ERROR_CODES.WRITE_PROTOCOL_IO_FAILED, written.message ?? '写入拆解失败', written.details)
     // 兄弟 wiki 文件（章摘要/角色档/伏笔）——与 fact 主档一起落
     const wiki = request.wiki
+    let wikiError = ''
     if (wiki && typeof wiki === 'object') {
       try {
         const wikiPath = join(authorized.root, '拆解', `${bookId}.wiki.json`)
@@ -2257,14 +2407,45 @@ function readLegacyDeduceState(root, bookId) {
           ...wiki
         }, null, 2), 'utf-8')
         await rename(tmpWiki, wikiPath)
-      } catch { /* wiki 写失败不影响 fact 主档 */ }
+      } catch (error) {
+        // wiki 写失败不影响 fact 主档——但既然要记日志，就得让作者知道这次是同源档缺了一角
+        wikiError = `兄弟 wiki 写失败：${text(error?.message || error)}`
+      }
+    }
+    // OS-107：一次导入只留一条日志，并把兄弟 wiki 也算进同一次变更（这里是 wiki 块之后、
+    // 响应之前）——before 用写前补读的原文，after 用写后重读的原文（含主档/wiki 的真实落盘结果）。
+    let factLogError = ''
+    try {
+      const factRel = `拆解/${bookId}.json`
+      const afterFactRaw = await readFile(join(authorized.root, '拆解', `${bookId}.json`), 'utf-8')
+      const logged = await recordChange({
+        root: authorized.root,
+        module: '拆解',
+        file: factRel,
+        op: documentExisted ? 'update' : 'create',
+        before: beforeFactRaw,
+        after: afterFactRaw,
+        actor: 'author',
+        meta: {
+          bookId,
+          operationId,
+          entryCount: entries.length,
+          ...(wiki && typeof wiki === 'object' ? { wikiTouched: true } : {}),
+          ...(Number(written.revision) ? { revision: Number(written.revision) } : {})
+        }
+      })
+      if (logged.ok === false) factLogError = logged.message
+    } catch (error) {
+      factLogError = `读回拆解档失败：${text(error?.message || error)}`
     }
     return sendJson(res, 200, {
       ok: true,
       bookId,
       entries: entries.length,
       ...(Number(written.revision) ? { revision: Number(written.revision) } : {}),
-      ...(written.backup ? { backup: written.backup } : {})
+      ...(written.backup ? { backup: written.backup } : {}),
+      ...(factLogError ? { logError: factLogError } : {}),
+      ...(wikiError ? { wikiError } : {})
     })
   }
 

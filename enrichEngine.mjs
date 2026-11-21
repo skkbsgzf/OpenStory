@@ -21,6 +21,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { createFactFileStore, writeFactFile, readFactWiki } from './core/pinax/next/kernel/factFileStore.mjs'
+import { recordChange } from './changelog.mjs'
 import { derivePseudoChapters, hasRealChapters } from './core/pinax/next/fact/usecases/enrich/pseudoChapters.mjs'
 import { causalSummary } from './core/pinax/next/fact/usecases/enrich/metrics.mjs'
 
@@ -736,6 +737,12 @@ export async function enrichBook({ root, bookId, entries, book, llmPort, protago
   // 落盘走 writeFactFile（S2 契约）：patch 只带 wiki，主 JSON 的 entries/book 一字不动，
   // 实际落在兄弟 `<bookId>.wiki.json`。revision 冲突时不覆盖不合并。
   progress('write')
+  // OS-107：写前留原文（写后读不到旧内容）——变更日志的 diff/before 靠它。
+  // 只写兄弟 wiki 档：记日志的 file 必须是 `<bookId>.wiki.json`，不能记主档
+  // （主档 revision 与派生档 derivedFrom.factRevision 不是同一个版本语义）。
+  const wikiRel = `拆解/${bookId}.wiki.json`
+  let beforeWikiRaw = ''
+  try { beforeWikiRaw = readFileSync(join(root, '拆解', `${bookId}.wiki.json`), 'utf-8') } catch { beforeWikiRaw = '' }
   const written = await writeFactFile({
     root,
     bookId,
@@ -745,6 +752,30 @@ export async function enrichBook({ root, bookId, entries, book, llmPort, protago
   }).catch((error) => ({ ok: false, error: { code: 'WRITE_FAILED', message: text(error?.message ?? error) } }))
   if (!written.ok) {
     failures.push({ stage: 'write', reason: `${written.error?.code}：${written.error?.message}` })
+  } else {
+    // 写成功即记（日志失败不阻断 enrich，但进 failures 如实报——不假装记上了）。
+    try {
+      const afterWikiRaw = readFileSync(join(root, '拆解', `${bookId}.wiki.json`), 'utf-8')
+      const logged = await recordChange({
+        root,
+        module: '拆解',
+        file: wikiRel,
+        op: beforeWikiRaw ? 'update' : 'create',
+        before: beforeWikiRaw,
+        after: afterWikiRaw,
+        actor: 'agent',
+        meta: {
+          bookId,
+          kind: 'wiki-enrich',
+          // 主档 revision（派生档自己的基准在兄弟文件的 derivedFrom.factRevision 里，别混用）
+          ...(Number(written.revision) ? { mainRevision: Number(written.revision) } : {}),
+          ...(text(written.operationId) ? { operationId: text(written.operationId) } : {})
+        }
+      })
+      if (logged.ok === false) failures.push({ stage: 'log', reason: `changelog：${text(logged.message)}` })
+    } catch (error) {
+      failures.push({ stage: 'log', reason: `读回派生档失败：${text(error?.message ?? error)}` })
+    }
   }
 
   const slotsLanded = [gimmick, plotDesign, intro, style].filter(Boolean).length

@@ -249,6 +249,65 @@ export async function readLog({ root, module = '', file = '', limit = DEFAULT_LI
   return { ok: true, entries: entries.slice(0, cap), truncated: entries.length > cap }
 }
 
+/**
+ * 每个文件最近一条变更的时间（同源检查用：拿它和文件 mtime 比，判断这次改动走没走写通道）。
+ *
+ * 与 `readLog()` 的区别：readLog 按 limit 截断（默认 50、上限 500），文件一多就拿不到
+ * 每个文件的最近一条；这里按「月份倒序 → 行倒序」扫，同一模块内每个文件读完第一条
+ * 就不用再往前翻，给了 files 就只认这些。
+ *
+ * @param {object} opts
+ * @param {string} opts.root
+ * @param {string} [opts.module]  不给＝全部模块（跨模块取最晚的一条）
+ * @param {string[]} [opts.files] 只找这些库内相对路径
+ * @returns {Promise<{ok:boolean, latest:Record<string,string>, code?:string}>}  latest[file]＝at(ISO)
+ */
+export async function readLatestByFile({ root, module = '', files = [] } = {}) {
+  if (!root) return { ok: false, code: 'NO_LIBRARY', latest: {} }
+  const base = join(root, ...LOG_DIR.split('/'))
+  const wanted = text(module).trim() ? safeModuleName(module) : ''
+  const wantedFiles = new Set((Array.isArray(files) ? files : []).map((file) => text(file)).filter(Boolean))
+
+  let modules
+  try {
+    modules = await readdir(base, { withFileTypes: true })
+  } catch {
+    return { ok: true, latest: {} } // 还没有任何日志＝空，不是错误
+  }
+
+  const latest = {}
+  const picked = modules
+    .filter((item) => item.isDirectory())
+    .map((item) => item.name)
+    .filter((name) => !wanted || name === wanted)
+
+  for (const mod of picked) {
+    const dir = join(base, mod)
+    let names
+    try { names = (await readdir(dir)).filter((name) => name.endsWith('.jsonl')) } catch { continue }
+    names.sort().reverse() // 新月份先读
+    for (const name of names) {
+      let raw
+      try { raw = await readFile(join(dir, name), 'utf-8') } catch { continue }
+      const lines = raw.split('\n')
+      for (let index = lines.length - 1; index >= 0; index--) { // 同月文件内新记录在后
+        const line = lines[index]
+        if (!line.trim()) continue
+        let record
+        try { record = JSON.parse(line) } catch { continue }
+        const file = text(record?.file)
+        if (!file) continue
+        if (wantedFiles.size && !wantedFiles.has(file)) continue
+        // 同一文件可能被多个模块记过（正文保存 vs 其他通道）：留下最晚的一条。
+        // 不提前退出——跨模块要看完才知道哪条最晚（提前收工会把旧时间当成最新，误报外部改动）。
+        const at = text(record.at)
+        if (!latest[file] || at > latest[file]) latest[file] = at
+      }
+    }
+  }
+  return { ok: true, latest }
+}
+
 /** 日志是否已存在（给「模块首次加载」判断用，省一次 readdir）。 */
 export function hasLog(root, module) {
   if (!root) return false

@@ -4,6 +4,17 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>OpenStory · OS-107</title>
+<!-- OS-113 嵌入模式：被 DSH 右侧栏以 iframe 嵌入（或显式 ?embed=1）时，
+     宿主左侧已经有真正的 DSH 会话，本页收掉自带的 Agent 左列。
+     在 <head> 里先加类，避免首帧闪一下 Pi-Agent 再消失。 -->
+<script>
+  (function () {
+    try {
+      var embed = new URLSearchParams(location.search).get('embed') === '1' || window.self !== window.top
+      if (embed) document.documentElement.classList.add('os-embed')
+    } catch (_) { /* 极端环境下不拦页面 */ }
+  })()
+</script>
 <style>
 /* ── 风格包（OS-5：目录加载，本块只是无 JS 兜底的珊瑚默认）──────────
    真皮是 openstory/styles 目录下的 json（内置）＋本机 PinaxNext/openstory/styles 目录，
@@ -148,6 +159,12 @@ input, textarea, select { font: inherit; color: inherit; }
 .agent-collapse:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 /* 收起态下图标转 90°（提示「点一下展开」） */
 .agent-col.is-collapsed .agent-collapse { transform: rotate(90deg); }
+
+/* ══ OS-113 嵌入模式（DSH 右侧栏 iframe / ?embed=1）════════════════
+   宿主左侧本来就是真正的 DSH 会话：这里把 OpenStory 自带的 Pi-Agent 左列
+   整体收掉（display:none，不是折叠轨道），工作台拿回全部宽度，
+   避免「两条 Agent 栏」；独立打开时行为不变。纯渲染分支，不落任何状态。 */
+html.os-embed .agent-col { display: none; }
 /* 题材工作面内部左栏（OS-45）：章节树 / 参考图谱 / 参考摘要。
    它属于「小说/参考」这类题材页自己的布局，属于二等公民的内部结构；
    Agent 始终在最外层最左，不参与题材页的布局。 */
@@ -1308,6 +1325,8 @@ input[type="radio"]:focus-visible {
 :root {
   --doc-font-size: 17px; --doc-line-height: 1.9; --doc-para-gap: 1em; --doc-indent: 2em;
   --doc-max: 720px;
+  /* OS-114 纸面可读下限：窄面板/右栏停靠时也不许把正文压到这条线以下 */
+  --doc-read-min: 320px;
 }
 
 /* ══════════════════════════════════════════════════════════════════
@@ -1431,8 +1450,60 @@ html[data-doc-auto-gap="off"] .doc-paper p { margin-bottom: 0; }
    纸面永远居中落在剩余空间里，不依赖窗口宽度断点。 */
 .doc-workspace-sticky.has-refcol .doc-scroll { padding-left: calc(248px + var(--content-px, 34px)); }
 .doc-workspace-sticky.has-analyze .doc-scroll { padding-right: calc(300px + var(--content-px, 34px)); }
-/* 左右浮层同时打开且窗口不够宽时的兜底：纸面收窄到可读下限之上，宁可窄不重叠 */
-@media (max-width: 1180px) { :root { --doc-max: min(720px, calc(100vw - 640px)); } }
+/* 左右浮层同时打开且窗口不够宽时的兜底：纸面收窄到可读下限之上，宁可窄不重叠。
+   OS-114：下限用 max() 焊死——旧式 calc(100vw - 640px) 在 675px 右栏里只剩 35px，
+   正文会一字一行（作者实测截图），这是窄面板适配的第一条硬约束。 */
+@media (max-width: 1180px) and (min-width: 1001px) {
+  :root { --doc-max: min(720px, max(var(--doc-read-min), calc(100vw - 640px))); }
+}
+
+/* ══ OS-114 窄面板 / 嵌入适配约束（作者口径：「前端适配要加一些约束」）═════
+   三条规则，全部按宽度断点落地（独立浏览器窄窗口同样生效），不针对某个具体面板：
+   ① 纸面可读下限 --doc-read-min（320px）：--doc-max 不许再往下缩；实在放不下时
+      让 .doc-scroll 横向滚，禁止把正文压成一字一行。
+   ② ≤1000px：左右浮层不再用内边距「让位」（248px ＋ 300px 同时让位会把 675px
+      面板的正文挤到几十像素）——回到纯覆盖抽屉，用页头「参考资料 / 分析本章」
+      开合；≥1001px 才保留 OS-88 的结构性让位。
+   ③ 窄面板降档：--content-px 16px（≤720px 再降到 12px）；侧栏抽屉按 72vw~86vw 收；
+      页签只横滚不换行；页头标题降一档，避免窄栏里挤爆。 */
+@media (max-width: 1000px) {
+  :root {
+    --content-px: 16px;
+    --doc-max: min(720px, max(var(--doc-read-min), calc(100vw - 96px)));
+  }
+  .doc-workspace-sticky.has-refcol .doc-scroll,
+  .doc-workspace-sticky.has-analyze .doc-scroll {
+    padding-left: calc(var(--content-px, 16px) + 4px);
+    padding-right: calc(var(--content-px, 16px) + 4px);
+  }
+  /* 兜底：连 320px 都放不下时允许横向滚，别把字挤成竖排 */
+  .doc-workspace-sticky .doc-scroll { overflow-x: auto; }
+  /* 窄面板下参考资料左栏默认收起（抽屉），点页头「参考资料」才盖出来 */
+  .doc-workspace-sticky.is-narrow-ref-closed .ref-col { display: none; }
+  .doc-workspace-sticky .ref-col { width: min(248px, 78vw); }
+  .doc-workspace-sticky .analyze-panel { width: min(300px, 86vw); }
+  /* 抽屉态：浮层加实底＋边线/影，盖住正文时不再和正文文字叠着看 */
+  .doc-workspace-sticky .ref-col,
+  .doc-workspace-sticky .analyze-panel {
+    background: var(--bg);
+    box-shadow: var(--shadow-float);
+  }
+  .doc-workspace-sticky .ref-col { border-right: 1px solid var(--hair); }
+  .doc-workspace-sticky .analyze-panel { border-left: 1px solid var(--hair); }
+  .sc-side { width: min(236px, 72vw); }
+  .tabs { padding: 0 6px; }
+  .tabs .tab { padding: calc(var(--ui-gap-sm) + 2px) var(--ui-gap-md) var(--ui-gap-sm); }
+}
+@media (max-width: 720px) {
+  :root { --content-px: 12px; }
+  .tabs { height: 40px; flex-basis: 40px; padding: 0 4px; }
+  .tabs .tab { padding: calc(var(--ui-gap-sm) + 1px) var(--ui-gap-sm) var(--ui-gap-sm); }
+  .doc-workspace-sticky .doc-head-immersive {
+    padding-left: calc(var(--content-px, 12px) + 4px);
+    padding-right: calc(var(--content-px, 12px) + 4px);
+  }
+  .doc-head-immersive .doc-title { font-size: 20px; }
+}
 .doc-block { outline: none; border-radius: 4px; margin: 0 0 var(--doc-para-gap); padding: 2px 4px; margin-left: -4px; margin-right: -4px; }
 .doc-block:hover { background: var(--soft); }
 .doc-block:focus { background: var(--soft); box-shadow: inset 0 0 0 1px var(--line); }
@@ -2472,6 +2543,31 @@ border-left: 2px solid var(--accent); padding: var(--ui-gap-xs) var(--ui-gap-md)
 .ss-restore { display: flex; flex-wrap: wrap; gap: var(--ui-gap-xs); font-size: var(--ui-fs-xs); color: var(--meta); }
 .ss-restore button { padding: var(--ui-gap-3xs) var(--ui-gap-sm); border: 1px dashed var(--line); border-radius: var(--pill); font-size: var(--ui-fs-xs); color: var(--muted); }
 .ss-restore button:hover { border-color: var(--ink); color: var(--ink); }
+
+/* ── 同源版本状态条（世界书页 / 故事源页）──────────────────────────
+   一行紧凑条：圆点 + 主文案 + 可展开明细 + 元信息，换行不抢正文空间。
+   三档只用语义令牌上色（dot 由 .ok/.warn/.bad 决定），不写死色值。 */
+.sync-bar { display: flex; align-items: baseline; flex-wrap: wrap; gap: var(--ui-gap-xs) var(--ui-gap-sm); padding: var(--ui-gap-2xs) var(--ui-gap-md); border: 1px solid var(--line); border-left: 3px solid var(--line); border-radius: var(--radius); font-size: var(--ui-fs-xs); line-height: var(--ui-lh-normal); color: var(--muted); }
+.sync-bar.ok { border-left-color: var(--ok); }
+.sync-bar.warn { border-left-color: var(--warn); }
+.sync-bar.bad { border-left-color: var(--danger); }
+.sync-dot { flex: 0 0 auto; align-self: center; width: 6px; height: 6px; border-radius: 50%; background: var(--meta); }
+.sync-bar.ok .sync-dot { background: var(--ok); }
+.sync-bar.warn .sync-dot { background: var(--warn); }
+.sync-bar.bad .sync-dot { background: var(--danger); }
+.sync-main { color: var(--ink-2); }
+.sync-main b { font-weight: 600; font-variant-numeric: tabular-nums; color: var(--ink); }
+.sync-sep { color: var(--hair); }
+.sync-meta { color: var(--meta); }
+.sync-notice { color: var(--warn-ink); }
+.sync-btn { flex: 0 0 auto; padding: var(--ui-gap-3xs) var(--ui-gap-sm); border: 1px solid var(--line); border-radius: var(--pill); font-size: var(--ui-fs-2xs); color: var(--muted); }
+.sync-btn:hover { border-color: var(--ink); color: var(--ink); }
+.sync-btn:disabled { opacity: .55; cursor: default; border-color: var(--hair); color: var(--meta); }
+.sync-list { flex: 1 1 100%; margin: var(--ui-gap-2xs) 0 0; padding: 0 0 0 var(--ui-gap-lg); max-height: 180px; overflow-y: auto; list-style: none; }
+.sync-list li { display: flex; flex-wrap: wrap; gap: var(--ui-gap-xs); padding: var(--ui-gap-3xs) 0; border-top: 1px dashed var(--hair); }
+.sync-list li:first-child { border-top: 0; }
+.sync-path { font-family: var(--mono); font-size: var(--ui-fs-2xs); color: var(--ink-2); overflow-wrap: anywhere; }
+.sync-reason { color: var(--meta); overflow-wrap: anywhere; }
 
 /* ── 色板（左下角浮层）──────────────────────────────────── */
 </style>

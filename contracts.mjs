@@ -977,6 +977,18 @@ export const ENDPOINTS = Object.freeze({
     request: { body: { root: 'string', module: 'string', id: 'string', text: 'string?', meta: 'object?', delete: 'boolean?' } },
     response: { ok: 'true', draft: 'object?' },
     errors: ['NO_LIBRARY', 'INVALID_ENTRY', 'WRITE_PROTOCOL_IO_FAILED']
+  },
+  syncCheck: {
+    method: 'POST',
+    path: '/api/sync/check',
+    // OS-107 同源版本检查 ＋ 外部变更检测（POST：检查动作会刷新 .pinax/sync-state.json 快照）。
+    // 一次读盘回答两件事：①拆解 fact 的 revision 与兄弟 wiki 的 derivedFrom.factRevision 是否同源
+    // （wikiStale）、参考笔记最新 mtime；②正文文件的 hash/mtime 与 changelog 对照，
+    // 捞出「改了但变更日志里没记录」的文件（绕过写通道的外部改动）。
+    // 无拆解数据时 factRevision=0、wiki 无派生档，不报错。
+    request: { body: { root: 'string' } },
+    response: { ok: 'true', sameSource: 'object', external: 'object', factRevision: 'integer' },
+    errors: ['NO_LIBRARY', 'INVALID_ENTRY', 'WRITE_PROTOCOL_IO_FAILED']
   }
 })
 

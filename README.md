@@ -32,6 +32,11 @@ npm run mcp        # 全模块 MCP server（24 工具，stdio）
 npm test           # node --test（299 例，零外部依赖）
 ```
 
+**作为 DSH 插件运行**（左栏底部 OpenStory → 右侧栏打开工作台，DSH 会话留在左边）：
+`tools/dsh-openstory-studio/` 是一个 DSH bundle（宿主侧看护 daemon＋客户端右侧栏标签页）。
+在 DSH 的 Plugins → Add plugin 里选该目录安装即可，细节见其
+[README](./tools/dsh-openstory-studio/README.md)。
+
 浏览器打开 `http://127.0.0.1:8807`，右上角库切换器新建/导入库（建库骨架自动补齐）。模型对话在左列 Pi-Agent 设置里配端点（OpenAI 兼容 / DSH 原生 / CLI kit），生图在设置里配 ComfyUI。
 
 > **演示库**：[`samples/水浒传/`](./samples/水浒传/)——公版示例（参考图谱/双链/事实包/扮演会话/素材），导入即可体验全部功能。
@@ -48,7 +53,7 @@ npm test           # node --test（299 例，零外部依赖）
                │ HTTP（127.0.0.1，JSON＋SSE）
 ┌──────────────▼──────────────────────────────────┐
 │  daemon（daemon.mjs，唯一磁盘层）                   │
-│  · 98 端点契约（contracts.mjs，请求/响应双端校验）   │
+│  · 99 端点契约（contracts.mjs，请求/响应双端校验）   │
 │  · fact 链：拆解 store/富集/曲线/守护/写通道        │
 │  · 推演/扮演引擎＋会话容器；生图/识图适配器          │
 │  · 全局任务中心/修改日志/ui-state/草稿              │
@@ -66,7 +71,7 @@ npm test           # node --test（299 例，零外部依赖）
 
 | 路径 | 内容 |
 |---|---|
-| `daemon.mjs` / `contracts.mjs` | daemon＋98 端点契约（纯数据，两端共享） |
+| `daemon.mjs` / `contracts.mjs` | daemon＋99 端点契约（纯数据，两端共享） |
 | `mcp.mjs` | 全模块 MCP server（24 工具，零依赖 stdio；`npm run mcp`） |
 | `referenceStore.mjs` / `deduceEngine.mjs` / `deduceSession.mjs` / `deduceNarrative.mjs` | 参考索引（标签/双链/图谱）/ 推演封装 / 多局会话容器 / 叙事上下文 |
 | `roleplayEngine.mjs` / `roleplayPrompts.mjs` | 扮演调度（主持人＋N 角色子 agent）＋四层提示词 |
@@ -76,6 +81,7 @@ npm test           # node --test（299 例，零外部依赖）
 | `public/` | 工作台单页（app.js＋reference/graph/md/analysis/charts/ui-kit/storySource 等零依赖模块；echarts 本地 vendor） |
 | `suites/` `styles/` `runtimes/` `genres/` `skills/`（31＋套件捆绑 2） | 插件货架（内置样例）＋ [PROTOCOL.md](./PROTOCOL.md)（套件注册协议） |
 | `workflows/` | ComfyUI 文生图工作流 |
+| `tools/dsh-openstory-studio/` | DSH 插件 bundle：宿主侧 daemon 生命周期＋客户端右侧栏工作台（`sidebar.footer.action`／`sidebarRightTabs`） |
 | `core/` | 底座抽取层（[VENDORED.md](./core/VENDORED.md) 记出处边界，本仓禁改） |
 | `samples/水浒传/` | 公版演示库（导入即体验） |
 | `test/` | 299 例（node --test，含 daemon 端到端） |
@@ -91,6 +97,6 @@ OpenStory 自 [Pinax-next](https://github.com/skkbsgzf/Pinax-StoryHarness) 的 o
 
 ## 版本
 
-- **v0.2.x**（2026-11-21）：角色时间线泳道图、Windows 原生文件夹选择器/资源管理器唤起、Agent 栏可折叠、剧情密度热力图修复。
-- **v0.2.0**（2026-11-21）：扮演与文游舞台全面成型（多子 agent 同幕/长期记忆/拍转正/多局管理）、世界书纳入拆解词条（词条图谱槽）、剧本线（原生工作面＋外部导入）、生图识图、任务中心/修改日志/ui-state、设置重构（本体＋插件中心）、MCP 24 工具、95→98 端点契约、299 例测试。
+- **v0.2.x**（2026-11-21）：角色时间线泳道图、Windows 原生文件夹选择器/资源管理器唤起、Agent 栏可折叠、剧情密度热力图修复；DSH 插件内嵌模式（OS-113：右侧栏打开工作台，内嵌时收起自带的 Pi-Agent 左列，左侧交给 DSH 会话）＋窄面板适配约束（OS-114：纸面可读下限 320px、≤1000px 浮层不再让位、内边距/页签按断点降档）＋内嵌 Agent 桥（OS-115：「添加到 Agent / 润笔 / 发给 Agent」以引用块写进 DSH 当前会话输入框）＋MCP 工具面（OS-116：OpenStory 24 个 MCP 工具挂进 DSH，引用附库/章/段/root 来源，DSH Agent 可读章节、按备份语义写回）。
+- **v0.2.0**（2026-11-21）：扮演与文游舞台全面成型（多子 agent 同幕/长期记忆/拍转正/多局管理）、世界书纳入拆解词条（词条图谱槽）、剧本线（原生工作面＋外部导入）、生图识图、任务中心/修改日志/ui-state、设置重构（本体＋插件中心）、MCP 24 工具、95→99 端点契约、299 例测试。
 - **v0.1.0**（2026-11-19）：首个对外版本。路线图见 [docs/plan/](./docs/plan/)。

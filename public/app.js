@@ -14,6 +14,102 @@
  * 这里不内置任何演示数据——读不到就摆空态，不拿假卡片冒充库。
  */
 
+/* OS-113 嵌入模式：DSH 右侧栏的 iframe 里，宿主左侧已经有真正的 DSH 会话。
+   这里收掉 OpenStory 自带的 Pi-Agent 左列（index.html 的 html.os-embed 规则），
+   工作台拿回全部宽度；独立打开时行为不变。纯渲染分支，不写库内/浏览器状态。 */
+const embeddedView = (() => {
+  try {
+    return new URLSearchParams(location.search).get('embed') === '1' || window.self !== window.top
+  } catch {
+    return false
+  }
+})()
+if (embeddedView) document.documentElement.classList.add('os-embed')
+
+/* OS-115 嵌入模式的 Agent 桥：面板 iframe 只是 UI，真正的 Agent 是左侧的 DSH 会话。
+   选段的「添加到 Agent / 润笔 / 发给 Agent」在嵌入时 postMessage 给宿主插件
+   （tools/dsh-openstory-studio），由它调 DSH 的 inputActions.insertQuote 放进
+   **DSH 当前会话的输入框**（引用块）；独立打开时照旧走 OpenStory 自己的 Agent。 */
+let dshBridgeSeq = 0
+function dshBridgeAvailable() {
+  try {
+    return embeddedView && window.parent && window.parent !== window
+  } catch {
+    return false
+  }
+}
+
+function sendToDshAgent({ quote, hint = '' } = {}) {
+  return new Promise((resolve) => {
+    const quoteText = String(quote || '').trim()
+    if (!quoteText) { resolve({ ok: false, message: '没有选中的内容' }); return }
+    if (!dshBridgeAvailable()) { resolve({ ok: false, message: '不在 DSH 面板里' }); return }
+    const requestId = `os-${Date.now().toString(36)}-${++dshBridgeSeq}`
+    let settled = false
+    let timer = null
+    const finish = (result) => {
+      if (settled) return
+      settled = true
+      window.removeEventListener('message', onAck)
+      if (timer) clearTimeout(timer)
+      resolve(result)
+    }
+    const onAck = (event) => {
+      if (event.source !== window.parent) return
+      const data = event.data
+      if (!data || data.type !== 'openstory/add-to-agent/ack' || data.requestId !== requestId) return
+      finish({ ok: data.ok === true, message: text(data.message) })
+    }
+    window.addEventListener('message', onAck)
+    timer = setTimeout(() => finish({ ok: false, message: 'DSH 插件没响应（超时）' }), 2500)
+    try {
+      window.parent.postMessage({ type: 'openstory/add-to-agent', requestId, quote: quoteText, hint: String(hint || '') }, '*')
+    } catch (error) {
+      finish({ ok: false, message: `发不出去：${(error && error.message) || error}` })
+    }
+  })
+}
+
+/** 嵌入模式下把「送给 Agent」的结果如实告诉作者；成功不打扰（DSH 输入框里已经能看到引用块）。 */
+function reportDshBridge(result) {
+  const failed = !result.ok
+  if (failed) {
+    state.error = `没能添加到 DSH：${result.message || '未知原因'}`
+    render()
+    return
+  }
+  if (text(state.error).startsWith('没能添加到 DSH')) {
+    state.error = ''
+    render()
+  }
+}
+
+/**
+ * 嵌入模式：给 DSH 会话带一行来源（库/章节文件/段号/root）。
+ * DSH 会话里挂了 OpenStory 的 MCP（openstory_* 24 工具），模型靠这行知道
+ * 该用哪个 root / 哪个文件去读全文、以及能不能写回；否则只能拿这段引用空写。
+ */
+function openStorySourceNote(kind = 'chapter') {
+  const root = text(state.current?.path)
+  const name = text(state.current?.name)
+  if (kind === 'reference') {
+    const title = text(state.reference?.note?.title)
+    return `〔来源：OpenStory 世界书${title ? `《${title}》` : ''}${root ? ` · root=${root}` : ''} · 可用 openstory_* 工具读写〕 `
+  }
+  const file = text(state.chapterFile)
+  const index = Number(state.sel?.blockIndex)
+  const para = Number.isFinite(index) && index >= 0 ? `第 ${index + 1} 段` : ''
+  const parts = [
+    '来源：OpenStory',
+    name ? `《${name}》` : '',
+    file ? `正文 ${file}` : '正文',
+    para,
+    root ? `root=${root}` : '',
+    '可用 openstory_* 工具读写'
+  ].filter(Boolean)
+  return `〔${parts.join(' · ')}〕 `
+}
+
 /* OS-92：UI 套件（标签编辑器/表单/卡片/表格…）——三方开发者写页面统一用它 */
 let uiKit = {
   chipField: () => '', chipChip: () => '', field: () => '', textInput: () => '',
@@ -84,6 +180,11 @@ const state = {
   reference: { loaded: false, loading: false, notes: [], tags: [], tagNotes: {}, stats: null, error: '', activePath: '', activeTag: '', firstChapterFilter: 0, note: null, backlinks: { linked: [], unlinked: [] }, draft: '', view: 'graph', q: '', focus: null, absorb: {}, flash: '', tagFilter: '', from: '', noteText: '', fmLen: 0 },
   // 左内容栏三模块（OS-44）：章节树 / 参考图谱 / 参考摘要
   refCol: { graph: null, graphLoading: false, graphError: '', summary: '', summaryBusy: false, summaryError: '', pick: null },
+  // 同源版本状态条：POST /api/sync/check 的结果（世界书/故事源共用）。
+  // data 是后端原样回包；root 记录这份结果属于哪个库（换库就整块作废重拉）；
+  // loaded＝「这个库已经查过一次」（查失败也算，否则每次 render 都会重打失败的后端）；
+  // notice/regenBusy 只服务状态条上的「重新生成」入口提示。
+  sync: { loaded: false, loading: false, data: null, error: '', root: '', notice: '', regenBusy: false, openList: false },
   settings: { userDir: '', section: 'plugins', suiteId: '', open: false, prevView: '', helpOpen: false },
   kbStatus: null,
   kbConfig: null,
@@ -497,6 +598,8 @@ function render() {
       afterRefColMount()
     }
   }
+  // OS-114：窄面板里参考资料左栏按抽屉处理（宽面板无副作用）
+  if (state.view === 'write' || state.view === 'dir:剧本') applyNarrowRefDrawer()
 }
 
 function errorHtml() {
@@ -1112,6 +1215,14 @@ async function ensureTempSession() {
 async function startPolishRequest() {
   const quote = (state.sel.text || '').trim()
   if (!quote || !state.current) return
+  if (dshBridgeAvailable()) {
+    // 嵌入模式：润笔交给 DSH 会话——引用块 + 来源 + 提示语一起放进 DSH 输入框
+    hideSelBar()
+    hideParaMenu()
+    window.getSelection?.()?.removeAllRanges?.()
+    reportDshBridge(await sendToDshAgent({ quote, hint: openStorySourceNote() + '润笔这段，要求：' }))
+    return
+  }
   if (agent.streaming) {
     rememberAgentError('Agent 正在跑上一步，等它出结果再润笔（DSH 一次只能跑一个）。')
     renderAgent()
@@ -1150,6 +1261,15 @@ async function startPolishRequest() {
 
 async function discussSelection() {
   if (!state.current) return
+  if (dshBridgeAvailable()) {
+    // 嵌入模式：真正的 Agent 是 DSH 会话，选段作为引用块进 DSH 输入框（附来源，便于调 openstory_* 工具）
+    const quote = (state.sel.text || '').trim()
+    hideSelBar()
+    hideParaMenu()
+    window.getSelection?.()?.removeAllRanges?.()
+    if (quote) reportDshBridge(await sendToDshAgent({ quote, hint: openStorySourceNote() }))
+    return
+  }
   if (agent.streaming) {
     rememberAgentError('Agent 正在跑上一步，等它出结果再发。')
     renderAgent()
@@ -5111,9 +5231,196 @@ async function saveHabits() {
   }
 }
 
+/* ---------- 同源版本状态条（世界书页 / 故事源页共用）----------
+ * 后端一次读三条线：Fact 链 revision、世界书派生 wiki 的基于版本、写通道之外的外部改动。
+ * 前端只负责展示与「重新生成」入口；检查失败不拦界面，降级成一行「同源检查不可用」。 */
+async function loadSyncCheck({ force = false } = {}) {
+  const sync = state.sync
+  const root = state.current?.path
+  if (!root) return
+  // 换库＝换数据源：上本书的 revision 拿来跟这本比是错的，整块作废（与 factView 同口径）
+  if (sync.root && sync.root !== root) {
+    sync.loaded = false
+    sync.loading = false
+    sync.data = null
+    sync.error = ''
+    sync.root = ''
+    sync.notice = ''
+    sync.openList = false
+  }
+  if (sync.loading) return
+  if (!force && sync.loaded && sync.root === root) return
+  sync.loading = true
+  // OS-113 修：换库竞态——请求发出后库可能又切走，回来时必须核对「发起的库」是否还是当前库。
+  const startedFor = root
+  try {
+    // 契约未落地时后端是 404：api() 会抛，这里兜住——状态条显示不可用，页面照常
+    const payload = await api('/api/sync/check', { method: 'POST', body: JSON.stringify({ root }) })
+    // 迟到响应：库已换走就整包丢弃，绝不把 A 库的结果写到 B 库头上
+    if (state.current?.path !== startedFor) return
+    sync.data = payload && typeof payload === 'object' ? payload : null
+    sync.error = ''
+    sync.root = root
+    sync.loaded = true
+    // 拿到新结果＝上一次「已提交 enrich」的口头提示该退休了（否则会一直挂在那儿）
+    sync.notice = ''
+  } catch (error) {
+    if (state.current?.path !== startedFor) return
+    // 刷新失败保留上一次的结果（比清空更有用），只是标注一句不可信。
+    // loaded 照样置真：否则每次 render 都会重打一个还没实现的端点（后端还没起来时尤其致命）。
+    sync.error = `${error?.code ? `${error.code} · ` : ''}${text(error?.message || error)}`
+    sync.root = root
+    sync.loaded = true
+  } finally {
+    // 只有「这次请求仍是最后一次」时才复位标志，避免旧请求把新请求的 loading 抹掉
+    if (state.current?.path === startedFor) sync.loading = false
+  }
+  if (state.view === 'reference' || state.view === 'dir:拆解') render()
+}
+
+/** 参考笔记里最新的一条 mtime（世界书页顺手显示；没有就返回空串）。 */
+function syncLatestNoteAt() {
+  const notes = state.reference?.notes
+  if (!Array.isArray(notes) || !notes.length) return ''
+  let newest = 0
+  for (const note of notes) {
+    const at = Date.parse(text(note?.mtime))
+    if (Number.isFinite(at) && at > newest) newest = at
+  }
+  return newest ? new Date(newest).toISOString() : ''
+}
+
+/**
+ * 同源状态条（纯渲染）：一行紧凑条，三档——✓ 一致 / ! 派生档过期 / ! 外部改动 N 处。
+ * 颜色全走语义令牌（--ok / --warn / --danger / --meta），不写死色值。
+ */
+function syncBarHtml() {
+  // 状态条是附加信息：任何异形回包/SaaS 字段缺失都不许把世界书页和故事源页一起拖下水
+  try {
+    return syncBarHtmlUnsafe()
+  } catch {
+    return ''
+  }
+}
+
+function syncBarHtmlUnsafe() {
+  const sync = state.sync || {}
+  const data = sync.data
+  // 只认对象回包；字符串/数组这种异形响应当没有数据（否则会误报「同源一致」）
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    if (!sync.error) return ''
+    return `<div class="sync-bar bad" title="${esc(sync.error)}">
+      <span class="sync-dot"></span>
+      <span class="sync-main">同源检查不可用</span>
+      <button class="sync-btn" data-action="sync-recheck" title="再试一次：${esc(sync.error)}">重试</button>
+    </div>`
+  }
+  const same = data.sameSource && typeof data.sameSource === 'object' ? data.sameSource : {}
+  const external = data.external && typeof data.external === 'object' ? data.external : {}
+  const current = Number(data.factRevision) || 0
+  // wikiFactRevision 在「无派生档 / 读不出基准」时是 null——不能当 0 显示，那会谎报「基于 revision 0」
+  const rawWikiRev = Number(same.wikiFactRevision)
+  const wikiRevKnown = Number.isSafeInteger(rawWikiRev) && rawWikiRev >= 0
+  const stale = same.wikiStale === true
+  const changes = Array.isArray(external.externalChanges) ? external.externalChanges.filter(Boolean) : []
+  const firstSeen = Array.isArray(external.firstSeen) ? external.firstSeen.filter(Boolean) : []
+
+  const parts = []
+  if (stale) {
+    // 后端 wikiNote 对过期态的措辞就是「派生档基于 revision X，当前 Y」——跟主文案重复，只在它说了别的东西时补
+    const why = text(same.wikiNote).trim()
+    const redundant = /派生档.*revision\s*\d+.*当前/u.test(why) || why === '一致'
+    const base = wikiRevKnown ? `revision <b>${rawWikiRev}</b>` : '未知版本'
+    parts.push(`<span class="sync-main">世界书派生档基于 ${base}，当前 <b>${current}</b>${why && !redundant ? `（${esc(why)}）` : ''}</span>
+      <button class="sync-btn" data-action="sync-regen-wiki"${sync.regenBusy ? ' disabled' : ''} title="重新生成走 enrich（设置里配了模型才可用）">${sync.regenBusy ? '提交中…' : '重新生成'}</button>`)
+  }
+  if (changes.length) {
+    const shown = changes.slice(0, 40)
+    const rows = shown.map((item) => {
+      const path = typeof item === 'string' ? item : text(item?.path || item?.file || '')
+      const reason = typeof item === 'string' ? '' : text(item?.reason || '')
+      return `<li><span class="sync-path">${esc(path)}</span>${reason ? `<span class="sync-reason">${esc(reason)}</span>` : ''}</li>`
+    }).join('')
+    const rest = changes.length > shown.length
+      ? `<li><span class="sync-reason">还有 ${changes.length - shown.length} 处未列出</span></li>`
+      : ''
+    // 展开态存在 state.sync 上：render() 整块换 innerHTML，原生的 <details> open 会被冲掉
+    parts.push(`<span class="sync-main">检测到 ${changes.length} 处未经写通道的改动</span>
+      <button class="sync-btn" data-action="sync-toggle-list">${sync.openList ? '收起列表' : '展开列表'}</button>
+      ${sync.openList ? `<ul class="sync-list">${rows}${rest}</ul>` : ''}`)
+  }
+  if (!parts.length) {
+    parts.push(`<span class="sync-main">同源一致${current ? ` · Fact 链 revision <b>${current}</b>` : ''}</span>`)
+  }
+
+  const metas = []
+  // 参考笔记最新更新时间：后端 sameSource.refsMtimeMax 是**ISO 时间串**（不是「几篇更新」的计数）。
+  // 两种键名都读：接口草稿里叫 refsNewerThan，落地实现叫 refsMtimeMax。
+  // 都没有时退回前端扫 state.reference.notes 的 mtime；再没有就不显示。
+  const refsRaw = text(same.refsMtimeMax || same.refsNewerThan).trim()
+  const refAt = /^\d{4}-\d{2}-\d{2}T/u.test(refsRaw) ? refsRaw : syncLatestNoteAt()
+  if (refAt) metas.push(`参考笔记最近更新 ${esc(formatAt(refAt))}`)
+  if (firstSeen.length) metas.push(`另有 ${firstSeen.length} 处首次发现`)
+  const checkedAt = text(external.checkedAt).trim()
+  if (checkedAt) metas.push(`核对于 ${esc(formatAt(checkedAt))}`)
+  if (sync.error) metas.push('本次刷新失败，显示上次结果')
+
+  const cls = changes.length ? 'bad' : (stale ? 'warn' : 'ok')
+  return `<div class="sync-bar ${cls}">
+    <span class="sync-dot"></span>
+    ${parts.join('<span class="sync-sep">·</span>')}
+    ${metas.length ? `<span class="sync-meta">${metas.join(' · ')}</span>` : ''}
+    ${sync.notice ? `<span class="sync-notice">${esc(sync.notice)}</span>` : ''}
+  </div>`
+}
+
+/**
+ * 「重新生成」入口（状态条上的 sync-regen-wiki）：真走 enrich（POST /api/enrich/run）。
+ * enrich 是 2–6 分钟的模型任务，且要求设置里配好文本运行时——没配就只在状态条上说明、不发请求。
+ */
+async function regenWikiFromSync() {
+  const sync = state.sync
+  const root = state.current?.path
+  if (!root || sync.regenBusy) return
+  if (!state.agent.configured) {
+    sync.notice = '重新生成走 enrich：先在「设置」里配好文本模型。'
+    render()
+    return
+  }
+  sync.regenBusy = true
+  sync.notice = ''
+  try {
+    // OS-113 修：bookId 必须按「当前库」现取——state.factView.bookId 是上一个库的，
+    // 换库后直接用它会让 enrich 在新库里凭空造一本幽灵书（writeFactFile 对未知 bookId 是新建语义）。
+    // 口径：先问后端当前库的书目清单（权威），只有清单不可用时才退回 factView 的记忆值。
+    let bookId = ''
+    const listed = await api(`/api/fact/books?root=${encodeURIComponent(root)}`).catch(() => null)
+    const books = Array.isArray(listed?.books) ? listed.books : []
+    const remembered = text(state.factView?.bookId).trim()
+    // 记忆值只在「它确实存在于本库书目里」时才认——否则宁可报错也不造幽灵书
+    if (remembered && books.some((b) => text(b?.bookId) === remembered)) bookId = remembered
+    if (!bookId) bookId = text(books[0]?.bookId).trim()
+    // 迟到检查：等接口期间库可能又切走
+    if (state.current?.path !== root) return
+    if (!bookId) {
+      sync.notice = '这个库还没有拆解数据，enrich 无从跑起。'
+      return
+    }
+    const payload = await api('/api/enrich/run', { method: 'POST', body: JSON.stringify({ root, bookId }) })
+    sync.notice = `已提交 enrich（${text(payload?.jobId) || '任务已入队'}），进度看左下角任务球。`
+  } catch (error) {
+    sync.notice = `提交 enrich 失败：${text(error?.message || error)}`
+  } finally {
+    sync.regenBusy = false
+    render()
+  }
+}
+
 function referencePageHtml() {
   const ref = state.reference
   if (!state.current) return needLibraryHtml()
+  // 进页面拉一次同源检查（loaded 挡重复；换库由 loadSyncCheck 自己作废重拉）
+  loadSyncCheck()
   if (ref.loading && !ref.loaded) return '<div class="loading">正在读取参考…</div>'
   if (!refModule) return '<div class="loading">参考模块载入中…</div>'
   // OS-103：拆解词条详情优先（世界书第二来源，只读）
@@ -5141,9 +5448,19 @@ function referencePageHtml() {
     // OS-89：参考模块自己的修改日志（AGENTS.md 第 10 条）
     changelogHtml: moduleLogHtml('参考', { title: '参考修改记录' })
   })
+  // 同源版本状态条：工具条下方、ref-grid 上方。
+  // referenceShellHtml 在 reference.mjs 里（本轮不改那个文件），所以在装配后的字符串上插一刀；
+  // 标记找不到就退回整块前置——宁可位置差一点，不能让状态条消失。
+  // 用函数式 replacement：路径/reason 里可能出现 $& 这类序列，字符串替换会把它当分组引用吃掉。
+  const syncBar = syncBarHtml()
+  const shellWithSync = syncBar
+    ? (shell.includes('<div class="ref-grid">')
+      ? shell.replace('<div class="ref-grid">', () => `${syncBar}<div class="ref-grid">`)
+      : `${syncBar}${shell}`)
+    : shell
   // 参考页自己就是双链文档工作面（侧栏导航/正文/反链），
   // 不再套题材左栏——那三块是给「小说」这类非双链页用的。
-  return `<div class="topic-workspace"><div class="topic-main">${errorHtml()}${ref.flash ? `<div class="ok-note">${esc(ref.flash)}</div>` : ''}${shell}</div></div>`
+  return `<div class="topic-workspace"><div class="topic-main">${errorHtml()}${ref.flash ? `<div class="ok-note">${esc(ref.flash)}</div>` : ''}${shellWithSync}</div></div>`
 }
 
 /** 参考页·关系图谱视图（OS-51）：大画布＋节点信息卡（简介＋跳转按钮）＋标签筛选行。 */
@@ -5515,6 +5832,33 @@ function refColHtml() {
   return inner ? `<aside class="ref-col" id="ref-col">${inner}</aside>` : ''
 }
 
+/* ── OS-114 窄面板约束：参考资料左栏改「抽屉」────────────────────────
+   ≤1000px（与 index.html 的断点一致）时，248px 的左栏不再常驻——默认收起，
+   由页头「参考资料」按钮开合；宽面板保持原样（常驻＋结构性让位）。
+   只动渲染层，narrowOpen 是内存态，不写库内/浏览器状态。 */
+const NARROW_PANEL_MAX = 1000
+
+function isNarrowPanel() {
+  try {
+    return window.matchMedia(`(max-width: ${NARROW_PANEL_MAX}px)`).matches
+  } catch {
+    return false
+  }
+}
+
+/** 把「窄面板抽屉」状态投影到 DOM（每次重绘后、窗口尺寸变化时都调）。 */
+function applyNarrowRefDrawer() {
+  const shell = document.querySelector('.doc-workspace-sticky')
+  if (!shell) return
+  const narrow = isNarrowPanel()
+  const open = state.refCol?.narrowOpen === true
+  shell.classList.toggle('is-narrow-ref-closed', narrow && !open)
+  document.querySelectorAll('[data-action="refcol-toggle"]').forEach((btn) => {
+    btn.classList.toggle('on', narrow && open)
+  })
+}
+window.addEventListener('resize', () => { applyNarrowRefDrawer() })
+
 /** 题材页渲染完后统一挂图谱（各页只负责插 refColHtml()）。 */
 function afterRefColMount() {
   const host = document.getElementById('ref-col')
@@ -5759,9 +6103,15 @@ async function runRefSummary() {
 /* OS-53：textarea 版 saveReferenceNote 已退役——实时逐块编辑由 commitRefBlock 接管。 */
 
 /** 把当前参考塞进 Agent 上下文（复用 OS-24 的 chip 机制）。 */
-function sendReferenceToAgent() {
+async function sendReferenceToAgent() {
   const note = state.reference.note
   if (!note) return
+  if (dshBridgeAvailable()) {
+    // 嵌入模式：参考正文作为引用块进 DSH 输入框（附世界书来源）
+    const body = text(note.text).trim().slice(0, 2000) || note.title
+    reportDshBridge(await sendToDshAgent({ quote: body, hint: openStorySourceNote('reference') + `参考《${note.title}》：` }))
+    return
+  }
   agent.pendingContext = {
     quote: note.title,
     context: text(note.text).slice(0, 2000),
@@ -7504,6 +7854,8 @@ function factViewHtml() {
   const fv = state.factView
   const headKick = `<div class="kick">${esc(state.current?.name || '')} / 故事源</div>`
   if (!state.current) return needLibraryHtml()
+  // 进页面拉一次同源检查（loaded 挡重复；换库由 loadSyncCheck 自己作废重拉）
+  loadSyncCheck()
   if (!ssModule) {
     ensureStorySourceModule()
       .then(() => { if (state.view === 'dir:拆解') render() })
@@ -7525,7 +7877,7 @@ function factViewHtml() {
   }
   if (!fv.loaded) return `<div class="doc-head">${headKick}<h1>故事源</h1></div><div class="loading">…</div>`
   if (!fv.entries.length) {
-    return `<div class="doc-head">${headKick}<h1>故事源</h1><div class="doc-meta"><span class="b">Fact 链</span><span>还没有条目</span></div></div>
+    return `<div class="doc-head">${headKick}<h1>故事源</h1><div class="doc-meta"><span class="b">Fact 链</span><span>还没有条目</span></div>${syncBarHtml()}</div>
       <div class="empty-state"><h2>还没有故事源</h2>
       <p>拆解/ 目录下没有可读的 fact 条目（或这本书只有章纲没有条目）。先在「世界书/条目」侧产出条目，跑一次 enrich，再回来。</p></div>`
   }
@@ -7561,6 +7913,7 @@ function factViewHtml() {
         ${fv.truncated ? `<span class="count">只读了前 ${fv.entries.length} / ${fv.total} 条</span>` : ''}
         ${fv.warnings.length ? `<span class="count">${fv.warnings.length} 条读档警告</span>` : ''}
       </div>
+      ${syncBarHtml()}
     </div>`
 
   // 默认展开第一段有内容的章；选中条目所在章保持展开
@@ -9631,7 +9984,7 @@ async function openLibrary(path) {
   graphCleanup?.()
   graphCleanup = null
   import('./graph.mjs').then((m) => m.resetGraphColors?.()).catch(() => {})
-  state.refCol = { graph: null, graphLoading: false, graphError: '', summary: '', summaryBusy: false, summaryError: '' }
+  state.refCol = { graph: null, graphLoading: false, graphError: '', summary: '', summaryBusy: false, summaryError: '', narrowOpen: false }
   state.reference = { loaded: false, loading: false, notes: [], tags: [], tagNotes: {}, stats: null, error: '', activePath: '', activeTag: '', note: null, backlinks: { linked: [], unlinked: [] }, draft: '', view: 'graph', q: '', focus: null, absorb: {}, flash: '', tagFilter: '', from: '', noteText: '', fmLen: 0 }
   state.habits = null
   state.habitsError = ''
@@ -10307,6 +10660,18 @@ document.addEventListener('click', (event) => {
     } else if (body) {
       fallback()
     }
+  } else if (action === 'sync-regen-wiki') {
+    // 同源状态条·重新生成：真入口走 enrich（设置里配了文本模型才可用），
+    // 未配置/无拆解数据时只在状态条上说明，不发请求。
+    regenWikiFromSync()
+  } else if (action === 'sync-recheck') {
+    // 同源状态条·重试：绕过 loaded 缓存再打一次（后端刚起来时用）
+    state.sync.notice = ''
+    loadSyncCheck({ force: true })
+  } else if (action === 'sync-toggle-list') {
+    // 外部改动清单的展开/收起（存在 state 上，render 不会冲掉）
+    state.sync.openList = !state.sync.openList
+    render()
   } else if (action === 'msg-reject') {
     // 驳回（OS-51）：只收起这条消息的产物按钮，不动任何文件
     const idx = Number(target.dataset.msgIndex)
@@ -10737,6 +11102,12 @@ document.addEventListener('click', (event) => {
     // 就地改文案：面板不重绘也能保持在打开状态
     target.textContent = next ? '已开启（点按关闭）' : '已关闭（点按开启）'
   } else if (action === 'refcol-toggle') {
+    // OS-114：窄面板下＝抽屉开合（不动作者对模块的偏好）；宽面板＝原逻辑（整栏显隐）
+    if (isNarrowPanel()) {
+      state.refCol.narrowOpen = state.refCol.narrowOpen !== true
+      applyNarrowRefDrawer()
+      return
+    }
     // 左栏整体显隐（浮层，不影响正文）。全关时点这里重新打开全部。
     const hidden = hiddenModules()
     const visible = REF_MODULES.filter((mod) => !hidden.has(mod.id))
