@@ -206,6 +206,8 @@ const state = {
   // 产物驳回记录（OS-51）：msgHtml index → true。会话级，不落档
   rejectedMsgs: {},
   suites: [],
+  // OS-120：三套插件的统一清单（只读聚合）。loaded 用来区分「还没拉」和「拉回来是空」
+  plugins: { loaded: false, list: [], byKind: {}, stats: null, warnings: [], error: '' },
   agent: {
     configured: false,
     endpoint: '',
@@ -3332,7 +3334,10 @@ const SETTINGS_GROUPS = Object.freeze([
     // OS-101：作者口径「插件中心就是很多套件排列，不是内部排列」
     // → 这里不再是「插件中心 → 业务套件」两级，而是插件中心直接列出全部套件。
     // 套件清单在渲染时动态展开（见 settingsNavHtml）。
-    sections: [{ id: 'suites', label: '全部套件', hint: '小说 / 剧本 / 漫剧…' }]
+    sections: [
+      { id: 'pluginsOverview', label: '插件总览', hint: '套件 / 技能 / 运行时 一份清单' },
+      { id: 'suites', label: '全部套件', hint: '小说 / 剧本 / 漫剧…' }
+    ]
   }
 ])
 
@@ -4437,6 +4442,7 @@ function settingsHtml() {
     // —— 插件中心 ——
     suites: suitesSectionHtml,
     // 旧 id 重定向到统一的套件主面
+    pluginsOverview: pluginsOverviewHtml,
     suite: suitesSectionHtml,
     suiteSettings: suitesSectionHtml,
     suiteDetail: suitesSectionHtml,
@@ -4457,15 +4463,23 @@ function settingsHtml() {
   // 插件中心不再是二级壳：它直接把**每个套件**列成一行（作者：「插件中心就是很多套件排列」）。
   const nav = SETTINGS_GROUPS.map((group) => {
     const isPluginGroup = group.id === 'plugins'
+    // OS-120：插件组最前面是「总览」入口（三套一份清单）；其后是各套件。
+    const overviewEntry = isPluginGroup
+      ? group.sections.filter((section) => section.id === 'pluginsOverview').map((section) => `
+        <button class="settings-nav-item${section.id === navOn ? ' on' : ''}" data-settings-section="${esc(section.id)}">
+          <b>${esc(section.label)}</b>
+          <span>${esc(section.hint)}</span>
+        </button>`).join('')
+      : ''
     const items = isPluginGroup
-      ? (Array.isArray(state.suites) ? state.suites : []).map((suite) => {
+      ? overviewEntry + ((Array.isArray(state.suites) ? state.suites : []).map((suite) => {
         const on = suite.enabled !== false
         const active = state.settings.section === 'suites' && state.settings.suiteId === suite.id
         return `<button class="settings-nav-item${active ? ' on' : ''}" data-action="suite-select" data-id="${esc(suite.id)}">
           <b>${esc(suite.name)}${on ? '' : '<i class="nav-off-tag">停用</i>'}</b>
           <span>${esc((suite.domains ?? []).join('／') || suite.description || '')}</span>
         </button>`
-      }).join('') || '<p class="nav-empty">还没有套件</p>'
+      }).join('') || '<p class="nav-empty">还没有套件</p>')
       : group.sections.map((section) => `
         <button class="settings-nav-item${section.id === navOn ? ' on' : ''}" data-settings-section="${esc(section.id)}">
           <b>${esc(section.label)}</b>
@@ -4573,6 +4587,36 @@ async function loadSuites() {
   }
 }
 
+/**
+ * OS-120：三套插件的统一清单（套件 / 技能 / Agent 运行时）。
+ *
+ * 作者口径「在插件治理上，dsh 或者 Obsidian 有没有什么可以借鉴的」——
+ * DSH 最值得抄的一条是「一份声明」：用户不该为了回答「我装了什么」翻三个地方。
+ *
+ * 这里只读聚合，失败不阻断设置页（其余两套照常显示）。
+ */
+async function loadPlugins() {
+  try {
+    const payload = await api('/api/plugins')
+    state.plugins = {
+      loaded: true,
+      list: Array.isArray(payload.plugins) ? payload.plugins : [],
+      byKind: payload.byKind && typeof payload.byKind === 'object' ? payload.byKind : {},
+      stats: payload.stats && typeof payload.stats === 'object' ? payload.stats : null,
+      warnings: Array.isArray(payload.warnings) ? payload.warnings : []
+    }
+  } catch (error) {
+    state.plugins = {
+      loaded: true,
+      list: [],
+      byKind: {},
+      stats: null,
+      warnings: [],
+      error: (error && error.code ? error.code + ' · ' : '') + text((error && error.message) || error)
+    }
+  }
+}
+
 function suiteById(id) {
   return state.suites.find((suite) => suite.id === id) ?? null
 }
@@ -4602,6 +4646,85 @@ function suiteValue(key, id, fallback) {
  * 套件清单已经在**左侧导航**里逐行列出，所以主面不再重复一遍列表，
  * 只渲染「当前选中套件」的详情（来源与身份 / 能力 / 设置 / 工作台模块）。
  */
+/**
+ * OS-120：插件中心总览——一份清单看全三套。
+ *
+ * 为什么要有这一屏：套件、技能、Agent 运行时是三套各自独立的 spec，
+ * 用户在设置里要先知道「这是什么类型」才能找对入口。这一屏把三套排在一起，
+ * 只回答一个问题：我现在装了哪些、各是什么版本、有没有被拦下。
+ * 点回各自的详情仍走原有入口——这里不做编辑，只做盘点。
+ */
+function pluginsOverviewHtml() {
+  const bag = state.plugins ?? { loaded: false, list: [], byKind: {}, stats: null, warnings: [], error: '' }
+  if (!bag.loaded) return '<div class="step"><h3>插件总览</h3><p class="sub">读取中…</p></div>'
+  if (bag.error) {
+    return `<div class="step"><h3>插件总览</h3>
+      <p class="sub">清单读不了：${esc(bag.error)}</p>
+      <p class="sub">套件、技能、Agent 运行时可以分别去各自那一节看——聚合失败不影响它们。</p></div>`
+  }
+  const stats = bag.stats ?? { total: 0, enabled: 0, blocked: 0, byKind: {} }
+  const kinds = ['suite', 'skill', 'runtime']
+  const labels = { suite: '套件', skill: '技能', runtime: 'Agent 运行时' }
+  const hints = {
+    suite: '业务套件：规则、设置页、自带业务页',
+    skill: '手艺配方：写作手法、评审口径、改写指令',
+    runtime: '跑 Agent 的地方：DSH / CLI / 端点'
+  }
+
+  // 每一类一块：标题 + 计数 + 条目行
+  const blocks = kinds.map((kind) => {
+    const items = Array.isArray(bag.byKind?.[kind]) ? bag.byKind[kind] : []
+    if (!items.length) {
+      return `<div class="plug-block">
+        <div class="plug-head"><b>${labels[kind]}</b><span>0</span></div>
+        <p class="sub plug-empty">还没有${labels[kind]}——${esc(hints[kind])}</p>
+      </div>`
+    }
+    const rows = items.map((item) => {
+      const blocked = item.blocked === true
+      const off = item.enabled === false
+      const why = blocked
+        ? (item.blockedReason || (item.missingDependencies?.length ? `缺依赖：${item.missingDependencies.join('、')}` : '被拦下'))
+        : ''
+      const tags = [
+        off ? '<i class="plug-tag off">停用</i>' : '',
+        blocked ? `<i class="plug-tag blocked" title="${esc(why)}">${esc(why || '被拦下')}</i>` : ''
+      ].join('')
+      // 套件可点进详情；技能与运行时点开看说明（暂不提供编辑）
+      const action = kind === 'suite'
+        ? `data-action="suite-select" data-id="${esc(item.id)}"`
+        : `data-action="plug-info" data-kind="${esc(kind)}" data-id="${esc(item.id)}"`
+      return `<button class="plug-row" ${action}>
+        <span class="plug-name">${esc(item.name || item.id)}</span>
+        <span class="plug-ver">v${esc(item.version || '—')}</span>
+        <span class="plug-src">${esc(item.source || '')}</span>
+        ${tags}
+      </button>`
+    }).join('')
+    return `<div class="plug-block">
+      <div class="plug-head"><b>${labels[kind]}</b><span>${items.length}</span></div>
+      <div class="plug-list">${rows}</div>
+    </div>`
+  }).join('')
+
+  const warnBlock = bag.warnings.length
+    ? `<div class="plug-warn"><b>${bag.warnings.length} 条装载警告</b>
+        <ul>${bag.warnings.slice(0, 5).map((w) => `<li>${esc(w.message || w.code || '')}</li>`).join('')}</ul>
+        ${bag.warnings.length > 5 ? `<p class="sub">还有 ${bag.warnings.length - 5} 条，见日志。</p>` : ''}
+      </div>`
+    : ''
+
+  return `<div class="step plug-overview">
+    <div class="plug-summary">
+      <span><b>${stats.total ?? 0}</b> 条</span>
+      <span>启用 <b>${stats.enabled ?? 0}</b></span>
+      <span class="${(stats.blocked ?? 0) > 0 ? 'plug-sum-bad' : ''}">拦下 <b>${stats.blocked ?? 0}</b></span>
+    </div>
+    ${warnBlock}
+    ${blocks}
+  </div>`
+}
+
 function suitesSectionHtml() {
   const list = Array.isArray(state.suites) ? state.suites : []
   if (!list.length) {
@@ -10469,7 +10592,7 @@ function go(view) {
   render()
   if (view === 'settings') {
     // 先并行拉数据，全部回来再渲染一次（否则先完成的 render 会用旧 state 覆盖）
-    Promise.all([loadGlobalConfig(), loadAgentRuntimes(), loadStyles(), loadSuites(), loadKbStatus(), loadDshReasoningOptions()])
+    Promise.all([loadGlobalConfig(), loadAgentRuntimes(), loadStyles(), loadSuites(), loadPlugins(), loadKbStatus(), loadDshReasoningOptions()])
       .then(() => { if (state.view === 'settings') render() })
       .catch(() => render())
     return
@@ -11152,6 +11275,21 @@ document.addEventListener('click', (event) => {
     state.settings.suiteId = target.dataset.id
     state.settings.section = 'suites'
     render()
+  } else if (action === 'plug-info') {
+    // OS-120：技能与运行时没有编辑面，点开只把它的完整信息摊开（不假装能改）
+    const kind = target.dataset.kind || ''
+    const id = target.dataset.id || ''
+    const item = (state.plugins?.list ?? []).find((entry) => entry.kind === kind && entry.id === id)
+    if (!item) return
+    openModal(`<h3>${esc(item.name || item.id)}</h3>
+      <p class="sub">${esc(item.kindLabel || kind)}${item.source ? ' · ' + esc(item.source) : ''}</p>
+      ${item.description ? `<p class="sub">${esc(item.description)}</p>` : ''}
+      <div class="plug-info-meta">
+        <span>版本 v${esc(item.version || '—')}</span>
+        <span>${item.enabled === false ? '已停用' : '已启用'}</span>
+        ${item.blocked ? `<span class="plug-info-bad">${esc(item.blockedReason || '被拦下')}</span>` : ''}
+      </div>
+      <div class="ops"><button class="btn-ghost" data-action="modal-close">知道了</button></div>`)
   } else if (action === 'kb-save') {
     saveKbConfig()
   } else if (action === 'kb-test') {

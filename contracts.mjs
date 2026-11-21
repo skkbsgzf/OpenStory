@@ -649,6 +649,16 @@ export const ENDPOINTS = Object.freeze({
     response: { ok: 'true', picks: 'object', path: 'string' },
     errors: ['NO_LIBRARY', 'INVALID_ENTRY', 'WRITE_PROTOCOL_IO_FAILED']
   },
+  pluginsGet: {
+    method: 'GET',
+    path: '/api/plugins',
+    // 插件统一清单（OS-120）：把 suites / skills / runtimes 三套 spec 投影成同一形状。
+    // 只读聚合，不改任何一套的落盘格式；上层据此回答「我装了什么」而不必翻三个地方。
+    // blocked/missingDependencies 由版本闸与依赖闸填充（未落地时是安全空值）。
+    request: { query: {} },
+    response: { ok: 'true', plugins: 'array', byKind: 'object', stats: 'object', warnings: 'array?' },
+    errors: []
+  },
   suitesGet: {
     method: 'GET',
     path: '/api/suites',

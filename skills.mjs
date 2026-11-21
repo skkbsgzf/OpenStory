@@ -15,6 +15,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs'
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { minVersionGate, readAppVersion } from './versionGate.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 
@@ -39,7 +40,7 @@ export function defaultUserSkillsDir(env = process.env) {
  * 解析 SKILL.md：frontmatter 用极简 YAML 读法（key: value ＋ 方括号数组 ＋ | 块忽略），
  * 正文＝后半段。不引 YAML 库。
  */
-export function parseSkillMarkdown(raw, { source, dir } = {}) {
+export function parseSkillMarkdown(raw, { source, dir, appVersion } = {}) {
   const where = `${source}·${text(dir)}`
   const bad = (code, message) => ({ ok: false, warning: { code, dir: where, message: `${message}：${where}` } })
   const src = text(raw)
@@ -98,6 +99,10 @@ export function parseSkillMarkdown(raw, { source, dir } = {}) {
   }
   const genres = Array.isArray(meta.genres) && meta.genres.length ? meta.genres : ['*']
   const version = text(meta.version).trim() || '0.0.0'
+  // 最低应用版本闸（OS-121）：缺字段＝不校验；要求高于当前＝跳过；格式坏＝照常加载＋_BAD warning
+  const gate = minVersionGate(meta.minOpenStoryVersion, appVersion ?? readAppVersion(), { prefix: 'SKILL', label: '技能', where })
+  if (gate.skip) return bad('SKILL_MIN_VERSION', gate.message)
+  const extraWarnings = gate.warning ? [gate.warning] : []
   return {
     ok: true,
     skill: {
@@ -117,7 +122,8 @@ export function parseSkillMarkdown(raw, { source, dir } = {}) {
       // 正文：装配时按 category 决定进 instruction 还是参考块
       body,
       chars: body.length
-    }
+    },
+    ...(extraWarnings.length ? { warnings: extraWarnings } : {})
   }
 }
 
@@ -153,6 +159,7 @@ function scanSkillDir(dir, source, warnings) {
       warnings.push({ code: 'SKILL_NAME_MISMATCH', file: `${source}·${name}`, message: `frontmatter name（${parsed.skill.name}）与目录名（${name}）不一致` })
       continue
     }
+    for (const warning of parsed.warnings ?? []) warnings.push(warning)
     skills.push(parsed.skill)
   }
   return skills

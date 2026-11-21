@@ -1700,6 +1700,59 @@ html[data-doc-auto-gap="off"] .doc-block { margin-bottom: 0; }
   margin: 0 0 var(--ui-gap-xs); font-size: var(--ui-fs-xs); font-weight: 600; color: var(--ink-2);
 }
 
+/* ══ OS-120 插件总览（三套一份清单）════════════════════════════
+   为什么单独一屏：套件/技能/运行时是三套独立 spec，用户不该为了回答
+   「我装了什么」先去分辨类型。这一屏只做盘点，编辑仍回各自详情。 */
+.plug-overview { display: flex; flex-direction: column; gap: var(--ui-gap-md); }
+.plug-summary {
+  display: flex; gap: var(--ui-gap-md); align-items: baseline;
+  padding: 8px 12px; border-radius: var(--radius-sm); background: var(--soft);
+  font-size: var(--ui-fs-xs); color: var(--meta);
+}
+.plug-summary b { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+.plug-sum-bad b { color: var(--danger); }
+.plug-warn {
+  padding: 9px 12px; border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--warn) 12%, transparent);
+  font-size: var(--ui-fs-xs); color: var(--ink-2);
+}
+.plug-warn b { display: block; margin-bottom: 4px; color: var(--ink); font-weight: 600; }
+.plug-warn ul { margin: 0; padding-left: 16px; }
+.plug-warn li { margin: 2px 0; overflow-wrap: anywhere; }
+.plug-block { display: flex; flex-direction: column; gap: 2px; }
+.plug-head {
+  display: flex; align-items: baseline; gap: 8px;
+  padding: 6px 2px; border-bottom: 1px solid var(--hair);
+}
+.plug-head b { font-size: var(--ui-fs-sm); color: var(--ink); font-weight: 600; }
+.plug-head span { font-size: var(--ui-fs-xs); color: var(--meta); font-variant-numeric: tabular-nums; }
+.plug-list { display: flex; flex-direction: column; }
+.plug-row {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto;
+  gap: 10px; align-items: center; text-align: left;
+  padding: 7px 6px; border-radius: 6px; background: transparent;
+  border: 0; cursor: pointer; color: var(--ink); font-size: var(--ui-fs-xs);
+}
+.plug-row:hover { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.plug-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.plug-ver { color: var(--meta); font-variant-numeric: tabular-nums; }
+.plug-src { color: var(--meta); font-size: 11px; }
+.plug-tag {
+  font-style: normal; font-size: 10.5px; padding: 1px 6px; border-radius: 999px;
+  background: var(--soft); color: var(--meta);
+}
+.plug-tag.off { opacity: .75; }
+.plug-tag.blocked {
+  background: color-mix(in srgb, var(--danger) 14%, transparent); color: var(--danger);
+  max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.plug-empty { padding: 10px 4px; margin: 0; }
+.plug-info-meta {
+  display: flex; flex-wrap: wrap; gap: 10px; margin: 10px 0;
+  font-size: var(--ui-fs-xs); color: var(--meta);
+}
+.plug-info-bad { color: var(--danger); }
+
 /* ══ OS-99 业务套件中心（主从两栏，对齐 DSH 插件管理）══════════
    左列＝套件清单（谁是谁一眼看出），右列＝选中项详情（来源/能力/启停/设置） */
 .suite-center .suite-split {

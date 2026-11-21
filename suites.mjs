@@ -13,6 +13,8 @@ import { readFile, rename, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { loadSkills } from './skills.mjs'
+import { readAppVersion, minVersionGate } from './versionGate.mjs'
+import { resolveSuiteDependencies } from './dependencyGraph.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 
@@ -123,7 +125,7 @@ function normalizeCapabilities(raw, dir, bad) {
 }
 
 /** 单套件规整：spec（@2 能力声明／@1 兼容）逐项把门，问题随 warning 报。 */
-export function normalizeSuite(raw, { source, dir } = {}) {
+export function normalizeSuite(raw, { source, dir, appVersion } = {}) {
   const where = `${source}·${text(dir)}`
   const bad = (code, message) => ({ ok: false, warning: { code, dir: where, message: `${message}：${where}` } })
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return bad('SUITE_SHAPE', 'manifest 不是对象')
@@ -139,6 +141,11 @@ export function normalizeSuite(raw, { source, dir } = {}) {
   if (!/^\d+\.\d+\.\d+$/u.test(version)) return bad('SUITE_VERSION', 'version 必须是三段数字（如 0.1.0）')
   const vendor = text(raw.vendor).trim()
   if (!vendor) return bad('SUITE_VENDOR', '缺 vendor（归属）')
+  // 最低应用版本闸（OS-121）：缺字段＝不校验；要求高于当前＝跳过（bad→warning）；
+  // 格式写坏＝照常加载，只捎一条 _BAD warning。
+  const gate = minVersionGate(raw.minOpenStoryVersion, appVersion ?? readAppVersion(), { prefix: 'SUITE', label: '套件', where })
+  if (gate.skip) return bad('SUITE_MIN_VERSION', gate.message)
+  const extraWarnings = gate.warning ? [gate.warning] : []
   const domains = Array.isArray(raw.domains) ? raw.domains.map((item) => text(item).trim()).filter(Boolean) : []
   // 能力声明：@2 读 capabilities；@1 的顶层 settings[] 等价于 schema 模式。
   const capsRaw = spec === SUITE_SPEC
@@ -146,6 +153,24 @@ export function normalizeSuite(raw, { source, dir } = {}) {
     : (Array.isArray(raw.settings) ? { settings: { mode: 'schema', schema: raw.settings } } : undefined)
   const capsResult = normalizeCapabilities(capsRaw, resolve(text(dir)), bad)
   if (!capsResult.ok) return capsResult // bad 载荷（{ok:false, warning}）
+  // 依赖声明（OS-122）：可选字段 requires，每项是套件 id。非法项丢弃并捎一条 warning
+  // （不拒整个套件——一个写坏的 id 不该把作者的其他工作关在门外）。
+  const requires = []
+  if (raw.requires !== undefined && raw.requires !== null) {
+    if (!Array.isArray(raw.requires)) {
+      extraWarnings.push({ code: 'SUITE_REQUIRES', dir: where, message: `requires 必须是 id 数组，按未声明处理：${where}` })
+    } else {
+      for (const item of raw.requires) {
+        const dep = text(item).trim()
+        if (!dep) continue
+        if (!/^[\w.-]{1,80}$/u.test(dep)) {
+          extraWarnings.push({ code: 'SUITE_REQUIRES', dir: where, message: `requires 项非法（只许字母数字-_.，≤80 字）：${dep}，已丢弃：${where}` })
+          continue
+        }
+        if (!requires.includes(dep)) requires.push(dep)
+      }
+    }
+  }
   return {
     ok: true,
     suite: {
@@ -155,10 +180,13 @@ export function normalizeSuite(raw, { source, dir } = {}) {
       vendor,
       description: text(raw.description).trim(),
       domains,
+      ...(requires.length ? { requires } : {}),
       capabilities: capsResult.capabilities,
       source,
       dir: resolve(text(dir))
-    }
+    },
+    // 未阻断加载的问题（如 MIN_VERSION_BAD）：照样收下这个套件，但把 warning 带出去
+    ...(extraWarnings.length ? { warnings: extraWarnings } : {})
   }
 }
 
@@ -189,6 +217,7 @@ function scanSuiteDir(dir, source, warnings) {
       warnings.push(normalized.warning)
       continue
     }
+    for (const warning of normalized.warnings ?? []) warnings.push(warning)
     suites.push(normalized.suite)
   }
   return suites
@@ -289,11 +318,35 @@ export function suitePublic(suite, suiteState) {
   }
 }
 
-/** 全货架公开清单（按 state 合并 enabled/values）。 */
+/** 全货架公开清单（按 state 合并 enabled/values；依赖闸把缺失/成环的标 blocked）。 */
 export async function listSuitesPublic(dirs, statePath) {
   const { suites, warnings } = loadSuites(dirs)
   const { state } = await loadSuiteState(statePath)
-  return { ok: true, suites: suites.map((suite) => suitePublic(suite, state)), warnings }
+  // 依赖闸（OS-122）：只有「启用中」的套件算可用依赖；缺失或成环的标 blocked，
+  // 货架照常返回（不抛错、不隐藏）——作者要能看见「它为什么没生效」。
+  const enabledOf = (suite) => state?.suites?.[suite.id]?.enabled !== false
+  const graph = resolveSuiteDependencies(
+    suites.map((suite) => ({ id: suite.id, enabled: enabledOf(suite), requires: suite.requires }))
+  )
+  const unmetById = new Map(graph.unmet.map((item) => [item.id, item.needs]))
+  const cycleByid = new Map(graph.cycles.flat().map((id) => [id, graph.cycles.find((cycle) => cycle.includes(id))]))
+  return {
+    ok: true,
+    suites: suites.map((suite) => {
+      const listed = suitePublic(suite, state)
+      const missing = unmetById.get(suite.id)
+      const cycle = cycleByid.get(suite.id)
+      if (missing?.length || cycle) {
+        listed.blocked = true
+        listed.blockedReason = cycle
+          ? `依赖成环：${cycle.join(' → ')}`
+          : `缺依赖：${missing.join('、')}`
+        listed.missingDependencies = missing ?? []
+      }
+      return listed
+    }),
+    warnings
+  }
 }
 
 /** 按 schema 校验并保存一套件的 values；未知键丢弃，坏值 400 语义返回。page 模式套件不走这里。 */

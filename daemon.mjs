@@ -115,6 +115,7 @@ import {
   setSuiteEnabled,
   suiteValue
 } from './suites.mjs'
+import { listAllPlugins } from './plugins.mjs'
 import {
   createLibrary,
   diagnoseLibrary,
@@ -1490,6 +1491,22 @@ async function handleApi(req, res, url, context) {
     return sendJson(res, 200, { ok: true, picks: written.picks, path: written.path })
   }
 
+  if (endpointId === 'pluginsGet') {
+    // OS-120：三套 spec 的统一视图（只读聚合）。一套读崩不拖垮其余两套——聚合层内部已隔离。
+    const listed = await listAllPlugins({
+      suitesDirs: context.suitesDirs,
+      suiteStatePath: context.suiteStatePath,
+      skillsDirs: context.skillsDirs,
+      runtimesDirs: context.runtimesDirs
+    })
+    return sendJson(res, 200, {
+      ok: true,
+      plugins: listed.plugins,
+      byKind: listed.byKind,
+      stats: listed.stats,
+      ...(listed.warnings.length ? { warnings: listed.warnings } : {})
+    })
+  }
   if (endpointId === 'suitesGet') {
     const listed = await listSuitesPublic(context.suitesDirs, context.suiteStatePath)
     const suitesUserDir = Array.isArray(context.suitesDirs) && context.suitesDirs[1] ? context.suitesDirs[1] : ''

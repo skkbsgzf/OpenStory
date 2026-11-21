@@ -15,6 +15,7 @@ import { readdirSync, readFileSync, existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { minVersionGate, readAppVersion } from './versionGate.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 
@@ -41,7 +42,7 @@ function validChatPath(value) {
 }
 
 /** 单 kit 规整：逐项把门，问题随 warning 报。 */
-export function normalizeRuntimeKit(raw, { source, dir } = {}) {
+export function normalizeRuntimeKit(raw, { source, dir, appVersion } = {}) {
   const where = `${source}·${text(dir)}`
   const bad = (code, message) => ({ ok: false, warning: { code, dir: where, message: `${message}：${where}` } })
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return bad('RUNTIME_KIT_SHAPE', 'manifest 不是对象')
@@ -122,7 +123,11 @@ export function normalizeRuntimeKit(raw, { source, dir } = {}) {
   }
   if (raw.sha256 !== undefined && !/^[0-9a-f]{64}$/iu.test(text(raw.sha256))) return bad('RUNTIME_KIT_SHA', 'sha256 要是 64 位十六进制')
   if (raw.sha256) kit.sha256 = text(raw.sha256).toLowerCase()
-  return { ok: true, kit }
+  // 最低应用版本闸（OS-121）：缺字段＝不校验；要求高于当前＝跳过；格式坏＝照常加载＋_BAD warning
+  const gate = minVersionGate(raw.minOpenStoryVersion, appVersion ?? readAppVersion(), { prefix: 'RUNTIME_KIT', label: '运行时', where })
+  if (gate.skip) return bad('RUNTIME_KIT_MIN_VERSION', gate.message)
+  const extraWarnings = gate.warning ? [gate.warning] : []
+  return { ok: true, kit, ...(extraWarnings.length ? { warnings: extraWarnings } : {}) }
 }
 
 /** 目录同步扫描（装载清单用；kit 目录里没有 manifest.json 的子目录＝不是 kit，静默跳过）。 */
@@ -152,6 +157,7 @@ function scanKitDir(dir, source, warnings) {
       warnings.push(normalized.warning)
       continue
     }
+    for (const warning of normalized.warnings ?? []) warnings.push(warning)
     kits.push(normalized.kit)
   }
   return kits
