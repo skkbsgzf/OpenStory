@@ -80,8 +80,23 @@ function normalizeSettingsSchema(rawSettings, bad) {
 const ASSET_ENTRY = /^[\w\u4e00-\u9fff][\w\u4e00-\u9fff. -]{0,60}\.(?:html?|mjs|js|css|json)$/u
 
 /**
+ * 服务白名单（OS-129，学 @open-design/plugin-runtime 的 KNOWN_CAPABILITIES）：
+ * capabilities.services[].id 里宿主「真的会理」的 id——每项对应一处真实宿主实现（盘点于 daemon.mjs）：
+ *   settings-page → page 模式设置页同源 iframe 装载：daemon.mjs 的 /suite-assets/ 路由＋serveSuiteAsset，
+ *                   工作台把 <id>/<entry> 装进 iframe（public/app.js）
+ *   assets        → 套件静态资产只读服务：daemon.mjs resolveSuiteAssetPath（路径逃逸闸/≤2MB/MIME 表）
+ *                   ＋ /suite-assets/_tokens.css 宿主令牌下发（OS-95）
+ *   state-data    → page 模式原始配置读写通道：daemon.mjs suiteStateDataGet/Put
+ *                   → suites.mjs getSuiteStateData / saveSuiteStateData
+ * 盘点不出宿主实现的不进名单（如 pages 业务页——宿主只登记展示，装载随业务页宿主上线）。
+ * 白名单是「宿主真的会理你」的提示，不是权限闸：未知 id 只捎 SUITE_SERVICE_UNKNOWN warning，照常登记。
+ */
+export const KNOWN_SERVICE_IDS = Object.freeze(['settings-page', 'assets', 'state-data'])
+
+/**
  * 能力声明规整（OS-16 协议 v2）：settings 两模式（schema＝宿主渲染表单；page＝套件自带设置页经
  * /suite-assets 同源装载）＋pages/services 登记位。@1 的顶层 settings[] 自动按 schema 模式兼容。
+ * services 的未知 id 不拒载（OS-129）：warning 随返回值带出，由 normalizeSuite 并进 extraWarnings。
  */
 function normalizeCapabilities(raw, dir, bad) {
   const source = raw
@@ -90,6 +105,7 @@ function normalizeCapabilities(raw, dir, bad) {
   }
   if (typeof source !== 'object' || Array.isArray(source)) return bad('SUITE_CAPS_SHAPE', 'capabilities 必须是对象')
   const caps = { settings: { mode: 'none' }, pages: [], services: [] }
+  const warnings = []
   const settings = source.settings
   if (settings !== undefined) {
     if (typeof settings !== 'object' || settings === null) return bad('SUITE_CAPS_SETTINGS', 'capabilities.settings 必须是对象')
@@ -119,9 +135,18 @@ function normalizeCapabilities(raw, dir, bad) {
     if (!service || typeof service !== 'object' || !/^[\w-]{1,40}$/u.test(text(service.id))) {
       return bad('SUITE_CAPS_SERVICES', 'services 项必须有合法 id')
     }
-    caps.services.push({ id: text(service.id), description: text(service.description).trim() })
+    const serviceId = text(service.id)
+    // 服务白名单（OS-129）：不在 KNOWN_SERVICE_IDS 里＝宿主不会处理这个声明——只提示，照常登记。
+    if (!KNOWN_SERVICE_IDS.includes(serviceId)) {
+      warnings.push({
+        code: 'SUITE_SERVICE_UNKNOWN',
+        dir,
+        message: `services id「${serviceId}」不在宿主白名单（宿主不会理这个声明，照常登记不拒载）：${dir}`
+      })
+    }
+    caps.services.push({ id: serviceId, description: text(service.description).trim() })
   }
-  return { ok: true, capabilities: caps }
+  return { ok: true, capabilities: caps, ...(warnings.length ? { warnings } : {}) }
 }
 
 /** 单套件规整：spec（@2 能力声明／@1 兼容）逐项把门，问题随 warning 报。 */
@@ -153,6 +178,8 @@ export function normalizeSuite(raw, { source, dir, appVersion } = {}) {
     : (Array.isArray(raw.settings) ? { settings: { mode: 'schema', schema: raw.settings } } : undefined)
   const capsResult = normalizeCapabilities(capsRaw, resolve(text(dir)), bad)
   if (!capsResult.ok) return capsResult // bad 载荷（{ok:false, warning}）
+  // 服务白名单的未知 id warning（OS-129）并进同一袋 warning，随套件照常加载带出。
+  for (const warning of capsResult.warnings ?? []) extraWarnings.push(warning)
   // 依赖声明（OS-122）：可选字段 requires，每项是套件 id。非法项丢弃并捎一条 warning
   // （不拒整个套件——一个写坏的 id 不该把作者的其他工作关在门外）。
   const requires = []

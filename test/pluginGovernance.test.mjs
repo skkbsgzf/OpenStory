@@ -13,7 +13,7 @@ import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { loadSuites, normalizeSuite } from '../suites.mjs'
+import { loadSuites, normalizeSuite, KNOWN_SERVICE_IDS } from '../suites.mjs'
 import { loadSkills, parseSkillMarkdown } from '../skills.mjs'
 import { loadRuntimeKits, normalizeRuntimeKit } from '../runtimes.mjs'
 import { minVersionGate, readAppVersion, satisfiesMinVersion } from '../versionGate.mjs'
@@ -339,4 +339,52 @@ test('依赖闸：requires 里的非法项被丢弃并记 SUITE_REQUIRES warning
     assert.equal(sloppy.blocked, true, 'good-id 不在货架＝缺依赖，照常标 blocked')
     assert.deepEqual(sloppy.missingDependencies, ['good-id'], '非法项已丢弃，missing 里只剩合法项')
   } finally { await rm(root, { recursive: true, force: true }) }
+})
+
+/* ══ OS-129 服务白名单：services id 对齐宿主真实实现（warning 不拒载） ══ */
+
+test('服务白名单：已知 id（KNOWN_SERVICE_IDS 全部）→ 照常登记，零 warning', async () => {
+  assert.ok(Object.isFrozen(KNOWN_SERVICE_IDS), '白名单必须是冻结数组')
+  await withTemp(async (base) => {
+    const shelf = await makeSuiteShelf(base, {
+      wired: {
+        ...SUITE, id: 'wired',
+        capabilities: { pages: [], services: KNOWN_SERVICE_IDS.map((id) => ({ id, description: `${id} 通道` })) }
+      }
+    })
+    const { suites, warnings } = loadSuites([shelf])
+    assert.deepEqual(suites.map((suite) => suite.id), ['wired'])
+    assert.equal(warnings.length, 0, `宿主真的会理的 id 不该有 warning，实际：${JSON.stringify(warnings)}`)
+    assert.deepEqual(suites[0].capabilities.services.map((service) => service.id), [...KNOWN_SERVICE_IDS], '白名单 id 全部照常登记')
+  })
+})
+
+test('服务白名单：未知 id → SUITE_SERVICE_UNKNOWN warning，但套件照常加载、声明照常登记', async () => {
+  await withTemp(async (base) => {
+    const shelf = await makeSuiteShelf(base, {
+      dreamer: {
+        ...SUITE, id: 'dreamer',
+        capabilities: { pages: [], services: [{ id: 'quantum-teleport', description: '宿主还没这能力' }, { id: 'state-data', description: '这个宿主会理' }] }
+      }
+    })
+    const { suites, warnings } = loadSuites([shelf])
+    assert.deepEqual(suites.map((suite) => suite.id), ['dreamer'], '未知服务 id 不拒载——白名单是提示，不是权限闸')
+    const hit = warnings.find((warning) => warning.code === 'SUITE_SERVICE_UNKNOWN')
+    assert.ok(hit, `应有 SUITE_SERVICE_UNKNOWN warning，实际：${JSON.stringify(warnings)}`)
+    assert.match(hit.message, /quantum-teleport/)
+    const registered = suites[0].capabilities.services.map((service) => service.id)
+    assert.deepEqual(registered, ['quantum-teleport', 'state-data'], '未知 id 照常登记，不丢声明')
+    assert.equal(warnings.filter((warning) => warning.code === 'SUITE_SERVICE_UNKNOWN').length, 1, '已知 id（state-data）不捎 warning')
+  })
+})
+
+test('服务白名单：services 缺省（无 capabilities／空对象）→ 无 warning', () => {
+  const noCaps = normalizeSuite(SUITE, { source: '内置', dir: 'D:/s/governed' })
+  assert.equal(noCaps.ok, true)
+  assert.equal(noCaps.warnings, undefined, '整个 capabilities 缺省＝不涉服务声明，零 warning')
+
+  const emptyCaps = normalizeSuite({ ...SUITE, capabilities: {} }, { source: '内置', dir: 'D:/s/governed' })
+  assert.equal(emptyCaps.ok, true)
+  assert.equal(emptyCaps.warnings, undefined, 'capabilities 空对象（services 缺省）也零 warning')
+  assert.deepEqual(emptyCaps.suite.capabilities.services, [], 'services 规整为空数组')
 })

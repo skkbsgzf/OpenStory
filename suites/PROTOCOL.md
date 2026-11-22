@@ -42,7 +42,7 @@ suites/                          ← 内置 openstory/suites/ 或本机 %LOCALAP
 | `domains` |  | 业务域标签（写作/编剧/漫剧…），展示用 |
 | `capabilities.settings` |  | **设置页能力**，两种模式见 §3 |
 | `capabilities.pages` |  | 自带业务页登记（id/title/entry）——**协议位：宿主登记并展示，装载随业务页宿主上线** |
-| `capabilities.services` |  | 预留：套件自带服务（同运行时 kit 的 sidecar 语义） |
+| `capabilities.services` |  | 服务声明（id/description），id 应落在宿主白名单——见 §3.5 |
 
 ## 3. 设置页能力（两种模式，宿主按声明准备）
 
@@ -62,6 +62,30 @@ type ∈ string/number/boolean/select（select 带 options，default 必须在 o
   - `GET /api/suite/state-data?id=<id>` → `{ok, values}`
   - `PUT /api/suite/state-data?id=<id>` body `{values: {...}}` → `{ok, values}`
 - 停用语义不变：停用＝宿主不再应用套件规则（值保留）。
+
+## 3.5 服务白名单（`capabilities.services`，OS-129）
+
+服务声明＝套件告诉宿主「我要用哪些宿主侧服务面」。**白名单是「宿主真的会理你」的提示，
+不是权限闸**（学 @open-design/plugin-runtime 的 KNOWN_CAPABILITIES：warning 不拒载）：
+id 不在白名单里，宿主捎一条 `SUITE_SERVICE_UNKNOWN` warning，**声明照常登记、套件照常加载**。
+
+宿主白名单（`suites.mjs` 的 `KNOWN_SERVICE_IDS`，冻结数组；每项对应一处真实宿主实现）：
+
+| 服务 id | 宿主实现 |
+|---|---|
+| `settings-page` | page 模式设置页同源 iframe 装载：`GET /suite-assets/<id>/<entry>`（§3 模式 B） |
+| `assets` | 套件静态资产只读服务：`GET /suite-assets/<id>/<相对路径>`（路径安全化、≤2MB）＋ `/suite-assets/_tokens.css` 宿主令牌下发（§4.5） |
+| `state-data` | page 模式原始配置读写通道：`GET/PUT /api/suite/state-data`（§3 模式 B 的两个同源 API） |
+
+```json
+"services": [
+  { "id": "settings-page", "description": "自带设置页经宿主同源装载" },
+  { "id": "state-data", "description": "配置走宿主 state-data 通道" }
+]
+```
+
+盘点口径：宿主没有对应实现的 id **不进白名单**（如业务页装载——宿主今天只登记展示）。
+声明白名单外的 id 不报错：新服务面上线前，作者可以先占位声明，宿主升级后自动「被理」。
 
 ## 4. 生命周期（非常驻）
 
