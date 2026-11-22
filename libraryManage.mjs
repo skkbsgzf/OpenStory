@@ -1,14 +1,14 @@
 /**
  * OpenStory 库管理写操作（OS-7）——新建/登记/诊断/修主模块/扫描/导入。
  *
- * 复用面（全部零改动 import，两条壳一个真源）：
- *   · 建库：next/index.mjs 的 createRegistry/createProject/initBareProject
- *     ＋ core/carrierBootstrap 的清单式注册表（daemon 进程内单例，只装声明不装实现）；
+ * 复用面（两条壳一个真源）：
+ *   · 建库：projectDoc.mjs（OS-124 解耦②收编为本仓自持；骨架／project.json 合同／
+ *     createProject/initBareProject／载体表与注册表逐字归并自 vendor next/{kernel,project,shell}/，
+ *     金样护栏 test/decoupleStep2.test.mjs）；
  *   · 导入：importAdapter.mjs 的 planImport/runImport（OS-123 解耦①收编为本仓自持；
  *     逐字拷贝自 vendor next/runtime/projectImportAdapter.mjs）
  *     （承诺：源目录只读、目标只新增不覆盖、认不出的不猜）；
- *   · 合同：next/project/projectManifest.mjs 的 read/writeProjectDocument＋nextCarriers（revision 乐观并发）；
- *   · 人话：next/shell/library/wizardKit.mjs 的 describeOpenFailure/validateLibraryName/folderName
+ *   · 人话：projectDoc.mjs 的 describeOpenFailure/validateLibraryName/folderName
  *     （纯函数无 Vue，A-5 四类失败与 Electron 同一份口径）。
  *
  * 偏好文件纪律：next-preferences.json 只做「读→内存追加/去重→原子写回」；
@@ -17,13 +17,21 @@
 import { existsSync, statSync } from 'node:fs'
 import { mkdir, readdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { dirname, isAbsolute, resolve } from 'node:path'
-import { createRegistry, createProject, initBareProject } from './core/index.mjs'
-import { createCarrierRegistry } from './core/carrierBootstrap.mjs'
-import { PROJECT_KINDS } from './core/pinax/next/kernel/projectSkeleton.mjs'
-import { resolveClosure } from './core/pinax/next/kernel/capabilityGraph.mjs'
-import { readProjectDocument, writeProjectDocument, nextCarriers } from './core/pinax/next/project/projectManifest.mjs'
+import {
+  createRegistry,
+  createCarrierRegistry,
+  createProject,
+  initBareProject,
+  PROJECT_KINDS,
+  resolveClosure,
+  readProjectDocument,
+  writeProjectDocument,
+  nextCarriers,
+  describeOpenFailure,
+  validateLibraryName,
+  folderName
+} from './projectDoc.mjs'
 import { planImport, runImport } from './importAdapter.mjs'
-import { describeOpenFailure, validateLibraryName, folderName } from './core/pinax/next/shell/library/wizardKit.mjs'
 
 function text(value) {
   return String(value ?? '')
