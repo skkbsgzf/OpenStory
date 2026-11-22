@@ -13,7 +13,7 @@
 import { existsSync, readdirSync, statSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { createFactFileStore, readFactWiki, FACT_DIR_NAME } from './core/pinax/next/kernel/factFileStore.mjs'
+import { factStore } from './pinaxAdapter.mjs' // OS-125：内核唯一进口（S2.4），本仓其余模块不许直引 core/**
 
 /** 一次读取的结果来源标记——调用方据此决定要不要提示作者「正在用降级数据」。 */
 export const CONTEXT_SOURCE = Object.freeze({
@@ -64,7 +64,7 @@ export async function factHealth(root) {
   let entries = []
   let revision = null
   try {
-    const store = createFactFileStore({ root })
+    const store = factStore.createFactFileStore({ root })
     const listed = await store.list({})
     entries = listed.entries ?? []
     revision = Number.isSafeInteger(listed.revision) ? listed.revision : null
@@ -93,7 +93,7 @@ export async function factHealth(root) {
         return mtime > newest ? mtime : newest
       } catch { return newest }
     }, 0)
-    for (const candidate of [FACT_DIR_NAME, '.pinax/extractions', '.pinax/deduce']) {
+    for (const candidate of [factStore.FACT_DIR_NAME, '.pinax/extractions', '.pinax/deduce']) {
       const dir = join(root, candidate)
       if (!existsSync(dir)) continue
       const newestFact = readdirSync(dir).reduce((newest, name) => {
@@ -137,7 +137,7 @@ export async function loadFactContext({ root, chapterNo = null, limit = 400 } = 
   const notes = []
   let entries = []
   try {
-    const store = createFactFileStore({ root })
+    const store = factStore.createFactFileStore({ root })
     const listed = await store.list({})
     entries = listed.entries ?? []
     for (const warning of listed.warnings ?? []) notes.push(text(warning))
@@ -220,7 +220,7 @@ export async function loadFactDerived({ root, bookId } = {}) {
     // 派生层走 readFactWiki 单口：它自己找兄弟 `<id>.wiki.json`，缺了回落信封内嵌。
     // 不在这里拼路径——目录名归 factFileStore 的 FACT_DIR_NAME 管（当前是「拆解」），
     // 早先硬编码 `.pinax/extractions/` 是错的，在真库上必然 ENOENT。
-    const { wiki } = readFactWiki({ root, id: bookId })
+    const { wiki } = factStore.readFactWiki({ root, id: bookId })
     if (!wiki || !Object.keys(wiki).length) {
       return { ok: false, wiki: null, notes: ['派生层为空（先跑 enrich）'] }
     }

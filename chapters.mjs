@@ -1,8 +1,9 @@
 /**
  * OpenStory 章节工作面（OS-10）——章节清单/自动编号新建/保号重命名/非破坏删除。
  *
- * 复用面：章节号解析＝textUtil.mjs 的 parseChapterNumber（OS-123 解耦①收编为本仓自持；
- * 逐字拷贝自 vendor server/mcp/projectImport.js，中文数字一体认）；文件名约定 `NNN-标题.md`
+ * 复用面：章节号解析＝projectImport.parseChapterNumber（OS-125 起经 pinaxAdapter 统一出口，
+ * 转引本仓 textUtil.mjs——OS-123 解耦①收编为本仓自持，逐字拷贝自 vendor
+ * server/mcp/projectImport.js，中文数字一体认）；文件名约定 `NNN-标题.md`
  * （conformance 口径）。
  * 删除永远非破坏：先挪进同目录 .history/<file>.deleted-<时间戳>，再删原文件。
  * 文件本体读写仍走 daemon 的 chapter 通道；本模块只管「章」这一层。
@@ -10,7 +11,7 @@
 import { existsSync, statSync } from 'node:fs'
 import { mkdir, readdir, rename, stat, writeFile } from 'node:fs/promises'
 import { basename, dirname, join, relative, resolve, sep } from 'node:path'
-import { parseChapterNumber } from './textUtil.mjs'
+import { projectImport } from './pinaxAdapter.mjs' // OS-125：导入能力的统一出口（内核唯一进口）
 import { API_ERROR_CODES } from './contracts.mjs'
 
 function text(value) {
@@ -36,12 +37,12 @@ export function parseChapterName(fileName) {
   const base = text(fileName).replace(/\.(?:md|txt|markdown)$/iu, '').trim()
   const leading = base.match(/^([0-9零一二三四五六七八九十百千两]{1,6})\s*[-_.—、·:：\s]\s*(.+)$/u)
   if (leading) {
-    const no = parseChapterNumber(leading[1])
+    const no = projectImport.parseChapterNumber(leading[1])
     if (no !== null) return { no, title: leading[2].trim() || base }
   }
   const chapterWord = base.match(/^第\s*([0-9零一二三四五六七八九十百千两]+)\s*[章节回]\s*[·・:：、,，.。_\-—]?\s*(.*)$/u)
   if (chapterWord) {
-    const no = parseChapterNumber(chapterWord[1])
+    const no = projectImport.parseChapterNumber(chapterWord[1])
     if (no !== null) return { no, title: chapterWord[2].trim() || base }
   }
   return { no: null, title: base }

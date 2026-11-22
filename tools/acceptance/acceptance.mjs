@@ -129,15 +129,16 @@ for (const f of rootMjs) {
   imports[f] = [...src.matchAll(/from\s+'(\.?\/?[\w./-]+\.mjs)'/g)].map((m) => m[1].replace(/^\.?\//, ''))
 }
 // 模块 = 可插拔功能件；它们之间不得互相 import。
-// 白名单：① 协议层（contracts/chapters）② vendor 内核 core/pinax/**（fact 链底座，见 VENDORED.md）
-//        ③ deduceSession→deduceEngine（会话容器引引擎＝内核依赖）
+// 白名单：① 协议层（contracts/changelog/versionGate/plugins/pinaxAdapter——OS-125 起 pinaxAdapter
+//        是内核唯一进口＝能力协议面，core/** 只许它引，见 S2.4；vendor 内核 core/pinax/** 是 fact 链底座，见 VENDORED.md）
+//        ② deduceSession→deduceEngine（会话容器引引擎＝内核依赖）
 const KERNEL_ALLOW = new Set([
   'deduceSession.mjs -> deduceEngine.mjs',
   // OS-79：deduceNarrative 是推演引擎的内部子模块（只做叙事上下文拼装，纯函数），
   // 不是平等功能模块——引擎引它属于内部组合，不是跨模块耦合。
   'deduceEngine.mjs -> deduceNarrative.mjs'
 ])
-const PROTOCOL = new Set(['contracts.mjs', 'chapters.mjs', 'changelog.mjs', 'versionGate.mjs', 'plugins.mjs']) // 底层接口协议层（chapters=文件读写协议；changelog=变更日志协议，所有模块都要记 diff；versionGate=版本比对协议，三套插件规范共用；plugins=三套插件只读聚合层，daemon 与设置页共用同一份清单口径）
+const PROTOCOL = new Set(['contracts.mjs', 'chapters.mjs', 'changelog.mjs', 'versionGate.mjs', 'plugins.mjs', 'pinaxAdapter.mjs']) // 底层接口协议层（chapters=文件读写协议；changelog=变更日志协议，所有模块都要记 diff；versionGate=版本比对协议，三套插件规范共用；plugins=三套插件只读聚合层，daemon 与设置页共用同一份清单口径；pinaxAdapter=内核唯一进口，OS-125 解耦③的五组能力出口，见 S2.4）
 const MODULES = rootMjs.filter((f) => [
   'deduceEngine.mjs', 'deduceSession.mjs', 'referenceStore.mjs', 'enrichEngine.mjs',
   'factGuard.mjs', 'kbRouter.mjs', 'kbAdapter.mjs', 'kbHealth.mjs', 'style-check.mjs', 'stylePacks.mjs', 'skills.mjs', 'genres.mjs'
@@ -185,6 +186,23 @@ check('S2.3', 'S2', `契约驱动架构（contracts ${contractCount} 端点；da
   contractCount > 0 && !!endpointForUse && !!validateRespUse,
   [lineOf('contracts.mjs', 'method:'), endpointForUse, validateRespUse].filter(Boolean),
   '契约表是模块间调用的唯一底座；新增端点必须先进 contracts')
+
+// S2.4 内核唯一进口（OS-125 解耦③）：仓根模块里只有 pinaxAdapter.mjs 可以 import core/**。
+// 静态 from 与动态 import() 都算；@pinax/core（npm 包，worldbook/lexicon 契约）不在此列；
+// test/*.test.mjs 等非仓根模块不在扫描范围。
+const coreImportRe = /(?:from\s+|import\(\s*)['"](?:\.\.?\/)?(core\/[^'"]+)['"]/g
+const coreViolators = []
+for (const f of rootMjs) {
+  if (f === 'pinaxAdapter.mjs') continue
+  for (const m of readRepo(f).matchAll(coreImportRe)) coreViolators.push(`${f} -> ${m[1]}`)
+}
+const adapterCoreUse = grepLine('pinaxAdapter.mjs', /from\s+'(?:\.\/|\.\.\/)?core\//)
+check('S2.4', 'S2', `内核唯一进口（${rootMjs.length} 个仓根模块，仅 pinaxAdapter.mjs 引 core/**）`,
+  exists('pinaxAdapter.mjs') && !!adapterCoreUse && coreViolators.length === 0,
+  [adapterCoreUse, ...coreViolators.slice(0, 5)].filter(Boolean),
+  coreViolators.length
+    ? `违规进口：${coreViolators.join('; ')}——内核能力只经 pinaxAdapter 五组出口（factStore/deduce/enrich/projectMeta/projectImport）`
+    : '内核接触面收敛为 pinaxAdapter 单点（内核换版本只改这一个文件）')
 
 /* ================================================================
  * S3 前端一致性 —— OpenDesign 语义令牌口径

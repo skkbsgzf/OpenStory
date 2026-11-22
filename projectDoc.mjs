@@ -15,15 +15,15 @@
  *     prepareRoot 空目录检查 / makeMetadataDirs 落 .pinax/proposals 与 .pinax/state / makeProjectId）。
  * 载体表 CARRIERS 与 vendor 清单（next/carriers/{novel,script}/manifest.mjs）逐字一致：
  * 两载体 requires 均为 []，resolveClosure 在其上退化为恒等——种子装齐即闭包装齐。
- * 仍从 vendor 只读面引（OS-124 保留不删）：core/pinax/next/kernel/errors.mjs、
- * core/pinax/next/fs/atomicWrite.mjs（其内引 electron/projects/fsDurability.mjs 的 fsync 链）。
+ * 仍从 vendor 只读面引（OS-124 保留不删；OS-125 起改经 pinaxAdapter.mjs 转供——它是全仓
+ * 唯一允许 import core/** 的仓根模块，门禁 S2.4）：内核 errors.mjs 的 fail/ok、
+ * atomicWrite.mjs 的 writeFileAtomic（其内引 electron/projects/fsDurability.mjs 的 fsync 链）。
  * 护栏测试：test/decoupleStep2.test.mjs（金样＝删前内核建库输出的冻结值）。
  */
 import { mkdirSync } from 'node:fs'
 import { mkdir, readFile, readdir } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
-import { fail, ok } from './core/pinax/next/kernel/errors.mjs'
-import { writeFileAtomic } from './core/pinax/next/fs/atomicWrite.mjs'
+import { fail, ok, writeFileAtomic } from './pinaxAdapter.mjs' // OS-125：内核 plumber 经唯一进口转供（本文件函数体内使用，循环引用安全）
 
 /* ---------- 载体表（本仓自持；值与 vendor 清单逐字一致，OpenStory 只建库不装实现） ---------- */
 

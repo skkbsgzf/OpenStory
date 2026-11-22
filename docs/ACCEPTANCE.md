@@ -1,6 +1,6 @@
 # OpenStory 验收线（OS-67 起）
 
-> 每个大修改落地前的四步验收。机械门禁 `tools/acceptance/acceptance.mjs`（14 检查，
+> 每个大修改落地前的四步验收。机械门禁 `tools/acceptance/acceptance.mjs`（15 检查，
 > 退出码 0=全绿），配套 `.ua/` 知识图谱、Rea 证据口径、OpenDesign UX 对标。
 
 ## 四条交付标准 → 检查映射
@@ -8,7 +8,7 @@
 | 标准 | 检查 | 口径 |
 |---|---|---|
 | S1 Agentic | S1.1–S1.5 | MCP 工具覆盖五模块（读+写）· mcp/skills 文档同步 · skills/ 30 包完整 · dsh-cli 运行时 · 多 CLI 派发器 |
-| S2 可插拔 | S2.1–S2.3 | 模块间零 import（协议层 contracts/chapters + vendor 内核 core/** 除外）· 前端模块隔离（md.mjs 渲染协议除外）· 契约驱动（endpointFor + validateResponse） |
+| S2 可插拔 | S2.1–S2.4 | 模块间零 import（协议层 contracts/changelog/versionGate/plugins/pinaxAdapter 除外）· 前端模块隔离（md.mjs 渲染协议除外）· 契约驱动（endpointFor + validateResponse）· 内核唯一进口（仓根模块仅 pinaxAdapter.mjs 可引 core/**，OS-125） |
 | S3 前端一致性 | S3.1–S3.3 | 裸色值零容忍（:root 令牌单一真源）· 浮层宪法（OS-48 不挤压正文）· 组件约定类齐备 |
 | S4 UX 跳转层级 | S4.1–S4.3 | 核心页签顶栏可达 · 关闭按钮两级约定（rm-x/page-close）· docs/UX-STRUCTURE.md 清单在 |
 
@@ -59,7 +59,10 @@ node tools/acceptance/acceptance.mjs --json tools/acceptance/out/report-<日期>
 ## 白名单与豁免（改架构时同步这里）
 
 - S2.1 白名单：`deduceSession → deduceEngine`（会话容器引引擎＝内核依赖）；
-  `core/**` vendor 内核不算模块。
+  `core/**` vendor 内核不算模块；`pinaxAdapter.mjs` 是内核唯一进口＝能力协议面（OS-125）。
+- S2.4 唯一进口：仓根模块只有 `pinaxAdapter.mjs` 允许 import `core/**`（静态 `from` 与动态
+  `import()` 都算）；内核能力只经它的五组出口（factStore/deduce/enrich/projectMeta/projectImport）。
+  `@pinax/core`（npm 包，worldbook/lexicon 格式契约）与 `test/*.test.mjs` 不在扫描范围。
 - S4.2 关闭家族：模块卡 `rm-x`，整页 `page-close`。
 - S3.1 裸色值豁免：无（画布绘图用 getComputedStyle 现读令牌，见 public/graph.mjs）。
 

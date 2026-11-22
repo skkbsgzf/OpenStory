@@ -4,10 +4,11 @@
  * 复用面（两条壳一个真源）：
  *   · 建库：projectDoc.mjs（OS-124 解耦②收编为本仓自持；骨架／project.json 合同／
  *     createProject/initBareProject／载体表与注册表逐字归并自 vendor next/{kernel,project,shell}/，
- *     金样护栏 test/decoupleStep2.test.mjs）；
- *   · 导入：importAdapter.mjs 的 planImport/runImport（OS-123 解耦①收编为本仓自持；
- *     逐字拷贝自 vendor next/runtime/projectImportAdapter.mjs）
- *     （承诺：源目录只读、目标只新增不覆盖、认不出的不猜）；
+ *     金样护栏 test/decoupleStep2.test.mjs）；其中库标记读写走 pinaxAdapter.projectMeta
+ *     （OS-125 内核唯一进口的统一出口）；
+ *   · 导入：projectImport.planImport/runImport（OS-125 起经 pinaxAdapter 统一出口，
+ *     转引本仓 importAdapter.mjs——OS-123 解耦①收编为本仓自持，逐字拷贝自 vendor
+ *     next/runtime/projectImportAdapter.mjs；承诺：源目录只读、目标只新增不覆盖、认不出的不猜）；
  *   · 人话：projectDoc.mjs 的 describeOpenFailure/validateLibraryName/folderName
  *     （纯函数无 Vue，A-5 四类失败与 Electron 同一份口径）。
  *
@@ -24,14 +25,11 @@ import {
   initBareProject,
   PROJECT_KINDS,
   resolveClosure,
-  readProjectDocument,
-  writeProjectDocument,
-  nextCarriers,
   describeOpenFailure,
   validateLibraryName,
   folderName
 } from './projectDoc.mjs'
-import { planImport, runImport } from './importAdapter.mjs'
+import { projectMeta, projectImport } from './pinaxAdapter.mjs' // OS-125：project.json 合同＋导入的统一出口（内核唯一进口）
 
 function text(value) {
   return String(value ?? '')
@@ -199,7 +197,7 @@ export async function diagnoseLibrary(root) {
     const verdict = describeOpenFailure({}, { hasPinax: false, dirEmpty: shape.dirEmpty })
     return { ok: true, shape, verdict: { ...verdict, ok: false } }
   }
-  const document = await readProjectDocument(target)
+  const document = await projectMeta.readProjectDocument(target)
   if (!document.ok) {
     return {
       ok: true,
@@ -235,7 +233,7 @@ export async function setPrimaryCarrier({ root, primaryCarrier, expectedRevision
   if (!primary) {
     return { ok: false, code: 'INVALID_ENTRY', message: `主载体插件未安装：${text(primaryCarrier)}` }
   }
-  const document = await readProjectDocument(root)
+  const document = await projectMeta.readProjectDocument(root)
   if (!document.ok) {
     return { ok: false, code: 'NOT_FOUND', message: `读不到库标记：${text(document.error?.message || document.error)}` }
   }
@@ -256,14 +254,14 @@ export async function setPrimaryCarrier({ root, primaryCarrier, expectedRevision
       message: `主载体的依赖闭包装不齐，拒绝设主模块：${closure.unresolvable.join(' / ')}`
     }
   }
-  const carriers = nextCarriers(document.value.carriers, {
+  const carriers = projectMeta.nextCarriers(document.value.carriers, {
     primary: primaryCarrier,
     enabled: closure.enabled,
     ...(Number.isSafeInteger(expectedRevision) ? { expectedRevision } : {})
   })
   if (!carriers.ok) return mapManageError(carriers.error ?? carriers)
   const next = { ...document.value, kind: projectKind, carriers: carriers.value }
-  const written = await writeProjectDocument(root, next)
+  const written = await projectMeta.writeProjectDocument(root, next)
   if (!written.ok) return mapManageError(written.error ?? written)
   return { ok: true, document: written.value, enabled: carriers.value.enabled }
 }
@@ -285,7 +283,7 @@ function assertSourcePath(sourcePath) {
 export async function scanLibrary({ root, sourcePath }) {
   const source = assertSourcePath(sourcePath)
   if (!source.ok) return source
-  const plan = planImport({ sourcePath: text(sourcePath).trim(), targetPath: resolve(text(root)) })
+  const plan = projectImport.planImport({ sourcePath: text(sourcePath).trim(), targetPath: resolve(text(root)) })
   if (!plan.ok) return mapManageError(plan.error ?? plan)
   return { ok: true, plan: plan.value }
 }
@@ -294,7 +292,7 @@ export async function scanLibrary({ root, sourcePath }) {
 export async function importLibrary({ root, sourcePath }) {
   const source = assertSourcePath(sourcePath)
   if (!source.ok) return source
-  const report = runImport({ sourcePath: text(sourcePath).trim(), targetPath: resolve(text(root)) })
+  const report = projectImport.runImport({ sourcePath: text(sourcePath).trim(), targetPath: resolve(text(root)) })
   if (!report.ok) return mapManageError(report.error ?? report)
   return { ok: true, report: report.value }
 }

@@ -20,10 +20,8 @@
 
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { createFactFileStore, writeFactFile, readFactWiki } from './core/pinax/next/kernel/factFileStore.mjs'
+import { factStore, enrich } from './pinaxAdapter.mjs' // OS-125：内核唯一进口（S2.4），本仓其余模块不许直引 core/**
 import { recordChange } from './changelog.mjs'
-import { derivePseudoChapters, hasRealChapters } from './core/pinax/next/fact/usecases/enrich/pseudoChapters.mjs'
-import { causalSummary } from './core/pinax/next/fact/usecases/enrich/metrics.mjs'
 
 const TRACE_HEADER = [
   '推理纪律：',
@@ -224,9 +222,9 @@ export async function enrichBook({ root, bookId, entries, book, llmPort, protago
   const totalChars = Number(book?.word_count) || plots.reduce((sum, plot) => sum + (plot.events ?? []).reduce((inner, event) => inner + text(event.content).length, 0), 0)
 
   // 章分组：真章按 validity.from；无标记书按段号伪章（与 build-wiki 同公式，章号对齐）
-  const usePseudo = !hasRealChapters(plots)
+  const usePseudo = !enrich.hasRealChapters(plots)
   const chapterGroups = usePseudo
-    ? derivePseudoChapters(plots, totalChars)
+    ? enrich.derivePseudoChapters(plots, totalChars)
     : [...new Set(plots.map((plot) => (Number.isInteger(plot.validity?.from) ? plot.validity.from : 0)))]
         .sort((a, b) => a - b)
         .map((chapter) => ({ no: chapter, plots: plots.filter((plot) => (Number.isInteger(plot.validity?.from) ? plot.validity.from : 0) === chapter) }))
@@ -743,7 +741,7 @@ export async function enrichBook({ root, bookId, entries, book, llmPort, protago
   const wikiRel = `拆解/${bookId}.wiki.json`
   let beforeWikiRaw = ''
   try { beforeWikiRaw = readFileSync(join(root, '拆解', `${bookId}.wiki.json`), 'utf-8') } catch { beforeWikiRaw = '' }
-  const written = await writeFactFile({
+  const written = await factStore.writeFactFile({
     root,
     bookId,
     patch: { wiki },
@@ -807,7 +805,7 @@ export async function enrichBook({ root, bookId, entries, book, llmPort, protago
 /** 读已产出的因果图并算指标（enrichGraph 端点的数据源）。 */
 export async function enrichGraph({ root, bookId } = {}) {
   try {
-    const store = createFactFileStore({ root })
+    const store = factStore.createFactFileStore({ root })
     const listed = await store.list({})
     const entries = listed.entries ?? []
     // wiki 旁挂/内嵌双代兼容走 readFactWiki（同 daemon entries 通道口径）
@@ -815,10 +813,9 @@ export async function enrichGraph({ root, bookId } = {}) {
     let document = null
     try { document = JSON.parse(readFileSync(datasetPath, 'utf8')) } catch { document = null }
     if (!document) return { ok: false, code: 'NOT_FOUND', message: `拆解文件不存在：${bookId}` }
-    const { readFactWiki } = await import('./core/pinax/next/kernel/factFileStore.mjs')
-    const { wiki } = readFactWiki({ root, id: bookId, document })
+    const { wiki } = factStore.readFactWiki({ root, id: bookId, document })
     const causalGraph = wiki?.causalGraph ?? null
-    const metrics = causalGraph ? causalSummary(causalGraph) : null
+    const metrics = causalGraph ? enrich.causalSummary(causalGraph) : null
     const needs = (wiki?.characterProfiles ?? []).map((profile) => ({
       name: profile.name,
       needs: profile.needs ?? [],

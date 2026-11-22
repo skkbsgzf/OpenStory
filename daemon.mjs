@@ -123,7 +123,7 @@ import {
   scanLibrary,
   setPrimaryCarrier
 } from './libraryManage.mjs'
-import { createFactFileStore, readFactWiki } from './core/pinax/next/kernel/factFileStore.mjs'
+import { factStore } from './pinaxAdapter.mjs' // OS-125：内核唯一进口（S2.4），本仓其余模块不许直引 core/**
 import { readChange, readLatestByFile, readLog, logSummary, recordChange, contentHash } from './changelog.mjs'
 import { checkSameSource, snapshotAndDiff } from './syncCheck.mjs'
 import { dropDraft, listDrafts, loadDraft, readUiState, saveDraft, writeUiState } from './libState.mjs'
@@ -1077,8 +1077,7 @@ async function handleApi(req, res, url, context) {
     let document = null
     try { document = JSON.parse(readFileSync(pickPath, 'utf8')) } catch { document = null }
     if (!document) return sendError(res, API_ERROR_CODES.INVALID_ENTRY, `拆解文件读不了：${bookId}`)
-    const { readFactWiki } = await import('./core/pinax/next/kernel/factFileStore.mjs')
-    const { wiki } = readFactWiki({ root: authorized.root, id: bookId, document })
+    const { wiki } = factStore.readFactWiki({ root: authorized.root, id: bookId, document })
     // 事件密度：plot 条目按 provenance.chapters 首章归组计数
     const eventsByChapter = new Map()
     for (const entry of document.entries ?? []) {
@@ -1140,7 +1139,7 @@ async function handleApi(req, res, url, context) {
       // 缺省书＝mtime 最新的可读一本（坏档不参与兜底，免得兜底到一本永远读不出条目的书）。
       book = books.filter((item) => !item.error).sort((left, right) => right.mtime - left.mtime)[0] ?? null
     }
-    const listed = createFactFileStore({ root: authorized.root }).list({})
+    const listed = factStore.createFactFileStore({ root: authorized.root }).list({})
     if (!listed.ok) {
       return sendError(res, API_ERROR_CODES.INVALID_ENTRY, listed?.error?.message ?? '拆解数据读不了', listed?.error?.details)
     }
@@ -1340,7 +1339,7 @@ async function handleApi(req, res, url, context) {
     const entries = Array.isArray(document?.entries) ? document.entries : []
     const rawRevision = Number(document?.revision)
     const factRevision = Number.isSafeInteger(rawRevision) && rawRevision >= 0 ? rawRevision : null
-    const wikiRead = readFactWiki({ root, id: bookId, document })
+    const wikiRead = factStore.readFactWiki({ root, id: bookId, document })
     // 旧信封里的 wiki 没有 derivedFrom（内嵌形态）——按「无派生档」如实报，不编基准版本。
     const wikiDerivedFrom = isPlainObject(wikiRead.derivedFrom) ? wikiRead.derivedFrom : null
 
@@ -2180,8 +2179,7 @@ function readLegacyDeduceState(root, bookId) {
       }
     } catch { /* 读不到就当新建 */ }
     const entryExisted = beforeFactRaw !== ''
-    const { writeFactFile } = await import('./core/pinax/next/kernel/factFileStore.mjs')
-    const written = await writeFactFile({
+    const written = await factStore.writeFactFile({
       root,
       bookId,
       entry: item.entry,
@@ -2443,7 +2441,7 @@ function readLegacyDeduceState(root, bookId) {
     // 条目作为只读节点参与图谱（不搬进参考，只被链接）
     let entries = []
     try {
-      const store = createFactFileStore({ root: authorized.root })
+      const store = factStore.createFactFileStore({ root: authorized.root })
       const listed = store.list({ offset: 0, limit: 500 })
       entries = Array.isArray(listed?.entries) ? listed.entries : []
     } catch { /* 没拆解目录就只有参考节点 */ }
@@ -2462,7 +2460,6 @@ function readLegacyDeduceState(root, bookId) {
     if (!entries || !entries.length) return sendError(res, API_ERROR_CODES.INVALID_ENTRY, 'entries 必须是非空数组')
     // operationId：调用方没给就由 daemon 生成（来源前缀 + bookId + 时间），满足内核幂等键要求
     const operationId = text(request.operationId).trim() || `screenplay-import-${bookId}-${Date.now().toString(36)}`
-    const { writeFactFile } = await import('./core/pinax/next/kernel/factFileStore.mjs')
     // 已存在就带 expectedRevision 走乐观并发（避免覆盖别人刚写的）
     let expectedRevision = null
     let beforeFactRaw = '' // OS-107：写前原文（写后读不到旧内容）——变更日志的 before 靠它
@@ -2481,7 +2478,7 @@ function readLegacyDeduceState(root, bookId) {
       book: { id: bookId, title: text(request.title).trim() || bookId },
       entries
     }
-    const written = await writeFactFile({
+    const written = await factStore.writeFactFile({
       root: authorized.root,
       bookId,
       patch,
@@ -3070,7 +3067,7 @@ function readLegacyDeduceState(root, bookId) {
   const authorized = authorizeRoot(allowlist, request.root)
   if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
   const root = authorized.root
-  const store = createFactFileStore({ root })
+  const store = factStore.createFactFileStore({ root })
 
   if (endpointId === 'chapterGet') {
     const resolved = resolveInsideRoot(root, request.file)
@@ -3157,7 +3154,7 @@ function readLegacyDeduceState(root, bookId) {
     }
     const jobId = `enrich-${bookId}-${Date.now().toString(36)}`
     // 事实条目与书元数据：factFileStore 取 entries（与 /api/entries 同源），book 从拆解文件读
-    const store = createFactFileStore({ root: authorized.root })
+    const store = factStore.createFactFileStore({ root: authorized.root })
     const listed = await store.list({})
     if (!listed.ok || !listed.entries.length) {
       return sendError(res, API_ERROR_CODES.INVALID_ENTRY, '事实链为空——先跑抽取（pinax_extract_*）再 enrich')
@@ -3523,7 +3520,7 @@ async function systemPromptFor(root, libraries, genresDirs, skillsDirs, { canRea
         // 图谱：把「参考 ↔ 章节」的关系也算出来，好告诉 Agent 当前这一章挂着哪些参考
         let entries = []
         try {
-          const store = createFactFileStore({ root })
+          const store = factStore.createFactFileStore({ root })
           const listed = store.list({ offset: 0, limit: 500 })
           entries = Array.isArray(listed?.entries) ? listed.entries : []
         } catch { /* 没拆解就只有参考节点 */ }

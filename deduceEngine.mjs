@@ -11,10 +11,7 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { mkdir, rename, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
-import { openDeduceSession } from './core/pinax/next/fact/usecases/deduce/opening.js'
-import { presentTurn, applyDirectorAction } from './core/pinax/next/fact/usecases/deduce/turn.js'
-import { settleChoice } from './core/pinax/next/fact/usecases/deduce/settle.js'
-import { createFactFileStore } from './core/pinax/next/kernel/factFileStore.mjs'
+import { deduce, factStore } from './pinaxAdapter.mjs' // OS-125：内核唯一进口（S2.4），本仓其余模块不许直引 core/**
 import { buildNarrativeContext, firstPersonify, readWikiSafe } from './deduceNarrative.mjs'
 
 function text(value) {
@@ -34,7 +31,7 @@ export function deduceStatePath(root, bookId, sessionId = '') {
 
 /** 读库内拆解条目（fact 通道，与 /api/entries 同源）。 */
 export function loadEntries(root) {
-  const store = createFactFileStore({ root })
+  const store = factStore.createFactFileStore({ root })
   const listed = store.list({ limit: 5000 })
   if (!listed.ok) return { ok: false, message: text(listed.error?.message || '条目读取失败') }
   return { ok: true, entries: listed.entries ?? [] }
@@ -191,7 +188,7 @@ export async function deducePresent({ root, bookId = 'default', pov = '', seed =
     try {
       // POV 缺省（OS-54）：没填就取出场最多的角色——条目页签剔除后角色名单从 present
       // 响应的 characters 来，第一次点「呈现」就能直接开局
-      opened = openDeduceSession({ entries, pov: pov || (state ? state.pov : null) || defaultPov(entries), runId: `os-${Date.now().toString(36)}` })
+      opened = deduce.openDeduceSession({ entries, pov: pov || (state ? state.pov : null) || defaultPov(entries), runId: `os-${Date.now().toString(36)}` })
     } catch (error) {
       // 引擎的前置校验（如 WORLD_EMPTY）如实透传，不伪造开局
       return { ok: false, code: text(error?.code || 'INVALID_ENTRY'), message: text(error?.message || error) }
@@ -207,7 +204,7 @@ export async function deducePresent({ root, bookId = 'default', pov = '', seed =
     // OS-82：llmPort 透传给引擎——「戏剧✦」候选从配置的文本模型来（没配模型时 dramaCandidates
     // 自己返回空数组，必然/命运两层照常跑，推演永远不被模型不可用卡死）。
     // OS-93：seedPrompt＝玩家选的开头（剧情骨架段）——戏剧候选围绕它锚定。
-    turn = await presentTurn({
+    turn = await deduce.presentTurn({
       state, entries, pov: pov || state.pov || null, seed: useSeed,
       ...(seedPrompt ? { seedPrompt } : {}), ...(llmPort ? { llmPort } : {})
     })
@@ -323,9 +320,9 @@ export async function deduceSettle({ root, bookId = 'default', candidateId = '',
   let settled
   try {
     if (action === 'choose') {
-      settled = settleChoice({ state, domain: 'deduce', candidate })
+      settled = deduce.settleChoice({ state, domain: 'deduce', candidate })
     } else {
-      settled = applyDirectorAction({ state, action, candidate, name: note })
+      settled = deduce.applyDirectorAction({ state, action, candidate, name: note })
     }
   } catch (error) {
     return { ok: false, code: text(error?.code || 'INVALID_ENTRY'), message: text(error?.message || error) }
