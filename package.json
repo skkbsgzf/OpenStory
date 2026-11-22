@@ -7,7 +7,8 @@
   "scripts": {
     "start": "node daemon.mjs",
     "mcp": "node mcp.mjs",
-    "test": "node --test \"test/*.test.mjs\""
+    "test": "node --test \"test/*.test.mjs\"",
+    "vendor:check": "node scripts/vendor-drift.mjs check"
   },
   "dependencies": {
     "@pinax/core": "file:vendor/core/pinax-core-0.16.0.tgz",

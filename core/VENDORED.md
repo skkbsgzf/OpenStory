@@ -83,3 +83,28 @@ capabilityGraph/projectSkeleton/pluginLoader/declarativeImpl（14 文件）、`c
 
 同步方式：改上游 → 重跑 `scripts/vendor-deduce.mjs`（递归闭包，零外部依赖）。
 daemon 侧封装在 `deduceEngine.mjs`（引擎确定性：同种子＋同事实包＝同一拍）。
+
+## OS-126 解耦④：上游漂移检测（vendor 指纹锚）
+
+`core/**` 的 24 个 vendor 文件有 sha256 指纹锚 `core/.vendored-manifest.json`
+（记录 `upstreamCommit=70a4f44` 与逐文件哈希），由零依赖脚本 `scripts/vendor-drift.mjs`
+（node:fs/crypto/path）维护：
+
+```bash
+node scripts/vendor-drift.mjs snapshot   # 生成/重生成指纹锚
+node scripts/vendor-drift.mjs check      # 逐文件比对，漂移 → exit 1
+npm run vendor:check                     # 同 check
+```
+
+比对三类：本仓当前字节 ≠ 锚 → `[本仓被改]`（vendor 不许在本仓改，改动应发生在上游再同步）；
+上游同位置（映射 `core/pinax/<X>` ↔ 上游 `<X>`，next/server/electron 通吃）≠ 锚 → `[上游已变]`
+（上游在锚之后动过，该决定是否重同步）；core/** 下长出锚外新文件 → `[清单缺项]`（锚过时，
+重跑 snapshot）。三者任一非空 exit 1。上游已无此文件＝本仓有意删除（如 OS-123 的 server 层）
+→ `[跳过]`，不计漂移。护栏测试：`test/vendorDrift.test.mjs`（临时目录喂纯函数，不碰真 core/）。
+
+注意三点：① 哈希是**原始字节**级（两仓都以 CRLF 检出、逐字节拷贝，当前逐字节同源）——
+若一侧行尾策略改变会误报，届时以归一化比对人工复核；② 锚不含清单自身与本文档
+（本仓自有文档，随解耦批次正常追加，不算「本仓被改」）；③ 基线里
+`enrich/{metrics,pseudoChapters}.mjs` 两文件上游（含 70a4f44）无对应文件，check 恒 `[跳过]`
+——它们随本仓 OS-FACT 批次（be71a12）入库，上游全历史（`git log --all` 该路径为空）
+与工作树均无此文件，从未收编；上游若收编同名文件，锚不会比对到（需重跑 snapshot 入锚）。
