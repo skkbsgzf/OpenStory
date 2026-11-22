@@ -1003,6 +1003,17 @@ export const ENDPOINTS = Object.freeze({
     request: { body: { root: 'string' } },
     response: { ok: 'true', sameSource: 'object', external: 'object', factRevision: 'integer' },
     errors: ['NO_LIBRARY', 'INVALID_ENTRY', 'WRITE_PROTOCOL_IO_FAILED']
+  },
+  healthGet: {
+    method: 'GET',
+    path: '/api/health',
+    // OS-127 进程治理（对标 @open-design/sidecar 最小集）：免 root 授权的健康端点。
+    // 只报 daemon 进程自身的事实（pid/端口/代际/启动时刻/存活时长），不碰任何库文件，
+    // 也不回库路径——前端与外部探针同源探测「daemon 活着＋连的是第几代」
+    // （OS-93 事故：多 daemon 竞听 8807，页面拿到混合包；generation 让旧代可被识别）。
+    request: { query: {} },
+    response: { ok: 'true', pid: 'integer', port: 'integer', generation: 'integer', startedAt: 'string', uptimeMs: 'integer' },
+    errors: []
   }
 })
 

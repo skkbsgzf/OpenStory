@@ -21,7 +21,7 @@
  * 启动：`node openstory/daemon.mjs [--port=8807] [--root=<库路径>]`
  */
 import { randomUUID } from 'node:crypto'
-import { createReadStream, existsSync, mkdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs'
+import { createReadStream, existsSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { copyFile, mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path'
@@ -158,6 +158,10 @@ export const DEFAULT_PORT = 8807
  * 由 startDaemon 的 listen 回调写，handler 读。 */
 let __currentPort = DEFAULT_PORT
 function currentPort() { return __currentPort }
+/** OS-127 进程治理：本 daemon 进程的代际与启动时刻，/api/health 读这里。
+ * CLI 启动序列的单实例闸会覆写成锁里的值（generation≥1）；测试内嵌 startDaemon()
+ * 不走闸，generation 保持 0（整数即可过契约），startedAt 用 listen 成功时刻兜底。 */
+const DAEMON_RUNTIME = { generation: 0, startedAt: '', booted: false }
 export const DEFAULT_PUBLIC_DIR = join(HERE, 'public')
 const MAX_JSON_BODY = 16 * 1024 * 1024
 const MAX_STATIC_BYTES = 8 * 1024 * 1024
@@ -242,6 +246,107 @@ function writeBrowseMemory(patch, env = process.env) {
 export function defaultBrowseRoot(env = process.env) {
   const home = text(env.USERPROFILE || env.HOME).trim()
   return home ? join(home, 'OpenStory') : ''
+}
+
+/* ---------- OS-127 进程治理：单实例锁（对标 @open-design/sidecar 最小集） ----------
+ * 背景事故 OS-93：多 daemon 竞听 8807，页面拿到混合包、卡片点不了。
+ * 闸门三步：启动前读锁探活（活着→友好退出）／陈旧→抢占（generation=旧值+1）／
+ * 监听成功后回写 stamp（boundPort）；SIGINT/SIGTERM/beforeExit 清掉 pid 占位。
+ * 边界（诚实标注）：本闸挡的是「先后起两个 daemon」（双开、Electron 重启叠加），
+ * 不承诺同毫秒并发起跑的互斥——那需要 O_EXCL 抢锁，超出本最小集。 */
+
+/** 锁文件路径：%LOCALAPPDATA%/PinaxNext/openstory/daemon.lock（本机一级，与库无关，
+ *  与 agent-config.json 同院）。env 注入是为了测试隔离（子进程换 LOCALAPPDATA 不碰真机锁）。 */
+export function daemonLockPath(env = process.env) {
+  const base = text(env.LOCALAPPDATA || env.APPDATA).trim()
+  return base ? join(base, 'PinaxNext', 'openstory', 'daemon.lock') : ''
+}
+
+/** pid 探活（signal 0）：不存在→ESRCH；存在但没权限→EPERM（也算活着）。
+ * pid 非正整数一律视为死（清锁后的占位 pid=0 走这条）。 */
+function pidAlive(pid) {
+  if (!Number.isInteger(pid) || pid <= 0) return false
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch (error) {
+    return error?.code === 'EPERM'
+  }
+}
+
+/** 读锁：缺档/坏档/形状不对一律当无锁（previous=null），由调用方按首启或抢占处理。 */
+function readDaemonLock(lockPath) {
+  try {
+    const parsed = JSON.parse(readFileSync(lockPath, 'utf-8'))
+    if (isPlainObject(parsed) && Number.isInteger(parsed.pid)) return parsed
+  } catch { /* 缺档或坏档＝无有效锁 */ }
+  return null
+}
+
+function writeDaemonLock(lockPath, lock) {
+  mkdirSync(dirname(lockPath), { recursive: true })
+  writeFileSync(lockPath, JSON.stringify(lock, null, 2) + '\n', 'utf-8')
+}
+
+/**
+ * 单实例闸：CLI 启动序列最前面调（isMain 块，startDaemon 之前）。
+ *  · 锁活着 → { ok:false, lock }——调用方打印「已在运行」并 exit(0)（友好退出，不是报错崩栈）；
+ *  · 锁陈旧（pid 死了）→ 抢占，generation = 旧值+1；
+ *  · 无锁/坏档 → 首启 generation = 1（坏档不继承旧代际：内容不可信就从头数）；
+ *  · 连 LOCALAPPDATA 都没有 → 无处落锁，放行启动并在 stderr 喊一声（不治理但留痕）。
+ * 锁写失败（盘只读等）同样放行：治理是尽力而为的护栏，不能反过来挡住 daemon 起来。
+ */
+export function acquireDaemonLock({ env = process.env, port = DEFAULT_PORT } = {}) {
+  const lockPath = daemonLockPath(env)
+  if (!lockPath) {
+    console.error('[daemon.lock] 找不到 LOCALAPPDATA，无处落单实例锁，跳过进程治理闸')
+    return { ok: true, lock: null, lockPath: '', preempted: false }
+  }
+  const previous = readDaemonLock(lockPath)
+  if (previous && pidAlive(previous.pid)) {
+    return { ok: false, lock: previous, lockPath, preempted: false }
+  }
+  const generation = previous && Number.isInteger(previous.generation) && previous.generation > 0
+    ? previous.generation + 1
+    : 1
+  const lock = { pid: process.pid, port, generation, startedAt: new Date().toISOString() }
+  try {
+    writeDaemonLock(lockPath, lock)
+  } catch (error) {
+    console.error(`[daemon.lock] 写锁失败，跳过单实例闸：${text(error?.message || error)}`)
+    return { ok: true, lock: null, lockPath, preempted: false }
+  }
+  return { ok: true, lock, lockPath, preempted: Boolean(previous) }
+}
+
+/** 监听成功后回写 stamp（boundPort＝真实端口；--port=0 由系统分配时，锁里也有端口可查）。 */
+export function stampDaemonLock({ env = process.env, port, lock }) {
+  const lockPath = daemonLockPath(env)
+  if (!lockPath || !lock) return false
+  try {
+    writeDaemonLock(lockPath, { ...lock, boundPort: port })
+    return true
+  } catch (error) {
+    console.error(`[daemon.lock] 回写 stamp 失败：${text(error?.message || error)}`)
+    return false
+  }
+}
+
+/**
+ * 清锁（SIGINT/SIGTERM/beforeExit 调）：清的是 pid 占位（pid→0），generation 与
+ * startedAt 留在档上——下一次启动读到「pid 不活」的锁才能继承 generation+1；
+ * 若这里直接删文件，代际就断了（重启永远回到 1），多代识别（OS-127 的目标）落空。
+ */
+export function clearDaemonLock(env = process.env) {
+  const lockPath = daemonLockPath(env)
+  const lock = lockPath ? readDaemonLock(lockPath) : null
+  if (!lock || lock.pid === 0) return false
+  try {
+    writeDaemonLock(lockPath, { ...lock, pid: 0 })
+    return true
+  } catch {
+    return false
+  }
 }
 
 /* ---------- 库清单与 root 白名单 ---------- */
@@ -893,6 +998,24 @@ async function handleApi(req, res, url, context) {
   const endpointId = endpointFor(req.method, url.pathname)
   if (!endpointId) {
     return sendError(res, API_ERROR_CODES.NOT_FOUND, `没有这个端点：${req.method} ${url.pathname}`)
+  }
+
+  // OS-127 健康端点：免 root 授权（不碰库清单、不落任何库信息，只报进程事实），
+  // 放在最前面——探活要轻，而且这是「还没授权 root」时唯一有用的 API。
+  if (endpointId === 'healthGet') {
+    const payload = {
+      ok: true,
+      pid: process.pid,
+      port: currentPort(),
+      generation: DAEMON_RUNTIME.generation,
+      startedAt: DAEMON_RUNTIME.startedAt,
+      uptimeMs: Math.round(process.uptime() * 1000)
+    }
+    const healthChecked = validateResponse('healthGet', payload)
+    if (!healthChecked.ok) {
+      return sendError(res, API_ERROR_CODES.INVALID_ENTRY, '健康响应形状不符合契约', { errors: healthChecked.errors })
+    }
+    return sendJson(res, 200, payload)
   }
 
   const loaded = loadLibraries({ preferencesPath: context.preferencesPath, env: context.env })
@@ -4910,6 +5033,11 @@ export function startDaemon({
     server.listen(port, bindHost, () => {
       const actualPort = server.address().port
       __currentPort = actualPort
+      // OS-127：CLI 闸已在启动前写好 generation/startedAt；测试内嵌 startDaemon 没走闸，
+      // 这里兜底（generation 保持 0，startedAt 记 listen 成功时刻），/api/health 仍有整数可回。
+      if (!DAEMON_RUNTIME.booted) {
+        DAEMON_RUNTIME.startedAt = new Date().toISOString()
+      }
       if (logger?.log) {
         logger.log(`OpenStory daemon → http://127.0.0.1:${actualPort}`)
         if (root) logger.log(`直接进入库：${resolve(root)}`)
@@ -4989,17 +5117,46 @@ if (isMain) {
     console.log('用法：node openstory/daemon.mjs [--port=8807] [--root=<库路径>] [--preferences=<next-preferences.json>]')
     process.exit(0)
   }
+  /* OS-127 单实例闸（启动序列最前面，对标 @open-design/sidecar 最小集）：
+   * 锁活着 → 打印在跑的 pid/端口/代际后 exit(0)（友好退出，不是报错崩栈）；
+   * 锁陈旧 → 抢占，generation = 旧值+1。背景事故 OS-93：多 daemon 竞听 8807，
+   * 页面拿到混合包——现在第二个实例根本起不来，-generation 让旧代可被识别。 */
+  const lockGate = acquireDaemonLock({ env: process.env, port: options.port })
+  if (!lockGate.ok) {
+    const busy = lockGate.lock
+    console.log(`OpenStory daemon 已在运行（pid ${busy.pid} · 端口 ${text(busy.boundPort ?? busy.port)} · generation ${busy.generation}）`)
+    process.exit(0)
+  }
+  const activeLock = lockGate.lock
+  if (activeLock) {
+    DAEMON_RUNTIME.generation = activeLock.generation
+    DAEMON_RUNTIME.startedAt = activeLock.startedAt
+    DAEMON_RUNTIME.booted = true
+    console.log(`OpenStory daemon 启动：pid ${process.pid} · generation ${activeLock.generation}${lockGate.preempted ? '（抢占陈旧锁）' : ''}`)
+  }
   startDaemon({
     port: options.port,
     root: options.root,
     preferencesPath: options.preferencesPath || undefined
   }).then((daemon) => {
+    // OS-127 stamp：监听成功后回写真实端口（--port=0 时与锁里 port 不同，boundPort 才是真相）
+    if (activeLock) stampDaemonLock({ env: process.env, port: daemon.port, lock: activeLock })
     const shutdown = () => {
+      // 先清 pid 占位再关服务：清完之后哪怕 close 卡住，新 daemon 也能立刻接位
+      if (activeLock) clearDaemonLock(process.env)
       daemon.close().finally(() => process.exit(0))
     }
     process.on('SIGINT', shutdown)
     process.on('SIGTERM', shutdown)
+    // 事件循环自然排空（罕见但存在）也清占位；process.exit() 不触发 beforeExit，
+    // 与 shutdown 不构成双清。注意：Windows 下 child.kill() 是硬杀（TerminateProcess），
+    // 这两个信号处理器不会跑——锁留着死 pid，靠下一轮「陈旧抢占」自愈（generation 照样 +1）。
+    process.on('beforeExit', () => {
+      if (activeLock) clearDaemonLock(process.env)
+    })
   }).catch((error) => {
+    // 监听失败（典型：EADDRINUSE，端口被一个没写锁的老 daemon 占着）：不用清锁——
+    // 本进程写的 pid 马上就是死 pid，下一轮启动按陈旧抢占自愈。
     console.error(`OpenStory daemon 启动失败：${text(error?.message || error)}`)
     process.exit(1)
   })

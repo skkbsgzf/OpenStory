@@ -53,7 +53,7 @@ npm test           # node --test（299 例，零外部依赖）
                │ HTTP（127.0.0.1，JSON＋SSE）
 ┌──────────────▼──────────────────────────────────┐
 │  daemon（daemon.mjs，唯一磁盘层）                   │
-│  · 99 端点契约（contracts.mjs，请求/响应双端校验）   │
+│  · 101 端点契约（contracts.mjs，请求/响应双端校验）  │
 │  · fact 链：拆解 store/富集/曲线/守护/写通道        │
 │  · 推演/扮演引擎＋会话容器；生图/识图适配器          │
 │  · 全局任务中心/修改日志/ui-state/草稿              │
@@ -71,7 +71,7 @@ npm test           # node --test（299 例，零外部依赖）
 
 | 路径 | 内容 |
 |---|---|
-| `daemon.mjs` / `contracts.mjs` | daemon＋99 端点契约（纯数据，两端共享） |
+| `daemon.mjs` / `contracts.mjs` | daemon＋101 端点契约（纯数据，两端共享） |
 | `mcp.mjs` | 全模块 MCP server（24 工具，零依赖 stdio；`npm run mcp`） |
 | `referenceStore.mjs` / `deduceEngine.mjs` / `deduceSession.mjs` / `deduceNarrative.mjs` | 参考索引（标签/双链/图谱）/ 推演封装 / 多局会话容器 / 叙事上下文 |
 | `roleplayEngine.mjs` / `roleplayPrompts.mjs` | 扮演调度（主持人＋N 角色子 agent）＋四层提示词 |
