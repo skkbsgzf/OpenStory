@@ -1,8 +1,11 @@
+// OS-123 解耦① fork 点：本文件自 core/pinax/next/runtime/projectImportAdapter.mjs 整文件拷贝
+// （vendor 提交 70a4f44），自本批起归本仓所有、不再经 scripts/vendor-core.mjs 同步；
+// 除三条 import 重指向（kernel errors 改本仓路径、章节号/世界书解析改 ./textUtil.mjs）外逐字未动。
 import fs from 'node:fs'
 import path from 'node:path'
-import { fail, ok } from '../kernel/errors.mjs'
-import { parseChapterNumber } from '../../server/mcp/projectImport.js'
-import { parseWorldbookEntryFile } from '../../server/services/localMirrorService.js'
+import { fail, ok } from './core/pinax/next/kernel/errors.mjs'
+import { parseChapterNumber } from './textUtil.mjs'
+import { parseWorldbookEntryFile } from './textUtil.mjs'
 
 /**
  * Next 侧整目录导入（工单E1 · 裁定A：结构动作与建项目同级，走 shell 通道，不经写族闸）。

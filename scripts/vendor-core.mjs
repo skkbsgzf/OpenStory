@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 // 底座 vendor 脚本：从 D:\Pinax-next 递归追 import 闭包，按原路径结构镜像到 core/pinax/。
-// 规则：next/X → core/pinax/next/X；server/Y → core/pinax/server/Y（内部相对 import 原样保留，零改动）。
+// 规则：next/X → core/pinax/next/X；electron/X → core/pinax/electron/X（内部相对 import 原样保留，零改动）。
+// OS-123 解耦①：server/** 与 shared/** 不再 vendor——章节号解析＋导入适配由本仓
+// textUtil.mjs / importAdapter.mjs 自持（fork 点）。勿把 server/mcp/projectImport.js、
+// next/runtime/projectImportAdapter.mjs 加回 SEEDS，否则会把已删层重新拉进仓。
 import fs from 'node:fs'
 import path from 'node:path'
 
@@ -16,9 +19,7 @@ const SEEDS = [
   'next/kernel/projectSkeleton.mjs',
   'next/project/projectManifest.mjs',
   'next/project/createProject.mjs',
-  'next/runtime/projectImportAdapter.mjs',
   'next/shell/library/wizardKit.mjs',
-  'server/mcp/projectImport.js',
   'next/carriers/novel/manifest.mjs',
   'next/carriers/script/manifest.mjs',
   'next/carriers/outline/manifest.mjs',

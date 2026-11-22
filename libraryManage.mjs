@@ -4,7 +4,8 @@
  * 复用面（全部零改动 import，两条壳一个真源）：
  *   · 建库：next/index.mjs 的 createRegistry/createProject/initBareProject
  *     ＋ core/carrierBootstrap 的清单式注册表（daemon 进程内单例，只装声明不装实现）；
- *   · 导入：next/runtime/projectImportAdapter.mjs 的 planImport/runImport
+ *   · 导入：importAdapter.mjs 的 planImport/runImport（OS-123 解耦①收编为本仓自持；
+ *     逐字拷贝自 vendor next/runtime/projectImportAdapter.mjs）
  *     （承诺：源目录只读、目标只新增不覆盖、认不出的不猜）；
  *   · 合同：next/project/projectManifest.mjs 的 read/writeProjectDocument＋nextCarriers（revision 乐观并发）；
  *   · 人话：next/shell/library/wizardKit.mjs 的 describeOpenFailure/validateLibraryName/folderName
@@ -21,7 +22,7 @@ import { createCarrierRegistry } from './core/carrierBootstrap.mjs'
 import { PROJECT_KINDS } from './core/pinax/next/kernel/projectSkeleton.mjs'
 import { resolveClosure } from './core/pinax/next/kernel/capabilityGraph.mjs'
 import { readProjectDocument, writeProjectDocument, nextCarriers } from './core/pinax/next/project/projectManifest.mjs'
-import { planImport, runImport } from './core/pinax/next/runtime/projectImportAdapter.mjs'
+import { planImport, runImport } from './importAdapter.mjs'
 import { describeOpenFailure, validateLibraryName, folderName } from './core/pinax/next/shell/library/wizardKit.mjs'
 
 function text(value) {
