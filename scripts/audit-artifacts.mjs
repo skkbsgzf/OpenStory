@@ -3,12 +3,22 @@
  * 纯静态分析（读文件 + grep 契约），不动运行时数据。
  */
 import { readFileSync, writeFileSync, readdirSync } from 'node:fs'
+import { join } from 'node:path'
 
 const read = (p) => { try { return readFileSync(p, 'utf-8') } catch { return '' } }
 const has = (src, ...needles) => needles.every((n) => src.includes(n))
 
+// OS-130 契约分域后端点形状按域切片在 contracts/*.mjs——文本盘点把聚合入口与分片拼起来读
+const readContracts = () => {
+  let parts = [read('contracts.mjs')]
+  try {
+    parts = parts.concat(readdirSync('contracts').filter((f) => f.endsWith('.mjs')).sort().map((f) => read(join('contracts', f))))
+  } catch { /* 无分域目录 */ }
+  return parts.join('\n')
+}
+
 const app = read('public/app.js')
-const contracts = read('contracts.mjs')
+const contracts = readContracts()
 const daemon = read('daemon.mjs')
 const storySource = read('public/storySource.mjs')
 const referenceStore = read('referenceStore.mjs')

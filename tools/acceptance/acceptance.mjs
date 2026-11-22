@@ -177,15 +177,18 @@ check('S2.2', 'S2', '前端分析/图谱/参考/树模块互不 import（md.mjs 
   pubCross.length ? `违规：${pubCross.join('; ')}` : '')
 
 // S2.3 契约驱动架构：daemon 经 endpointFor() 契约分派 + validateResponse() 契约校验
-const contractSrc = readRepo('contracts.mjs')
-const contractCount = (contractSrc.match(/method:/g) || []).length
+// OS-130 契约分域后，端点形状按域切片在 contracts/<域>.mjs——计数＝contracts.mjs＋contracts/*.mjs 合计
+const contractFiles = ['contracts.mjs',
+  ...readdirSync(join(REPO, 'contracts')).filter((f) => f.endsWith('.mjs')).sort().map((f) => `contracts/${f}`)]
+const contractCount = contractFiles.reduce((sum, rel) => sum + (readRepo(rel).match(/method:/g) || []).length, 0)
+const firstSlice = contractFiles.find((rel) => /method:/.test(readRepo(rel))) || contractFiles[0]
 const daemonSrc = readRepo('daemon.mjs')
 const endpointForUse = grepLine('daemon.mjs', /endpointFor\(req\.method/)
 const validateRespUse = grepLine('daemon.mjs', /validateResponse\(/)
 check('S2.3', 'S2', `契约驱动架构（contracts ${contractCount} 端点；daemon 契约分派+响应校验）`,
   contractCount > 0 && !!endpointForUse && !!validateRespUse,
-  [lineOf('contracts.mjs', 'method:'), endpointForUse, validateRespUse].filter(Boolean),
-  '契约表是模块间调用的唯一底座；新增端点必须先进 contracts')
+  [lineOf(firstSlice, 'method:'), endpointForUse, validateRespUse].filter(Boolean),
+  '契约表是模块间调用的唯一底座；新增端点必须先进 contracts（域分片）')
 
 // S2.4 内核唯一进口（OS-125 解耦③）：仓根模块里只有 pinaxAdapter.mjs 可以 import core/**。
 // 静态 from 与动态 import() 都算；@pinax/core（npm 包，worldbook/lexicon 契约）不在此列；
