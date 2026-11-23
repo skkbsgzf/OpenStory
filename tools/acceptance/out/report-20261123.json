@@ -1,0 +1,193 @@
+{
+  "schema": "openstory.acceptance/v1",
+  "generatedAt": "2026-11-23T15:28:55.969Z",
+  "standards": [
+    "S0 布局",
+    "S1 Agentic",
+    "S2 可插拔",
+    "S3 前端一致性",
+    "S4 UX 跳转层级"
+  ],
+  "summary": {
+    "pass": 16,
+    "fail": 0,
+    "warn": 0
+  },
+  "checks": [
+    {
+      "id": "S0.1",
+      "standard": "S0",
+      "name": "布局宪法：仓根只允许两个入口垫片（实测 2 个 .mjs）",
+      "verdict": "PASS",
+      "note": "实现全部在 src/，仓根无散落模块",
+      "evidence": [
+        "daemon.mjs → src/host/daemon.mjs",
+        "mcp.mjs → src/host/mcp.mjs"
+      ]
+    },
+    {
+      "id": "S1.1",
+      "standard": "S1",
+      "name": "MCP 工具覆盖模块面（共 24 个工具，4 模块组）",
+      "verdict": "PASS",
+      "note": "各模块组均有读+写工具",
+      "evidence": [
+        "src/host/mcp.mjs:112",
+        "src/host/mcp.mjs:122",
+        "src/host/mcp.mjs:140",
+        "src/host/mcp.mjs:156"
+      ]
+    },
+    {
+      "id": "S1.2",
+      "standard": "S1",
+      "name": "mcp/skills 对外文档同步（OVERVIEW 声称 —，实际 24）",
+      "verdict": "PASS",
+      "note": "",
+      "evidence": [
+        "mcp/skills/analysis.md",
+        "mcp/skills/deduce.md",
+        "mcp/skills/novel.md",
+        "mcp/skills/OVERVIEW.md",
+        "mcp/skills/reference.md"
+      ]
+    },
+    {
+      "id": "S1.3",
+      "standard": "S1",
+      "name": "skills/ 知识库包完整（31 包）",
+      "verdict": "PASS",
+      "note": "全部包有 SKILL.md",
+      "evidence": []
+    },
+    {
+      "id": "S1.4",
+      "standard": "S1",
+      "name": "dsh native runtime 适配件齐全（dsh-cli 一次一进程型已注册）",
+      "verdict": "PASS",
+      "note": "dsh-cli 型（一次一进程）就位",
+      "evidence": [
+        "src/services/dsh-cli.mjs:25",
+        "src/services/dsh-bridge.mjs:27",
+        "src/services/cli-bridge.mjs:16",
+        "src/services/runtimes.mjs:24",
+        "src/services/runtimes.mjs:57"
+      ]
+    },
+    {
+      "id": "S1.5",
+      "standard": "S1",
+      "name": "外部 CLI 派发器就位（Qoder 子 agent 模式）",
+      "verdict": "PASS",
+      "note": "",
+      "evidence": [
+        ".zcode/qoder-agent.mjs:12",
+        ".zcode/run-gate.mjs:5"
+      ]
+    },
+    {
+      "id": "S2.1",
+      "standard": "S2",
+      "name": "功能模块间零直接耦合（协议层/vendor 内核除外）",
+      "verdict": "PASS",
+      "note": "模块只引协议层、vendor 内核与白名单",
+      "evidence": []
+    },
+    {
+      "id": "S2.2",
+      "standard": "S2",
+      "name": "前端分析/图谱/参考/树模块互不 import（md.mjs 渲染协议除外）",
+      "verdict": "PASS",
+      "note": "",
+      "evidence": []
+    },
+    {
+      "id": "S2.3",
+      "standard": "S2",
+      "name": "契约驱动架构（contracts 101 端点；daemon 契约分派+响应校验）",
+      "verdict": "PASS",
+      "note": "契约表是模块间调用的唯一底座；新增端点必须先进 contracts（域分片）",
+      "evidence": [
+        "src/api/contracts/agent.mjs:12",
+        "src/host/daemon.mjs:312",
+        "src/api/handlers/system.mjs:63"
+      ]
+    },
+    {
+      "id": "S2.4",
+      "standard": "S2",
+      "name": "内核唯一进口（72 个 src/ 模块＋垫片，仅 src/kernel/pinaxAdapter.mjs 引 core/**）",
+      "verdict": "PASS",
+      "note": "内核接触面收敛为 pinaxAdapter 单点（内核换版本只改这一个文件）",
+      "evidence": [
+        "src/kernel/pinaxAdapter.mjs:34"
+      ]
+    },
+    {
+      "id": "S3.1",
+      "standard": "S3",
+      "name": "语义令牌覆盖率（令牌定义区外裸色值 8 处）",
+      "verdict": "PASS",
+      "note": "裸色值应进 :root 令牌（OpenDesign 口径：tokens.css 单一真源）",
+      "evidence": [
+        "public/index.html:615 #2e7d32",
+        "public/index.html:1327 #ddd",
+        "public/index.html:2131 #fff",
+        "public/index.html:2132 #171624",
+        "public/index.html:2142 #fff",
+        "public/index.html:2144 #fff",
+        "public/index.html:2299 #fff",
+        "public/index.html:2316 #fff"
+      ]
+    },
+    {
+      "id": "S3.2",
+      "standard": "S3",
+      "name": "侧栏=浮层（正文恒居中，OS-48 宪法）",
+      "verdict": "PASS",
+      "note": "",
+      "evidence": [
+        "public/index.html:175"
+      ]
+    },
+    {
+      "id": "S3.3",
+      "standard": "S3",
+      "name": "统一组件约定类在样式表有定义（surface-card/rm-toggle/rm-x/shadow-card）",
+      "verdict": "PASS",
+      "note": "",
+      "evidence": [
+        "public/index.html:34",
+        "public/index.html:217",
+        "public/index.html:223",
+        "public/index.html:40"
+      ]
+    },
+    {
+      "id": "S4.1",
+      "standard": "S4",
+      "name": "核心模块页签顶栏可达（正文/世界书/习惯/拆解/推演/参考）",
+      "verdict": "PASS",
+      "note": "",
+      "evidence": []
+    },
+    {
+      "id": "S4.2",
+      "standard": "S4",
+      "name": "官方关闭按钮统一（rm-x 引用 3 处；旁路 close 类 0 处）",
+      "verdict": "PASS",
+      "note": "关闭走 rm-x + page-close 两级约定",
+      "evidence": []
+    },
+    {
+      "id": "S4.3",
+      "standard": "S4",
+      "name": "UX 结构清单文档存在（docs/UX-STRUCTURE.md：页签/子页签/入口层级）",
+      "verdict": "PASS",
+      "note": "",
+      "evidence": [
+        "docs/UX-STRUCTURE.md"
+      ]
+    }
+  ]
+}

@@ -19,8 +19,9 @@
  *
  * 零 npm 依赖；hash 复用 `changelog.mjs` 的 `contentHash()`，不在本模块重写一套指纹。
  */
-import { mkdir, readFile } from 'node:fs/promises'
-import { dirname, join } from 'node:path'
+import { mkdir, readFile, readdir } from 'node:fs/promises'
+import { existsSync, statSync } from 'node:fs'
+import { dirname, join, relative, sep } from 'node:path'
 import { contentHash } from '../protocol/changelog.mjs'
 import { atomicWriteFile } from '../protocol/hostWrite.mjs'
 
@@ -245,4 +246,44 @@ export async function snapshotAndDiff({ root, files = [] } = {}) {
   }
 
   return { externalChanges, firstSeen, checkedAt }
+}
+
+/* ---------- 正文快照扫描（OS-107/OS-113，OS-141 daemon 拆分落位）---------- */
+
+/** 正文扫描深度与数量上限（OS-113）。 */
+const SYNC_SCAN_DEPTH = 4
+const SYNC_SCAN_LIMIT = 500
+
+/**
+ * 扫 `<库>/正文/` 下所有 .md，给每个文件现算 `{ path, hash, mtime }`（库内相对路径，正斜杠）。
+ * 跳过 `.history/` 与隐藏目录（备份快照不是稿子，算进来会天天误报外部改动）。
+ * hash 走 `changelog.mjs` 的 contentHash（与写通道留痕同一个指纹口径）。
+ */
+export async function scanProseFiles(root) {
+  const base = join(root, '正文')
+  if (!existsSync(base)) return []
+  const out = []
+  const walk = async (current, depth) => {
+    if (out.length >= SYNC_SCAN_LIMIT || depth > SYNC_SCAN_DEPTH) return
+    let entries
+    try { entries = await readdir(current, { withFileTypes: true }) } catch { return }
+    for (const entry of entries) {
+      if (out.length >= SYNC_SCAN_LIMIT) return
+      if (entry.name.startsWith('.') || entry.name === '.history') continue
+      const abs = join(current, entry.name)
+      if (entry.isDirectory()) { await walk(abs, depth + 1); continue }
+      if (!entry.isFile() || !/\.md$/iu.test(entry.name)) continue
+      try {
+        const stats = statSync(abs)
+        out.push({
+          path: relative(root, abs).split(sep).join('/'),
+          hash: contentHash(await readFile(abs)),
+          mtime: stats.mtime.toISOString()
+        })
+      } catch { /* 竞态消失的文件跳过 */ }
+    }
+  }
+  await walk(base, 0)
+  out.sort((left, right) => left.path.localeCompare(right.path, 'zh-Hans-CN'))
+  return out
 }

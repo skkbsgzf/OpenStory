@@ -167,7 +167,8 @@ node tools/acceptance/acceptance.mjs        # ② 交付标准 S0–S4 门禁（
 
 - 入口垫片：仓根 `daemon.mjs` / `mcp.mjs`（只转发，OS-140）→ 实现 `src/host/`
 - 契约层：`src/api/contracts.mjs` 聚合器 ＋ `src/api/contracts/` 七域分片（library/chapters/fact/reference/
-  agent/plugins/system，101 端点）→ `src/host/daemon.mjs` 路由实现（endpointFor 分派 + validateResponse 校验）
+  agent/plugins/system，101 端点）→ `src/api/handlers/` 七域 handler ＋ `src/api/registry.mjs` 注册表（OS-141，键＝endpointId）
+  → `src/host/daemon.mjs` 路由分派（endpointFor → validateRequest → 取 handler → 调用）＋ 共享管线 `src/host/{http,authorize,sse}.mjs`
 - 内核进口：`src/kernel/pinaxAdapter.mjs`（唯一进口，五组能力出口）→ `core/pinax/` 24 文件 fact 链
   （存储协议 factFileStore ／推演端子 deduce ／enrich 度量）＋ `vendor/contracts/worldbookFileContract.js`；
   出处与漂移见 `core/VENDORED.md` ＋ `npm run vendor:check`

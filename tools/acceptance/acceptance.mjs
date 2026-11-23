@@ -234,12 +234,14 @@ check('S2.2', 'S2', '前端分析/图谱/参考/树模块互不 import（md.mjs 
 // S2.3 契约驱动架构：daemon 经 endpointFor() 契约分派 + validateResponse() 契约校验
 // OS-130 契约分域后，端点形状按域切片在 contracts/<域>.mjs——计数＝contracts.mjs＋contracts/*.mjs 合计
 // OS-140：契约层在 src/api/（聚合入口＋七域分片）
+// OS-141：daemon 拆分后端点行为迁到 src/api/handlers/ 七域文件——响应校验（validateResponse）
+// 跟着实现走，证据行改读 handlers；路由分派（endpointFor）仍在 daemon。
 const contractFiles = ['src/api/contracts.mjs',
   ...readdirSync(join(REPO, 'src/api/contracts')).filter((f) => f.endsWith('.mjs')).sort().map((f) => `src/api/contracts/${f}`)]
 const contractCount = contractFiles.reduce((sum, rel) => sum + (readRepo(rel).match(/method:/g) || []).length, 0)
 const firstSlice = contractFiles.find((rel) => /method:/.test(readRepo(rel))) || contractFiles[0]
 const endpointForUse = grepLine('src/host/daemon.mjs', /endpointFor\(req\.method/)
-const validateRespUse = grepLine('src/host/daemon.mjs', /validateResponse\(/)
+const validateRespUse = grepLine('src/api/handlers/system.mjs', /validateResponse\(/)
 check('S2.3', 'S2', `契约驱动架构（contracts ${contractCount} 端点；daemon 契约分派+响应校验）`,
   contractCount > 0 && !!endpointForUse && !!validateRespUse,
   [lineOf(firstSlice, 'method:'), endpointForUse, validateRespUse].filter(Boolean),
