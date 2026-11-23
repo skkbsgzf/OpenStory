@@ -152,6 +152,9 @@ const settingsAggregationReady = import('./views/settingsAggregation.mjs').then(
   return mod
 }).catch((error) => { console.error('[settings] 设置聚合模块加载失败', error); return null })
 
+/* OS-147：正文章节清单加载状态机（纯函数在 views/chapterLoad.mjs）——首帧占位必须由本次加载自己收口 */
+const chapterLoadReady = import('./views/chapterLoad.mjs').catch((error) => { console.error('[chapters] 章节加载状态机没装上', error); return null })
+
 const state = {
   libraries: [],
   warnings: [],
@@ -795,34 +798,27 @@ function formatBytes(size) {
   return value >= 1024 ? `${(value / 1024).toFixed(1)} KB` : `${value} B`
 }
 
-/**
- * 拉章节清单。OS-22：不整页重绘——只重画左侧章节列表（实时编辑时纸面 DOM 不能被换掉）。
- * 首次进页面（列表为空）才走整页 render 摆 loading。
- */
+/** 拉章节清单。OS-22：不整页重绘——只重画左侧章节列表（实时编辑时纸面 DOM 不能被换掉）。
+ *  OS-147：首次加载的占位帧里没有 .chapter-rows，收口必须整页重画（只刷行＝什么都不刷）。 */
 async function loadWriteChapters({ force = false } = {}) {
   if (!state.current) return
-  // OS-89：模块加载时检索自己的 log。必须 await 且在早退之前——
-  // 章节已缓存时函数会直接 return，放后面就永远拉不到（作者看不到修改记录）。
+  // OS-89：模块加载时检索自己的 log；必须 await 且在缓存早退之前（早退就再也拉不到）
   await loadModuleLog('正文', { limit: 20 })
-  // OS-89：日志是异步拉的，render 早就跑过了——到位后必须重排左栏，
-  // 否则「本模块修改」永远显示 0。这是约束要求「模块加载时检索自己的 log」的落地。
-  if (state.view === 'write' && document.getElementById('ref-col')) renderRefCol()
-  if (state.write.chapters.length && !force) {
-    return
-  }
-  const firstLoad = state.write.chapters.length === 0
-  if (firstLoad) {
-    state.write.listLoading = true
-    render()
-  }
-  try {
-    const payload = await api(`/api/chapters?root=${encodeURIComponent(state.current.path)}&dir=${encodeURIComponent('正文')}`)
-    state.write.chapters = Array.isArray(payload.chapters) ? payload.chapters : []
-  } catch (error) {
-    state.error = `${error?.code ? `${error.code} · ` : ''}${text(error?.message || error)}`
-  }
-  state.write.listLoading = false
-  refreshChapterRows()
+  if (state.view === 'write' && document.getElementById('ref-col')) renderRefCol() // 日志到位后重排左栏
+  const cl = await chapterLoadReady
+  if (!cl) { state.write.listLoading = false; state.error = '章节加载状态机没装上（装包不完整）——刷新或重装即可'; render(); return }
+  const step = cl.beginChapterLoad(state.write, { force, hasChapters: state.write.chapters.length > 0 })
+  if (!step.fetch) return // 缓存命中：页面已由调用方 render() 摆好，本身就是终态
+  if (step.paint) { state.write.listLoading = true; render() }
+  let payload = null, failure = null
+  try { payload = await api(`/api/chapters?root=${encodeURIComponent(state.current.path)}&dir=${encodeURIComponent('正文')}`) }
+  catch (error) { failure = error }
+  const done = cl.finishChapterLoad(state.write, step.epoch, { ok: !failure })
+  if (done.apply) state.write.listLoading = false
+  if (done.apply && failure) state.error = `${failure?.code ? `${failure.code} · ` : ''}${text(failure?.message || failure)}`
+  else if (done.apply) state.write.chapters = Array.isArray(payload?.chapters) ? payload.chapters : []
+  if (done.repaint) render() // 画过占位＝整页重画；否则只刷左栏行（不动纸面/光标）
+  else refreshChapterRows()
 }
 
 /** 只重画左侧章节行（不动纸面/光标，也不动新建输入框的输入内容）。 */
@@ -5034,6 +5030,8 @@ async function loadReferences({ force = false } = {}) {
     ref.error = `${error?.code ? `${error.code} · ` : ''}${text(error?.message || error)}`
   }
   ref.loading = false
+  // OS-147：自己收口——早退（ref.loading）时靠这次 render 把占位换成真内容/如实报错
+  if (state.view === 'reference') render()
 }
 
 /**
@@ -10523,7 +10521,8 @@ function go(view) {
   }
   if (view === 'reference') {
     // 参考页：拉索引，并预挂载模块。loadReferences 内部已含 OS-89 的日志检索。
-    loadReferences().then(() => { if (state.view === 'reference') render() }).catch((e) => console.error('[ref-render]', e))
+    // OS-147：收口在 loadReferences 自己身上——索引在途时再进本页会走 ref.loading 早退
+    loadReferences().catch((e) => console.error('[ref-render]', e))
     loadRefModule().then(() => { if (state.view === 'reference') render() }).catch(() => {})
     return
   }

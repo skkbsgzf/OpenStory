@@ -60,7 +60,7 @@ L1  磁盘库                  ——        ——       文件即真相（库�
 
 ### L6 契约层 `src/api/` ——8 文件 / 1,381 行 / 101 端点
 
-- **职责**：API 形状唯一真源（OS-130 契约分域）。`src/api/contracts.mjs`（221 行）聚合七域分片
+- **职责**：API 形状唯一真源（OS-130 契约分域）。`src/api/contracts.mjs`（223 行）聚合七域分片
   （`src/api/contracts/`）：
   library(6) / chapters(12) / fact(27) / reference(7) / agent(17) / plugins(10) / system(22)
   ＝ **101 端点**（`ENDPOINT_LIST` 实测 101）；请求/响应双端校验，daemon 与前端共享同一份。
