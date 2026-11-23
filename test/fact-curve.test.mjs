@@ -7,9 +7,9 @@ import assert from 'node:assert/strict'
 import { mkdtemp, writeFile, mkdir, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { cp } from 'node:fs/promises'
 import { startDaemon } from '../daemon.mjs'
 import { validateResponse } from '../contracts.mjs'
+import { writeE2eBookFixture } from './fixtures/osE2eBook.mjs'
 
 async function makeLibrary(base, name) {
   const root = join(base, name)
@@ -44,8 +44,9 @@ test('fact 曲线：e2e 夹具库 → 三章序列（功能/情绪/剧情点/事
   const base = await mkdtemp(join(tmpdir(), 'os-factcurve2-'))
   try {
     const { root, preferencesPath } = await makeLibrary(base, '夹具库')
-    // 复用 e2e fact 夹具（拆解/ 三章 fact+wiki）
-    await cp(join(process.cwd(), 'test', 'fixtures', 'os-e2e', '拆解'), join(root, '拆解'), { recursive: true })
+    // 复用 e2e fact 夹具（拆解/ 三章 fact）——OS-135② 起夹具真相收编进 fixtures/osE2eBook.mjs，
+    // 写进本用例的临时目录（不再 cp 未跟踪的 test/fixtures/os-e2e 残留）
+    await writeE2eBookFixture(root)
     const daemon = await startDaemon({ port: 0, preferencesPath, env: { ...process.env, LOCALAPPDATA: base }, logger: { log() {} } })
     try {
       const res = await fetch(`http://127.0.0.1:${daemon.port}/api/fact/curve?${new URLSearchParams({ root }).toString()}`)

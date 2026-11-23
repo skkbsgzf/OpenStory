@@ -1,8 +1,10 @@
 /**
- * 端到端 mock LLM：按 prompt 里的「窗口名」路由返回对应的合法 JSON。
+ * OS-135②：mock LLM 服务器工厂（测试内 import，临时端口）。
  *
- * 用途：验证 daemon 的 enrichRun → enrichEngine → writeFactFile → enrichGraph 全链接线，
- * 不消耗真实 token。路由靠 prompt 关键词（每个窗的 prompt 都有独特标识）。
+ * 原 test/mock-llm.mjs 是独立脚本＋固定端口 8999——要先手动起、node --test 并行必撞。
+ * 这里改成可 import 的工厂：startMockLlmServer() 监听 port 0（内核分配），返回真实端口
+ * 与 close()。路由表逐字取自原脚本（按 prompt 窗口关键词回合法 JSON），保证 enrich
+ * 全链路（run → status → graph）零真实 token 可跑。
  */
 import http from 'node:http'
 
@@ -67,18 +69,30 @@ function route(prompt) {
   return JSON.stringify({ narrator: '' })
 }
 
-const calls = []
-http.createServer((req, res) => {
-  let body = ''
-  req.on('data', (chunk) => { body += chunk })
-  req.on('end', () => {
-    calls.push(body.length)
-    let prompt = ''
-    try { prompt = JSON.parse(body).messages?.[0]?.content ?? '' } catch { }
-    const out = route(prompt)
-    res.writeHead(200, { 'content-type': 'application/json' })
-    res.end(JSON.stringify({ choices: [{ message: { content: out }, finish_reason: 'stop' }] }))
+/** 起一个临时端口的 mock LLM。返回 { port, url, calls, close }；url 即 agent-config 的 endpoint。 */
+export function startMockLlmServer() {
+  const calls = []
+  const server = http.createServer((req, res) => {
+    let body = ''
+    req.on('data', (chunk) => { body += chunk })
+    req.on('end', () => {
+      calls.push(body.length)
+      let prompt = ''
+      try { prompt = JSON.parse(body).messages?.[0]?.content ?? '' } catch { /* 坏 body 当空 prompt */ }
+      const out = route(prompt)
+      res.writeHead(200, { 'content-type': 'application/json' })
+      res.end(JSON.stringify({ choices: [{ message: { content: out }, finish_reason: 'stop' }] }))
+    })
   })
-}).listen(8999, () => console.log('mock llm on 8999'))
-
-process.on('SIGTERM', () => process.exit(0))
+  return new Promise((resolve) => {
+    server.listen(0, '127.0.0.1', () => {
+      const port = server.address().port
+      resolve({
+        port,
+        endpoint: `http://127.0.0.1:${port}/v1/chat/completions`,
+        calls,
+        close: () => new Promise((done) => server.close(() => done()))
+      })
+    })
+  })
+}

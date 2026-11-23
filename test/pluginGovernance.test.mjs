@@ -126,8 +126,8 @@ test('satisfiesMinVersion：任一侧格式非法 → bad-format（不抛错）'
   }
 })
 
-test('readAppVersion：读仓根 package.json 的 version（当前 0.1.0）', () => {
-  assert.equal(readAppVersion(REPO), '0.1.0')
+test('readAppVersion：读仓根 package.json 的 version（当前 0.2.0，OS-135 对齐已发布 tag v0.2.0）', () => {
+  assert.equal(readAppVersion(REPO), '0.2.0')
   assert.equal(readAppVersion(join(REPO, 'test')), '', '没有 package.json 的目录＝空串，不抛')
 })
 
@@ -136,15 +136,16 @@ test('readAppVersion：读仓根 package.json 的 version（当前 0.1.0）', ()
 test('套件：要求版本高于当前 → 跳过加载 + SUITE_MIN_VERSION warning，清单其余项照常', async () => {
   await withTemp(async (base) => {
     const shelf = await makeSuiteShelf(base, {
-      future: { ...SUITE, id: 'future', minOpenStoryVersion: '0.2.0' },
+      // OS-135：应用版本已对齐 v0.2.0，「高于当前」的夹具字面量随之升到 0.3.0（语义不变）
+      future: { ...SUITE, id: 'future', minOpenStoryVersion: '0.3.0' },
       now: { ...SUITE, id: 'now' }
     })
     const { suites, warnings } = loadSuites([shelf])
     assert.deepEqual(suites.map((suite) => suite.id), ['now'], '版本不够的套件不进清单，同目录另一套件照常加载')
     const hit = warnings.find((warning) => warning.code === 'SUITE_MIN_VERSION')
     assert.ok(hit, `应有 SUITE_MIN_VERSION warning，实际：${JSON.stringify(warnings)}`)
+    assert.match(hit.message, /0\.3\.0/)
     assert.match(hit.message, /0\.2\.0/)
-    assert.match(hit.message, /0\.1\.0/)
   })
 })
 
@@ -179,7 +180,8 @@ test('套件：格式非法（abc）→ 照常加载 + SUITE_MIN_VERSION_BAD war
 test('技能：高于当前跳过；等于/缺失照常；格式坏照常＋SKILL_MIN_VERSION_BAD', async () => {
   await withTemp(async (base) => {
     const shelf = await makeSkillShelf(base, {
-      'future-skill': skillMarkdown({ name: 'future-skill', extra: "minOpenStoryVersion: '0.2.0'\n" }),
+      // OS-135：应用版本已对齐 v0.2.0，「高于当前」的夹具字面量随之升到 0.3.0（语义不变）
+      'future-skill': skillMarkdown({ name: 'future-skill', extra: "minOpenStoryVersion: '0.3.0'\n" }),
       'same-skill': skillMarkdown({ name: 'same-skill', extra: "minOpenStoryVersion: '0.1.0'\n" }),
       'plain-skill': skillMarkdown({ name: 'plain-skill' }),
       'broken-skill': skillMarkdown({ name: 'broken-skill', extra: 'minOpenStoryVersion: abc\n' })
@@ -189,7 +191,7 @@ test('技能：高于当前跳过；等于/缺失照常；格式坏照常＋SKIL
 
     const skip = warnings.find((warning) => warning.code === 'SKILL_MIN_VERSION')
     assert.ok(skip, `应有 SKILL_MIN_VERSION warning，实际：${JSON.stringify(warnings)}`)
-    assert.match(skip.message, /0\.2\.0/)
+    assert.match(skip.message, /0\.3\.0/)
 
     const malformed = warnings.find((warning) => warning.code === 'SKILL_MIN_VERSION_BAD')
     assert.ok(malformed, `应有 SKILL_MIN_VERSION_BAD warning，实际：${JSON.stringify(warnings)}`)
@@ -209,7 +211,8 @@ test('技能：显式 appVersion 生效（解析层单测，不读盘）', () =>
 test('运行时：高于当前跳过；等于/缺失照常；格式坏照常＋RUNTIME_KIT_MIN_VERSION_BAD', async () => {
   await withTemp(async (base) => {
     const shelf = await makeKitShelf(base, {
-      'future-kit': { ...KIT, id: 'future-kit', minOpenStoryVersion: '0.2.0' },
+      // OS-135：应用版本已对齐 v0.2.0，「高于当前」的夹具字面量随之升到 0.3.0（语义不变）
+      'future-kit': { ...KIT, id: 'future-kit', minOpenStoryVersion: '0.3.0' },
       'same-kit': { ...KIT, id: 'same-kit', minOpenStoryVersion: '0.1.0' },
       'plain-kit': { ...KIT, id: 'plain-kit' },
       'broken-kit': { ...KIT, id: 'broken-kit', minOpenStoryVersion: '1.0' }
@@ -219,7 +222,7 @@ test('运行时：高于当前跳过；等于/缺失照常；格式坏照常＋R
 
     const skip = warnings.find((warning) => warning.code === 'RUNTIME_KIT_MIN_VERSION')
     assert.ok(skip, `应有 RUNTIME_KIT_MIN_VERSION warning，实际：${JSON.stringify(warnings)}`)
-    assert.match(skip.message, /0\.2\.0/)
+    assert.match(skip.message, /0\.3\.0/)
 
     const malformed = warnings.find((warning) => warning.code === 'RUNTIME_KIT_MIN_VERSION_BAD')
     assert.ok(malformed, `应有 RUNTIME_KIT_MIN_VERSION_BAD warning，实际：${JSON.stringify(warnings)}`)

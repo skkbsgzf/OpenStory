@@ -1,6 +1,6 @@
 {
   "name": "openstory",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "跑在浏览器/DSH 里的小说工作台——文件即真相，daemon 只监听本机；参考双链图谱＋实时写作＋确定性推演＋可插拔 Agent 运行时",
   "type": "module",
   "private": true,

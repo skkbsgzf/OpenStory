@@ -4763,25 +4763,33 @@ async function handleAgentChat(req, res, request, context, root, libraries) {
       connection: 'keep-alive',
       'x-accel-buffering': 'no'
     })
+    // 断连守卫（OS-135，与上方 dsh-cli 分支的 safeSend 同款）：runCliChat 是一次性子进程、
+    // 可能跑几分钟——期间客户端点了停止/关页（clientGone 置位、res 已销毁），回包帧再往
+    // res 写就是 write-after-end。落档照旧（断连不丢回答），只是不再对已断的连接发帧。
+    const safeSend = (frame) => {
+      if (clientGone || res.writableEnded) return
+      try { sseFrame(res, frame) } catch { /* 连接已断，静默 */ }
+    }
     sseFrame(res, projectLegacyFrame({ type: 'agent_started', sessionId, runtime: upstream.runtimeName }))
     if (upstream.notice) sseFrame(res, projectLegacyFrame({ type: 'notice', text: upstream.notice }))
     const cli = await runCliChat(upstream.kit, upstreamMessages, { model: upstream.model })
     if (cli.ok) {
-      sseFrame(res, projectLegacyFrame({ type: 'message_chunk', text: cli.text }))
+      safeSend(projectLegacyFrame({ type: 'message_chunk', text: cli.text }))
       if (!ephemeral) {
         await appendSession(sessionsDir, root, sessionId, [{
           t: 'msg', id: newMessageId(), role: 'assistant', content: cli.text, at: new Date().toISOString()
         }])
       }
-      sseFrame(res, projectLegacyFrame({ type: 'run_end', status: 'completed', sessionId, chars: cli.text.length }))
+      safeSend(projectLegacyFrame({ type: 'run_end', status: 'completed', sessionId, chars: cli.text.length }))
     } else {
-      sseFrame(res, projectLegacyFrame({
+      safeSend(projectLegacyFrame({
         type: 'run_end',
         status: 'error',
         error: { code: API_ERROR_CODES.AGENT_UPSTREAM_ERROR, message: cli.message }
       }))
     }
-    return res.end()
+    if (!clientGone && !res.writableEnded) res.end()
+    return
   }
 
   let upstreamRes

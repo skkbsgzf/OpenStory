@@ -2,7 +2,7 @@
 
 **跑在浏览器 / DSH 里的小说工作台**——OpenDesign 形态的小说版。零 npm 构建依赖，daemon 只监听本机，库就是磁盘上的文件夹。
 
-![版本](https://img.shields.io/badge/version-v0.2.0-blue) ![node](https://img.shields.io/badge/node-%3E%3D18-green) ![tests](https://img.shields.io/badge/tests-417%20cases-brightgreen) ![endpoints](https://img.shields.io/badge/endpoints-101-blueviolet)
+![版本](https://img.shields.io/badge/version-v0.2.0-blue) ![node](https://img.shields.io/badge/node-%3E%3D18-green) ![tests](https://img.shields.io/badge/tests-438%20cases-brightgreen) ![endpoints](https://img.shields.io/badge/endpoints-101-blueviolet)
 
 ## 这是什么
 
@@ -29,7 +29,7 @@
 npm install        # 装依赖（sharp/transformers；内核 vendor 自持，无 tgz 依赖）
 npm start          # node daemon.mjs → http://127.0.0.1:8807（单实例锁＋/api/health）
 npm run mcp        # 全模块 MCP server（24 工具，stdio）
-npm test           # node --test（417 例，零外部依赖）
+npm test           # node --test（438 例，零外部依赖）
 ```
 
 **作为 DSH 插件运行**（左栏底部 OpenStory → 右侧栏打开工作台，DSH 会话留在左边）：
@@ -48,7 +48,7 @@ npm test           # node --test（417 例，零外部依赖）
 ```
 L7  前端 public/            15 文件  19,917 行   无构建单页（ui-kit 统一规范）
 L6  契约层 contracts/        8 文件   1,369 行   七域聚合，101 端点，双端校验
-L5  daemon.mjs               1 文件   5,204 行   node:http 手写路由＋进程治理（单实例锁/stamp/generation/health）
+L5  daemon.mjs               1 文件   5,215 行   node:http 手写路由＋进程治理（单实例锁/stamp/generation/health）
     └ mcp.mjs                1 文件     715 行   stdio 24 工具，daemon HTTP 薄适配（独立进程）
 L4  本仓自持层              37 模块  10,733 行   建库/导入自持（OS-123/124）＋fact 消费＋参考＋Agent＋货架＋协议层
 L3  pinaxAdapter.mjs         1 文件      60 行   内核唯一进口（五能力组，门禁 S2.4）
@@ -76,7 +76,7 @@ L1  磁盘库                  ——        ——       文件即真相（.pin
 | `workflows/` | ComfyUI 文生图工作流 |
 | `tools/dsh-openstory-studio/` | DSH 插件 bundle：宿主侧 daemon 生命周期＋客户端右侧栏工作台（`sidebar.footer.action`／`sidebarRightTabs`） |
 | `samples/水浒传/` | 公版演示库（导入即体验） |
-| `test/` | 417 例（node --test，含 daemon 端到端与解耦金样护栏） |
+| `test/` | 438 例（node --test，含 daemon 端到端与解耦金样护栏） |
 | `docs/` | 架构与规划（[ARCHITECTURE.md](./ARCHITECTURE.md) 七层分层、[遗留台账](./docs/LEGACY-ITEMS.md)、[推演×数据路线](./docs/plan/deduce-data-roadmap-20261118.md) 等） |
 
 ## 出处与致谢
