@@ -7,7 +7,7 @@
 
 | 裁定 | 日期 | 去向 |
 |---|---|---|
-| **G7 数据源归一：统一成 fact（合并路线）**——fact.data（v3/legacy v2）是唯一事实 schema；pedia/v1（NovelPedia）视为同源同质；OpenStory↔NovelPedia 导入导出一律走 fact.data/v3。 | 【已裁定 2026-11-23：统一成 fact】 | `docs/adr/0001-fact-schema-unification.md`（含四方消费方核查与 NovelPedia 字段映射实测清单；映射是唯一开放项） |
+| **G7 数据源归一：统一成 fact（合并路线）**——fact.data（v3/legacy v2）是唯一事实 schema；pedia/v1（NovelPedia）视为同源同质；OpenStory↔NovelPedia 导入导出一律走 fact.data/v3。 | 【已裁定 2026-11-23：统一成 fact】 | `docs/adr/0001-fact-schema-unification.md`（含四方消费方核查＋附录 A 字段映射实测表〔2026-11-24 按规范补齐〕；仍开放＝NovelPedia 写入器落地后的真实数据复验） |
 
 ## 【作者动作】——需要作者在真实环境验证一次
 

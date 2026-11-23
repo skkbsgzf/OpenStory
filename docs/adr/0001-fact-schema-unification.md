@@ -41,7 +41,7 @@
 
 ### b) OpenStory↔NovelPedia 导入导出一律走 fact.data/v3
 
-依据 F4/F10：任何外部数据进库必须变成过 `validateFactEntry` 闸的 fact.data/v3 条目（写协议逐条校验，`factFileStore.mjs:384`）；出库同理从 fact 条目投影。**pedia/v1 的精确字段映射是唯一开放项（见 §六）：NovelPedia 源仓本机没有，映射在实现导入导出时以真实数据实测补齐，本文与实现都不许臆造字段名。**
+依据 F4/F10：任何外部数据进库必须变成过 `validateFactEntry` 闸的 fact.data/v3 条目（写协议逐条校验，`factFileStore.mjs:384`）；出库同理从 fact 条目投影。**pedia/v1 的精确字段映射见附录 A（2026-11-24 按规范实测补齐；此前写的「源仓本机没有」有误，勘误见 §六）。实现导入导出只许照附录 A 落字段，不许臆造；附录 A 没列的 pedia 侧字段，先补附录再写代码。**
 
 ### c) enrich 派生物按 FACT-FIRST 现口径留在事实链内；scriptFact 双向互转照旧
 
@@ -68,7 +68,7 @@
 
 **NovelPedia 字段映射实测清单（实现导入导出时逐条做，本 ADR 不预填任何字段）**：
 
-1. 先取数：拿到真实 NovelPedia 数据样本（源仓本机没有，见 §六）。
+1. 先取数：拿到真实 NovelPedia 数据样本。【2026-11-24 更新】源仓在本机（`D:\Pinax-e2e\ref-Novelpedia`，勘误见 §六），但该 commit 只有规范、没有写入器与数据文件——本项改为「待 NovelPedia 写入器落地后复验」，不再阻塞按规范实现（附录 A）。
 2. 词表对照：`src/pedia_schema.json`（出处 commit 见 `vocabulary.js:28-29`）与本仓 `FACT_LAYERS`/`WORLDVIEW_SLOTS`/`CATEGORY_MAP`（`vocabulary.js:35-136`）逐项对——层的对齐口径（hard/soft）、槽位归并表是否逐条落得上。
 3. 信封字段映射：provenance（mode/quote_hash/chapters/scenes）、fingerprint、status 状态机（draft→proposed→adopted→superseded，`vocabulary.js:144-159`）、validity 双时间轴，逐字段列「pedia 字段 → fact 字段 → 转换规则 → 丢失项」。
 4. 双向往返损耗：回写 pedia/v1 时哪些 fact 字段无处安放（v3 的 events[].segments、track、rhythmSpec 等按 F3 是本仓增量），如实记录。
@@ -76,8 +76,58 @@
 
 ## 六、开放项（单列）
 
-- **pedia/v1（NovelPedia）精确字段映射**——唯一开放项。源仓本机没有，本文无法核实其字段；一切映射以真实数据实测为准（§五清单），在那之前本文不写任何 pedia 侧字段名。这项是 §三b 的执行前提：没有实测映射，NovelPedia 导入导出不实现。
+- **pedia/v1（NovelPedia）精确字段映射**——【已按规范实测，见附录 A】。
+- **勘误（2026-11-24）**：本文原写「源仓本机没有，本文无法核实其字段；在那之前不写任何 pedia 侧字段名」——**这句有误**。源仓在本机 `D:\Pinax-e2e\ref-Novelpedia`，HEAD `eb4f140` 正是 F2 引用的那个 commit，`src/pedia_schema.json` 可读。错因：裁定当批次没搜到这份克隆。裁定本身不受影响（它依据的 F1／F2／F4／F10 都在本仓内核实）。
+- **仍开放（收窄后）**：该 commit **只有规范、没有条目写入器，也没有任何 pedia 数据文件**——附录 A 的样本是按规范自带的 `entry` 模板构造的。NovelPedia 写入器落地后，须用真实产物复验一次，重点是软层条目 `slot` 缺省时 id 的实际算法、写入器实际落了哪些可选字段；复验结论补进附录 A。
+
+## 附录 A · pedia/v1 ↔ fact.data/v3 字段映射实测表（2026-11-24 补）
+
+**实测对象**：`D:\Pinax-e2e\ref-Novelpedia`（HEAD `eb4f140`，与本 ADR §一、F2 引用的 commit 一致）的 `src/pedia_schema.json`（`schema: pedia/v1`，updated 2026-08-29）。
+**方法**：读规范 → 与本仓 `vocabulary.js`（`FACT_LAYERS`／`WORLDVIEW_SLOTS`／`CATEGORY_MAP`）逐项比对 → 按规范自带的 `entry` 模板构造三层样本 → 投喂本仓 `validateFactEntry`（`core/pinax/next/fact/domain/schema.js`）。全程只读，没动 `core/**`。
+**样本性质（重要）**：该 commit **只有规范，没有条目写入器，也没有任何 pedia 数据文件**（`src/*.py` 里没有生成 `schema: pedia/v1` 条目、也没有计算稳定 id 的代码）。所以样本是**按规范构造**的，不是真实产物——这是 §六收窄后仍开放的那一项。
+
+### A1 词表对照
+
+| 项 | pedia/v1 | fact.data/v3 | 结论 |
+|---|---|---|---|
+| 层 | worldview／character／style／plot | worldview／character／plot | 只多 `style`：文风已解耦、不进 fact 条目层（`vocabulary.js` 的「S1 文风解耦」注记）。导入时 style 条目**不入 fact**，结果里单列条数与原因。 |
+| 层对齐口径 | hard／soft／soft | 同 | 一致。 |
+| 各层必填 | worldview：name/domain/slot/definition/provenance；character：name/provenance/fingerprint；plot：provenance/fingerprint | 同 | **逐项相同**。 |
+| 世界观槽位 | 11 个 | 11 个 | 名与顺序逐项一致，`ordered` 口径一致。 |
+| category_map | 48 个映射键 | 48 个映射键 | 同键同值，零差异（规范对象里另有一个 `desc` 说明键，不是映射）。 |
+| span 字段 | first_chapter／last_chapter／first_scene／last_scene／scene_count／chapter_count | 同 | 六个字段名逐项相同。 |
+
+### A2 入向：pedia/v1 → fact.data/v3
+
+原样投喂只报三个硬错：`SCHEMA_MISMATCH`、缺 `status`、缺 `provenance.mode`（style 层另报 `UNKNOWN_LAYER`）。最小转换后 worldview／character／plot 三层**全部通过、零 error，且 id 不变**。
+
+| pedia 字段 | fact 字段 | 规则 |
+|---|---|---|
+| `schema: pedia/v1` | `schema: fact.data/v3` | 改写。 |
+| `id` | `id` | **原样保留**。两边同式 `sha1(layer\|domain\|slot\|name)[:12]`；实测三层转换后 id 逐位相同。 |
+| `layer`／`name`／`domain`／`slot`／`rank`／`definition` | 同名 | 原样。 |
+| `aliases`／`relations[{to,type,how}]`／`stats`／`votes`／`span` | 同名同形 | 原样（校验器都认；`votes.note` 不被拒）。 |
+| `provenance.book`／`book_id`／`chapters`／`scenes`／`extractor`／`confidence`／`quote_hash` | 同名 | 原样。 |
+| `fingerprint.vec`／`metrics` | 同名 | 原样。 |
+| （无） | `provenance.mode` | **补 `analyze`**——pedia 条目都是拆书抽取产物，且只存 `quote_hash` 不存原文，与 analyze 模式的约束一致。 |
+| （无） | `status` | **补 `draft`**——导入不替作者拍板，落默认态，之后走状态机。 |
+| character 层 `identity`／`personality`／`trajectory`；plot 层 `fact`／`hypothesis`／`events` | 同名 | 原样（pedia 各层 optional 里本来就有）。 |
+| `layer: style` | — | **无归宿**：不转换、不入 fact，导入结果里单列。 |
+
+### A3 出向：fact.data/v3 → pedia/v1 的丢失项
+
+回写时**无处安放**的字段（导出必须如实列出丢失项，不许静默丢）：
+
+- 顶层：`status`、`validity`、`readerCognition`；`provenance.mode`。
+- character 层：`anchors`、`memoryPoints`、`castRole`、`knowledge`。
+- plot 层：`rhythmSpec`、`structureTemplates`；`events` 本身带得走（pedia plot 层 optional 有 `events`），但事件内的 `track`／`novelty`／`segments` 是本仓 v3 增量，pedia 侧不保证读得懂。
+
+### A4 这张表的效力
+
+- 实现导入导出（G5b）只许照本表落字段；表里没有的 pedia 侧字段，先补表再写代码。
+- 本表每条结论由适配器测试钉死（样本＝按规范 `entry` 模板构造的三层条目，跑临时夹具库）。
+- 复验触发条件：NovelPedia 写入器落地、出现真实产物。复验后在本节补记日期与差异。
 
 ---
 
-维护：本 ADR 是 G7 的裁定记录；裁定后的遗留事项（如 NovelPedia 映射实测）登记在 `docs/LEGACY-ITEMS.md`。翻案需作者明示，翻案后在本文件补记日期与理由。
+维护：本 ADR 是 G7 的裁定记录；裁定后的遗留事项（如 NovelPedia 真实数据复验）登记在 `docs/LEGACY-ITEMS.md`。本文的勘误在原位标注日期，不覆盖原文义。翻案需作者明示，翻案后在本文件补记日期与理由。
