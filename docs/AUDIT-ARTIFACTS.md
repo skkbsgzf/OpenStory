@@ -2,12 +2,19 @@
 
 生成于 2026-11-20T16:57:04.349Z
 
+> **OS-133 复核（2026-11-23）**：表内引用的函数/通道逐一对仓实测，全部仍在。
+> 两处更新：① 内核 writeFactFile 自 OS-125 起经 `pinaxAdapter.factStore` 进口（内核唯一进口）；
+> ② 库合同与外部稿件导入两行按 OS-123/124 自持现况补入——建库由本仓 `projectDoc.mjs`
+> 自持（载体注册体系已删）、导入由 `importAdapter.mjs`＋`textUtil.mjs` 自持（core/pinax/server 已删）。
+
 ## 一、产物清单
 
 | 产物 | 存储 | 读 | 写 | 判定 |
 |---|---|---|---|---|
 | 正文/章节 | `正文/NNN-标题.md` | ✓ | ✓ | daemon.writeChapterWithBackup（原子写＋.history 备份） |
-| 拆解/事实条目 | `拆解/<bookId>.json（fact.data/v3）` | ✓ | ✓ | 内核 writeFactFile（revision + operationId 幂等） |
+| 拆解/事实条目 | `拆解/<bookId>.json（fact.data/v3）` | ✓ | ✓ | 内核 writeFactFile（revision + operationId 幂等；经 pinaxAdapter.factStore 进口） |
+| 库合同/建库骨架 | `.pinax/project.json`（spec `pinax-project@3`）＋骨架目录 | ✓ | ✓ | projectDoc（OS-124 自持；格式与 Pinax 桌面端双向兼容，金样 `test/decoupleStep2.test.mjs`） |
+| 外部稿件导入 | （源目录只读；目标库只新增不覆盖） | ✓ | ✓ | importAdapter＋textUtil（OS-123 自持；章节号解析 parseChapterNumber，不替作者编号） |
 | 拆解/wiki 派生 | `拆解/<bookId>.wiki.json` | 经 curve 读 | 随 factEntriesImport 一起落 | 派生档（可删可重建），写随 fact |
 | 世界书/参考笔记 | `参考/**/*.md（frontmatter）` | ✓ | 经 /api/chapter PUT（复用正文通道） | referenceStore 扫描解析；写复用正文通道 |
 | 世界书/拆解词条视图 | `（无独立存储，读 fact）` | ✓ | 只读 | referenceEntryDetailHtml（OS-103/105） |
@@ -45,7 +52,8 @@
 - ✓ **firstChapter 在三处消费（世界书筛选/agent上下文/扮演底座）** — referenceStore 解析 → daemon notesVisibleAt 过滤 → roleplay present chapterLimit
 - ✓ **referenceStore 双份（根/public）同口径** — 根目录版 daemon 用；public 版前端用——改一个必须同步另一个
 - ✓ **文本类写入统一走 writeChapterWithBackup（原子写+备份）** — 正文/参考笔记/转正/剧本导入共用
-- ✓ **fact 写入走内核 writeFactFile（revision+幂等）** — 回填/导入/剧本互转共用
+- ✓ **fact 写入走内核 writeFactFile（revision+幂等）** — 回填/导入/剧本互转共用（OS-125 起统一经 pinaxAdapter.factStore 进口）
+- ✓ **建库与导入已本仓自持（OS-123/124）** — 建库格式与删除前内核输出逐字段相等（金样 `test/decoupleStep2.test.mjs`）；导入只新增不覆盖、不替作者编号（`test/decoupleStep1.test.mjs`）
 - ✓ **会话写入走 saveDeduceSession（原子写+备份）** — 推演/扮演共用容器
 - ✓ **故事源默认形态明确（outline）** — ss.view 默认 outline；三形态数据同一次算好
 - ✓ **世界书两来源（笔记/词条）都有列表+详情+图谱** — 笔记：refNav/referenceEditorHtml/mountDetailGraph；词条：refEntriesGroupHtml/referenceEntryDetailHtml/mountEntryGraph

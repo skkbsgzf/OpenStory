@@ -2,7 +2,7 @@
 
 **跑在浏览器 / DSH 里的小说工作台**——OpenDesign 形态的小说版。零 npm 构建依赖，daemon 只监听本机，库就是磁盘上的文件夹。
 
-![版本](https://img.shields.io/badge/version-v0.2.0-blue) ![node](https://img.shields.io/badge/node-%3E%3D18-green) ![tests](https://img.shields.io/badge/tests-299%20cases-brightgreen) ![endpoints](https://img.shields.io/badge/endpoints-98-blueviolet)
+![版本](https://img.shields.io/badge/version-v0.2.0-blue) ![node](https://img.shields.io/badge/node-%3E%3D18-green) ![tests](https://img.shields.io/badge/tests-417%20cases-brightgreen) ![endpoints](https://img.shields.io/badge/endpoints-101-blueviolet)
 
 ## 这是什么
 
@@ -26,10 +26,10 @@
 ## 快速开始
 
 ```bash
-npm install        # 装依赖（@pinax/core 走 file:vendor tgz）
-npm start          # node daemon.mjs → http://127.0.0.1:8807
+npm install        # 装依赖（sharp/transformers；内核 vendor 自持，无 tgz 依赖）
+npm start          # node daemon.mjs → http://127.0.0.1:8807（单实例锁＋/api/health）
 npm run mcp        # 全模块 MCP server（24 工具，stdio）
-npm test           # node --test（299 例，零外部依赖）
+npm test           # node --test（417 例，零外部依赖）
 ```
 
 **作为 DSH 插件运行**（左栏底部 OpenStory → 右侧栏打开工作台，DSH 会话留在左边）：
@@ -43,26 +43,17 @@ npm test           # node --test（299 例，零外部依赖）
 
 ## 架构一图
 
+七层实测分层（数字实测于 2026-11-23，逐层职责与边界见 [ARCHITECTURE.md](./ARCHITECTURE.md)）：
+
 ```
-┌─ 浏览器 / DSH webview ──────────────────────────────┐
-│  工作台（public/ 单页，无构建依赖，ui-kit 统一规范）    │
-│  页签：产物｜正文｜剧本｜日志｜世界书｜习惯｜故事源      │
-│        ｜扮演｜设置（本体＋插件中心）                   │
-│  左列：Pi-Agent（会话/待确认卡/思维链/选择链）          │
-└──────────────┬──────────────────────────────────┘
-               │ HTTP（127.0.0.1，JSON＋SSE）
-┌──────────────▼──────────────────────────────────┐
-│  daemon（daemon.mjs，唯一磁盘层）                   │
-│  · 101 端点契约（contracts.mjs，请求/响应双端校验）  │
-│  · fact 链：拆解 store/富集/曲线/守护/写通道        │
-│  · 推演/扮演引擎＋会话容器；生图/识图适配器          │
-│  · 全局任务中心/修改日志/ui-state/草稿              │
-│  · MCP server（24 工具，stdio，独立进程）           │
-└──────────────┬──────────────────────────────────┘
-┌──────────────▼──────────────────────────────────┐
-│  core/（底座抽取层——以 pinax-core 为原型）            │
-│  载体清单注册表 / 建库内核 / 依赖闭包 / 推演链 vendor  │
-└─────────────────────────────────────────────────┘
+L7  前端 public/            15 文件  19,917 行   无构建单页（ui-kit 统一规范）
+L6  契约层 contracts/        8 文件   1,369 行   七域聚合，101 端点，双端校验
+L5  daemon.mjs               1 文件   5,204 行   node:http 手写路由＋进程治理（单实例锁/stamp/generation/health）
+    └ mcp.mjs                1 文件     715 行   stdio 24 工具，daemon HTTP 薄适配（独立进程）
+L4  本仓自持层              37 模块  10,733 行   建库/导入自持（OS-123/124）＋fact 消费＋参考＋Agent＋货架＋协议层
+L3  pinaxAdapter.mjs         1 文件      60 行   内核唯一进口（五能力组，门禁 S2.4）
+L2  core/pinax              24 文件   4,332 行   fact 链底座（逐字 vendor，禁改；npm run vendor:check 盯漂移）
+L1  磁盘库                  ——        ——       文件即真相（.pinax 兼容，与 Pinax 桌面端双向兼容）
 ```
 
 数据优先级（fact-first）：**事实链 ① ＞ 正文 ② ＞ 派生物 ③**——读数据先问事实链，喂模型先问能不能只喂事实链。详见 [FACT-FIRST.md](./FACT-FIRST.md)。
@@ -71,7 +62,9 @@ npm test           # node --test（299 例，零外部依赖）
 
 | 路径 | 内容 |
 |---|---|
-| `daemon.mjs` / `contracts.mjs` | daemon＋101 端点契约（纯数据，两端共享） |
+| `daemon.mjs` / `contracts.mjs` ＋ `contracts/` | daemon＋101 端点契约（OS-130 起按七域分片，纯数据，两端共享） |
+| `pinaxAdapter.mjs` / `core/` / `vendor/contracts/` | 内核唯一进口（五能力组）→ 24 文件 fact 链（逐字 vendor，[VENDORED.md](./core/VENDORED.md) 记出处边界，禁改；`npm run vendor:check` 盯漂移） |
+| `projectDoc.mjs` / `importAdapter.mjs` / `textUtil.mjs` | 建库/导入自持（OS-123/124 fork 点；`.pinax/project.json` 格式与 Pinax 桌面端双向兼容） |
 | `mcp.mjs` | 全模块 MCP server（24 工具，零依赖 stdio；`npm run mcp`） |
 | `referenceStore.mjs` / `deduceEngine.mjs` / `deduceSession.mjs` / `deduceNarrative.mjs` | 参考索引（标签/双链/图谱）/ 推演封装 / 多局会话容器 / 叙事上下文 |
 | `roleplayEngine.mjs` / `roleplayPrompts.mjs` | 扮演调度（主持人＋N 角色子 agent）＋四层提示词 |
@@ -82,14 +75,13 @@ npm test           # node --test（299 例，零外部依赖）
 | `suites/` `styles/` `runtimes/` `genres/` `skills/`（31＋套件捆绑 2） | 插件货架（内置样例）＋ [PROTOCOL.md](./PROTOCOL.md)（套件注册协议） |
 | `workflows/` | ComfyUI 文生图工作流 |
 | `tools/dsh-openstory-studio/` | DSH 插件 bundle：宿主侧 daemon 生命周期＋客户端右侧栏工作台（`sidebar.footer.action`／`sidebarRightTabs`） |
-| `core/` | 底座抽取层（[VENDORED.md](./core/VENDORED.md) 记出处边界，本仓禁改） |
 | `samples/水浒传/` | 公版演示库（导入即体验） |
-| `test/` | 299 例（node --test，含 daemon 端到端） |
-| `docs/` | 架构蓝图与规划（[推演×数据路线](./docs/plan/deduce-data-roadmap-20261118.md) 等） |
+| `test/` | 417 例（node --test，含 daemon 端到端与解耦金样护栏） |
+| `docs/` | 架构与规划（[ARCHITECTURE.md](./ARCHITECTURE.md) 七层分层、[遗留台账](./docs/LEGACY-ITEMS.md)、[推演×数据路线](./docs/plan/deduce-data-roadmap-20261118.md) 等） |
 
 ## 出处与致谢
 
-OpenStory 自 [Pinax-next](https://github.com/skkbsgzf/Pinax-StoryHarness) 的 openstory/ 线独立而来（2026-11-14 起，OS-1→OS-107 批次逐批交付）；底座模块逐字 vendor 自同仓（见 [core/VENDORED.md](./core/VENDORED.md)），后续按底座抽取路线升格为独立包。设计对标 OpenDesign（dsHarness 生态）的插件接入与用户体验口径。
+OpenStory 自 [Pinax-next](https://github.com/skkbsgzf/Pinax-StoryHarness) 的 openstory/ 线独立而来（2026-11-14 起，OS-1→OS-133 批次逐批交付）；内核（`core/pinax` 24 文件＋`vendor/contracts` 1 文件）逐字 vendor 自同仓与 pinax-core 仓（见 [core/VENDORED.md](./core/VENDORED.md)），建库/导入/章节号已自持，上游漂移由 `npm run vendor:check` 盯防。设计对标 OpenDesign（dsHarness 生态）的插件接入与用户体验口径。
 
 ## 发布规范
 
@@ -97,6 +89,7 @@ OpenStory 自 [Pinax-next](https://github.com/skkbsgzf/Pinax-StoryHarness) 的 o
 
 ## 版本
 
+- **解耦收官**（2026-11-23，OS-120→133）：插件治理三件套＋能力白名单；内核解耦四步（server 层/载体注册体系移除→建库导入自持→pinaxAdapter 唯一进口→vendor 漂移检测）；进程治理（单实例锁/stamp/generation/health）；AG-UI 协议出口；契约分域（contracts/ 七域）；@pinax/core tgz 依赖收编移除。架构归档为[七层实测分层](./ARCHITECTURE.md)，遗留与「明确不做」见[遗留台账](./docs/LEGACY-ITEMS.md)。
 - **v0.2.x**（2026-11-21）：角色时间线泳道图、Windows 原生文件夹选择器/资源管理器唤起、Agent 栏可折叠、剧情密度热力图修复；DSH 插件内嵌模式（OS-113：右侧栏打开工作台，内嵌时收起自带的 Pi-Agent 左列，左侧交给 DSH 会话）＋窄面板适配约束（OS-114：纸面可读下限 320px、≤1000px 浮层不再让位、内边距/页签按断点降档）＋内嵌 Agent 桥（OS-115：「添加到 Agent / 润笔 / 发给 Agent」以引用块写进 DSH 当前会话输入框）＋MCP 工具面（OS-116：OpenStory 24 个 MCP 工具挂进 DSH，引用附库/章/段/root 来源，DSH Agent 可读章节、按备份语义写回）。
 - **v0.2.0**（2026-11-21）：扮演与文游舞台全面成型（多子 agent 同幕/长期记忆/拍转正/多局管理）、世界书纳入拆解词条（词条图谱槽）、剧本线（原生工作面＋外部导入）、生图识图、任务中心/修改日志/ui-state、设置重构（本体＋插件中心）、MCP 24 工具、95→99 端点契约、299 例测试。
 - **v0.1.0**（2026-11-19）：首个对外版本。路线图见 [docs/plan/](./docs/plan/)。

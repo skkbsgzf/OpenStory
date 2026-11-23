@@ -5,21 +5,32 @@
 
 ## 这里是什么
 
-零 npm 构建依赖的中文小说工作台：`daemon.mjs`（node:http 手写路由，127.0.0.1:8807）
+零 npm 构建依赖的中文小说工作台：`daemon.mjs`（node:http 手写路由，127.0.0.1:8807；
+OS-127 进程治理：单实例锁＋stamp＋generation＋`/api/health`）
 + `public/` 原生 JS 前端。模块：**小说**（纯净写作面）/ **世界书**（参考笔记＋拆解词条只读层）/
 **习惯**（写作规矩表）/ **故事源**（fact 链可视化）/ **扮演**（主持人＋多角色，默认）/ **确定性推演**（可选）/ **剧本** / **分析**（本地引擎）。
-全部经 `contracts.mjs`（101 端点）契约分派；MCP 对外 24 工具（`mcp.mjs`）。
+全部经契约层（`contracts.mjs` 聚合 `contracts/` 七域分片，101 端点）分派；
+MCP 对外 24 工具（`mcp.mjs`，stdio 独立进程，数据操作走 daemon HTTP 薄适配）。
+七层实测分层见 [ARCHITECTURE.md](./ARCHITECTURE.md)（L7 前端→L6 契约→L5 daemon→
+L4 自持层→L3 pinaxAdapter→L2 core/pinax 24 文件→L1 磁盘库）。
 
 ## 硬规则（违反＝白干）
 
-1. **`core/pinax/**` 逐字 vendor 禁改**（见 `core/VENDORED.md`）。fact 引擎是 Pinax 内核，
-   OpenStory 层只调用不修改。
+1. **内核 vendor 禁改**：`core/pinax/**`（24 文件 fact 链，逐字 vendor 自 Pinax-next@70a4f44）
+   与 `vendor/contracts/**`（OS-132 收编自 @pinax/core 0.16.0）内容一个字节不许动（见
+   `core/VENDORED.md`）。改动发生在上游再同步；漂移检测：`npm run vendor:check`
+   （sha256 指纹锚 `core/.vendored-manifest.json`）。**仓根模块只有 `pinaxAdapter.mjs`
+   可以 import `core/**`**（门禁 S2.4 钉死）——内核能力一律走它的五组出口
+   （factStore/deduce/enrich/projectMeta/projectImport）。
 2. **daemon 只监听 127.0.0.1**；凭据只存本机（agent-config.json），响应只回掩码。
 3. **参考单向性**：正文不反向进参考上下文；参考不能全量丢进 Agent 上下文。
 4. **absorb 不开 MCP**：旧目录迁入参考是显式动稿操作，只走界面按钮。
 5. **MCP 不开 agent 对话**（不套娃）；写操作一律有 .history 备份。
-6. **模块不耦合**：功能模块间禁止直接 import——只经 `contracts.mjs`/`chapters.mjs`
-   协议层与 vendor 内核；依赖注入解（范例见 `kbHealth.mjs` 的 resolveCollections 注入）。
+6. **模块不耦合**：功能模块间禁止直接 import——只经协议层（`contracts.mjs`/`chapters.mjs`/
+   `changelog.mjs`/`versionGate.mjs`/`plugins.mjs`/`pinaxAdapter.mjs`，门禁 S2.1 白名单）；
+   依赖注入解（范例见 `kbHealth.mjs` 的 resolveCollections 注入）。
+   建库/导入/章节号解析已**本仓自持**（`projectDoc.mjs`/`importAdapter.mjs`/`textUtil.mjs`，
+   OS-123/124 fork 点），不再复用上游内核。
 7. **前端令牌单一真源**：颜色进 `public/index.html` 的 `:root`（同步 `design-system/tokens.css`）；
    样式令牌区外禁止裸色值。侧栏=绝对定位浮层，正文恒居中（OS-48 宪法）。
    组件约定见 `docs/UX-STRUCTURE.md`。
@@ -128,8 +139,8 @@
 ## 改完必跑（验收线，详见 `docs/ACCEPTANCE.md`）
 
 ```bash
-node .zcode/run-gate.mjs                    # ① 全量单测（299 例）
-node tools/acceptance/acceptance.mjs        # ② 交付标准 S1–S4 门禁（14 检查，Rea 式证据）
+node .zcode/run-gate.mjs                    # ① 全量单测（417 例）
+node tools/acceptance/acceptance.mjs        # ② 交付标准 S1–S4 门禁（15 检查，Rea 式证据）
 # ③ .ua/ 知识图谱增量（/understand，skill 在 ~/.zcode/skills/understand*）
 # ④ 前端批次给作者截图讲场景（对照 design-system/DESIGN.md + docs/UX-STRUCTURE.md）
 ```
@@ -139,9 +150,17 @@ node tools/acceptance/acceptance.mjs        # ② 交付标准 S1–S4 门禁（
 
 ## 仓内地图
 
-- `contracts.mjs` 端点契约 → `daemon.mjs` 路由实现（endpointFor 分派 + validateResponse 校验）
-- `deduceEngine.mjs`（vendor 推演核）/ `deduceSession.mjs`（会话容器，推演/<bookId>/session.json）
+- 契约层：`contracts.mjs` 聚合器 ＋ `contracts/` 七域分片（library/chapters/fact/reference/
+  agent/plugins/system，101 端点）→ `daemon.mjs` 路由实现（endpointFor 分派 + validateResponse 校验）
+- 内核进口：`pinaxAdapter.mjs`（唯一进口，五组能力出口）→ `core/pinax/` 24 文件 fact 链
+  （存储协议 factFileStore ／推演端子 deduce ／enrich 度量）＋ `vendor/contracts/worldbookFileContract.js`；
+  出处与漂移见 `core/VENDORED.md` ＋ `npm run vendor:check`
+- 建库/导入自持（OS-123/124 fork 点）：`projectDoc.mjs`（project.json 合同＋建库骨架，
+  `.pinax/project.json` 格式是与 Pinax 桌面端的双向兼容契约）/ `importAdapter.mjs`（整目录导入）/
+  `textUtil.mjs`（章节号＋世界书契约判定）
+- `deduceEngine.mjs`（推演核封装，端子走 pinaxAdapter）/ `deduceSession.mjs`（会话容器，推演/<bookId>/session.json）
 - `referenceStore.mjs`（参考索引/图谱）· `enrichEngine.mjs`（语义富化 6 窗）· `factGuard.mjs`
 - `skills/` 创作知识库 31 包＋套件捆绑 2（SKILL.md 制）· `mcp/skills/` 对外分发材料 · `design-system/` 设计令牌包
 - `tools/acceptance/` 验收门禁 · `.ua/` UA 知识图谱（intermediate/ 与 tmp/ 是运行产物不入库）
 - `test/` node --test 全覆盖；跑法统一走 `.zcode/run-gate.mjs`（它会 chdir 到仓根）
+- 遗留事项与「明确不做」清单：`docs/LEGACY-ITEMS.md`（OS-133 起收官判定的唯一台账）

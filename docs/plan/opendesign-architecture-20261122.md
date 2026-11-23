@@ -1,5 +1,7 @@
 # OpenDesign 架构对标（2026-11-22）
 
+> ✅ **已收官（OS-123→133，2026-11-23）**——对标结论已消化：采纳（sidecar 进程治理 OS-127／AG-UI 式协议出口 OS-128／契约分域 OS-130）；明确不抄清单见 [docs/LEGACY-ITEMS.md](../LEGACY-ITEMS.md)【明确不做】档；实施后架构见 [ARCHITECTURE.md](../../ARCHITECTURE.md)。
+
 > 作者问：「我们对标的 opendesign 用的是什么架构」
 >
 > 本文基于实测：`D:/OpenDesign` 是**安装版但未打 asar**，`resources/app/node_modules/@open-design/*` 全部可读（编译产物 .mjs 保留了源码分段注释与 zod schema），`resources/open-design/` 是数据面（154 个设计系统 / skills / agent-runtimes）。因此下面每一条都有代码依据，不是猜的。

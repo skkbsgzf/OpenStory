@@ -2,6 +2,11 @@
 
 生成于 2026-11-21T10:48:19.120Z
 
+> **OS-133 复核（2026-11-23）**：十条同源关系的上游/下游/版本字段逐条重对，均未变化。
+> 唯进口路径更新：内核 readFactWiki/writeFactFile 自 OS-125 起经 `pinaxAdapter.factStore`
+> 进口（内核唯一进口，门禁 S2.4）。五个缺口仍是缺口，已登记进 `docs/LEGACY-ITEMS.md`
+> 【后续可选】（fs.watch 常驻监听／fact 增量 PATCH／故事源大纲双向编辑等条目）。
+
 ## 一、同源关系清单
 
 | # | 上游 | 下游 | 版本字段 | 有检测 |
@@ -23,7 +28,7 @@
 - 上游：拆解/<bookId>.json（revision 自增）
 - 下游：拆解/<bookId>.wiki.json（章摘要/人物档/伏笔）
 - 版本字段：wiki.derivedFrom.factRevision
-- 说明：内核 readFactWiki 会返回 derivedFrom，但 OpenStory 没有任何地方拿它和当前 revision 比。实测泄密的心：wiki 记 factRevision=1，fact 已 revision=4——已过期 3 版，界面无感知。
+- 说明：内核 readFactWiki（经 pinaxAdapter.factStore 进口）会返回 derivedFrom，但 OpenStory 没有任何地方拿它和当前 revision 比。实测泄密的心：wiki 记 factRevision=1，fact 已 revision=4——已过期 3 版，界面无感知。
 
 ### fact→故事源
 - 上游：拆解/<bookId>.json
