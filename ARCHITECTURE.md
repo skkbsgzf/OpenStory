@@ -24,7 +24,7 @@
 ```
 L7  前端 public/            15 文件  19,917 行   无构建单页（浏览器/DSH webview）
 L6  契约层 contracts/        8 文件   1,369 行   七域聚合，101 端点
-L5  daemon（HTTP＋进程治理）  1 文件   5,204 行   node:http 手写路由＋单实例锁/stamp/generation/health
+L5  daemon（HTTP＋进程治理）  1 文件   5,298 行   node:http 手写路由＋OS-136 来源防护四层闸＋单实例锁/stamp/generation/health
     └ mcp.mjs（伴生进程）     1 文件     715 行   stdio 24 工具，daemon HTTP 的薄适配层
 L4  本仓自持层              37 模块  10,733 行   建库/导入/fact 消费/参考/Agent/货架/协议层…
 L3  pinaxAdapter.mjs         1 文件      60 行   内核唯一进口（五能力组）
@@ -43,19 +43,26 @@ L1  磁盘库                  ——        ——       文件即真相（库�
 
 ### L6 契约层 `contracts/` ——8 文件 / 1,369 行 / 101 端点
 
-- **职责**：API 形状唯一真源（OS-130 契约分域）。`contracts.mjs`（217 行）聚合七域分片：
+- **职责**：API 形状唯一真源（OS-130 契约分域）。`contracts.mjs`（221 行）聚合七域分片：
   library(6) / chapters(12) / fact(27) / reference(7) / agent(17) / plugins(10) / system(22)
   ＝ **101 端点**（`ENDPOINT_LIST` 实测 101）；请求/响应双端校验，daemon 与前端共享同一份。
+  错误码词表含 OS-136 来源防护两码：`FORBIDDEN_ORIGIN`（Host/Origin/Sec-Fetch-Site 拒收，403）、
+  `UNSUPPORTED_MEDIA_TYPE`（带 body 非 JSON，400）。
 - **边界**：纯数据＋纯函数，零依赖（不 import node:path/fs，浏览器也能载入）；
   改形状＝改对应域分片，两端一起跟。
 
-### L5 daemon ——daemon.mjs 1 文件 / 5,204 行（＋mcp.mjs 伴生进程 715 行）
+### L5 daemon ——daemon.mjs 1 文件 / 5,298 行（＋mcp.mjs 伴生进程 715 行）
 
 - **职责**：node:http 手写路由，只监听 127.0.0.1:8807（`DEFAULT_PORT` daemon.mjs:157）。
   endpointFor 契约分派＋validateResponse 响应校验；**唯一磁盘写入面**（原子写＋.history
-  备份）；SSE 通道；**OS-127 进程治理**——单实例锁（`%LOCALAPPDATA%/PinaxNext/openstory/
-  daemon.lock`，daemon.mjs:262）、acquire/stamp/clear 三步闸（daemon.mjs:294-345）、
-  generation 代际继承、`/api/health` 读 DAEMON_RUNTIME（daemon.mjs:162-165, 1011）。
+  备份）；SSE 通道；**OS-136 来源防护四层闸**——①Host 闸全局生效（只认
+  `127.0.0.1/localhost/[::1]`＋实际绑定端口，防 DNS 重绑定）；②Origin／③Sec-Fetch-Site
+  两道闸管全部 `/api`（只放行本机回环源与 same-origin/none；不带 Origin 的本机进程——
+  node fetch/curl/mcp.mjs——不受影响）；④带 body 必须 application/json（跨站
+  text/plain 简单请求从此写不进来；`FORBIDDEN_ORIGIN`=403、`UNSUPPORTED_MEDIA_TYPE`=400，
+  专项测试 `test/originGuard.test.mjs`）；**OS-127 进程治理**——单实例锁
+  （`%LOCALAPPDATA%/PinaxNext/openstory/daemon.lock`）、acquire/stamp/clear 三步闸、
+  generation 代际继承、`/api/health` 读 DAEMON_RUNTIME。
 - **伴生进程**：`mcp.mjs`（715 行，stdio JSON-RPC，**24 工具**）是 daemon HTTP 的薄适配层
   ——数据操作全部转发本机 daemon，唯一直算例外是 analysis 纯函数；不套娃（不开 agent 对话）。
 - **边界**：业务逻辑下沉 L4；daemon 只做分派、校验、落盘与进程治理。
@@ -156,6 +163,10 @@ OS-123/124 解耦后，建库/导入/章节号解析全部自持，不再 vendor
 3. **S2.4 唯一进口**：仓根模块里只有 `pinaxAdapter.mjs` 可以 import `core/**`
    （门禁静态扫描钉死）；`vendor/contracts/` 是格式契约面例外，仅 textUtil 及其护栏测试直引。
 4. **依赖只许向下**（L7→L6→L5→L4→L3→L2→L1 单向）；Pinax 从不 import OpenStory。
+5. **daemon 来源防护闸不许拆**（OS-136）：Host／Origin／Sec-Fetch-Site 三道闸＋强制 JSON
+   content-type 是「作者浏览器里的任意网页写不进本机 daemon」的纵深防线；所有端点（含
+   `fsBrowse` 这类本机目录浏览）默认吃闸，不做绕行后门。本地进程本来就能直接读盘，
+   不加目录白名单——OS-110/119 的「任意磁盘目录建库」行为不变。
 
 ## 插件生态（三层货架，协议各自成文）
 

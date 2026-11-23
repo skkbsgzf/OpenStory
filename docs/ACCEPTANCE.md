@@ -8,14 +8,14 @@
 | 标准 | 检查 | 口径 |
 |---|---|---|
 | S1 Agentic | S1.1–S1.5 | MCP 工具覆盖五模块（读+写）· mcp/skills 文档同步 · skills/ 30 包完整 · dsh-cli 运行时 · 多 CLI 派发器 |
-| S2 可插拔 | S2.1–S2.4 | 模块间零 import（协议层 contracts/changelog/versionGate/plugins/pinaxAdapter 除外）· 前端模块隔离（md.mjs 渲染协议除外）· 契约驱动（endpointFor + validateResponse）· 内核唯一进口（仓根模块仅 pinaxAdapter.mjs 可引 core/**，OS-125） |
+| S2 可插拔 | S2.1–S2.4 | 模块间零 import（协议层 contracts/changelog/versionGate/plugins/pinaxAdapter 除外）· 前端模块隔离（md.mjs 渲染协议除外）· 契约驱动（endpointFor + validateResponse）· 内核唯一进口（仓根模块仅 pinaxAdapter.mjs 可引 core/**，OS-125）· 来源防护闸常绿（OS-136：`test/originGuard.test.mjs` 钉死 Host/Origin/Sec-Fetch-Site 三道闸＋强制 JSON content-type，daemon 只服务本机回环，任意网页写不进） |
 | S3 前端一致性 | S3.1–S3.3 | 裸色值零容忍（:root 令牌单一真源）· 浮层宪法（OS-48 不挤压正文）· 组件约定类齐备 |
 | S4 UX 跳转层级 | S4.1–S4.3 | 核心页签顶栏可达 · 关闭按钮两级约定（rm-x/page-close）· docs/UX-STRUCTURE.md 清单在 |
 
 ## 落地前四步
 
 ```bash
-# ① 单测门禁（217 例）
+# ① 单测门禁（446 例，OS-136 起含 test/originGuard.test.mjs 来源防护 8 例）
 node .zcode/run-gate.mjs
 
 # ② 交付标准门禁（S1–S4，Rea 式证据落盘）

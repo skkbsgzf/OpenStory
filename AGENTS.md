@@ -139,7 +139,7 @@ L4 自持层→L3 pinaxAdapter→L2 core/pinax 24 文件→L1 磁盘库）。
 ## 改完必跑（验收线，详见 `docs/ACCEPTANCE.md`）
 
 ```bash
-node .zcode/run-gate.mjs                    # ① 全量单测（438 例）
+node .zcode/run-gate.mjs                    # ① 全量单测（446 例）
 node tools/acceptance/acceptance.mjs        # ② 交付标准 S1–S4 门禁（15 检查，Rea 式证据）
 # ③ .ua/ 知识图谱增量（/understand，skill 在 ~/.zcode/skills/understand*）
 # ④ 前端批次给作者截图讲场景（对照 design-system/DESIGN.md + docs/UX-STRUCTURE.md）

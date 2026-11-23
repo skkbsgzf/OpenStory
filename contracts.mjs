@@ -39,7 +39,11 @@ export const API_ERROR_CODES = Object.freeze({
   WRITE_PROTOCOL_IO_FAILED: 'WRITE_PROTOCOL_IO_FAILED',
   // Agent 通道（OS-4）：没配端点/模型就发对话；上游不可达/非 2xx 不冒充模型回答。
   AGENT_NOT_CONFIGURED: 'AGENT_NOT_CONFIGURED',
-  AGENT_UPSTREAM_ERROR: 'AGENT_UPSTREAM_ERROR'
+  AGENT_UPSTREAM_ERROR: 'AGENT_UPSTREAM_ERROR',
+  // 来源防护（OS-136）：Host/Origin/Sec-Fetch-Site 三道闸——非本机回环来源一律 403
+  FORBIDDEN_ORIGIN: 'FORBIDDEN_ORIGIN',
+  // 来源防护（OS-136）：带 body 的请求必须 content-type: application/json（允许 charset 后缀），否则 400
+  UNSUPPORTED_MEDIA_TYPE: 'UNSUPPORTED_MEDIA_TYPE'
 })
 
 /** 101 个端点的形状合同（OS-130 起按域分片，这里聚合；`path` 不含 query，query 字段在 request.query 里单列）。 */

@@ -13,6 +13,8 @@
  *
  * 三条硬边界：
  *   · 只绑 127.0.0.1（不监外网，对齐 OpenDesign sidecar）；不做 HTTPS/隧道/多用户。
+ *     OS-136 来源防护四层闸：Host（全局）／Origin／Sec-Fetch-Site（/api）只认本机回环，
+ *     带 body 必须 application/json——作者浏览器里的任意网页都写不进本机 daemon。
  *   · `root` 必须命中库清单（`%LOCALAPPDATA%/PinaxNext/next-preferences.json` 的 recentProjects）
  *     或启动时显式 `--root=` 授权；文件路径 resolve 后必须落在 root 内（照 S2 的路径逃逸拒收写法）。
  *   · 正文写入不做 revision 闸（v1 边界）：OpenStory 与 Electron 同时写同一库时，只有写前
@@ -199,7 +201,9 @@ const STATUS_BY_CODE = Object.freeze({
   WRITE_PROTOCOL_NOT_FOUND: 404,
   WRITE_PROTOCOL_IO_FAILED: 500,
   AGENT_NOT_CONFIGURED: 400,
-  AGENT_UPSTREAM_ERROR: 502
+  AGENT_UPSTREAM_ERROR: 502,
+  FORBIDDEN_ORIGIN: 403,
+  UNSUPPORTED_MEDIA_TYPE: 400
 })
 
 function text(value) {
@@ -569,6 +573,72 @@ async function readJson(req) {
     const failure = new Error(`请求体不是有效 JSON：${text(error?.message || error)}`)
     failure.code = 'INVALID_JSON'
     throw failure
+  }
+}
+
+/* ---------- 来源防护（OS-136）---------- */
+
+/**
+ * 四层纵深闸，堵「作者浏览器里的任意网页向 127.0.0.1:8807 跨站盲写」的洞
+ * （text/plain 表单 PUT/POST 属于 CORS 简单请求，不过预检就能把 body 送进来，
+ * 只是读不到响应；再叠加 DNS 重绑定可以让恶意页面「读得到」）：
+ *   ① Host 闸（全局，含静态资源）：只认回环名＋实际绑定端口
+ *      （127.0.0.1:端口 / localhost:端口 / [::1]:端口），否则 403——防 DNS 重绑定；
+ *   ② Origin 闸（/api）：带 Origin 头且不是本机回环源（含 `Origin: null`）→ 403；
+ *      不带 Origin 的放行（node fetch、curl、mcp.mjs 这类 stdio 进程调 daemon）；
+ *   ③ Sec-Fetch-Site 闸（/api）：带头且值不是 same-origin / none → 403；
+ *   ④ content-type 闸（/api）：带 body 的请求必须是 application/json
+ *      （允许 charset 等参数后缀），否则 400——application/json 不在 CORS 安全清单里，
+ *      跨站带它会触发预检，而 daemon 不回任何 CORS 头，预检必死。
+ * 同源页面四层天然全过：GET 不带 Origin，POST/PUT 带同源 Origin＋same-origin 标。
+ */
+/** 请求是否真的带了 body（有 content-length>0 或 transfer-encoding 才算）。 */
+function requestHasBody(req) {
+  const contentLength = Number(req.headers['content-length'])
+  if (Number.isSafeInteger(contentLength) && contentLength > 0) return true
+  return Boolean(text(req.headers['transfer-encoding']).trim())
+}
+
+/** ① Host 闸：DNS 重绑定会把任意域名解析到 127.0.0.1，Host 一眼就能看穿。 */
+function hostGateFail(req, port) {
+  const host = text(req.headers.host).trim().toLowerCase()
+  if (host === `127.0.0.1:${port}` || host === `localhost:${port}` || host === `[::1]:${port}`) return null
+  return {
+    code: API_ERROR_CODES.FORBIDDEN_ORIGIN,
+    message: `Host 不在回环白名单（只认 127.0.0.1 / localhost / [::1] 加本服务端口 ${port}）：${host || '（缺失）'}`
+  }
+}
+
+/** ② Origin 闸：浏览器跨站请求必带 Origin（或 null）；本机进程不带 Origin，不受影响。 */
+function originGateFail(req, port) {
+  const origin = text(req.headers.origin).trim()
+  if (!origin) return null
+  if (origin === `http://127.0.0.1:${port}` || origin === `http://localhost:${port}`) return null
+  return {
+    code: API_ERROR_CODES.FORBIDDEN_ORIGIN,
+    message: `Origin 非本机回环源（http://127.0.0.1:${port} / http://localhost:${port} 之外一律拒）：${origin}`
+  }
+}
+
+/** ③ Sec-Fetch-Site 闸：浏览器自带的请求上下文标，cross-site / same-site 都不放行。 */
+function secFetchSiteGateFail(req) {
+  const site = text(req.headers['sec-fetch-site']).trim().toLowerCase()
+  if (!site) return null
+  if (site === 'same-origin' || site === 'none') return null
+  return {
+    code: API_ERROR_CODES.FORBIDDEN_ORIGIN,
+    message: `Sec-Fetch-Site 非同源（只放行 same-origin / none）：${site}`
+  }
+}
+
+/** ④ content-type 闸：text/plain / multipart 等简单请求通道就此关闭。 */
+function contentTypeGateFail(req) {
+  if (!requestHasBody(req)) return null
+  const mediaType = text(req.headers['content-type']).trim().toLowerCase().split(';')[0].trim()
+  if (mediaType === 'application/json') return null
+  return {
+    code: API_ERROR_CODES.UNSUPPORTED_MEDIA_TYPE,
+    message: `带 body 的请求必须 content-type: application/json（收到：${mediaType || '（缺失）'}）`
   }
 }
 
@@ -1007,7 +1077,7 @@ async function handleApi(req, res, url, context) {
     const payload = {
       ok: true,
       pid: process.pid,
-      port: currentPort(),
+      port: context.port ?? currentPort(),
       generation: DAEMON_RUNTIME.generation,
       startedAt: DAEMON_RUNTIME.startedAt,
       uptimeMs: Math.round(process.uptime() * 1000)
@@ -4993,9 +5063,16 @@ export function createOpenStoryHandler({
   const resolvedSuiteStatePath = suiteStatePath ?? defaultSuiteStatePath(env)
   const resolvedGenresDirs = genresDirs ?? [builtinGenresDir(), defaultUserGenresDir(env)]
   const resolvedSkillsDirs = skillsDirs ?? [builtinSkillsDir(), defaultUserSkillsDir(env)]
-  return async function handler(req, res) {
+  return async function handler(req, res, boundPort = null) {
     const url = new URL(req.url || '/', 'http://127.0.0.1')
+    /* OS-136：端口以「收到这个请求的 server 实例实际绑定的端口」为准（同一进程嵌多个
+     * daemon 的测试里，模块级 __currentPort 只记最后一个，不能当闸的依据）。 */
+    const port = Number.isSafeInteger(boundPort) && boundPort > 0 ? boundPort : currentPort()
     try {
+      /* OS-136 ① Host 闸（全局，含静态资源与套件资产）：回环名＋实际绑定端口之外一律 403。
+       * 放在最前面——DNS 重绑定对静态资源同样成立（读得到 app.js 就读得到一切）。 */
+      const hostFail = hostGateFail(req, port)
+      if (hostFail) return sendError(res, hostFail.code, hostFail.message)
       /* OS-95：套件前端令牌桥。
        * 插件设置页跑在同源 iframe 里，**拿不到父文档的 CSS 变量**（iframe 不继承）。
        * 所以宿主要主动下发一套：插件页只需 <link rel="stylesheet" href="/suite-assets/_tokens.css">
@@ -5025,7 +5102,12 @@ export function createOpenStoryHandler({
         return await serveSuiteAsset(req, res, resolvedSuitesDirs, decodeURIComponent(suiteId), decodeURIComponent(relPath))
       }
       if (url.pathname === '/api' || url.pathname.startsWith('/api/')) {
-        return await handleApi(req, res, url, { port: currentPort(), preferencesPath, extraRoots, defaultRoot, agentConfigPath: resolvedConfigPath, agentSessionsDir: resolvedSessionsDir, stylesDirs: resolvedStylesDirs, runtimesDirs: resolvedRuntimesDirs, suitesDirs: resolvedSuitesDirs, suiteStatePath: resolvedSuiteStatePath, genresDirs: resolvedGenresDirs, skillsDirs: resolvedSkillsDirs, env })
+        /* OS-136 ②③④ /api 来源闸：Origin → Sec-Fetch-Site → content-type，过了才进契约分派。 */
+        const gateFail = originGateFail(req, port)
+          ?? secFetchSiteGateFail(req)
+          ?? contentTypeGateFail(req)
+        if (gateFail) return sendError(res, gateFail.code, gateFail.message)
+        return await handleApi(req, res, url, { port, preferencesPath, extraRoots, defaultRoot, agentConfigPath: resolvedConfigPath, agentSessionsDir: resolvedSessionsDir, stylesDirs: resolvedStylesDirs, runtimesDirs: resolvedRuntimesDirs, suitesDirs: resolvedSuitesDirs, suiteStatePath: resolvedSuiteStatePath, genresDirs: resolvedGenresDirs, skillsDirs: resolvedSkillsDirs, env })
       }
       if (req.method !== 'GET' && req.method !== 'HEAD') {
         return sendError(res, API_ERROR_CODES.NOT_FOUND, `静态托管只支持 GET/HEAD：${req.method}`)
@@ -5078,7 +5160,8 @@ export function startDaemon({
     env
   })
   const server = createServer((req, res) => {
-    handler(req, res)
+    // OS-136：请求到来时 server 必在监听，address() 就是本实例的真实端口（--port=0 也准）
+    handler(req, res, server.address()?.port ?? null)
   })
   return new Promise((resolvePromise, rejectPromise) => {
     server.once('error', rejectPromise)
