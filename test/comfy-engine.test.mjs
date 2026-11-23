@@ -7,7 +7,7 @@ import assert from 'node:assert/strict'
 import { mkdtemp, writeFile, rm, mkdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { applyWorkflowInputs, probeComfy } from '../src/services/comfyEngine.mjs'
+import { applyWorkflowInputs, probeComfy } from '../src/modules/comfyui/comfyEngine.mjs'
 
 const DEAD_URL = 'http://127.0.0.1:9'
 
@@ -70,7 +70,7 @@ test('探测：空地址直接失败', async () => {
 test('端到端：工作流文件缺失时如实报错（不抛）', async () => {
   const base = await mkdtemp(join(tmpdir(), 'os-comfy-'))
   try {
-    const { generateViaComfy } = await import('../src/services/comfyEngine.mjs')
+    const { generateViaComfy } = await import('../src/modules/comfyui/comfyEngine.mjs')
     const result = await generateViaComfy({
       comfyUrl: DEAD_URL,
       workflowPath: 'nope.json',
@@ -87,7 +87,7 @@ test('端到端：ComfyUI 连不上时如实报错（不抛）', async () => {
   try {
     await mkdir(join(base, '参考'), { recursive: true })
     await writeFile(join(base, '参考', 'wf.json'), JSON.stringify(WORKFLOW), 'utf-8')
-    const { generateViaComfy } = await import('../src/services/comfyEngine.mjs')
+    const { generateViaComfy } = await import('../src/modules/comfyui/comfyEngine.mjs')
     const result = await generateViaComfy({
       comfyUrl: DEAD_URL,
       workflowPath: '参考/wf.json',

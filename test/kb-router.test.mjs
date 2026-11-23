@@ -7,7 +7,7 @@ import assert from 'node:assert/strict'
 import { mkdtemp, writeFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { buildAugmentedPrompt, knowledgePromptSection, resolveCollections, routeQuery } from '../src/services/kbRouter.mjs'
+import { buildAugmentedPrompt, knowledgePromptSection, resolveCollections, routeQuery } from '../src/modules/kb/kbRouter.mjs'
 import { listFingerprintPacks, runStyleCheck } from '../src/services/style-check.mjs'
 
 test('路由：五个意图各归其库；未知意图拒收', () => {

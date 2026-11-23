@@ -2012,9 +2012,7 @@ function writeHtml() {
         <button class="doc-drawer-btn" data-action="refcol-toggle" title="参考资料" aria-label="参考资料">
           <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><rect x="2.5" y="2.5" width="11" height="11" rx="1.6" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M2.5 6h11M2.5 10h11" stroke="currentColor" stroke-width="1.4"/></svg>
         </button>
-        <button class="doc-drawer-btn" data-action="analyze-toggle" title="分析本章" aria-label="分析本章">
-          <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><circle cx="8" cy="8" r="5.4" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M8 2.6A5.4 5.4 0 0 1 13.4 8H8z" fill="currentColor"/></svg>
-        </button>
+        <button class="doc-drawer-btn" data-action="analyze-toggle" title="分析本章" aria-label="分析本章"${moduleOn('analysis') ? '' : ' hidden'}><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><circle cx="8" cy="8" r="5.4" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M8 2.6A5.4 5.4 0 0 1 13.4 8H8z" fill="currentColor"/></svg></button>
         <button class="doc-icon" data-action="doc-more" title="本章（版本历史 / 重命名 / 删除 / 显示设置）" aria-label="本章">
           <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><circle cx="3.4" cy="8" r="1.35" fill="currentColor"/><circle cx="8" cy="8" r="1.35" fill="currentColor"/><circle cx="12.6" cy="8" r="1.35" fill="currentColor"/></svg>
         </button>
@@ -3906,7 +3904,7 @@ function settingsModelsSectionHtml() {
       <div class="err" id="mcfg-text-err"></div>
     </div>
 
-    <div class="cfg-card" data-cfg-card="image">
+    <div class="cfg-card" data-cfg-card="image"${moduleOn('comfyui') ? '' : ' hidden'}>
       <div class="cfg-head"><h3>生图</h3>${cfgBadgeHtml('image')}</div>
       <div class="field">
         <label class="cfg-switch">
@@ -3955,7 +3953,7 @@ function settingsModelsSectionHtml() {
       <div class="err" id="mcfg-image-err"></div>
     </div>
 
-    <div class="cfg-card" data-cfg-card="vision">
+    <div class="cfg-card" data-cfg-card="vision"${moduleOn('comfyui') ? '' : ' hidden'}>
       <div class="cfg-head"><h3>识图</h3>${cfgBadgeHtml('vision')}</div>
       <div class="field">
         <label class="cfg-switch">
@@ -4461,7 +4459,7 @@ function settingsCombinedEnginesHtml() {
   // 这里的顺序＝「接什么 → 查什么 → 存哪」。
   return [
     section('对话模型与运行时', 'Agent 走哪条通道、用哪个模型', strip(settingsModelsSectionHtml())),
-    section('知识库', 'WeKnora 连接、分库与测试', strip(settingsKbSectionHtml())),
+    ...(moduleOn('kb') ? [section('知识库', 'WeKnora 连接、分库与测试', strip(settingsKbSectionHtml()))] : []),
     section('本机路径与导入', '货架位置、库清单、导入稿件', strip(settingsCombinedDataSectionHtml()))
   ].join('')
 }
@@ -5228,7 +5226,7 @@ function refImagesSlotHtml(note) {
   const urlOf = (rel) => /^https?:\/\//u.test(rel)
     ? rel
     : `/api/reference/asset?root=${encodeURIComponent(root)}&path=${encodeURIComponent(rel)}`
-  const genBtn = `<button class="ref-slot-gen" data-action="ref-gen-image" title="按这个条目生成设定图（后台任务，进度看右下角任务中心）">✦ 生成设定图</button>`
+  const genBtn = `<button class="ref-slot-gen" data-action="ref-gen-image" title="按这个条目生成设定图（后台任务，进度看右下角任务中心）"${moduleOn('comfyui') ? '' : ' hidden'}>✦ 生成设定图</button>`
   if (!images.length) {
     return `<div class="ref-img-slot empty">
       <div class="ref-slot-head">参考图</div>
@@ -8634,9 +8632,7 @@ function scriptViewHtml() {
         <button class="doc-drawer-btn" data-action="refcol-toggle" title="左侧栏（文件/人物/图谱）" aria-label="左侧栏">
           <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><rect x="2.5" y="2.5" width="11" height="11" rx="1.6" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M2.5 6h11M2.5 10h11" stroke="currentColor" stroke-width="1.4"/></svg>
         </button>
-        <button class="doc-drawer-btn" data-action="analyze-toggle" title="分析本剧" aria-label="分析">
-          <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><circle cx="8" cy="8" r="5.4" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M8 2.6A5.4 5.4 0 0 1 13.4 8H8z" fill="currentColor"/></svg>
-        </button>
+        <button class="doc-drawer-btn" data-action="analyze-toggle" title="分析本剧" aria-label="分析"${moduleOn('analysis') ? '' : ' hidden'}><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><circle cx="8" cy="8" r="5.4" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M8 2.6A5.4 5.4 0 0 1 13.4 8H8z" fill="currentColor"/></svg></button>
         <button class="doc-icon" data-action="script-more" title="剧本设置（自动排版 / 角色配色 / 互转）" aria-label="剧本设置">
           <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><circle cx="3.4" cy="8" r="1.35" fill="currentColor"/><circle cx="8" cy="8" r="1.35" fill="currentColor"/><circle cx="12.6" cy="8" r="1.35" fill="currentColor"/></svg>
         </button>
@@ -9838,7 +9834,7 @@ function deduceEngineHtml() {
         <button class="fl-btn${engine.bgmOn ? ' on' : ''}" data-action="deduce-bgm-toggle"${bgmAsset ? '' : ' disabled'}
           title="${bgmAsset ? `播放：${esc(bgmAsset.name)}（循环）` : '未配置 BGM——放 推演/…/素材/bgm/<场景或情绪>.mp3 即可启用'}">♪ BGM</button>
         <i class="fl-bar-div"></i>
-        <button class="fl-btn" data-action="deduce-image" title="按本拍局面生成一张场景立绘（需在设置里配生图端点）"${engine.turnBusy ? ' disabled' : ''}>生图</button>
+        <button class="fl-btn" data-action="deduce-image" title="按本拍局面生成一张场景立绘（需在设置里配生图端点）"${engine.turnBusy ? ' disabled' : ''}${moduleOn('comfyui') ? '' : ' hidden'}>生图</button>
         <button class="fl-btn" data-action="deduce-archive"${engine.turnBusy || !bufferCount ? ' disabled' : ''} title="把本章缓冲的拍整理成 markdown 归档（不写正文文件）">归档</button>
         <button class="fl-btn" data-action="deduce-export"${engine.turnBusy ? ' disabled' : ''} title="整个会话导出成 markdown（每拍的决定＋正文），落 推演/&lt;bookId&gt;/导出/">导出</button>
       ` : ''}
@@ -12103,6 +12099,8 @@ function uiGet(key, fallback = null) {
   const mem = uiMemory()
   return key in mem.values ? mem.values[key] : fallback
 }
+/** OS-144 模块插件判定（前端唯一入口）：ui-state `modules.enabled.<id>`，缺省启用。 */
+function moduleOn(id) { const nested = uiGet('modules', null); if (nested && nested.enabled && Object.prototype.hasOwnProperty.call(nested.enabled, id)) return nested.enabled[id] !== false; return uiGet(`modules.enabled.${id}`, true) !== false }
 
 /** 防抖落库：短时间内多次设置只写一次。 */
 let uiFlushTimer = null

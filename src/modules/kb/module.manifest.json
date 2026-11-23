@@ -1,0 +1,18 @@
+{
+  "spec": "openstory-module@1",
+  "id": "kb",
+  "name": "知识库",
+  "version": "0.1.0",
+  "core": false,
+  "description": "知识库连接（WeKnora/embedding）：路由、适配与健康三件套。独占端点随停用失效；设置「引擎与存储」里的知识库连接配置区隐去，本机 kb-config 不删。Agent 输入条上的「知识链」灯泡不属于本模块。",
+  "endpoints": [
+    "kbStatusGet",
+    "kbConfigGet",
+    "kbConfigPut",
+    "kbTest"
+  ],
+  "pages": [
+    { "id": "kb-settings", "label": "知识库", "slot": "settings" }
+  ],
+  "settings": []
+}

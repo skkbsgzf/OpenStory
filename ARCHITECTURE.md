@@ -39,7 +39,7 @@ L1  磁盘库                  ——        ——       文件即真相（库�
 ### L7 前端 `public/` ——16 文件 / 20,157 行（OS-143 实测）
 
 - **职责**：工作台单页（无构建、原生 ES 模块）。`index.html`（2,756 行，样式令牌 `:root`
-  单一真源）＋ `app.js`（12,502 行，装配壳：路由/页签消费/左列 Agent）＋ 14 个零依赖模块
+  单一真源）＋ `app.js`（12,500 行，装配壳：路由/页签消费/左列 Agent）＋ 14 个零依赖模块
   （analysis/analysisModules/charts/graph/md/reference/referenceStore/script/scriptFact/
   scriptFormat/storySource/storyTree/ui-kit＋`views/registry.mjs` 页签/路由声明式注册表）；
   echarts 本地 vendor（`public/vendor/echarts.min.js`）。
@@ -95,7 +95,8 @@ OS-123/124 解耦后，建库/导入/章节号解析全部自持，不再 vendor
 | 参考/世界书 | referenceStore(609，标签/双链/图谱，src/modules/worldbook/) |
 | Agent | agentStore(485，src/modules/agentbar/) / agentEvents(356，AG-UI canonical 事件模型＋SSE 投影，src/protocol/) / roleplayEngine(280) / roleplayPrompts(188)（后两者 src/modules/roleplay/） |
 | 插件货架（src/services/，数据目录仍在仓根 suites//styles//runtimes//genres//skills/） | suites(456) / skills(324) / runtimes(316) / genres(288) / stylePacks(121) |
-| 引擎与周边（src/services/） | comfyEngine(198 生图) / kbAdapter(222) / kbHealth(182) / kbRouter(131) / libState(191，src/protocol/) / jobCenter(171 任务中心) / nativePicker(131) / dsh-bridge(396) / dsh-cli(392) / embedding-server(156) / embeddingPaths(26) / cli-bridge(112) / style-check(167) |
+| 模块插件（OS-144，`src/modules/<id>/module.manifest.json`＝`openstory-module@1`） | analysis（manifest 声明；引擎仍是 public/analysis.mjs 零依赖纯函数，前端与 Node 共用，无 daemon 端点）/ comfyui（comfyEngine 198 生图；独占端点 deduceImage / referenceImageGenerate / visionDescribe）/ kb（kbRouter 131 / kbAdapter 222 / kbHealth 182；独占端点 kbStatusGet / kbConfigGet / kbConfigPut / kbTest）。启停判定单一入口 `src/protocol/modules.mjs` 的 isModuleEnabled（ui-state `modules.enabled.<id>`，缺省 true）；独占端点停用回 MODULE_DISABLED，共用端点不受影响，值与数据保留 |
+| 引擎与周边（src/services/） | libState(191，src/protocol/) / jobCenter(171 任务中心) / nativePicker(131) / dsh-bridge(396) / dsh-cli(392) / embedding-server(156) / embeddingPaths(26) / cli-bridge(112) / style-check(167) |
 
 - **边界**（OS-142 升格为路径规则）：`src/modules/**` 只准引三类——node 内置模块
   （`node:` 前缀）、`src/protocol/**`（Host API：index.mjs 七命名空间＋叶子件）、自己模块

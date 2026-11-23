@@ -38,7 +38,8 @@ import {
 import { readLegacyDeduceState, bridgeDeduceCandidates, turnNodeWords, generateTurnProse, buildDeduceLlmPort } from '../../modules/deduce/turnProse.mjs'
 import { buildRoleplayMemory, compressMemory, deAiPass, roleplayOpening as roleplayOpeningEngine, roleplayTurn as roleplayTurnEngine, shouldSummarize } from '../../modules/roleplay/roleplayEngine.mjs'
 import { enrichBook, enrichGraph as enrichGraphEngine } from '../../services/enrichEngine.mjs'
-import { generateViaComfy } from '../../services/comfyEngine.mjs'
+import { generateViaComfy } from '../../modules/comfyui/comfyEngine.mjs'
+import { isModuleEnabled } from '../../protocol/modules.mjs'
 import { loadConfigV2, DEFAULT_IMAGE_STYLE, DEFAULT_IMAGE_NEGATIVE, imagesGenerationsUrl } from '../../services/agentConfig.mjs'
 import { chatCompleteViaUpstream, resolveChatUpstream, resolveUpstreamSafe } from '../../services/chatUpstream.mjs'
 import { runCliChat } from '../../services/cli-bridge.mjs'
@@ -511,7 +512,8 @@ export async function roleplayOpeningGet(ctx) {
   })
   if (!result.ok) return sendError(res, API_ERROR_CODES.INVALID_ENTRY, result.error ?? '开场没有产出')
   // OS-102：开场也过 AI 味闸（超阈重写一次；只换文风不动事实）
-  const gated = await deAiPass({ chatComplete, prose: result.feedback })
+  // OS-144：分析模块停用＝宿主钩子判定后跳过本闸（不留下「模块停了还被调用」的旁路）
+  const gated = await deAiPass({ chatComplete, prose: result.feedback, enabled: await isModuleEnabled(root, 'analysis') })
   return sendJson(res, 200, {
     ok: true,
     feedback: gated.text,
@@ -582,7 +584,8 @@ export async function roleplayTurn(ctx) {
   })
   if (!result.ok) return sendError(res, API_ERROR_CODES.INVALID_ENTRY, result.error ?? '本幕没有产出')
   // OS-102：世界反馈落稿前过 AI 味闸（角色演绎 beats 保持原样——那是演员的口吻）
-  const gated = await deAiPass({ chatComplete, prose: result.feedback })
+  // OS-144：分析模块停用＝跳过本闸（启用态行为与改前逐字节一致）
+  const gated = await deAiPass({ chatComplete, prose: result.feedback, enabled: await isModuleEnabled(root, 'analysis') })
   result.feedback = gated.text
   // 会话落一行节点（复用 deduceSession 容器；kind 标 roleplay）
   const draft = {

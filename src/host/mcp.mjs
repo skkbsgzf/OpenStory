@@ -29,6 +29,8 @@
 import { createRequire } from 'node:module'
 import { pathToFileURL } from 'node:url'
 import { resolve } from 'node:path'
+import { isModuleEnabled } from '../protocol/modules.mjs'
+import { loadLibraries } from './authorize.mjs'
 
 const require = createRequire(import.meta.url)
 const PORT = Number(process.env.OPENSTORY_PORT) || 8807
@@ -104,6 +106,22 @@ const requireRoot = (args) => {
     throw err
   }
   return root
+}
+
+/**
+ * 模块开关判定用的库根（OS-144）：显式 root 优先；没给就取本机库清单第一条
+ * （与 daemon 模块闸的「默认库」口径一致）。库清单读不到＝没有库根＝缺省启用。
+ * 这样 MCP 分析工具不带 root 也走同一判定，不留「模块停了还被调用」的旁路。
+ */
+function moduleRootOf(args) {
+  const given = String(args.root ?? '').trim()
+  if (given) return given
+  try {
+    const { libraries } = loadLibraries({ env: process.env })
+    return String(libraries[0]?.path ?? '').trim()
+  } catch {
+    return ''
+  }
 }
 
 const tools = [
@@ -511,12 +529,18 @@ const tools = [
     description: '对一段文本跑分析引擎（纯本地计算，秒回）：stats（字数/段/句/对白比）+ rhythm（逐段字数）+ emotion（逐段情绪强度）+ style（句长/段长变异系数、套话、连接词）+ aiSmell（AI 味评分与四因子）+ issues（可定位到段落的问题清单）。配合 novel_read_chapter 用：读正文 → 丢进来分析。',
     inputSchema: {
       type: 'object',
-      properties: { text: { type: 'string', description: '要分析的正文 md 源文' } },
+      properties: { text: { type: 'string', description: '要分析的正文 md 源文' }, root: { type: 'string', description: '可选：库根路径——给了就按该库的模块开关判定（分析模块停用＝MODULE_DISABLED）' } },
       required: ['text'],
       additionalProperties: false
     },
     async run(args) {
       if (typeof args.text !== 'string' || !args.text.trim()) throw invalidArgs('text')
+      // OS-144：分析模块停用 → 工具回 MODULE_DISABLED（与 daemon 同一判定入口；
+      // 没带 root 时按库清单默认库判定，不存在「跳过判定」的调用形态）
+      const moduleRoot = moduleRootOf(args)
+      if (moduleRoot && !(await isModuleEnabled(moduleRoot, 'analysis'))) {
+        throw Object.assign(new Error('「分析」模块已停用——在设置里重新启用后再调这个工具'), { code: 'MODULE_DISABLED' })
+      }
       const { analyzeChapter } = await import('../../public/analysis.mjs')
       const paragraphs = args.text.split(/\n+/u).map((block) => block.trim()).filter(Boolean)
       const result = analyzeChapter(args.text, { paragraphs })

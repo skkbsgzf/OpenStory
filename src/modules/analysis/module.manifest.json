@@ -1,0 +1,13 @@
+{
+  "spec": "openstory-module@1",
+  "id": "analysis",
+  "name": "分析",
+  "version": "0.1.0",
+  "core": false,
+  "description": "分析引擎（public/analysis.mjs，零依赖纯函数，前端与 Node 共用）：章节统计/节奏/情绪/文风/AI 味。停用＝右栏分析入口消失、扮演的 AI 味闸跳过、MCP 分析工具回 MODULE_DISABLED；稿件与卡片级勾选全部保留。两层插拔各存各键：卡片级 ui-state analyzeEnabled（右栏里勾哪几张卡）与本模块级 modules.enabled.analysis（整个工作面开关）并存，互不覆盖。",
+  "endpoints": [],
+  "pages": [
+    { "id": "analysis-panel", "label": "分析", "slot": "right" }
+  ],
+  "settings": []
+}

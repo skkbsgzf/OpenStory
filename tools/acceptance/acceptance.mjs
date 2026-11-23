@@ -221,7 +221,7 @@ const KERNEL_ALLOW = new Set([
 ])
 const MODULES = [
   'src/modules/deduce/deduceEngine.mjs', 'src/modules/deduce/deduceSession.mjs', 'src/modules/worldbook/referenceStore.mjs', 'src/services/enrichEngine.mjs',
-  'src/protocol/factGuard.mjs', 'src/services/kbRouter.mjs', 'src/services/kbAdapter.mjs', 'src/services/kbHealth.mjs', 'src/services/style-check.mjs', 'src/services/stylePacks.mjs', 'src/services/skills.mjs', 'src/services/genres.mjs'
+  'src/protocol/factGuard.mjs', 'src/modules/kb/kbRouter.mjs', 'src/modules/kb/kbAdapter.mjs', 'src/modules/kb/kbHealth.mjs', 'src/services/style-check.mjs', 'src/services/stylePacks.mjs', 'src/services/skills.mjs', 'src/services/genres.mjs'
 ]
 const crossEdges = []
 for (const mod of MODULES) {

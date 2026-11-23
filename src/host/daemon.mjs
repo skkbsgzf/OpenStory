@@ -46,9 +46,10 @@ import { builtinRuntimesDir, defaultUserRuntimesDir, stopAllSidecars } from '../
 import { builtinSuitesDir, defaultSuiteStatePath, defaultUserSuitesDir } from '../services/suites.mjs'
 import { builtinGenresDir, defaultUserGenresDir } from '../services/genres.mjs'
 import { builtinSkillsDir, defaultUserSkillsDir } from '../services/skills.mjs'
-import { bootstrapKbHealth } from '../services/kbHealth.mjs'
-import { defaultKbConfigPath } from '../services/kbAdapter.mjs'
-import { resolveCollections } from '../services/kbRouter.mjs'
+import { bootstrapKbHealth } from '../modules/kb/kbHealth.mjs'
+import { defaultKbConfigPath } from '../modules/kb/kbAdapter.mjs'
+import { resolveCollections } from '../modules/kb/kbRouter.mjs'
+import { isModuleDisabledFor, moduleManifest } from '../protocol/modules.mjs'
 
 /* ---------- 测试/工具面的再出口（OS-140 垫片契约）：实现迁走了，符号从原处继续拿 ---------- */
 export { browseMemoryPath, defaultBrowseRoot } from '../services/nativePicker.mjs'
@@ -348,7 +349,22 @@ async function handleApi(req, res, url, context) {
   if (!handler) {
     return sendError(res, API_ERROR_CODES.NOT_FOUND, `端点未实现：${endpointId}`)
   }
+  // OS-144 模块插件闸：独占端点所属模块被停用 → MODULE_DISABLED（共用端点没有归属，照常放行）。
+  // 库根取法：请求 root（已授权）＞启动默认库＞库清单第一条；一个库都没有时无法判定，按启用处理。
+  const owner = await isModuleDisabledFor(endpointId, moduleGateRoot(checked.value, context, allowlist))
+  if (owner) {
+    const label = moduleManifest(owner)?.name ?? owner
+    return sendError(res, API_ERROR_CODES.MODULE_DISABLED, `「${label}」模块已停用——重新启用后可用，已存的值与数据都还在`)
+  }
   return handler({ req, res, url, request: checked.value, context, allowlist, loaded })
+}
+
+/** 模块停用闸的库根解析（ui-state 是库内状态，没有库就只有缺省启用）。 */
+function moduleGateRoot(request, context, allowlist) {
+  const given = typeof request?.root === 'string' ? request.root.trim() : ''
+  if (given) return allowlist.resolve(given) || ''
+  const fallback = context.defaultRoot ? allowlist.resolve(context.defaultRoot) : null
+  return fallback || allowlist.roots[0] || ''
 }
 
 /* ---------- 服务器 ---------- */

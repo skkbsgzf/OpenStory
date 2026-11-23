@@ -1,0 +1,17 @@
+{
+  "spec": "openstory-module@1",
+  "id": "comfyui",
+  "name": "生图与识图",
+  "version": "0.1.0",
+  "core": false,
+  "description": "生图/识图工作面：ComfyUI 与 OpenAI 兼容生图、DSH 识图。独占端点随停用失效；设置里的生图/识图配置区与生成入口一并隐去，已存的配置值不删。",
+  "endpoints": [
+    "deduceImage",
+    "referenceImageGenerate",
+    "visionDescribe"
+  ],
+  "pages": [
+    { "id": "image-settings", "label": "生图与识图", "slot": "settings" }
+  ],
+  "settings": []
+}

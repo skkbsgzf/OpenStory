@@ -54,7 +54,7 @@ export const factEndpoints = {
     // 产物落 推演/<bookId>/素材/场景/<name>.png。未启用/未配置如实报。
     request: { body: { root: 'string', bookId: 'string?', name: 'string', prompt: 'string', size: 'string?', stylePrompt: 'string?', negative: 'string?' } },
     response: { ok: 'true', name: 'string', path: 'string', size: 'string' },
-    errors: ['NO_LIBRARY', 'PATH_ESCAPE', 'INVALID_ENTRY', 'AGENT_UPSTREAM_ERROR']
+    errors: ['NO_LIBRARY', 'PATH_ESCAPE', 'INVALID_ENTRY', 'AGENT_UPSTREAM_ERROR', 'MODULE_DISABLED']
   },
 
   factCurveGet: {

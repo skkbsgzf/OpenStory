@@ -12,7 +12,7 @@ import { join } from 'node:path'
 import { atomicWriteFile } from '../protocol/hostWrite.mjs'
 import { API_ERROR_CODES, isPlainObject } from '../api/contracts.mjs'
 import { maskApiKey } from '../modules/agentbar/agentStore.mjs'
-import { probeComfy } from './comfyEngine.mjs'
+import { probeComfy } from '../modules/comfyui/comfyEngine.mjs'
 
 export function text(value) {
   return String(value ?? '')

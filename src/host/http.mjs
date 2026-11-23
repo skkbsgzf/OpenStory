@@ -33,7 +33,9 @@ const STATUS_BY_CODE = Object.freeze({
   AGENT_NOT_CONFIGURED: 400,
   AGENT_UPSTREAM_ERROR: 502,
   FORBIDDEN_ORIGIN: 403,
-  UNSUPPORTED_MEDIA_TYPE: 400
+  UNSUPPORTED_MEDIA_TYPE: 400,
+  // 模块插件停用（OS-144）：请求本身合法，但所属工作面被作者关掉——冲突而非客户端错误
+  MODULE_DISABLED: 409
 })
 
 function statusFor(code) {

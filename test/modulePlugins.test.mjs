@@ -1,0 +1,249 @@
+/**
+ * 模块插件（OS-144 / G5a）：分析 / 生图识图 / 知识库。
+ *
+ * 钉死四件事：
+ *   ① 三个 manifest 过契约形状校验，端点归属只登记**独占**端点；
+ *   ② 启停判定只有单一入口 isModuleEnabled（ui-state `modules.enabled.<id>`，缺省 true）；
+ *   ③ daemon 独占端点停用 → MODULE_DISABLED，共用端点照常，重新启用即恢复，值不丢；
+ *   ④ 分析停用时旁路一并收口：扮演 AI 味闸跳过、MCP 分析工具回 MODULE_DISABLED。
+ *
+ * 夹具纪律：全部在系统临时目录建库，绝不碰作者真库。
+ * 跑法：node --test test/modulePlugins.test.mjs
+ */
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import { spawn } from 'node:child_process'
+import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { ENDPOINTS } from '../src/api/contracts.mjs'
+import { HANDLERS, ENDPOINT_MODULES, HANDLER_MODULE_SOURCES } from '../src/api/registry.mjs'
+import {
+  MODULE_MANIFESTS,
+  MODULE_SPEC,
+  isModuleEnabled,
+  isModuleDisabledFor,
+  moduleOfEndpoint,
+  validateModuleManifest
+} from '../src/protocol/modules.mjs'
+import { deAiPass } from '../src/modules/roleplay/roleplayEngine.mjs'
+import { startDaemon } from '../src/host/daemon.mjs'
+
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
+
+async function makeLibrary() {
+  const base = await mkdtemp(join(tmpdir(), 'openstory-os144-'))
+  const root = join(base, '夹具库')
+  await mkdir(join(root, '.pinax'), { recursive: true })
+  await mkdir(join(root, '正文'), { recursive: true })
+  await writeFile(join(root, '正文', 'ch1.md'), '第一章正文。', 'utf-8')
+  const preferencesPath = join(base, 'next-preferences.json')
+  await writeFile(preferencesPath, JSON.stringify({
+    recentProjects: [{ path: root, name: '夹具库', at: '2026-11-24T00:00:00.000Z' }]
+  }), 'utf-8')
+  return { base, root, preferencesPath }
+}
+
+async function writeUiState(root, state) {
+  await writeFile(join(root, '.pinax', 'ui-state.json'), JSON.stringify(state, null, 2), 'utf-8')
+}
+
+/** 起 MCP 子进程，收 newline-delimited JSON-RPC 回包。 */
+function startMcp(env = process.env) {
+  const child = spawn(process.execPath, [join(ROOT, 'mcp.mjs')], { stdio: ['pipe', 'pipe', 'pipe'], env })
+  const pending = new Map()
+  let buf = ''
+  let nextId = 1
+  child.stdout.setEncoding('utf8')
+  child.stdout.on('data', (chunk) => {
+    buf += chunk
+    let index
+    while ((index = buf.indexOf('\n')) >= 0) {
+      const line = buf.slice(0, index).trim()
+      buf = buf.slice(index + 1)
+      if (!line) continue
+      try {
+        const message = JSON.parse(line)
+        if (message.id !== undefined && pending.has(message.id)) {
+          pending.get(message.id)(message)
+          pending.delete(message.id)
+        }
+      } catch { /* 非 JSON 行忽略 */ }
+    }
+  })
+  const request = (method, params) => new Promise((resolve) => {
+    const id = nextId++
+    pending.set(id, resolve)
+    child.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method, ...(params ? { params } : {}) }) + '\n')
+  })
+  return { request, close: () => child.kill() }
+}
+
+test('模块 manifest：三个都过形状校验，spec/id/core 口径统一', () => {
+  assert.equal(MODULE_MANIFESTS.length, 3)
+  const ids = MODULE_MANIFESTS.map((manifest) => manifest.id).sort()
+  assert.deepEqual(ids, ['analysis', 'comfyui', 'kb'])
+  for (const manifest of MODULE_MANIFESTS) {
+    const checked = validateModuleManifest(manifest, { dirName: manifest.id })
+    assert.equal(checked.ok, true, `${manifest.id} 应过校验：${checked.errors?.join('；')}`)
+    assert.equal(manifest.spec, MODULE_SPEC)
+    assert.equal(manifest.core, false)
+    for (const endpoint of manifest.endpoints) {
+      assert.ok(Object.prototype.hasOwnProperty.call(ENDPOINTS, endpoint), `${manifest.id} 声明的端点不存在：${endpoint}`)
+      assert.ok(ENDPOINTS[endpoint].errors.includes('MODULE_DISABLED'), `${endpoint} 的契约 errors 应登记 MODULE_DISABLED`)
+    }
+  }
+  // 坏 manifest 会被校验拦住（不是静默放过）
+  assert.equal(validateModuleManifest({ spec: 'x' }).ok, false)
+})
+
+test('端点归属：只登记独占端点，共用端点没有归属', () => {
+  assert.equal(moduleOfEndpoint('kbStatusGet'), 'kb')
+  assert.equal(moduleOfEndpoint('kbConfigPut'), 'kb')
+  assert.equal(moduleOfEndpoint('deduceImage'), 'comfyui')
+  assert.equal(moduleOfEndpoint('referenceImageGenerate'), 'comfyui')
+  assert.equal(moduleOfEndpoint('visionDescribe'), 'comfyui')
+  // 共用端点：任何模块停用都不该影响
+  assert.equal(moduleOfEndpoint('factCurveGet'), null)
+  assert.equal(moduleOfEndpoint('chapterGet'), null)
+  // 分析没有 daemon 端点（纯本地引擎），表里不该硬塞
+  assert.equal(ENDPOINT_MODULES.analysis, undefined)
+  assert.deepEqual(HANDLER_MODULE_SOURCES.map((item) => item.id).sort(), ['analysis', 'comfyui', 'kb'])
+  for (const endpoint of Object.keys(ENDPOINT_MODULES)) assert.ok(HANDLERS[endpoint], `归属端点缺 handler：${endpoint}`)
+})
+
+test('isModuleEnabled：单一判定入口，缺省启用，嵌套与扁平键都认', async () => {
+  const { base, root } = await makeLibrary()
+  try {
+    assert.equal(await isModuleEnabled(root, 'kb'), true, '没有 ui-state ＝ 缺省启用')
+    assert.equal(await isModuleEnabled('', 'kb'), true, '没有库根按启用处理')
+
+    await writeUiState(root, { modules: { enabled: { kb: false } } })
+    assert.equal(await isModuleEnabled(root, 'kb'), false)
+    assert.equal(await isModuleEnabled(root, 'comfyui'), true, '没被点名的模块不受影响')
+    assert.equal(await isModuleDisabledFor('kbStatusGet', root), 'kb')
+    assert.equal(await isModuleDisabledFor('factCurveGet', root), null, '共用端点永不因模块停用失效')
+
+    await writeUiState(root, { 'modules.enabled.kb': false })
+    assert.equal(await isModuleEnabled(root, 'kb'), false, '扁平键同样生效')
+
+    await writeUiState(root, { modules: { enabled: { kb: true } } })
+    assert.equal(await isModuleEnabled(root, 'kb'), true)
+    assert.equal(await isModuleDisabledFor('kbStatusGet', root), null)
+  } finally {
+    await rm(base, { recursive: true, force: true })
+  }
+})
+
+test('daemon：独占端点停用返回 MODULE_DISABLED，共用端点照常，启用恢复且值保留', async () => {
+  const { base, root, preferencesPath } = await makeLibrary()
+  const env = { LOCALAPPDATA: base, APPDATA: base }
+  await writeUiState(root, { modules: { enabled: { kb: false, comfyui: false } }, theme: 'dark' })
+  const daemon = await startDaemon({ port: 0, preferencesPath, env, logger: { log() {} } })
+  const origin = `http://127.0.0.1:${daemon.port}`
+  try {
+    const kbStatus = await fetch(`${origin}/api/kb/status`)
+    assert.equal(kbStatus.status, 409)
+    assert.equal((await kbStatus.json()).error.code, 'MODULE_DISABLED')
+
+    const image = await fetch(`${origin}/api/deduce/image`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ root, name: '场景', prompt: '山道' })
+    })
+    assert.equal(image.status, 409)
+    assert.equal((await image.json()).error.code, 'MODULE_DISABLED')
+
+    // 共用端点不受影响（fact 读＝多方共用，任何模块停用都不许让它失效）
+    const habits = await (await fetch(`${origin}/api/habits?root=${encodeURIComponent(root)}`)).json()
+    assert.equal(habits.ok, true)
+    const entries = await (await fetch(`${origin}/api/fact/curve?root=${encodeURIComponent(root)}`)).json()
+    assert.equal(entries.ok, true, 'fact 读端点不能被模块停用带走')
+
+    // 重新启用：值（theme）原封不动，端点恢复
+    const put = await fetch(`${origin}/api/ui-state`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ root, state: { modules: { enabled: { kb: true } } } })
+    })
+    assert.equal(put.status, 200)
+    const enabledStatus = await (await fetch(`${origin}/api/kb/status`)).json()
+    assert.equal(enabledStatus.ok, true)
+    const saved = JSON.parse(await readFile(join(root, '.pinax', 'ui-state.json'), 'utf-8'))
+    assert.equal(saved.theme, 'dark', '停用/启用不该清掉别的界面状态')
+    assert.equal(saved.modules.enabled.kb, true)
+  } finally {
+    await daemon.close()
+    await rm(base, { recursive: true, force: true })
+  }
+})
+
+test('分析停用：扮演的去 AI 味闸跳过（不调用模型、原文逐字返回）；启用态照旧过闸', async () => {
+  const prose = '他忽然觉得这一切仿佛宛如犹如一场梦。与此同时，然而，综上所述。'
+  let calls = 0
+  const skipped = await deAiPass({
+    chatComplete: async () => { calls += 1; return '不该被调用' },
+    prose,
+    enabled: false
+  })
+  assert.equal(calls, 0, '停用＝不过闸，模型一次都不该被调')
+  assert.equal(skipped.text, prose)
+  assert.equal(skipped.rewritten, false)
+
+  const gated = await deAiPass({
+    chatComplete: async () => { calls += 1; return '改写后的正文。' },
+    prose,
+    threshold: 0,
+    enabled: true
+  })
+  assert.equal(calls, 1, '启用态照旧调模型做改写')
+  assert.equal(gated.rewritten, true)
+  assert.equal(gated.text, '改写后的正文。')
+})
+
+test('分析停用：MCP 分析工具不带 root 也按默认库判定（不留「跳过判定」的旁路）', async () => {
+  const { base, root, preferencesPath } = await makeLibrary()
+  await writeUiState(root, { modules: { enabled: { analysis: false } } })
+  // 只给库清单、不给 root：工具应按清单里的默认库读到停用状态
+  const mcp = startMcp({ ...process.env, PINAX_OS_PREFERENCES: preferencesPath })
+  try {
+    await mcp.request('initialize', { protocolVersion: '2024-11-05' })
+    const blocked = await mcp.request('tools/call', {
+      name: 'openstory_analysis_chapter',
+      arguments: { text: '他笑了。\n\n她哭了。' }
+    })
+    assert.equal(blocked.result.isError, true)
+    assert.match(blocked.result.content[0].text, /^MODULE_DISABLED/u)
+  } finally {
+    mcp.close()
+    await rm(base, { recursive: true, force: true })
+  }
+})
+
+test('分析停用：MCP 分析工具回 MODULE_DISABLED；重新启用后照常真算', async () => {
+  const { base, root } = await makeLibrary()
+  await writeUiState(root, { modules: { enabled: { analysis: false } } })
+  const mcp = startMcp()
+  try {
+    await mcp.request('initialize', { protocolVersion: '2024-11-05' })
+    const blocked = await mcp.request('tools/call', {
+      name: 'openstory_analysis_chapter',
+      arguments: { text: '他笑了。\n\n她哭了。', root }
+    })
+    assert.equal(blocked.result.isError, true)
+    assert.match(blocked.result.content[0].text, /^MODULE_DISABLED/u)
+
+    await writeUiState(root, { modules: { enabled: { analysis: true } } })
+    const allowed = await mcp.request('tools/call', {
+      name: 'openstory_analysis_chapter',
+      arguments: { text: '他笑了。\n\n她哭了。', root }
+    })
+    assert.equal(allowed.result.isError, false)
+    const payload = JSON.parse(allowed.result.content[0].text)
+    assert.ok(payload.stats.chars > 0)
+  } finally {
+    mcp.close()
+    await rm(base, { recursive: true, force: true })
+  }
+})

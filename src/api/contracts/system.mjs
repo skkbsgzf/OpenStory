@@ -122,7 +122,7 @@ export const systemEndpoints = {
       }
     },
     response: { ok: 'true', text: 'string', chars: 'number', model: 'string?' },
-    errors: ['NO_LIBRARY', 'PATH_ESCAPE', 'INVALID_ENTRY', 'AGENT_UPSTREAM_ERROR']
+    errors: ['NO_LIBRARY', 'PATH_ESCAPE', 'INVALID_ENTRY', 'AGENT_UPSTREAM_ERROR', 'MODULE_DISABLED']
   },
 
   habitsGet: {
@@ -171,7 +171,7 @@ export const systemEndpoints = {
     // KB-ARCH P1：知识库状态聚合——WeKnora/embedding 健康灯＋六库文档数/解析状态。KB 未配置时 configured=false 降级，不报错。
     request: { query: {} },
     response: { ok: 'true', configured: 'boolean', backend: 'string?', configPath: 'string', configError: 'string?', services: 'object', lastCheck: 'string?', collections: 'array' },
-    errors: []
+    errors: ['MODULE_DISABLED']
   },
 
   briefGet: {
@@ -198,7 +198,7 @@ export const systemEndpoints = {
     // OS-97：读知识库配置（apiKey 掩码返回，不回明文）
     request: { query: {} },
     response: { ok: 'true', config: 'object', configPath: 'string', masked: 'boolean' },
-    errors: []
+    errors: ['MODULE_DISABLED']
   },
 
   kbConfigPut: {
@@ -208,7 +208,7 @@ export const systemEndpoints = {
     // apiKey 传 '__KEEP__' 表示保留原值（前端不改密钥时不回传明文）
     request: { body: { backend: 'string?', baseUrl: 'string?', apiKey: 'string?', spaceId: 'string?', collections: 'object?' } },
     response: { ok: 'true', status: 'object' },
-    errors: ['INVALID_ENTRY', 'WRITE_PROTOCOL_IO_FAILED']
+    errors: ['INVALID_ENTRY', 'WRITE_PROTOCOL_IO_FAILED', 'MODULE_DISABLED']
   },
 
   kbTest: {
@@ -217,7 +217,7 @@ export const systemEndpoints = {
     // OS-97：连接测试——用当前配置探一次 WeKnora + embedding，返回逐项结果（不写盘）
     request: { body: { baseUrl: 'string?', apiKey: 'string?' } },
     response: { ok: 'true', weknora: 'object', embedding: 'object', collections: 'array' },
-    errors: []
+    errors: ['MODULE_DISABLED']
   },
 
   uiStateGet: {

@@ -34,6 +34,7 @@
 | `apiErrors.mjs` | `API_ERROR_CODES` 错误码词表 | 模块层构建响应失败对象 |
 | `upstream.mjs` | 上游模型通道：chatCompleteViaUpstream/resolveUpstreamSafe/resolveChatUpstream | 模块层（turnProse） |
 | `worldbookContract.mjs` | 世界书文件契约 v2 `parseWorldbookEntryFile`（vendor 件本体不直引） | textUtil；护栏测试仍直引 vendor 本体 |
+| `modules.mjs` | 模块插件（OS-144）：manifest 装载/形状校验、端点归属 `MODULE_ENDPOINT_OWNERS`、启停唯一入口 `isModuleEnabled` / `isModuleDisabledFor`（ui-state `modules.enabled.<id>`） | daemon 路由停用闸、MCP 分析工具、API handler（扮演 AI 味闸） |
 | `chapters.mjs` 等 | 各协议件本体（index.mjs 聚合它们的导出） | 协议层内部与 API/宿主层 |
 
 ## 版本约定

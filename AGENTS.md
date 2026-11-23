@@ -29,9 +29,16 @@ L4 自持层→L3 pinaxAdapter→L2 core/pinax 24 文件→L1 磁盘库）。
 5. **MCP 不开 agent 对话**（不套娃）；写操作一律有 .history 备份。
 6. **模块不耦合**：功能模块间禁止直接 import——只经协议层（`src/api/contracts.mjs`/`src/protocol/chapters.mjs`/
    `src/protocol/changelog.mjs`/`src/protocol/versionGate.mjs`/`src/protocol/plugins.mjs`/`src/kernel/pinaxAdapter.mjs`，门禁 S2.1 白名单）；
-   依赖注入解（范例见 `src/services/kbHealth.mjs` 的 resolveCollections 注入）。
+   依赖注入解（范例见 `src/modules/kb/kbHealth.mjs` 的 resolveCollections 注入）。
    建库/导入/章节号解析已**本仓自持**（`src/modules/library/projectDoc.mjs`/`importAdapter.mjs`/`textUtil.mjs`，
    OS-123/124 fork 点），不再复用上游内核。
+   > **模块插件（OS-144）**：工作面升格为 `src/modules/<id>/module.manifest.json`（`openstory-module@1`：
+   `id/name/version/core:false/endpoints/pages/settings`）。`endpoints` 只登**独占**端点——共用端点
+   （如 fact 读）不登记，停用任何模块都不许让它失效。启停判定与端点归属只有单一入口
+   `src/protocol/modules.mjs`（`isModuleEnabled` / `isModuleDisabledFor`），状态落库内 ui-state
+   `modules.enabled.<id>`（缺省 true，值不删）。两层插拔各存各键、互不覆盖：右栏分析卡片级
+   `analyzeEnabled`（旧）vs 整模块级 `modules.enabled.<id>`（本层）。新增 module manifest 必须过
+   `test/modulePlugins.test.mjs` 的形状校验。
 7. **布局宪法（OS-140）**：仓根只允许「入口、包描述、文档」——`.mjs` 只有 `daemon.mjs`/`mcp.mjs`
    两个**入口垫片**（`export * from` 实现文件再出口全部符号；只有被 node 直接执行才调
    `main(argv)`，纯 import 不得启动服务）。自持模块全部收进 `src/` 六目录，新模块一律入对应子目录：
@@ -42,8 +49,8 @@ L4 自持层→L3 pinaxAdapter→L2 core/pinax 24 文件→L1 磁盘库）。
    | `src/api/` | 契约层 `contracts.mjs` ＋ `contracts/` 七域分片（API 形状唯一真源） |
    | `src/protocol/` | 文件与协议层：chapters/changelog/versionGate/plugins/agentEvents/factGuard/dependencyGraph/hostWrite/libState |
    | `src/kernel/` | `pinaxAdapter.mjs`（core/** 唯一进口） |
-   | `src/modules/` | 域模块：library/（建库导入）、deduce/（推演）、roleplay/（扮演）、worldbook/（参考）、agentbar/（Agent 存储） |
-   | `src/services/` | 外围服务：kb*（知识库）、embedding-server/embeddingPaths、cli-bridge/dsh-*/runtimes（模型驱动）、stylePacks/style-check/suites/skills/genres（货架）、jobCenter/nativePicker/comfyEngine/syncCheck/enrichEngine |
+   | `src/modules/` | 域模块：library/（建库导入）、deduce/（推演）、roleplay/（扮演）、worldbook/（参考）、agentbar/（Agent 存储）、analysis/comfyui/kb（模块插件，各带 `module.manifest.json`） |
+   | `src/services/` | 外围服务：embedding-server/embeddingPaths、cli-bridge/dsh-*/runtimes（模型驱动）、stylePacks/style-check/suites/skills/genres（货架）、jobCenter/nativePicker/syncCheck/enrichEngine |
 
    实现文件不得再放仓根；垫片不得长业务逻辑。门禁 S0.1 钉死仓根恰好两个 `.mjs`。
 8. **前端令牌单一真源**：颜色进 `public/index.html` 的 `:root`（同步 `design-system/tokens.css`）；

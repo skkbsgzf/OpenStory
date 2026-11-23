@@ -30,7 +30,7 @@ import { deleteChapter } from '../../protocol/chapters.mjs'
 import { atomicWriteFile } from '../../protocol/hostWrite.mjs'
 import { factStore } from '../../kernel/pinaxAdapter.mjs'
 import { loadConfigV2, DEFAULT_IMAGE_STYLE, DEFAULT_IMAGE_NEGATIVE, imagesGenerationsUrl } from '../../services/agentConfig.mjs'
-import { generateViaComfy } from '../../services/comfyEngine.mjs'
+import { generateViaComfy } from '../../modules/comfyui/comfyEngine.mjs'
 import { submitJob } from '../../services/jobCenter.mjs'
 
 export async function referenceGet(ctx) {

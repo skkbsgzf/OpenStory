@@ -242,10 +242,11 @@ export async function compressMemory({ chatComplete, session, batch = 6 } = {}) 
 
 /** AI 味过检（OS-102）：世界反馈落稿前跑 analysis.mjs 的四因子；
  *  总分超阈就用提示词重写一次（只改文风，不改事实）。失败则保留原稿。
- *  作者对 AI 味敏感——扮演成文不能绕过这道闸。 */
-export async function deAiPass({ chatComplete, prose, threshold = 45 } = {}) {
+ *  作者对 AI 味敏感——扮演成文不能绕过这道闸。
+ *  OS-144：分析模块停用时由宿主传 enabled:false 跳过（停用＝不过闸），原文逐字返回。 */
+export async function deAiPass({ chatComplete, prose, threshold = 45, enabled = true } = {}) {
   const text = String(prose ?? '').trim()
-  if (!text) return { text, aiSmell: null, rewritten: false }
+  if (!text || enabled === false) return { text, aiSmell: null, rewritten: false }
   let aiSmell = null
   try {
     aiSmell = analyzeChapter(text)?.aiSmell ?? null

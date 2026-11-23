@@ -65,7 +65,7 @@ export const referenceEndpoints = {
       }
     },
     response: { ok: 'true', path: 'string', imagePath: 'string', frontmatter: 'object', chars: 'number' },
-    errors: ['NO_LIBRARY', 'PATH_ESCAPE', 'INVALID_ENTRY', 'AGENT_UPSTREAM_ERROR', 'WRITE_PROTOCOL_IO_FAILED']
+    errors: ['NO_LIBRARY', 'PATH_ESCAPE', 'INVALID_ENTRY', 'AGENT_UPSTREAM_ERROR', 'WRITE_PROTOCOL_IO_FAILED', 'MODULE_DISABLED']
   },
 
   referenceAbsorb: {
