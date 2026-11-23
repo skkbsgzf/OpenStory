@@ -103,6 +103,7 @@ import {
 import { runCliChat } from './cli-bridge.mjs'
 import { detectDsh, detectDshAny, detectDshModels, probeDshStack, resolveDshChat, resolveDshRun, setupDshStack } from './dsh-bridge.mjs'
 import { dshModelSelection, runDshStdio } from './dsh-cli.mjs'
+import { projectLegacyFrame } from './agentEvents.mjs'
 import {
   builtinSuitesDir,
   defaultSuiteStatePath,
@@ -4535,9 +4536,10 @@ async function handleAgentChat(req, res, request, context, root, libraries) {
     })
     const systemPrompt = promptBundle.prompt
     const applied = promptBundle.applied
-    // start 帧带上「这轮生效了什么」（运行时/技能/体裁/KB），界面据此标注
-    sseFrame(res, { type: 'start', sessionId, runtime: upstream.runtimeName, applied })
-    if (upstream.notice) sseFrame(res, { type: 'notice', text: upstream.notice })
+    // start 帧带上「这轮生效了什么」（运行时/技能/体裁/KB），界面据此标注。
+    // OS-131：先构造 canonical 事件再投影成旧帧——线上字节与改前逐字符一致。
+    sseFrame(res, projectLegacyFrame({ type: 'agent_started', sessionId, runtime: upstream.runtimeName, applied }))
+    if (upstream.notice) sseFrame(res, projectLegacyFrame({ type: 'notice', text: upstream.notice }))
     // 断连守卫：连接已关就别再往 res 里写（否则 ERR_STREAM_WRITE_AFTER_END）
     const safeSend = (frame) => {
       if (clientGone || res.writableEnded) return
@@ -4547,7 +4549,7 @@ async function handleAgentChat(req, res, request, context, root, libraries) {
     // resume 前置：模型/cwd 变了就作废（DSH 侧会话与运行环境绑定）
     const stitched = await resolveDshResume({ sessionsDir, root, session: loaded?.session, ephemeral, model: dshModel })
     const resumeSessionId = stitched.resumeSessionId
-    if (stitched.notice) safeSend({ type: 'notice', text: stitched.notice })
+    if (stitched.notice) safeSend(projectLegacyFrame({ type: 'notice', text: stitched.notice }))
 
     // resume 时 DSH 自己记得前文，只发最新一轮；冷启才发全量历史
     const dshPrompt = resumeSessionId
@@ -4564,7 +4566,7 @@ async function handleAgentChat(req, res, request, context, root, libraries) {
     const traceStart = Date.now()
     const onThinkingPiece = (piece) => {
       thinkingBuf += piece
-      safeSend({ type: 'thinking', text: piece })
+      safeSend(projectLegacyFrame({ type: 'thinking', text: piece }))
     }
     const onToolCallFrame = (call) => {
       // 调用当下就记一条（有些工具 DSH 只发 tool_call、不发 tool_result——
@@ -4579,7 +4581,13 @@ async function handleAgentChat(req, res, request, context, root, libraries) {
         isError: false,
         elapsedMs: 0
       })
-      safeSend({ type: 'tool', phase: 'call', ...call })
+      safeSend(projectLegacyFrame({
+        type: 'tool_call',
+        toolName: call.name,
+        args: call.input,
+        callId: call.id,
+        status: 'call'
+      }))
     }
     const onToolResultFrame = (outcome) => {
       const started = toolStarted.get(outcome.id || '')
@@ -4599,7 +4607,13 @@ async function handleAgentChat(req, res, request, context, root, libraries) {
           elapsedMs: started ? Date.now() - started.at : 0
         })
       }
-      safeSend({ type: 'tool', phase: 'result', ...outcome })
+      safeSend(projectLegacyFrame({
+        type: 'tool_call',
+        callId: outcome.id,
+        status: 'result',
+        result: outcome.output,
+        resultIsError: outcome.isError
+      }))
     }
     const startedAt = Date.now()
     let result = await runDshStdio({
@@ -4616,17 +4630,24 @@ async function handleAgentChat(req, res, request, context, root, libraries) {
       onText: (piece) => {
         sawText = true
         collected += piece
-        safeSend({ type: 'delta', text: piece })
+        safeSend(projectLegacyFrame({ type: 'message_chunk', text: piece }))
       },
       onThinking: onThinkingPiece,
       onToolCall: onToolCallFrame,
       onToolResult: onToolResultFrame,
-      onUsage: (usage) => safeSend({ type: 'usage', ...usage })
+      onUsage: (usage) => safeSend(projectLegacyFrame({
+        type: 'usage',
+        input: usage.input,
+        output: usage.output,
+        cachedRead: usage.cachedRead,
+        cachedWrite: usage.cachedWrite,
+        total: usage.total
+      }))
     })
 
     // resume 被 DSH 拒（会话过期/被清理）：清指纹，用全量历史冷重启一次
     if (!result.ok && result.resumeRejected && !ephemeral) {
-      safeSend({ type: 'notice', text: '上轮 DSH 会话已失效，已无缝重开一段。' })
+      safeSend(projectLegacyFrame({ type: 'notice', text: '上轮 DSH 会话已失效，已无缝重开一段。' }))
       await patchSessionMeta(sessionsDir, root, sessionId, { dshSessionId: '', dshModel: '', dshCwd: '' })
       const coldPrompt = composeDshPrompt(history.items, { systemPrompt })
       collected = ''
@@ -4647,12 +4668,19 @@ async function handleAgentChat(req, res, request, context, root, libraries) {
         onText: (piece) => {
           sawText = true
           collected += piece
-          safeSend({ type: 'delta', text: piece })
+          safeSend(projectLegacyFrame({ type: 'message_chunk', text: piece }))
         },
         onThinking: onThinkingPiece,
         onToolCall: onToolCallFrame,
         onToolResult: onToolResultFrame,
-        onUsage: (usage) => safeSend({ type: 'usage', ...usage })
+        onUsage: (usage) => safeSend(projectLegacyFrame({
+          type: 'usage',
+          input: usage.input,
+          output: usage.output,
+          cachedRead: usage.cachedRead,
+          cachedWrite: usage.cachedWrite,
+          total: usage.total
+        }))
       })
     }
 
@@ -4687,13 +4715,14 @@ async function handleAgentChat(req, res, request, context, root, libraries) {
           })
         }
       }
-      safeSend({
-        type: 'done',
+      safeSend(projectLegacyFrame({
+        type: 'run_end',
+        status: 'completed',
         sessionId,
         chars: result.text.length,
         ms: Date.now() - startedAt,
         ...(result.truncated ? { truncated: true, stopReason: result.stopReason } : {})
-      })
+      }))
     } else {
       // 中断/失败：已收到的部分回答要落档（partial），否则 reloadThread 会把它冲掉
       if (!ephemeral && sawText && collected.trim()) {
@@ -4713,7 +4742,11 @@ async function handleAgentChat(req, res, request, context, root, libraries) {
           elapsedMs: Date.now() - traceStart
         }])
       }
-      safeSend({ type: 'error', error: { code: API_ERROR_CODES.AGENT_UPSTREAM_ERROR, message: result.message ?? 'DSH 无输出' } })
+      safeSend(projectLegacyFrame({
+        type: 'run_end',
+        status: 'error',
+        error: { code: API_ERROR_CODES.AGENT_UPSTREAM_ERROR, message: result.message ?? 'DSH 无输出' }
+      }))
     }
     if (!clientGone && !res.writableEnded) res.end()
     return
@@ -4727,19 +4760,23 @@ async function handleAgentChat(req, res, request, context, root, libraries) {
       connection: 'keep-alive',
       'x-accel-buffering': 'no'
     })
-    sseFrame(res, { type: 'start', sessionId, runtime: upstream.runtimeName })
-    if (upstream.notice) sseFrame(res, { type: 'notice', text: upstream.notice })
+    sseFrame(res, projectLegacyFrame({ type: 'agent_started', sessionId, runtime: upstream.runtimeName }))
+    if (upstream.notice) sseFrame(res, projectLegacyFrame({ type: 'notice', text: upstream.notice }))
     const cli = await runCliChat(upstream.kit, upstreamMessages, { model: upstream.model })
     if (cli.ok) {
-      sseFrame(res, { type: 'delta', text: cli.text })
+      sseFrame(res, projectLegacyFrame({ type: 'message_chunk', text: cli.text }))
       if (!ephemeral) {
         await appendSession(sessionsDir, root, sessionId, [{
           t: 'msg', id: newMessageId(), role: 'assistant', content: cli.text, at: new Date().toISOString()
         }])
       }
-      sseFrame(res, { type: 'done', sessionId, chars: cli.text.length })
+      sseFrame(res, projectLegacyFrame({ type: 'run_end', status: 'completed', sessionId, chars: cli.text.length }))
     } else {
-      sseFrame(res, { type: 'error', error: { code: API_ERROR_CODES.AGENT_UPSTREAM_ERROR, message: cli.message } })
+      sseFrame(res, projectLegacyFrame({
+        type: 'run_end',
+        status: 'error',
+        error: { code: API_ERROR_CODES.AGENT_UPSTREAM_ERROR, message: cli.message }
+      }))
     }
     return res.end()
   }
@@ -4769,14 +4806,14 @@ async function handleAgentChat(req, res, request, context, root, libraries) {
     connection: 'keep-alive',
     'x-accel-buffering': 'no'
   })
-  sseFrame(res, { type: 'start', sessionId, runtime: upstream.runtimeName })
-  if (upstream.notice) sseFrame(res, { type: 'notice', text: upstream.notice })
+  sseFrame(res, projectLegacyFrame({ type: 'agent_started', sessionId, runtime: upstream.runtimeName }))
+  if (upstream.notice) sseFrame(res, projectLegacyFrame({ type: 'notice', text: upstream.notice }))
 
   const decoder = new TextDecoder()
   let full = ''
   const parser = createSseDeltaParser((piece) => {
     full += piece
-    if (!res.writableEnded) sseFrame(res, { type: 'delta', text: piece })
+    if (!res.writableEnded) sseFrame(res, projectLegacyFrame({ type: 'message_chunk', text: piece }))
   })
 
   let upstreamError = ''
@@ -4791,7 +4828,11 @@ async function handleAgentChat(req, res, request, context, root, libraries) {
   } catch (error) {
     if (!clientGone && !controller.signal.aborted) {
       upstreamError = text(error?.message || error)
-      sseFrame(res, { type: 'error', error: { code: API_ERROR_CODES.AGENT_UPSTREAM_ERROR, message: upstreamError } })
+      sseFrame(res, projectLegacyFrame({
+        type: 'run_end',
+        status: 'error',
+        error: { code: API_ERROR_CODES.AGENT_UPSTREAM_ERROR, message: upstreamError }
+      }))
     }
   }
 
@@ -4805,7 +4846,7 @@ async function handleAgentChat(req, res, request, context, root, libraries) {
     }])
   }
   if (!clientGone && !res.writableEnded) {
-    sseFrame(res, { type: 'done', sessionId, chars: full.length })
+    sseFrame(res, projectLegacyFrame({ type: 'run_end', status: 'completed', sessionId, chars: full.length }))
   }
   res.end()
 }
