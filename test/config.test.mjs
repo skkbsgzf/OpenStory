@@ -15,7 +15,7 @@ import { createServer } from 'node:http'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { startDaemon } from '../daemon.mjs'
+import { startDaemon } from '../src/host/daemon.mjs'
 
 async function makeEnv() {
   const base = await mkdtemp(join(tmpdir(), 'openstory-config-'))

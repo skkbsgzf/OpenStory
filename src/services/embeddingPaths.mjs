@@ -7,9 +7,10 @@
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-/** 仓根＝本模块所在目录（本文件与 embedding-server.mjs 同在仓根，同 daemon.mjs 的 HERE 解法）。 */
+/** 仓根＝本模块目录两层上溯（OS-140 布局归一后本文件与 embedding-server.mjs 同在 src/services/，
+ * package.json 仍在仓根——默认参数保持零参数调用返回仓根的契约，test/embeddingPaths.test.mjs 钉死）。 */
 export function resolveRepoRoot(importMetaUrl = import.meta.url) {
-  return dirname(fileURLToPath(importMetaUrl))
+  return join(dirname(fileURLToPath(importMetaUrl)), '..', '..')
 }
 
 /**

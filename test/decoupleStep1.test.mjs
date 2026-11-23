@@ -14,9 +14,9 @@ import { existsSync, statSync } from 'node:fs'
 import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { parseChapterNumber, parseWorldbookEntryFile } from '../textUtil.mjs'
-import { planImport, runImport } from '../importAdapter.mjs'
-import { createLibrary } from '../libraryManage.mjs'
+import { parseChapterNumber, parseWorldbookEntryFile } from '../src/modules/library/textUtil.mjs'
+import { planImport, runImport } from '../src/modules/library/importAdapter.mjs'
+import { createLibrary } from '../src/modules/library/libraryManage.mjs'
 import { serializeWorldbookEntryFile } from '../vendor/contracts/worldbookFileContract.js'
 
 /* ---------- 夹具 ---------- */

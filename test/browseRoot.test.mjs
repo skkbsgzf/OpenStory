@@ -26,18 +26,18 @@ after(async () => {
 
 describe('defaultBrowseRoot / browseMemoryPath', () => {
   it('默认根＝用户目录下的 OpenStory（始终是那个，不跟上次逛到哪）', async () => {
-    const { defaultBrowseRoot } = await import('../daemon.mjs')
+    const { defaultBrowseRoot } = await import('../src/host/daemon.mjs')
     assert.equal(defaultBrowseRoot({ USERPROFILE: 'C:\\Users\\x' }), join('C:\\Users\\x', 'OpenStory'))
   })
 
   it('没有 USERPROFILE 时退 HOME；都没有则为空（不瞎猜路径）', async () => {
-    const { defaultBrowseRoot } = await import('../daemon.mjs')
+    const { defaultBrowseRoot } = await import('../src/host/daemon.mjs')
     assert.equal(defaultBrowseRoot({ HOME: 'D:\\home' }), join('D:\\home', 'OpenStory'))
     assert.equal(defaultBrowseRoot({}), '')
   })
 
   it('记忆落本机偏好（LOCALAPPDATA/PinaxNext/openstory），不在库内也不在浏览器存储', async () => {
-    const { browseMemoryPath } = await import('../daemon.mjs')
+    const { browseMemoryPath } = await import('../src/host/daemon.mjs')
     assert.equal(browseMemoryPath({ LOCALAPPDATA: 'C:\\L' }), join('C:\\L', 'PinaxNext', 'openstory', 'fs-browse.json'))
     assert.equal(browseMemoryPath({ APPDATA: 'C:\\R' }), join('C:\\R', 'PinaxNext', 'openstory', 'fs-browse.json'))
     assert.equal(browseMemoryPath({}), '')
@@ -52,7 +52,7 @@ describe('fsBrowse 端点的记忆语义（真起 daemon）', () => {
   const slash = (value) => String(value ?? '').replaceAll('\\', '/')
 
   before(async () => {
-    const { startDaemon } = await import('../daemon.mjs')
+    const { startDaemon } = await import('../src/host/daemon.mjs')
     // 隔离到临时目录：不动真实用户偏好，也不碰任何已有库
     await mkdir(appdata(), { recursive: true })
     await mkdir(home(), { recursive: true })

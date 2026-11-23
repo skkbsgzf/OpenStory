@@ -68,7 +68,8 @@ export async function ensureEmbedding({ repoRoot, embedUrl = 'http://127.0.0.1:8
   if (typeof resolveCollections !== 'function') return false
   const cfg = resolveCollections(configPath)
   if (!cfg.ok) return false // 没接知识库就不越权拉服务
-  const script = join(repoRoot, 'embedding-server.mjs')
+  // OS-140 布局归一：embedding-server 实现迁到 src/services/（仓根 daemon.mjs 同款垫片没有它，spawn 直指实现）
+  const script = join(repoRoot, 'src', 'services', 'embedding-server.mjs')
   if (!existsSync(script)) return false
   try {
     const child = spawn(process.execPath, [script], { detached: true, stdio: 'ignore', cwd: repoRoot })

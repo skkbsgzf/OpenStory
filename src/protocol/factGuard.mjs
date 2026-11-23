@@ -13,7 +13,7 @@
 import { existsSync, readdirSync, statSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { factStore } from './pinaxAdapter.mjs' // OS-125：内核唯一进口（S2.4），本仓其余模块不许直引 core/**
+import { factStore } from '../kernel/pinaxAdapter.mjs' // OS-125：内核唯一进口（S2.4），本仓其余模块不许直引 core/**
 
 /** 一次读取的结果来源标记——调用方据此决定要不要提示作者「正在用降级数据」。 */
 export const CONTEXT_SOURCE = Object.freeze({

@@ -8,10 +8,10 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
-import { readLog } from '../changelog.mjs'
+import { readLog } from '../src/protocol/changelog.mjs'
 import {
   DRAFT_DIR, dropDraft, listDrafts, loadDraft, readUiState, safeId, safeModule, saveDraft, writeUiState
-} from '../libState.mjs'
+} from '../src/protocol/libState.mjs'
 
 async function fixture() {
   const root = await mkdtemp(join(tmpdir(), 'os-libstate-'))

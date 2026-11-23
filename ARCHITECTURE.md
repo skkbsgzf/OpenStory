@@ -2,6 +2,8 @@
 
 > 七层实测分层（OS-133 归档）。所有数字实测于 2026-11-23（`wc -l` / `node --test` /
 > `tools/acceptance/acceptance.mjs`），不是抄的——下次动架构先重测再改这份文档。
+> OS-140 布局归一后数字已重测：自持模块收进 `src/` 六目录，仓根只留 `daemon.mjs`/`mcp.mjs`
+> 两个入口垫片（布局宪法见 AGENTS.md 硬规则 7；分层是逻辑职责，物理布局见路径表）。
 
 ## 数据优先级（一级公民声明）
 
@@ -22,12 +24,12 @@
 ## 七层分层（自上而下，依赖只许向下）
 
 ```
-L7  前端 public/            15 文件  19,917 行   无构建单页（浏览器/DSH webview）
-L6  契约层 contracts/        8 文件   1,369 行   七域聚合，101 端点
-L5  daemon（HTTP＋进程治理）  1 文件   5,298 行   node:http 手写路由＋OS-136 来源防护四层闸＋单实例锁/stamp/generation/health
-    └ mcp.mjs（伴生进程）     1 文件     715 行   stdio 24 工具，daemon HTTP 的薄适配层
-L4  本仓自持层              37 模块  10,733 行   建库/导入/fact 消费/参考/Agent/货架/协议层…
-L3  pinaxAdapter.mjs         1 文件      60 行   内核唯一进口（五能力组）
+L7  前端 public/               15 文件  19,917 行   无构建单页（浏览器/DSH webview）
+L6  契约层 src/api/contracts/  8 文件   1,373 行   七域聚合，101 端点
+L5  daemon（HTTP＋进程治理）   1 文件   5,424 行   node:http 手写路由＋OS-136 来源防护四层闸＋单实例锁/stamp/generation/health
+    └ mcp（伴生进程）          1 文件     726 行   stdio 24 工具，daemon HTTP 的薄适配层
+L4  本仓自持层                39 模块  10,821 行   建库/导入/fact 消费/参考/Agent/货架/协议层…（src/ 树）
+L3  src/kernel/pinaxAdapter   1 文件      68 行   内核唯一进口（五能力组）
 L2  core/pinax              24 文件   4,332 行   fact 链底座（逐字 vendor，禁改）
 L1  磁盘库                  ——        ——       文件即真相（库＝文件夹，.pinax 兼容）
 ```
@@ -41,9 +43,10 @@ L1  磁盘库                  ——        ——       文件即真相（库�
 - **边界**：只经 HTTP 契约（L6）与 daemon 说话；不落任何内容性/状态性数据（OS-89，
   浏览器只做内存视图）；前端模块互不 import（门禁 S2.2，md.mjs 渲染协议除外）。
 
-### L6 契约层 `contracts/` ——8 文件 / 1,369 行 / 101 端点
+### L6 契约层 `src/api/` ——8 文件 / 1,373 行 / 101 端点
 
-- **职责**：API 形状唯一真源（OS-130 契约分域）。`contracts.mjs`（221 行）聚合七域分片：
+- **职责**：API 形状唯一真源（OS-130 契约分域）。`src/api/contracts.mjs`（221 行）聚合七域分片
+  （`src/api/contracts/`）：
   library(6) / chapters(12) / fact(27) / reference(7) / agent(17) / plugins(10) / system(22)
   ＝ **101 端点**（`ENDPOINT_LIST` 实测 101）；请求/响应双端校验，daemon 与前端共享同一份。
   错误码词表含 OS-136 来源防护两码：`FORBIDDEN_ORIGIN`（Host/Origin/Sec-Fetch-Site 拒收，403）、
@@ -51,9 +54,10 @@ L1  磁盘库                  ——        ——       文件即真相（库�
 - **边界**：纯数据＋纯函数，零依赖（不 import node:path/fs，浏览器也能载入）；
   改形状＝改对应域分片，两端一起跟。
 
-### L5 daemon ——daemon.mjs 1 文件 / 5,298 行（＋mcp.mjs 伴生进程 715 行）
+### L5 daemon ——src/host/daemon.mjs 1 文件 / 5,424 行（＋src/host/mcp.mjs 伴生进程 726 行）
 
-- **职责**：node:http 手写路由，只监听 127.0.0.1:8807（`DEFAULT_PORT` daemon.mjs:157）。
+- **职责**：node:http 手写路由，只监听 127.0.0.1:8807（`DEFAULT_PORT` src/host/daemon.mjs:162）。
+  仓根 `daemon.mjs`/`mcp.mjs` 是入口垫片（`export * from` ＋仅 node 直跑才调 main，OS-140）。
   endpointFor 契约分派＋validateResponse 响应校验；**唯一磁盘写入面**（原子写＋.history
   备份）；SSE 通道；**OS-136 来源防护四层闸**——①Host 闸全局生效（只认
   `127.0.0.1/localhost/[::1]`＋实际绑定端口，防 DNS 重绑定）；②Origin／③Sec-Fetch-Site
@@ -63,31 +67,33 @@ L1  磁盘库                  ——        ——       文件即真相（库�
   专项测试 `test/originGuard.test.mjs`）；**OS-127 进程治理**——单实例锁
   （`%LOCALAPPDATA%/PinaxNext/openstory/daemon.lock`）、acquire/stamp/clear 三步闸、
   generation 代际继承、`/api/health` 读 DAEMON_RUNTIME。
-- **伴生进程**：`mcp.mjs`（715 行，stdio JSON-RPC，**24 工具**）是 daemon HTTP 的薄适配层
+- **伴生进程**：`src/host/mcp.mjs`（726 行，stdio JSON-RPC，**24 工具**）是 daemon HTTP 的薄适配层
   ——数据操作全部转发本机 daemon，唯一直算例外是 analysis 纯函数；不套娃（不开 agent 对话）。
 - **边界**：业务逻辑下沉 L4；daemon 只做分派、校验、落盘与进程治理。
 
-### L4 本仓自持层 ——38 个仓根模块 / 10,775 行
+### L4 本仓自持层 ——39 个 src/ 模块 / 10,821 行
 
-OS-123/124 解耦后，建库/导入/章节号解析全部自持，不再 vendor。按职责组（行数实测）：
+OS-123/124 解耦后，建库/导入/章节号解析全部自持，不再 vendor。OS-140 起物理布局收进
+`src/`（域模块 `src/modules/`、外围服务 `src/services/`、协议件 `src/protocol/`），
+下面按逻辑职责组列表（行数实测于 OS-140 同日）：
 
 | 组 | 模块（行数） |
 |---|---|
-| 建库与导入（OS-123/124 fork 点） | projectDoc(563，建库＋project.json 合同) / importAdapter(582，整目录导入) / textUtil(97，章节号＋世界书契约判定) / libraryManage(298) |
-| fact 消费与校验 | enrichEngine(828，语义富化 6 窗) / factGuard(257) / deduceEngine(332，推演核封装) / deduceSession(496，多局会话容器) / deduceNarrative(159) / dependencyGraph(162，因果依赖图) / syncCheck(247，正文↔拆解一致性) |
-| 协议层（S2.1 白名单公共面） | chapters(191，读写协议) / changelog(385，diff＋月度 jsonl) / versionGate(110，插件版本闸) / plugins(161，三货架只读聚合) / hostWrite(58，OS-138 宿主写协议唯一入口——原子写收敛，22 处内联 tmp＋rename 归一) |
-| 参考/世界书 | referenceStore(609，标签/双链/图谱) |
-| Agent | agentStore(488) / agentEvents(356，AG-UI canonical 事件模型＋SSE 投影) / roleplayEngine(280) / roleplayPrompts(188) |
-| 插件货架 | suites(459) / skills(323) / runtimes(314) / genres(287) / stylePacks(119) |
-| 引擎与周边 | comfyEngine(198 生图) / kbAdapter(222) / kbHealth(181) / kbRouter(131) / libState(191) / jobCenter(171 任务中心) / nativePicker(131) / dsh-bridge(396) / dsh-cli(392) / embedding-server(155) / embeddingPaths(25) / cli-bridge(112) / style-check(167) |
+| 建库与导入（OS-123/124 fork 点，src/modules/library/） | projectDoc(563，建库＋project.json 合同) / importAdapter(582，整目录导入) / textUtil(97，章节号＋世界书契约判定) / libraryManage(297) |
+| fact 消费与校验 | enrichEngine(828，语义富化 6 窗，src/services/) / factGuard(257，src/protocol/) / deduceEngine(331，推演核封装，src/modules/deduce/) / deduceSession(491，多局会话容器) / deduceNarrative(159) / dependencyGraph(162，因果依赖图，src/protocol/) / syncCheck(248，正文↔拆解一致性，src/services/) |
+| 协议层（S2.1 白名单公共面，src/protocol/ ＋ src/api/） | chapters(191，读写协议) / changelog(385，diff＋月度 jsonl) / versionGate(113，插件版本闸) / plugins(161，三货架只读聚合) / hostWrite(58，OS-138 宿主写协议唯一入口——原子写收敛，22 处内联 tmp＋rename 归一) |
+| 参考/世界书 | referenceStore(609，标签/双链/图谱，src/modules/worldbook/) |
+| Agent | agentStore(485，src/modules/agentbar/) / agentEvents(356，AG-UI canonical 事件模型＋SSE 投影，src/protocol/) / roleplayEngine(280) / roleplayPrompts(188)（后两者 src/modules/roleplay/） |
+| 插件货架（src/services/，数据目录仍在仓根 suites//styles//runtimes//genres//skills/） | suites(456) / skills(324) / runtimes(316) / genres(288) / stylePacks(121) |
+| 引擎与周边（src/services/） | comfyEngine(198 生图) / kbAdapter(222) / kbHealth(182) / kbRouter(131) / libState(191，src/protocol/) / jobCenter(171 任务中心) / nativePicker(131) / dsh-bridge(396) / dsh-cli(392) / embedding-server(156) / embeddingPaths(26) / cli-bridge(112) / style-check(167) |
 
 - **边界**：模块间禁止直接 import（门禁 S2.1）——只经协议层（chapters/changelog/versionGate/
   plugins/pinaxAdapter）与 L3 进口；内核能力只从 L3 的五组出口取。
 
-### L3 pinaxAdapter.mjs ——1 文件 / 60 行（内核唯一进口）
+### L3 src/kernel/pinaxAdapter.mjs ——1 文件 / 68 行（内核唯一进口）
 
-- **职责**（OS-125 解耦③）：全仓唯一允许 import `core/**` 的仓根模块（门禁 S2.4，
-  42 个仓根模块扫描）。**五能力组出口**：
+- **职责**（OS-125 解耦③）：src/ 树＋仓根垫片里唯一允许 import `core/**` 的模块（门禁 S2.4，
+  52 个模块扫描）。**五能力组出口**：
   `factStore`（S1 只读 list/get ＋ S2 writeFactFile 写协议）、`deduce`（opening/turn/settle
   端子）、`enrich`（伪章推导＋因果图三指标）、`projectMeta`（转引本仓 projectDoc）、
   `projectImport`（转引本仓 importAdapter/textUtil）；后两组是自有能力的统一出口。
@@ -161,7 +167,7 @@ OS-123/124 解耦后，建库/导入/章节号解析全部自持，不再 vendor
    双向兼容：spec `pinax-project@3`、schemaVersion 3、字段名与顺序、carriers 结构、
    fact 条目形状，一个字节不许变（金样护栏 `test/decoupleStep2.test.mjs`、
    `test/decoupleStep1.test.mjs`）。
-3. **S2.4 唯一进口**：仓根模块里只有 `pinaxAdapter.mjs` 可以 import `core/**`
+3. **S2.4 唯一进口**：src/ 模块与仓根垫片里只有 `src/kernel/pinaxAdapter.mjs` 可以 import `core/**`
    （门禁静态扫描钉死）；`vendor/contracts/` 是格式契约面例外，仅 textUtil 及其护栏测试直引。
 4. **依赖只许向下**（L7→L6→L5→L4→L3→L2→L1 单向）；Pinax 从不 import OpenStory。
 5. **daemon 来源防护闸不许拆**（OS-136）：Host／Origin／Sec-Fetch-Site 三道闸＋强制 JSON
@@ -191,7 +197,7 @@ OS-123/124 解耦后，建库/导入/章节号解析全部自持，不再 vendor
 
 ## 演进约定
 
-- 契约先行：API 变更先改 `contracts/<域>.mjs`（OS-130 分域，101 端点），两端一起跟。
+- 契约先行：API 变更先改 `src/api/contracts/<域>.mjs`（OS-130 分域，101 端点），两端一起跟。
 - 每批「界面上能看到新东西」；demo 数据退役一批、真数据上位一批。
 - 插件协议升级走 schemaVersion（@2 起精确匹配＋@1 兼容读），不做半懂兼容。
 - 遗留与明确不做的事项见 [docs/LEGACY-ITEMS.md](./docs/LEGACY-ITEMS.md)，不在本文重复。

@@ -14,7 +14,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { after, before, describe, it } from 'node:test'
-import { KIND_LABELS, PLUGIN_KINDS, listAllPlugins, listBlockedPlugins, pluginDetail, pluginHealth, suiteAssetPath } from '../plugins.mjs'
+import { KIND_LABELS, PLUGIN_KINDS, listAllPlugins, listBlockedPlugins, pluginDetail, pluginHealth, suiteAssetPath } from '../src/protocol/plugins.mjs'
 
 let base = ''
 

@@ -13,7 +13,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { CONTEXT_SOURCE, allowProseDirectRead, factHealth, loadFactContext, loadFactDerived, resetProseAudit } from '../factGuard.mjs'
+import { CONTEXT_SOURCE, allowProseDirectRead, factHealth, loadFactContext, loadFactDerived, resetProseAudit } from '../src/protocol/factGuard.mjs'
 
 /** 造一个最小库：正文两章 + 可选的事实链。 */
 function makeLibrary({ withFact = false } = {}) {

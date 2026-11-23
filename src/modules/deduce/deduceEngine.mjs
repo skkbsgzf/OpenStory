@@ -11,9 +11,9 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { mkdir } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
-import { deduce, factStore } from './pinaxAdapter.mjs' // OS-125：内核唯一进口（S2.4），本仓其余模块不许直引 core/**
+import { deduce, factStore } from '../../kernel/pinaxAdapter.mjs' // OS-125：内核唯一进口（S2.4），本仓其余模块不许直引 core/**
 import { buildNarrativeContext, firstPersonify, readWikiSafe } from './deduceNarrative.mjs'
-import { atomicWriteFile } from './hostWrite.mjs'
+import { atomicWriteFile } from '../../protocol/hostWrite.mjs'
 
 function text(value) {
   return String(value ?? '')

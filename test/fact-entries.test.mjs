@@ -8,8 +8,8 @@ import assert from 'node:assert/strict'
 import { mkdtemp, writeFile, mkdir, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { startDaemon } from '../daemon.mjs'
-import { validateResponse } from '../contracts.mjs'
+import { startDaemon } from '../src/host/daemon.mjs'
+import { validateResponse } from '../src/api/contracts.mjs'
 
 const ENTRIES = [
   {

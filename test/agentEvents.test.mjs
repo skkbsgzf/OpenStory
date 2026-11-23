@@ -9,7 +9,7 @@
  */
 import { strict as assert } from 'node:assert'
 import test from 'node:test'
-import { AGENT_EVENT_TYPES, AGENT_EVENT_TYPES_SSE, AGENT_EVENT_AGUI_KINDS, encodeForAgui, projectLegacyFrame } from '../agentEvents.mjs'
+import { AGENT_EVENT_TYPES, AGENT_EVENT_TYPES_SSE, AGENT_EVENT_AGUI_KINDS, encodeForAgui, projectLegacyFrame } from '../src/protocol/agentEvents.mjs'
 
 const ctx = (seq) => ({ runId: 'run-20260301-01', seq })
 

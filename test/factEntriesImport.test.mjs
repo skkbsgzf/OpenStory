@@ -21,7 +21,7 @@ import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, before, describe, it } from 'node:test'
-import { validateResponse } from '../contracts.mjs'
+import { validateResponse } from '../src/api/contracts.mjs'
 
 let base = ''
 let libRoot = ''
@@ -44,7 +44,7 @@ const entryOf = (bookId, id, chapter, content) => ({
 })
 
 before(async () => {
-  const { startDaemon } = await import('../daemon.mjs')
+  const { startDaemon } = await import('../src/host/daemon.mjs')
   base = await mkdtemp(join(tmpdir(), 'os135-fact-import-'))
   libRoot = join(base, 'lib')
   await mkdir(join(libRoot, '拆解'), { recursive: true })

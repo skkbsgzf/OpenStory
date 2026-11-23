@@ -5,14 +5,14 @@
  */
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { ENDPOINTS, ENDPOINT_LIST, validateRequest, validateResponse } from '../contracts.mjs'
-import { libraryEndpoints } from '../contracts/library.mjs'
-import { chaptersEndpoints } from '../contracts/chapters.mjs'
-import { factEndpoints } from '../contracts/fact.mjs'
-import { referenceEndpoints } from '../contracts/reference.mjs'
-import { agentEndpoints } from '../contracts/agent.mjs'
-import { pluginsEndpoints } from '../contracts/plugins.mjs'
-import { systemEndpoints } from '../contracts/system.mjs'
+import { ENDPOINTS, ENDPOINT_LIST, validateRequest, validateResponse } from '../src/api/contracts.mjs'
+import { libraryEndpoints } from '../src/api/contracts/library.mjs'
+import { chaptersEndpoints } from '../src/api/contracts/chapters.mjs'
+import { factEndpoints } from '../src/api/contracts/fact.mjs'
+import { referenceEndpoints } from '../src/api/contracts/reference.mjs'
+import { agentEndpoints } from '../src/api/contracts/agent.mjs'
+import { pluginsEndpoints } from '../src/api/contracts/plugins.mjs'
+import { systemEndpoints } from '../src/api/contracts/system.mjs'
 
 const DOMAINS = [
   ['library', libraryEndpoints],

@@ -11,7 +11,7 @@ import assert from 'node:assert/strict'
 import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { validateRequest, validateResponse } from '../contracts.mjs'
+import { validateRequest, validateResponse } from '../src/api/contracts.mjs'
 import {
   createLibrary,
   diagnoseLibrary,
@@ -20,8 +20,8 @@ import {
   registerLibrary,
   scanLibrary,
   setPrimaryCarrier
-} from '../libraryManage.mjs'
-import { startDaemon } from '../daemon.mjs'
+} from '../src/modules/library/libraryManage.mjs'
+import { startDaemon } from '../src/host/daemon.mjs'
 
 async function makeFixture() {
   const base = await mkdtemp(join(tmpdir(), 'openstory-os7-'))

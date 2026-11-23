@@ -16,7 +16,7 @@ import {
   loadKbConfig,
   normalizeCollections,
   normalizeHits
-} from '../kbAdapter.mjs'
+} from '../src/services/kbAdapter.mjs'
 
 /* ---------- 响应规整（真实形状） ---------- */
 

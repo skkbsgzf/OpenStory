@@ -20,7 +20,7 @@ import {
   notesVisibleAt,
   parseFrontmatter,
   scanReferences
-} from '../referenceStore.mjs'
+} from '../src/modules/worldbook/referenceStore.mjs'
 
 /** 夹具：临时参考库（OS-96 用例）。 */
 async function makeRefRoot() {
@@ -241,7 +241,7 @@ test('反链：已链接与未链接分段', async () => {
 /* ---------- 系统提示：只给链接不给全文（OS-45 作者口径） ---------- */
 
 test('系统提示：参考只暴露路径/标题/标签，正文一个字都不进上下文', async () => {
-  const { __test } = await import('../daemon.mjs')
+  const { __test } = await import('../src/host/daemon.mjs')
   const base = await mkdtemp(join(tmpdir(), 'openstory-refprompt-'))
   const root = join(base, '库')
   await mkdir(join(root, '参考'), { recursive: true })

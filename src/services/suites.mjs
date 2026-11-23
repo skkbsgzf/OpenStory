@@ -12,12 +12,14 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { mkdir, readFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { atomicWriteFile } from './hostWrite.mjs'
+import { atomicWriteFile } from '../protocol/hostWrite.mjs'
 import { loadSkills } from './skills.mjs'
-import { readAppVersion, minVersionGate } from './versionGate.mjs'
-import { resolveSuiteDependencies } from './dependencyGraph.mjs'
+import { readAppVersion, minVersionGate } from '../protocol/versionGate.mjs'
+import { resolveSuiteDependencies } from '../protocol/dependencyGraph.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
+/** OS-140 布局归一：本模块迁到 src/services/——货架数据目录（suites/）仍在仓根。 */
+const REPO_ROOT = join(HERE, '..', '..')
 
 export const SUITE_SPEC = 'openstory-suite@2'
 export const SUITE_SPEC_LEGACY = 'openstory-suite@1'
@@ -28,7 +30,7 @@ function text(value) {
 }
 
 export function builtinSuitesDir() {
-  return join(HERE, 'suites')
+  return join(REPO_ROOT, 'suites')
 }
 
 export function defaultUserSuitesDir(env = process.env) {

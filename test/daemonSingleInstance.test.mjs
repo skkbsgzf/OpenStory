@@ -22,13 +22,13 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { validateResponse } from '../contracts.mjs'
+import { validateResponse } from '../src/api/contracts.mjs'
 import {
   acquireDaemonLock,
   clearDaemonLock,
   daemonLockPath,
   stampDaemonLock
-} from '../daemon.mjs'
+} from '../src/host/daemon.mjs'
 
 const HERE = join(fileURLToPath(import.meta.url), '..', '..')
 
@@ -230,7 +230,7 @@ test('CLI 全链：双开友好退出 0＋「已在运行」；杀掉后锁陈�
 })
 
 test('健康端点（内嵌 startDaemon）：免 root 授权，未授权 root 也能探活', async () => {
-  const { startDaemon } = await import('../daemon.mjs')
+  const { startDaemon } = await import('../src/host/daemon.mjs')
   const base = mkdtempSync(join(tmpdir(), 'openstory-os127-health-'))
   const preferencesPath = join(base, 'next-preferences.json')
   writeFileSync(preferencesPath, JSON.stringify({ recentProjects: [] }), 'utf-8')

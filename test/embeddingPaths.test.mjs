@@ -8,7 +8,7 @@ import assert from 'node:assert/strict'
 import { readFileSync, existsSync, statSync } from 'node:fs'
 import { isAbsolute, join, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { resolveEmbeddingPaths, resolveRepoRoot } from '../embeddingPaths.mjs'
+import { resolveEmbeddingPaths, resolveRepoRoot } from '../src/services/embeddingPaths.mjs'
 
 test('纯函数：任意仓根 → 缓存目录与 transformers 发行目录，绝对路径、无副作用', () => {
   const fakeRoot = join(fileURLToPath(new URL('.', import.meta.url)), 'fixtures')
@@ -33,7 +33,8 @@ test('真实仓：resolveRepoRoot 指向仓根（package.json 所在目录），
 })
 
 test('守卫：embedding-server.mjs 不再含硬编码仓根字面量（D:/OpenStory）', () => {
-  const source = readFileSync(join(resolveRepoRoot(), 'embedding-server.mjs'), 'utf-8')
+  // OS-140 布局归一：embedding-server 实现迁到 src/services/（断言字面量随事实更新）
+  const source = readFileSync(join(resolveRepoRoot(), 'src', 'services', 'embedding-server.mjs'), 'utf-8')
   assert.equal(source.includes('D:/OpenStory'), false, 'embedding-server.mjs 仍含硬编码 D:/OpenStory')
   assert.equal(source.includes('resolveEmbeddingPaths'), true, 'embedding-server.mjs 应改用 embeddingPaths 的解析')
 })

@@ -12,6 +12,10 @@
  *   S3 前端一致性   —— 卡片/页面/组件 CSS 有一致性，语义令牌可配置
  *   S4 UX 跳转层级  —— 插件页面结构遵循全局一致性规范（目前薄弱项，从严检查）
  *
+ * OS-140 布局归一：自持模块收进 src/（host/api/protocol/kernel/modules/services），
+ * 仓根只留 daemon.mjs/mcp.mjs 两个入口垫片——新增 S0 布局检查钉死这条宪法，
+ * S1/S2 的扫描面从「仓根 .mjs」改为「src/ 树全部 .mjs ＋两个垫片」（覆盖面只增不减）。
+ *
  * 用法：node tools/acceptance/acceptance.mjs [--json <outPath>]
  * 退出码：0 = 全过；1 = 有 FAIL（新增检查项默认 WARN 不拦截，见 CHECKS 注释）
  */
@@ -51,13 +55,48 @@ function grepLine(rel, re) {
   return null
 }
 
+/* OS-140：src/ 树扫描器（递归收集 .mjs，带内容）＋相对说明符 → 仓内路径解析器 */
+function walkMjs(dir, prefix) {
+  const out = []
+  for (const name of readdirSync(dir)) {
+    const full = join(dir, name)
+    const rel = `${prefix}/${name}`
+    const st = statSync(full)
+    if (st.isDirectory()) out.push(...walkMjs(full, rel))
+    else if (name.endsWith('.mjs')) out.push({ rel, src: readFileSync(full, 'utf-8') })
+  }
+  return out
+}
+function resolveSpec(fileRel, spec) {
+  const parts = fileRel.includes('/') ? fileRel.slice(0, fileRel.lastIndexOf('/')).split('/') : []
+  for (const seg of spec.split('/')) {
+    if (seg === '.') continue
+    else if (seg === '..') parts.pop()
+    else parts.push(seg)
+  }
+  return parts.join('/')
+}
+
+/* ================================================================
+ * S0 布局宪法（OS-140）——仓根只允许入口、包描述、文档
+ * ================================================================ */
+console.log('\n── S0 布局 ──')
+
+// S0.1 仓根 .mjs 恰好两个入口垫片：daemon.mjs / mcp.mjs（实现都在 src/host/）
+const rootMjs = readdirSync(REPO).filter((f) => f.endsWith('.mjs')).sort()
+const rootExtra = rootMjs.filter((f) => f !== 'daemon.mjs' && f !== 'mcp.mjs')
+check('S0.1', 'S0', `布局宪法：仓根只允许两个入口垫片（实测 ${rootMjs.length} 个 .mjs）`,
+  rootMjs.length === 2 && rootMjs.includes('daemon.mjs') && rootMjs.includes('mcp.mjs'),
+  rootMjs.map((f) => `${f} → ${exists(join('src/host', f)) ? `src/host/${f}` : '?'}`),
+  rootExtra.length ? `仓根多出的 .mjs（应迁 src/）：${rootExtra.join(', ')}` : '实现全部在 src/，仓根无散落模块')
+
 /* ================================================================
  * S1 Agentic —— MCP / skill / 知识库 / dsh runtime / 多 CLI
  * ================================================================ */
 console.log('\n── S1 Agentic ──')
 
 // S1.1 MCP 工具清单与模块覆盖（按前缀归类：每个模块 ≥2 个工具＝有读有写）
-const mcpSrc = readRepo('mcp.mjs')
+const mcpSrc = readRepo('src/host/mcp.mjs')
 const toolNames = [...mcpSrc.matchAll(/name:\s*'([a-z_]+)'/g)].map((m) => m[1])
 const MODULE_PREFIX = {
   novel: 'openstory_chapter',
@@ -74,7 +113,7 @@ const modCoverage = Object.entries(MODULE_PREFIX)
 const thinModules = modCoverage.filter(([, ts]) => ts.length < 2).map(([m, ts]) => `${m}(${ts.length})`)
 check('S1.1', 'S1', `MCP 工具覆盖模块面（共 ${toolNames.length} 个工具，${modCoverage.length} 模块组）`,
   toolNames.length >= 15 && modCoverage.length >= 4 && thinModules.length === 0,
-  toolNames.slice(0, 4).map((t) => lineOf('mcp.mjs', `name: '${t}'`)).filter((s) => !s.endsWith(':?')),
+  toolNames.slice(0, 4).map((t) => lineOf('src/host/mcp.mjs', `name: '${t}'`)).filter((s) => !s.endsWith(':?')),
   thinModules.length ? `工具不足 2 个的模块组：${thinModules.join(', ')}` : '各模块组均有读+写工具')
 
 // S1.2 mcp/skills/*.md 对外文档与工具同步
@@ -102,9 +141,10 @@ check('S1.3', 'S1', `skills/ 知识库包完整（${skillPacks} 包）`,
   skillMissing.length ? `缺 SKILL.md：${skillMissing.join(', ')}` : '全部包有 SKILL.md')
 
 // S1.4 dsh native runtime 适配（dsh-cli 一次一进程型 + runtimes 注册 dsh kind）
-const dshPieces = ['dsh-cli.mjs', 'dsh-bridge.mjs', 'cli-bridge.mjs', 'runtimes.mjs']
+// OS-140：四件套全部在 src/services/
+const dshPieces = ['src/services/dsh-cli.mjs', 'src/services/dsh-bridge.mjs', 'src/services/cli-bridge.mjs', 'src/services/runtimes.mjs']
 const dshMissing = dshPieces.filter((f) => !exists(f))
-const dshKindReg = grepLine('runtimes.mjs', /kind\s*===\s*'dsh'|'sidecar',\s*'endpoint',\s*'cli',\s*'dsh'/)
+const dshKindReg = grepLine('src/services/runtimes.mjs', /kind\s*===\s*'dsh'|'sidecar',\s*'endpoint',\s*'cli',\s*'dsh'/)
 check('S1.4', 'S1', 'dsh native runtime 适配件齐全（dsh-cli 一次一进程型已注册）',
   dshMissing.length === 0 && !!dshKindReg,
   [...dshPieces.filter((f) => exists(f)).map((f) => lineOf(f, 'export')), dshKindReg].filter(Boolean),
@@ -121,28 +161,39 @@ check('S1.5', 'S1', '外部 CLI 派发器就位（Qoder 子 agent 模式）',
  * ================================================================ */
 console.log('\n── S2 可插拔 ──')
 
-// S2.1 扫根级模块 import 图
-const rootMjs = readdirSync(REPO).filter((f) => f.endsWith('.mjs'))
+// S2.1 扫 src/ 树＋仓根垫片的 import 图（OS-140 起扫描面＝src/**/*.mjs ＋ daemon/mcp 垫片）
+const srcMjs = walkMjs(join(REPO, 'src'), 'src')
+const shimFiles = ['daemon.mjs', 'mcp.mjs']
+const scanned = [...srcMjs, ...shimFiles.map((f) => ({ rel: f, src: readRepo(f) }))]
 const imports = {}
-for (const f of rootMjs) {
-  const src = readRepo(f)
-  imports[f] = [...src.matchAll(/from\s+'(\.?\/?[\w./-]+\.mjs)'/g)].map((m) => m[1].replace(/^\.?\//, ''))
+const importEvidence = {}
+for (const { rel, src } of scanned) {
+  imports[rel] = []
+  importEvidence[rel] = []
+  const lines = src.split('\n')
+  for (let i = 0; i < lines.length; i++) {
+    for (const m of lines[i].matchAll(/from\s+'((?:\.{1,2}\/)+[\w./-]+\.mjs)'/g)) {
+      const dep = resolveSpec(rel, m[1])
+      imports[rel].push(dep)
+      importEvidence[rel].push(`${rel}:${i + 1} '${m[1]}'`)
+    }
+  }
 }
 // 模块 = 可插拔功能件；它们之间不得互相 import。
-// 白名单：① 协议层（contracts/changelog/versionGate/plugins/pinaxAdapter——OS-125 起 pinaxAdapter
+// 白名单：① 协议层（contracts/changelog/versionGate/plugins/hostWrite/pinaxAdapter——OS-125 起 pinaxAdapter
 //        是内核唯一进口＝能力协议面，core/** 只许它引，见 S2.4；vendor 内核 core/pinax/** 是 fact 链底座，见 VENDORED.md）
 //        ② deduceSession→deduceEngine（会话容器引引擎＝内核依赖）
 const KERNEL_ALLOW = new Set([
-  'deduceSession.mjs -> deduceEngine.mjs',
+  'src/modules/deduce/deduceSession.mjs -> src/modules/deduce/deduceEngine.mjs',
   // OS-79：deduceNarrative 是推演引擎的内部子模块（只做叙事上下文拼装，纯函数），
   // 不是平等功能模块——引擎引它属于内部组合，不是跨模块耦合。
-  'deduceEngine.mjs -> deduceNarrative.mjs'
+  'src/modules/deduce/deduceEngine.mjs -> src/modules/deduce/deduceNarrative.mjs'
 ])
-const PROTOCOL = new Set(['contracts.mjs', 'chapters.mjs', 'changelog.mjs', 'versionGate.mjs', 'plugins.mjs', 'pinaxAdapter.mjs', 'hostWrite.mjs']) // 底层接口协议层（chapters=文件读写协议；changelog=变更日志协议，所有模块都要记 diff；versionGate=版本比对协议，三套插件规范共用；plugins=三套插件只读聚合层，daemon 与设置页共用同一份清单口径；pinaxAdapter=内核唯一进口，OS-125 解耦③的五组能力出口，见 S2.4；hostWrite=宿主写协议唯一入口，OS-138 原子写收敛——落盘一律经它，见 AGENTS.md 写通道红线）
-const MODULES = rootMjs.filter((f) => [
-  'deduceEngine.mjs', 'deduceSession.mjs', 'referenceStore.mjs', 'enrichEngine.mjs',
-  'factGuard.mjs', 'kbRouter.mjs', 'kbAdapter.mjs', 'kbHealth.mjs', 'style-check.mjs', 'stylePacks.mjs', 'skills.mjs', 'genres.mjs'
-].includes(f))
+const PROTOCOL = new Set(['src/api/contracts.mjs', 'src/protocol/chapters.mjs', 'src/protocol/changelog.mjs', 'src/protocol/versionGate.mjs', 'src/protocol/plugins.mjs', 'src/protocol/hostWrite.mjs', 'src/kernel/pinaxAdapter.mjs']) // 底层接口协议层（chapters=文件读写协议；changelog=变更日志协议，所有模块都要记 diff；versionGate=版本比对协议，三套插件规范共用；plugins=三套插件只读聚合层，daemon 与设置页共用同一份清单口径；pinaxAdapter=内核唯一进口，OS-125 解耦③的五组能力出口，见 S2.4；hostWrite=宿主写协议唯一入口，OS-138 原子写收敛——落盘一律经它，见 AGENTS.md 写通道红线）
+const MODULES = [
+  'src/modules/deduce/deduceEngine.mjs', 'src/modules/deduce/deduceSession.mjs', 'src/modules/worldbook/referenceStore.mjs', 'src/services/enrichEngine.mjs',
+  'src/protocol/factGuard.mjs', 'src/services/kbRouter.mjs', 'src/services/kbAdapter.mjs', 'src/services/kbHealth.mjs', 'src/services/style-check.mjs', 'src/services/stylePacks.mjs', 'src/services/skills.mjs', 'src/services/genres.mjs'
+]
 const crossEdges = []
 for (const mod of MODULES) {
   for (const dep of imports[mod] || []) {
@@ -155,8 +206,12 @@ for (const mod of MODULES) {
 }
 check('S2.1', 'S2', '功能模块间零直接耦合（协议层/vendor 内核除外）',
   crossEdges.length === 0,
-  crossEdges.slice(0, 6).map((e) => lineOf(e.split(' -> ')[0], e.split(' -> ')[1])),
-  crossEdges.length ? `违规边：${crossEdges.join('; ')}` : '模块只引 contracts/chapters 协议层、vendor 内核与白名单')
+  crossEdges.slice(0, 6).map((e) => {
+    const [mod, dep] = e.split(' -> ')
+    const ev = (importEvidence[mod] || []).find((s) => s.includes(dep))
+    return ev || lineOf(mod, dep)
+  }),
+  crossEdges.length ? `违规边：${crossEdges.join('; ')}` : '模块只引协议层、vendor 内核与白名单')
 
 // S2.2 前端模块隔离（public/*.mjs 只共享 md.mjs 渲染协议）
 const publicMjs = ['analysis.mjs', 'charts.mjs', 'graph.mjs', 'reference.mjs', 'storyTree.mjs']
@@ -178,30 +233,30 @@ check('S2.2', 'S2', '前端分析/图谱/参考/树模块互不 import（md.mjs 
 
 // S2.3 契约驱动架构：daemon 经 endpointFor() 契约分派 + validateResponse() 契约校验
 // OS-130 契约分域后，端点形状按域切片在 contracts/<域>.mjs——计数＝contracts.mjs＋contracts/*.mjs 合计
-const contractFiles = ['contracts.mjs',
-  ...readdirSync(join(REPO, 'contracts')).filter((f) => f.endsWith('.mjs')).sort().map((f) => `contracts/${f}`)]
+// OS-140：契约层在 src/api/（聚合入口＋七域分片）
+const contractFiles = ['src/api/contracts.mjs',
+  ...readdirSync(join(REPO, 'src/api/contracts')).filter((f) => f.endsWith('.mjs')).sort().map((f) => `src/api/contracts/${f}`)]
 const contractCount = contractFiles.reduce((sum, rel) => sum + (readRepo(rel).match(/method:/g) || []).length, 0)
 const firstSlice = contractFiles.find((rel) => /method:/.test(readRepo(rel))) || contractFiles[0]
-const daemonSrc = readRepo('daemon.mjs')
-const endpointForUse = grepLine('daemon.mjs', /endpointFor\(req\.method/)
-const validateRespUse = grepLine('daemon.mjs', /validateResponse\(/)
+const endpointForUse = grepLine('src/host/daemon.mjs', /endpointFor\(req\.method/)
+const validateRespUse = grepLine('src/host/daemon.mjs', /validateResponse\(/)
 check('S2.3', 'S2', `契约驱动架构（contracts ${contractCount} 端点；daemon 契约分派+响应校验）`,
   contractCount > 0 && !!endpointForUse && !!validateRespUse,
   [lineOf(firstSlice, 'method:'), endpointForUse, validateRespUse].filter(Boolean),
   '契约表是模块间调用的唯一底座；新增端点必须先进 contracts（域分片）')
 
-// S2.4 内核唯一进口（OS-125 解耦③）：仓根模块里只有 pinaxAdapter.mjs 可以 import core/**。
+// S2.4 内核唯一进口（OS-125 解耦③）：src/ 树＋仓根垫片里只有 src/kernel/pinaxAdapter.mjs 可以 import core/**。
 // 静态 from 与动态 import() 都算；worldbook/lexicon 契约（OS-132 起收编进本仓
-// vendor/contracts，非 core/** 路径）不在此列；test/*.test.mjs 等非仓根模块不在扫描范围。
-const coreImportRe = /(?:from\s+|import\(\s*)['"](?:\.\.?\/)?(core\/[^'"]+)['"]/g
+// vendor/contracts，非 core/** 路径）不在此列；test/*.test.mjs 等测试文件不在扫描范围。
+const coreImportRe = /(?:from\s+|import\(\s*)['"](?:\.{1,2}\/)+(core\/[^'"]+)['"]/g
 const coreViolators = []
-for (const f of rootMjs) {
-  if (f === 'pinaxAdapter.mjs') continue
-  for (const m of readRepo(f).matchAll(coreImportRe)) coreViolators.push(`${f} -> ${m[1]}`)
+for (const { rel, src } of scanned) {
+  if (rel === 'src/kernel/pinaxAdapter.mjs') continue
+  for (const m of src.matchAll(coreImportRe)) coreViolators.push(`${rel} -> ${m[1]}`)
 }
-const adapterCoreUse = grepLine('pinaxAdapter.mjs', /from\s+'(?:\.\/|\.\.\/)?core\//)
-check('S2.4', 'S2', `内核唯一进口（${rootMjs.length} 个仓根模块，仅 pinaxAdapter.mjs 引 core/**）`,
-  exists('pinaxAdapter.mjs') && !!adapterCoreUse && coreViolators.length === 0,
+const adapterCoreUse = grepLine('src/kernel/pinaxAdapter.mjs', /from\s+'(?:\.{1,2}\/)+core\//)
+check('S2.4', 'S2', `内核唯一进口（${scanned.length} 个 src/ 模块＋垫片，仅 src/kernel/pinaxAdapter.mjs 引 core/**）`,
+  exists('src/kernel/pinaxAdapter.mjs') && !!adapterCoreUse && coreViolators.length === 0,
   [adapterCoreUse, ...coreViolators.slice(0, 5)].filter(Boolean),
   coreViolators.length
     ? `违规进口：${coreViolators.join('; ')}——内核能力只经 pinaxAdapter 五组出口（factStore/deduce/enrich/projectMeta/projectImport）`
@@ -287,14 +342,14 @@ check('S4.3', 'S4', 'UX 结构清单文档存在（docs/UX-STRUCTURE.md：页签
 const pass = checks.filter((c) => c.verdict === 'PASS').length
 const fail = checks.filter((c) => c.verdict === 'FAIL').length
 const warns = checks.filter((c) => c.verdict === 'WARN').length
-console.log(`\n验收门禁：${pass} 过 / ${fail} 挂 / ${warns} 警（S1 Agentic · S2 可插拔 · S3 前端一致性 · S4 UX 层级）`)
+console.log(`\n验收门禁：${pass} 过 / ${fail} 挂 / ${warns} 警（S0 布局 · S1 Agentic · S2 可插拔 · S3 前端一致性 · S4 UX 层级）`)
 
 if (jsonOut) {
   mkdirSync(dirname(jsonOut), { recursive: true })
   writeFileSync(jsonOut, JSON.stringify({
     schema: 'openstory.acceptance/v1',
     generatedAt: new Date().toISOString(),
-    standards: ['S1 Agentic', 'S2 可插拔', 'S3 前端一致性', 'S4 UX 跳转层级'],
+    standards: ['S0 布局', 'S1 Agentic', 'S2 可插拔', 'S3 前端一致性', 'S4 UX 跳转层级'],
     summary: { pass, fail, warn: warns },
     checks
   }, null, 2))

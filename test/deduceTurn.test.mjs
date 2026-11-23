@@ -10,9 +10,9 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { startDaemon } from '../daemon.mjs'
-import { loadDeduceSession } from '../deduceSession.mjs'
-import { validateRequest, validateResponse } from '../contracts.mjs'
+import { startDaemon } from '../src/host/daemon.mjs'
+import { loadDeduceSession } from '../src/modules/deduce/deduceSession.mjs'
+import { validateRequest, validateResponse } from '../src/api/contracts.mjs'
 
 const ENTRIES = [
   { schema: 'fact.data/v3', id: 'e1', layer: 'worldview', name: '雾港规则', definition: '雾起时渡口不开船。', status: 'adopted' },

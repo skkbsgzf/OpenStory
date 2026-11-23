@@ -14,7 +14,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { mkdir, readdir, readFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
-import { atomicWriteFile } from './hostWrite.mjs'
+import { atomicWriteFile } from '../../protocol/hostWrite.mjs'
 
 function text(value) {
   return String(value ?? '')

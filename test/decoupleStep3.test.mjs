@@ -1,8 +1,10 @@
 /**
  * OS-125 解耦③ 护栏（node:test，零依赖）——内核唯一进口（pinaxAdapter）。
  *
- *   · 全仓断言：仓根 *.mjs 里 import `core/**`（静态 from ＋动态 import()）的只剩 pinaxAdapter.mjs
- *     ——与门禁 S2.4（tools/acceptance/acceptance.mjs）同口径，这里锁测试侧副本；
+ *   · 全仓断言：src/ 树（递归）的全部 .mjs ＋仓根两个入口垫片里 import `core/` 下模块
+ *     （静态 from ＋动态 import()）的只剩 src/kernel/pinaxAdapter.mjs——
+ *     与门禁 S2.4（tools/acceptance/acceptance.mjs）同口径，这里锁测试侧副本
+ *     （OS-140 起扫描范围随布局归一改为 src/ 树）；
  *   · 五组能力出口形状锁：factStore/deduce/enrich/projectMeta/projectImport 成员一个不差；
  *   · 每组真跑一条行为冒烟（内核端子真实调用，不是只验 typeof）；
  *   · plumber 转供锁：ok/fail/writeFileAtomic 经 adapter 转供 projectDoc/importAdapter，
@@ -16,28 +18,43 @@
  */
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { readdirSync, readFileSync } from 'node:fs'
+import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { factStore, deduce, enrich, projectMeta, projectImport, ok, fail, writeFileAtomic } from '../pinaxAdapter.mjs'
+import { factStore, deduce, enrich, projectMeta, projectImport, ok, fail, writeFileAtomic } from '../src/kernel/pinaxAdapter.mjs'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 
-test('全仓唯一进口：仓根模块里 import core/** 的只有 pinaxAdapter.mjs（S2.4 同口径）', () => {
-  const coreImportRe = /(?:from\s+|import\(\s*)['"](?:\.\.?\/)?(core\/[^'"]+)['"]/g
+test('全仓唯一进口：src/ 模块里 import core/** 的只有 src/kernel/pinaxAdapter.mjs（S2.4 同口径）', () => {
+  // OS-140 布局归一：自持模块全部收进 src/，扫描范围从「仓根 *.mjs」改为「src/**/*.mjs
+  // ＋仓根两个入口垫片」（同口径迁移，覆盖面只增不减）。
+  const coreImportRe = /(?:from\s+|import\(\s*)['"](?:\.\.?\/)+(core\/[^'"]+)['"]/g
   const violators = []
-  for (const f of readdirSync(ROOT).filter((name) => name.endsWith('.mjs'))) {
-    if (f === 'pinaxAdapter.mjs') continue
-    for (const m of readFileSync(join(ROOT, f), 'utf-8').matchAll(coreImportRe)) {
-      violators.push(`${f} -> ${m[1]}`)
+  const walk = (dir, prefix) => {
+    for (const name of readdirSync(dir)) {
+      const full = join(dir, name)
+      const rel = prefix ? `${prefix}/${name}` : name
+      const st = statSync(full)
+      if (st.isDirectory()) { walk(full, rel); continue }
+      if (!name.endsWith('.mjs')) continue
+      const src = readFileSync(full, 'utf-8')
+      if (rel === 'src/kernel/pinaxAdapter.mjs') continue
+      for (const m of src.matchAll(coreImportRe)) violators.push(`${rel} -> ${m[1]}`)
     }
   }
-  assert.deepEqual(violators, [], `core/** 只许 pinaxAdapter.mjs 引，违规：${violators.join('; ')}`)
+  walk(join(ROOT, 'src'), 'src')
+  // 仓根只剩两个入口垫片（布局宪法），只扫顶层 .mjs 文件、不递归
+  for (const name of readdirSync(ROOT).filter((n) => n.endsWith('.mjs'))) {
+    for (const m of readFileSync(join(ROOT, name), 'utf-8').matchAll(coreImportRe)) {
+      violators.push(`${name} -> ${m[1]}`)
+    }
+  }
+  assert.deepEqual(violators, [], `core/** 只许 src/kernel/pinaxAdapter.mjs 引，违规：${violators.join('; ')}`)
   // 反向断言：adapter 自己确实在引内核（唯一进口是真进口，不是空壳）
-  const adapterSrc = readFileSync(join(ROOT, 'pinaxAdapter.mjs'), 'utf-8')
-  assert.match(adapterSrc, /from '\.\/core\/pinax\/next\/kernel\/factFileStore\.mjs'/)
+  const adapterSrc = readFileSync(join(ROOT, 'src/kernel/pinaxAdapter.mjs'), 'utf-8')
+  assert.match(adapterSrc, /from '\.\.\/\.\.\/core\/pinax\/next\/kernel\/factFileStore\.mjs'/)
 })
 
 test('五组能力出口形状锁（成员与顺序都是接触面契约）', () => {

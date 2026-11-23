@@ -9,8 +9,8 @@ import assert from 'node:assert/strict'
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { validateResponse } from '../contracts.mjs'
-import { startDaemon } from '../daemon.mjs'
+import { validateResponse } from '../src/api/contracts.mjs'
+import { startDaemon } from '../src/host/daemon.mjs'
 
 // 1x1 透明 png 的头几字节足够当假素材——盘点只看文件名，本体只比对字节
 const FAKE_PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x01])

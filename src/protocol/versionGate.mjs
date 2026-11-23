@@ -15,6 +15,9 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
+/** OS-140 布局归一：本模块从仓根迁到 src/protocol/——package.json 仍在仓根，
+ * 零参数调用 readAppVersion() 的默认仓根跟着改（runtimes/skills/suites 货架都走零参数路径）。 */
+const REPO_ROOT = join(HERE, '..', '..')
 
 // 只认 x.y.z 三段全数字——预发布标签/区间（^1.0.0、1.0.0-beta）一律按格式非法处理
 const VERSION_RE = /^(\d+)\.(\d+)\.(\d+)$/u
@@ -28,11 +31,11 @@ const appVersionCache = new Map()
 
 /**
  * 读应用版本：<repoRoot>/package.json 的 version。
- * 不传 repoRoot＝本模块所在仓根（versionGate.mjs 就在仓根，生产路径零参数即可）。
- * 读不了/没有 version 返回 ''（由调用方按 bad-format 处理，绝不抛）。
+ * 不传 repoRoot＝仓根（OS-140 起本模块在 src/protocol/，默认值按两层上溯解析到仓根，
+ * 生产路径零参数即可）。读不了/没有 version 返回 ''（由调用方按 bad-format 处理，绝不抛）。
  */
-export function readAppVersion(repoRoot = HERE) {
-  const root = text(repoRoot).trim() || HERE
+export function readAppVersion(repoRoot = REPO_ROOT) {
+  const root = text(repoRoot).trim() || REPO_ROOT
   if (appVersionCache.has(root)) return appVersionCache.get(root)
   let version = ''
   try {

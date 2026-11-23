@@ -21,8 +21,8 @@
  */
 import { mkdir, readFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
-import { contentHash } from './changelog.mjs'
-import { atomicWriteFile } from './hostWrite.mjs'
+import { contentHash } from '../protocol/changelog.mjs'
+import { atomicWriteFile } from '../protocol/hostWrite.mjs'
 
 /** 库内固定位置（AGENTS.md 第 9 条：界面/状态类数据都落 `.pinax/` 下）。 */
 export const SYNC_STATE_PATH = '.pinax/sync-state.json'

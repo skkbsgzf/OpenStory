@@ -11,8 +11,8 @@
 import { existsSync, statSync } from 'node:fs'
 import { mkdir, readdir, rename, stat, writeFile } from 'node:fs/promises'
 import { basename, dirname, join, relative, resolve, sep } from 'node:path'
-import { projectImport } from './pinaxAdapter.mjs' // OS-125：导入能力的统一出口（内核唯一进口）
-import { API_ERROR_CODES } from './contracts.mjs'
+import { projectImport } from '../kernel/pinaxAdapter.mjs' // OS-125：导入能力的统一出口（内核唯一进口）
+import { API_ERROR_CODES } from '../api/contracts.mjs'
 
 function text(value) {
   return String(value ?? '')

@@ -18,7 +18,7 @@
 import { existsSync, statSync } from 'node:fs'
 import { mkdir, readdir, readFile } from 'node:fs/promises'
 import { dirname, isAbsolute, resolve } from 'node:path'
-import { atomicWriteFile } from './hostWrite.mjs'
+import { atomicWriteFile } from '../../protocol/hostWrite.mjs'
 import {
   createRegistry,
   createCarrierRegistry,
@@ -30,7 +30,7 @@ import {
   validateLibraryName,
   folderName
 } from './projectDoc.mjs'
-import { projectMeta, projectImport } from './pinaxAdapter.mjs' // OS-125：project.json 合同＋导入的统一出口（内核唯一进口）
+import { projectMeta, projectImport } from '../../kernel/pinaxAdapter.mjs' // OS-125：project.json 合同＋导入的统一出口（内核唯一进口）
 
 function text(value) {
   return String(value ?? '')

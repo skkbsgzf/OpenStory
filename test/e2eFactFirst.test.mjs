@@ -17,7 +17,7 @@ import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, before, describe, it } from 'node:test'
-import { validateResponse } from '../contracts.mjs'
+import { validateResponse } from '../src/api/contracts.mjs'
 import { startMockLlmServer } from './mockLlmServer.mjs'
 import { writeE2eBookFixture, E2E_BOOK_ID } from './fixtures/osE2eBook.mjs'
 
@@ -29,7 +29,7 @@ let mock = null
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
 before(async () => {
-  const { startDaemon } = await import('../daemon.mjs')
+  const { startDaemon } = await import('../src/host/daemon.mjs')
   base = await mkdtemp(join(tmpdir(), 'os135-e2e-fact-first-'))
   libRoot = join(base, 'lib')
   await writeE2eBookFixture(libRoot)

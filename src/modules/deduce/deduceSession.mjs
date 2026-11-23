@@ -11,7 +11,7 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { mkdir, rename, writeFile } from 'node:fs/promises'
 import { dirname, join, relative, sep } from 'node:path'
-import { atomicWriteFile } from './hostWrite.mjs'
+import { atomicWriteFile } from '../../protocol/hostWrite.mjs'
 
 export const DEDUCE_SESSION_SCHEMA = 'openstory.deduce-session/v1'
 export const DEDUCE_SESSION_DIR = '推演'
@@ -275,7 +275,7 @@ export async function saveDeduceSession(root, bookId, session) {
     // OS-89：推演会话每次落盘都留 diff + log（AGENTS.md 第 10/11 条：
     // 推演中未被采纳的拍同样是本地数据，改动必须可追溯）
     try {
-      const { recordChange } = await import('./changelog.mjs')
+      const { recordChange } = await import('../../protocol/changelog.mjs')
       await recordChange({
         root,
         module: '推演',

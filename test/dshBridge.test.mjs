@@ -12,9 +12,9 @@ import assert from 'node:assert/strict'
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { dshFrameText, parseDshFrame, runDshStdio } from '../dsh-cli.mjs'
-import { detectDshAny, detectDshCli, probeDshStack, resolveDshRun, setupDshStack } from '../dsh-bridge.mjs'
-import { startDaemon } from '../daemon.mjs'
+import { dshFrameText, parseDshFrame, runDshStdio } from '../src/services/dsh-cli.mjs'
+import { detectDshAny, detectDshCli, probeDshStack, resolveDshRun, setupDshStack } from '../src/services/dsh-bridge.mjs'
+import { startDaemon } from '../src/host/daemon.mjs'
 
 async function makeFakeDsh() {
   const base = await mkdtemp(join(tmpdir(), 'openstory-os19-'))
@@ -268,7 +268,7 @@ rl.on('line', (line) => {
 })
 
 test('dshModelSelection：对象/字符串拆分/拆不开返回 null', async () => {
-  const { dshModelSelection } = await import('../dsh-cli.mjs')
+  const { dshModelSelection } = await import('../src/services/dsh-cli.mjs')
   assert.deepEqual(dshModelSelection('deepseek/deepseek-chat'), { provider: 'deepseek', id: 'deepseek-chat' })
   assert.deepEqual(dshModelSelection({ provider: 'a', id: 'b' }), { provider: 'a', id: 'b' })
   assert.equal(dshModelSelection('no-slash'), null, '拆不开就不发（发了必被 DSH 拒）')
@@ -277,7 +277,7 @@ test('dshModelSelection：对象/字符串拆分/拆不开返回 null', async ()
 })
 
 test('agentStore：patchSessionMeta / lastSessionId 往返（DSH 会话指纹）', async () => {
-  const { createSession, patchSessionMeta, lastSessionId, readSession } = await import('../agentStore.mjs')
+  const { createSession, patchSessionMeta, lastSessionId, readSession } = await import('../src/modules/agentbar/agentStore.mjs')
   const base = await mkdtemp(join(tmpdir(), 'openstory-meta-'))
   const sessionsDir = join(base, 'sessions')
   const root = join(base, '库')

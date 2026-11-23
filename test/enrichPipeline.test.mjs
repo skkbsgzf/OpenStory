@@ -27,7 +27,7 @@ let noConfigDaemon = null
 let mock = null
 
 before(async () => {
-  const { startDaemon } = await import('../daemon.mjs')
+  const { startDaemon } = await import('../src/host/daemon.mjs')
   base = await mkdtemp(join(tmpdir(), 'os135-enrich-pipeline-'))
   libRoot = join(base, 'lib')       // 有夹具书
   emptyLibRoot = join(base, 'empty') // 拆解目录为空＝事实链为空

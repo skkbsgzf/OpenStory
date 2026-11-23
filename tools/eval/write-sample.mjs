@@ -9,8 +9,8 @@ import { readFileSync, writeFileSync, mkdirSync, readdirSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { randomUUID } from 'node:crypto'
-import { buildAugmentedPrompt, routeQuery, resolveCollections } from '../../kbRouter.mjs'
-import { fingerprintHint, runStyleCheck } from '../../style-check.mjs'
+import { buildAugmentedPrompt, routeQuery, resolveCollections } from '../../src/services/kbRouter.mjs'
+import { fingerprintHint, runStyleCheck } from '../../src/services/style-check.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const ROOT = join(HERE, '..', '..')

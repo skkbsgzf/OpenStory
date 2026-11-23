@@ -12,7 +12,7 @@ import { createServer as createHttpServer } from 'node:http'
 import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { API_ERROR_CODES, validateRequest, validateResponse } from '../contracts.mjs'
+import { API_ERROR_CODES, validateRequest, validateResponse } from '../src/api/contracts.mjs'
 import {
   buildUpstreamMessages,
   configPublic,
@@ -33,8 +33,8 @@ import {
   snapshotsMatch,
   updateCard,
   appendSession
-} from '../agentStore.mjs'
-import { startDaemon } from '../daemon.mjs'
+} from '../src/modules/agentbar/agentStore.mjs'
+import { startDaemon } from '../src/host/daemon.mjs'
 
 const FACT_ENTRIES = [
   { schema: 'fact.data/v3', id: 'e1', layer: 'plot', name: '第一段', status: 'draft', sources: [{ sourceId: '正文/ch1.md' }] }

@@ -24,8 +24,8 @@ import {
   startChapterBuffer,
   switchBranch,
   writeActiveSessionId
-} from '../deduceSession.mjs'
-import { validateRequest, validateResponse } from '../contracts.mjs'
+} from '../src/modules/deduce/deduceSession.mjs'
+import { validateRequest, validateResponse } from '../src/api/contracts.mjs'
 
 async function makeRoot() {
   const base = await mkdtemp(join(tmpdir(), 'openstory-os61-'))
@@ -255,7 +255,7 @@ test('会话：归一校验与三端点契约形状', async () => {
   }
 })
 test('桥接：旧引擎状态 → 新会话层首节点（OS-62）', async () => {
-  const { importLegacyDeduce } = await import('../deduceSession.mjs')
+  const { importLegacyDeduce } = await import('../src/modules/deduce/deduceSession.mjs')
   const legacy = {
     round: 5,
     lastTurn: {
@@ -279,7 +279,7 @@ test('桥接：旧引擎状态 → 新会话层首节点（OS-62）', async () =
 })
 
 test('桥接幂等：同一 round 不重复导入', async () => {
-  const { importLegacyDeduce } = await import('../deduceSession.mjs')
+  const { importLegacyDeduce } = await import('../src/modules/deduce/deduceSession.mjs')
   const legacy = { round: 5, lastTurn: { sceneCard: {}, candidates: [] } }
   const first = importLegacyDeduce({ legacyState: legacy, session: null, bookId: 'b1' })
   const second = importLegacyDeduce({ legacyState: legacy, session: first.session, bookId: 'b1' })
@@ -290,7 +290,7 @@ test('桥接幂等：同一 round 不重复导入', async () => {
 })
 
 test('桥接：无旧状态/无 round 明确报错不抛', async () => {
-  const { importLegacyDeduce } = await import('../deduceSession.mjs')
+  const { importLegacyDeduce } = await import('../src/modules/deduce/deduceSession.mjs')
   assert.equal(importLegacyDeduce({ legacyState: null }).code, 'NO_LEGACY_STATE')
   assert.equal(importLegacyDeduce({ legacyState: { round: 0 } }).code, 'NO_LEGACY_ROUND')
 })

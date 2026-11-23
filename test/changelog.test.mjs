@@ -9,7 +9,7 @@ import { join } from 'node:path'
 import test from 'node:test'
 import {
   contentHash, logFilePath, logSummary, readChange, readLog, recordChange, safeModuleName, unifiedDiff
-} from '../changelog.mjs'
+} from '../src/protocol/changelog.mjs'
 
 async function fixture() {
   const root = await mkdtemp(join(tmpdir(), 'os-changelog-'))

@@ -12,14 +12,14 @@ import { createServer as createHttpServer } from 'node:http'
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { validateRequest, validateResponse } from '../contracts.mjs'
+import { validateRequest, validateResponse } from '../src/api/contracts.mjs'
 import {
   builtinRuntimesDir,
   loadRuntimeKits,
   normalizeRuntimeKit,
   sidecarRunning
-} from '../runtimes.mjs'
-import { startDaemon } from '../daemon.mjs'
+} from '../src/services/runtimes.mjs'
+import { startDaemon } from '../src/host/daemon.mjs'
 
 async function makeFixture() {
   const base = await mkdtemp(join(tmpdir(), 'openstory-os9-'))

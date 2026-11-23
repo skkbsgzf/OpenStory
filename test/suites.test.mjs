@@ -9,7 +9,7 @@ import assert from 'node:assert/strict'
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { validateRequest, validateResponse } from '../contracts.mjs'
+import { validateRequest, validateResponse } from '../src/api/contracts.mjs'
 import {
   builtinSuitesDir,
   defaultSuiteStatePath,
@@ -22,8 +22,8 @@ import {
   saveSuiteStateData,
   setSuiteEnabled,
   suiteValue
-} from '../suites.mjs'
-import { resolveSuiteAssetPath, startDaemon } from '../daemon.mjs'
+} from '../src/services/suites.mjs'
+import { resolveSuiteAssetPath, startDaemon } from '../src/host/daemon.mjs'
 
 const GOOD = {
   schemaVersion: 'openstory-suite@1',

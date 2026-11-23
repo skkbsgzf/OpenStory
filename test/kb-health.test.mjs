@@ -7,10 +7,10 @@ import assert from 'node:assert/strict'
 import { mkdtemp, writeFile, mkdir, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { collectKbStatus, probeServices } from '../kbHealth.mjs'
-import { resolveCollections } from '../kbRouter.mjs'
-import { startDaemon } from '../daemon.mjs'
-import { validateResponse } from '../contracts.mjs'
+import { collectKbStatus, probeServices } from '../src/services/kbHealth.mjs'
+import { resolveCollections } from '../src/services/kbRouter.mjs'
+import { startDaemon } from '../src/host/daemon.mjs'
+import { validateResponse } from '../src/api/contracts.mjs'
 
 const DEAD_URL = 'http://127.0.0.1:9' // 拒连端口（discard 协议端口，本机不监听）
 

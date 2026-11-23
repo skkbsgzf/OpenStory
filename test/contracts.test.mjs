@@ -20,7 +20,7 @@ import {
   normalizeLibraryRecord,
   validateRequest,
   validateResponse
-} from '../contracts.mjs'
+} from '../src/api/contracts.mjs'
 import {
   createRootAllowlist,
   defaultPreferencesPath,
@@ -30,7 +30,7 @@ import {
   parseArgs,
   resolveInsideRoot,
   startDaemon
-} from '../daemon.mjs'
+} from '../src/host/daemon.mjs'
 
 const FACT_ENTRIES = [
   {

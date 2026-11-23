@@ -9,23 +9,24 @@ const read = (p) => { try { return readFileSync(p, 'utf-8') } catch { return '' 
 const has = (src, ...needles) => needles.every((n) => src.includes(n))
 
 // OS-130 契约分域后端点形状按域切片在 contracts/*.mjs——文本盘点把聚合入口与分片拼起来读
+// （OS-140 布局归一：契约层在 src/api/）
 const readContracts = () => {
-  let parts = [read('contracts.mjs')]
+  let parts = [read('src/api/contracts.mjs')]
   try {
-    parts = parts.concat(readdirSync('contracts').filter((f) => f.endsWith('.mjs')).sort().map((f) => read(join('contracts', f))))
+    parts = parts.concat(readdirSync('src/api/contracts').filter((f) => f.endsWith('.mjs')).sort().map((f) => read(join('src/api/contracts', f))))
   } catch { /* 无分域目录 */ }
   return parts.join('\n')
 }
 
 const app = read('public/app.js')
 const contracts = readContracts()
-const daemon = read('daemon.mjs')
+const daemon = read('src/host/daemon.mjs')
 const storySource = read('public/storySource.mjs')
-const referenceStore = read('referenceStore.mjs')
+const referenceStore = read('src/modules/worldbook/referenceStore.mjs')
 const referenceMod = read('public/reference.mjs')
 const scriptFact = read('public/scriptFact.mjs')
-const deduceSession = read('deduceSession.mjs')
-const roleplayEngine = read('roleplayEngine.mjs')
+const deduceSession = read('src/modules/deduce/deduceSession.mjs')
+const roleplayEngine = read('src/modules/roleplay/roleplayEngine.mjs')
 
 // ── 1) 产物清单（每个产物的存储位置 + 读写端点）──
 const artifacts = [

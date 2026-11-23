@@ -21,7 +21,7 @@ import { connect } from 'node:net'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { startDaemon } from '../daemon.mjs'
+import { startDaemon } from '../src/host/daemon.mjs'
 
 /** node:http 裸请求：Host / Origin / Sec-Fetch-Site 想填什么填什么（fetch 做不到）。 */
 function rawRequest({ port, path, method = 'GET', headers = {}, body = '' }) {

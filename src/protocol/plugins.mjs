@@ -12,9 +12,9 @@
  */
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
-import { listSuitesPublic } from './suites.mjs'
-import { loadSkills } from './skills.mjs'
-import { loadRuntimeKits } from './runtimes.mjs'
+import { listSuitesPublic } from '../services/suites.mjs'
+import { loadSkills } from '../services/skills.mjs'
+import { loadRuntimeKits } from '../services/runtimes.mjs'
 
 const text = (value) => String(value ?? '')
 

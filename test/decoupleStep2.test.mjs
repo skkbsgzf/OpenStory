@@ -30,8 +30,8 @@ import {
   PROJECT_DOC_FIELDS,
   PROJECT_KINDS,
   resolveClosure
-} from '../projectDoc.mjs'
-import { createLibrary } from '../libraryManage.mjs'
+} from '../src/modules/library/projectDoc.mjs'
+import { createLibrary } from '../src/modules/library/libraryManage.mjs'
 
 /* ---------- 金样（内核冻结输出，2026-11-22T17:36Z 捕获于 vendor@70a4f44） ---------- */
 

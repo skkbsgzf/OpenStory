@@ -11,9 +11,11 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { mkdir, readFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { atomicWriteFile } from './hostWrite.mjs'
+import { atomicWriteFile } from '../protocol/hostWrite.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
+/** OS-140 布局归一：本模块迁到 src/services/——货架数据目录（genres/）仍在仓根。 */
+const REPO_ROOT = join(HERE, '..', '..')
 
 export const GENRE_SPEC = 'openstory-genre@1'
 export const BRIEF_SPEC = 'openstory-brief@1'
@@ -28,7 +30,7 @@ function text(value) {
 }
 
 export function builtinGenresDir() {
-  return join(HERE, 'genres')
+  return join(REPO_ROOT, 'genres')
 }
 
 export function defaultUserGenresDir(env = process.env) {

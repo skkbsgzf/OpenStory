@@ -13,7 +13,7 @@ import { existsSync } from 'node:fs'
 import { mkdtemp, mkdir, readdir, readFile, rm, utimes, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
-import { HISTORY_KEEP_DEFAULT, pruneHistoryBackups, resolveHistoryKeepPerFile, startDaemon } from '../daemon.mjs'
+import { HISTORY_KEEP_DEFAULT, pruneHistoryBackups, resolveHistoryKeepPerFile, startDaemon } from '../src/host/daemon.mjs'
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 

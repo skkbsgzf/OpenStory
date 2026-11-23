@@ -1,8 +1,9 @@
 /**
  * OS-125 解耦③：内核唯一进口（pinaxAdapter）。
  *
- * 本文件是**全仓唯一允许 import `core/**` 的仓根模块**（门禁 S2.4 钉死，
- * tools/acceptance/acceptance.mjs）。内核升版本/换实现时，只改这一个文件；
+ * 本文件是**全仓唯一允许 import `core/**` 的模块**（门禁 S2.4 钉死，
+ * tools/acceptance/acceptance.mjs；OS-140 起位于 src/kernel/，core/ 相对路径两层上溯）。
+ * 内核升版本/换实现时，只改这一个文件；
  * 消费方永远只见下面的五组能力出口，不见 core/ 路径（docs/plan/decouple-pinax-core-20261122.md §3）。
  *
  * 五组能力出口：
@@ -30,21 +31,21 @@
  * vendor/contracts/worldbookFileContract.js，由 textUtil.mjs 等直引）——那是格式契约面，
  * 解耦规划 §4 明确「不动」，也不在 S2.4 管辖。
  */
-import { createFactFileStore, writeFactFile, readFactWiki, FACT_DIR_NAME } from './core/pinax/next/kernel/factFileStore.mjs'
-import { openDeduceSession } from './core/pinax/next/fact/usecases/deduce/opening.js'
-import { presentTurn, applyDirectorAction } from './core/pinax/next/fact/usecases/deduce/turn.js'
-import { settleChoice } from './core/pinax/next/fact/usecases/deduce/settle.js'
-import { derivePseudoChapters, hasRealChapters } from './core/pinax/next/fact/usecases/enrich/pseudoChapters.mjs'
-import { causalSummary } from './core/pinax/next/fact/usecases/enrich/metrics.mjs'
+import { createFactFileStore, writeFactFile, readFactWiki, FACT_DIR_NAME } from '../../core/pinax/next/kernel/factFileStore.mjs'
+import { openDeduceSession } from '../../core/pinax/next/fact/usecases/deduce/opening.js'
+import { presentTurn, applyDirectorAction } from '../../core/pinax/next/fact/usecases/deduce/turn.js'
+import { settleChoice } from '../../core/pinax/next/fact/usecases/deduce/settle.js'
+import { derivePseudoChapters, hasRealChapters } from '../../core/pinax/next/fact/usecases/enrich/pseudoChapters.mjs'
+import { causalSummary } from '../../core/pinax/next/fact/usecases/enrich/metrics.mjs'
 /* 内核 plumber 转供（见头部偏差注记；核心消费方＝projectDoc.mjs／importAdapter.mjs） */
-import { ok, fail } from './core/pinax/next/kernel/errors.mjs'
-import { writeFileAtomic, TMP_PREFIX } from './core/pinax/next/fs/atomicWrite.mjs'
+import { ok, fail } from '../../core/pinax/next/kernel/errors.mjs'
+import { writeFileAtomic, TMP_PREFIX } from '../../core/pinax/next/fs/atomicWrite.mjs'
 /* OS-138：宿主写通道（hostWrite.mjs）的二进制分支要同前缀＋同目录 fsync，一并转出 */
-import { syncDirectory } from './core/pinax/electron/projects/fsDurability.mjs'
+import { syncDirectory } from '../../core/pinax/electron/projects/fsDurability.mjs'
 /* projectMeta／projectImport：自有能力的统一出口（转引，不再包一层） */
-import { readProjectDocument, writeProjectDocument, nextCarriers, validateProjectDocument } from './projectDoc.mjs'
-import { planImport, runImport } from './importAdapter.mjs'
-import { parseChapterNumber } from './textUtil.mjs'
+import { readProjectDocument, writeProjectDocument, nextCarriers, validateProjectDocument } from '../modules/library/projectDoc.mjs'
+import { planImport, runImport } from '../modules/library/importAdapter.mjs'
+import { parseChapterNumber } from '../modules/library/textUtil.mjs'
 
 /** fact 存储协议（内核 S1/S2 契约，operationId 幂等＋expectedRevision 乐观并发）。 */
 export const factStore = Object.freeze({ createFactFileStore, writeFactFile, readFactWiki, FACT_DIR_NAME })

@@ -13,10 +13,10 @@ import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { loadSuites, normalizeSuite, KNOWN_SERVICE_IDS } from '../suites.mjs'
-import { loadSkills, parseSkillMarkdown } from '../skills.mjs'
-import { loadRuntimeKits, normalizeRuntimeKit } from '../runtimes.mjs'
-import { minVersionGate, readAppVersion, satisfiesMinVersion } from '../versionGate.mjs'
+import { loadSuites, normalizeSuite, KNOWN_SERVICE_IDS } from '../src/services/suites.mjs'
+import { loadSkills, parseSkillMarkdown } from '../src/services/skills.mjs'
+import { loadRuntimeKits, normalizeRuntimeKit } from '../src/services/runtimes.mjs'
+import { minVersionGate, readAppVersion, satisfiesMinVersion } from '../src/protocol/versionGate.mjs'
 
 const REPO = dirname(dirname(fileURLToPath(import.meta.url)))
 
@@ -256,8 +256,8 @@ test('minVersionGate：应用版本读不到时，_BAD 文案不甩锅给插件�
 
 /* ══ OS-122 依赖闸：requires → 拓扑序 / 缺依赖 / 环 ══ */
 
-import { resolveSuiteDependencies } from '../dependencyGraph.mjs'
-import { listSuitesPublic } from '../suites.mjs'
+import { resolveSuiteDependencies } from '../src/protocol/dependencyGraph.mjs'
+import { listSuitesPublic } from '../src/services/suites.mjs'
 
 test('依赖闸：缺依赖 → 该套件 blocked，missing 列出缺谁，其余照常', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dep-'))

@@ -15,10 +15,12 @@ import { existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs'
 import { mkdir, readFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { minVersionGate, readAppVersion } from './versionGate.mjs'
-import { atomicWriteFile } from './hostWrite.mjs'
+import { minVersionGate, readAppVersion } from '../protocol/versionGate.mjs'
+import { atomicWriteFile } from '../protocol/hostWrite.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
+/** OS-140 布局归一：本模块迁到 src/services/——货架数据目录（skills/）仍在仓根。 */
+const REPO_ROOT = join(HERE, '..', '..')
 
 export const SKILL_SPEC = 'openstory-skill@1'
 export const SKILL_CATEGORIES = Object.freeze(['craft', 'review', 'transform', 'extract'])
@@ -29,7 +31,7 @@ function text(value) {
 }
 
 export function builtinSkillsDir() {
-  return join(HERE, 'skills')
+  return join(REPO_ROOT, 'skills')
 }
 
 export function defaultUserSkillsDir(env = process.env) {

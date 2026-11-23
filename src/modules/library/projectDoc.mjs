@@ -23,7 +23,7 @@
 import { mkdirSync } from 'node:fs'
 import { mkdir, readFile, readdir } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
-import { fail, ok, writeFileAtomic } from './pinaxAdapter.mjs' // OS-125：内核 plumber 经唯一进口转供（本文件函数体内使用，循环引用安全）
+import { fail, ok, writeFileAtomic } from '../../kernel/pinaxAdapter.mjs' // OS-125：内核 plumber 经唯一进口转供（本文件函数体内使用，循环引用安全）
 
 /* ---------- 载体表（本仓自持；值与 vendor 清单逐字一致，OpenStory 只建库不装实现） ---------- */
 

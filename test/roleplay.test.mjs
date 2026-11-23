@@ -11,8 +11,8 @@ import {
   worldFeedbackPrompt,
   parseHostDecision,
   fallbackActivation
-} from '../roleplayPrompts.mjs'
-import { roleplayTurn, worldbookDigestOf } from '../roleplayEngine.mjs'
+} from '../src/modules/roleplay/roleplayPrompts.mjs'
+import { roleplayTurn, worldbookDigestOf } from '../src/modules/roleplay/roleplayEngine.mjs'
 
 test('提示词四层：底座铁律/主持人/角色 nudge/世界反馈人称', () => {
   assert.match(ROLEPLAY_BASE_SYSTEM, /不替其他角色/, '底座有越界禁令')
@@ -107,8 +107,8 @@ test('世界反馈带情境分支（OS-98）：正文与「>」选项拆开', as
 })
 
 test('扮演开场（OS-100）：主持人拉开第一幕＋三条初始分支', async () => {
-  const { roleplayOpening } = await import('../roleplayEngine.mjs')
-  const { openingPrompt } = await import('../roleplayPrompts.mjs')
+  const { roleplayOpening } = await import('../src/modules/roleplay/roleplayEngine.mjs')
+  const { openingPrompt } = await import('../src/modules/roleplay/roleplayPrompts.mjs')
   const p = openingPrompt({ pov: '叙述者', premise: '第八夜', worldbookDigest: '- 夹层：藏尸处', cast: [{ name: '老人', identity: '同住者' }], openingDetail: '起意' })
   assert.match(p, /扮演 叙述者/)
   assert.match(p, /时间\/地点\/身体感受/)
@@ -124,8 +124,8 @@ test('扮演开场（OS-100）：主持人拉开第一幕＋三条初始分支',
 })
 
 test('长期记忆（OS-102）：摘要＋最近明细＋压缩阈值', async () => {
-  const { buildRoleplayMemory, shouldSummarize, compressMemory } = await import('../roleplayEngine.mjs')
-  const { summaryPrompt } = await import('../roleplayPrompts.mjs')
+  const { buildRoleplayMemory, shouldSummarize, compressMemory } = await import('../src/modules/roleplay/roleplayEngine.mjs')
+  const { summaryPrompt } = await import('../src/modules/roleplay/roleplayPrompts.mjs')
   const mk = (n) => ({ rollingSummary: null, nodes: Array.from({ length: n }, (_, i) => ({ round: i + 1, prose: `第${i + 1}拍正文`, choiceId: 'custom', candidates: [{ id: 'custom', text: `动作${i + 1}` }], beats: [] })) })
   const s8 = mk(8)
   const mem = buildRoleplayMemory(s8)
@@ -152,7 +152,7 @@ test('长期记忆（OS-102）：摘要＋最近明细＋压缩阈值', async ()
 })
 
 test('AI 味过检（OS-102）：超阈重写、干净稿直通、模型挂保留原稿', async () => {
-  const { deAiPass } = await import('../roleplayEngine.mjs')
+  const { deAiPass } = await import('../src/modules/roleplay/roleplayEngine.mjs')
   // 套话堆砌：必须触发重写
   const cliche = '他轻轻地缓缓地走向窗边，仿佛有什么在召唤他。不禁感叹，似乎一切都值得回味。深深地吸了一口气。'
   let calls = 0

@@ -13,7 +13,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
-import { atomicWriteFile } from '../hostWrite.mjs'
+import { atomicWriteFile } from '../src/protocol/hostWrite.mjs'
 
 async function fixture() {
   const root = await mkdtemp(join(tmpdir(), 'os-hostwrite-'))

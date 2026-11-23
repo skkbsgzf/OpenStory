@@ -12,10 +12,10 @@ import assert from 'node:assert/strict'
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { buildCliArgs, composeCliPrompt, runCliChat } from '../cli-bridge.mjs'
-import { detectDsh, pickChatBase } from '../dsh-bridge.mjs'
-import { loadRuntimeKits, normalizeRuntimeKit, probeRuntimeKit, resetProbeCache, builtinRuntimesDir } from '../runtimes.mjs'
-import { startDaemon } from '../daemon.mjs'
+import { buildCliArgs, composeCliPrompt, runCliChat } from '../src/services/cli-bridge.mjs'
+import { detectDsh, pickChatBase } from '../src/services/dsh-bridge.mjs'
+import { loadRuntimeKits, normalizeRuntimeKit, probeRuntimeKit, resetProbeCache, builtinRuntimesDir } from '../src/services/runtimes.mjs'
+import { startDaemon } from '../src/host/daemon.mjs'
 
 async function makeFixture() {
   const base = await mkdtemp(join(tmpdir(), 'openstory-os18-'))

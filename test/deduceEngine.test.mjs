@@ -7,7 +7,7 @@ import assert from 'node:assert/strict'
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { deducePresent, deduceSettle, deduceStatePath, humanizeFateText, loadEntries } from '../deduceEngine.mjs'
+import { deducePresent, deduceSettle, deduceStatePath, humanizeFateText, loadEntries } from '../src/modules/deduce/deduceEngine.mjs'
 
 const ENTRIES = [
   { schema: 'fact.data/v3', id: 'e1', layer: 'worldview', name: '雾港规则', definition: '雾起时渡口不开船。', status: 'adopted' },

@@ -20,8 +20,8 @@
 
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { factStore, enrich } from './pinaxAdapter.mjs' // OS-125：内核唯一进口（S2.4），本仓其余模块不许直引 core/**
-import { recordChange } from './changelog.mjs'
+import { factStore, enrich } from '../kernel/pinaxAdapter.mjs' // OS-125：内核唯一进口（S2.4），本仓其余模块不许直引 core/**
+import { recordChange } from '../protocol/changelog.mjs'
 
 const TRACE_HEADER = [
   '推理纪律：',

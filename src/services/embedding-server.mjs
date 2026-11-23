@@ -18,7 +18,7 @@
  * 只监听 127.0.0.1。
  */
 import { createServer } from 'node:http'
-import { dirname } from 'node:path'
+import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { resolveEmbeddingPaths } from './embeddingPaths.mjs'
 
@@ -30,8 +30,9 @@ function argValue(name, fallback) {
 
 const PORT = Number(argValue('port', process.env.EMBED_PORT || 8808))
 const MODEL = argValue('model', process.env.EMBED_MODEL || 'Xenova/bge-small-zh-v1.5')
-// 仓根＝本文件所在目录（同 daemon.mjs 的 HERE 解法；OS-139 去硬编码），路径解析纯函数见 embeddingPaths.mjs
-const paths = resolveEmbeddingPaths(dirname(fileURLToPath(import.meta.url)))
+// 仓根＝本文件目录两层上溯（OS-139 去硬编码；OS-140 布局归一后本文件在 src/services/），
+// 路径解析纯函数见同目录 embeddingPaths.mjs
+const paths = resolveEmbeddingPaths(join(dirname(fileURLToPath(import.meta.url)), '..', '..'))
 process.env.HF_ENDPOINT = process.env.HF_ENDPOINT || 'https://hf-mirror.com'
 process.env.TRANSFORMERS_CACHE = process.env.TRANSFORMERS_CACHE || paths.cacheDir
 

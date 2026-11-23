@@ -4,7 +4,7 @@
  */
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { checkSameSource } from '../syncCheck.mjs'
+import { checkSameSource } from '../src/services/syncCheck.mjs'
 
 test('时间戳：派生档比事实源旧 → 过期', () => {
   const r = checkSameSource({

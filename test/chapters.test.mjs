@@ -10,7 +10,7 @@ import { existsSync } from 'node:fs'
 import { mkdtemp, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { validateRequest, validateResponse } from '../contracts.mjs'
+import { validateRequest, validateResponse } from '../src/api/contracts.mjs'
 import {
   createChapter,
   deleteChapter,
@@ -19,8 +19,8 @@ import {
   parseChapterName,
   renameChapter,
   sanitizeChapterTitle
-} from '../chapters.mjs'
-import { startDaemon } from '../daemon.mjs'
+} from '../src/protocol/chapters.mjs'
+import { startDaemon } from '../src/host/daemon.mjs'
 
 async function makeFixture() {
   const base = await mkdtemp(join(tmpdir(), 'openstory-os10-'))

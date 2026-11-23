@@ -22,13 +22,15 @@ import { fileURLToPath } from 'node:url'
 import { readdir, readFile } from 'node:fs/promises'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
+/** OS-140 布局归一：本模块迁到 src/services/——货架数据目录（styles/）仍在仓根。 */
+const REPO_ROOT = join(HERE, '..', '..')
 
 function text(value) {
   return String(value ?? '')
 }
 
 export function builtinStylesDir() {
-  return join(HERE, 'styles')
+  return join(REPO_ROOT, 'styles')
 }
 
 export function defaultUserStylesDir(env = process.env) {

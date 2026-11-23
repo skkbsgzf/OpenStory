@@ -15,9 +15,11 @@ import { readdirSync, readFileSync, existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { minVersionGate, readAppVersion } from './versionGate.mjs'
+import { minVersionGate, readAppVersion } from '../protocol/versionGate.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
+/** OS-140 布局归一：本模块迁到 src/services/——货架数据目录（runtimes/）仍在仓根。 */
+const REPO_ROOT = join(HERE, '..', '..')
 
 export const RUNTIME_KIT_SPEC = 'openstory-runtime-kit@1'
 export const DEFAULT_CHAT_PATH = '/v1/chat/completions'
@@ -28,7 +30,7 @@ function text(value) {
 }
 
 export function builtinRuntimesDir() {
-  return join(HERE, 'runtimes')
+  return join(REPO_ROOT, 'runtimes')
 }
 
 export function defaultUserRuntimesDir(env = process.env) {

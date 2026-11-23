@@ -1,24 +1,25 @@
 # OpenStory 验收线（OS-67 起）
 
-> 每个大修改落地前的四步验收。机械门禁 `tools/acceptance/acceptance.mjs`（15 检查，
-> 退出码 0=全绿），配套 `.ua/` 知识图谱、Rea 证据口径、OpenDesign UX 对标。
+> 每个大修改落地前的四步验收。机械门禁 `tools/acceptance/acceptance.mjs`（16 检查，
+> OS-140 起含 S0 布局宪法，退出码 0=全绿），配套 `.ua/` 知识图谱、Rea 证据口径、OpenDesign UX 对标。
 
-## 四条交付标准 → 检查映射
+## 五条交付标准 → 检查映射
 
 | 标准 | 检查 | 口径 |
 |---|---|---|
+| S0 布局 | S0.1 | 布局宪法（OS-140）：仓根 `.mjs` 恰好两个入口垫片 daemon.mjs/mcp.mjs，自持模块全部在 `src/` 六目录（host/api/protocol/kernel/modules/services） |
 | S1 Agentic | S1.1–S1.5 | MCP 工具覆盖五模块（读+写）· mcp/skills 文档同步 · skills/ 30 包完整 · dsh-cli 运行时 · 多 CLI 派发器 |
-| S2 可插拔 | S2.1–S2.4 | 模块间零 import（协议层 contracts/changelog/versionGate/plugins/pinaxAdapter 除外）· 前端模块隔离（md.mjs 渲染协议除外）· 契约驱动（endpointFor + validateResponse）· 内核唯一进口（仓根模块仅 pinaxAdapter.mjs 可引 core/**，OS-125）· 来源防护闸常绿（OS-136：`test/originGuard.test.mjs` 钉死 Host/Origin/Sec-Fetch-Site 三道闸＋强制 JSON content-type，daemon 只服务本机回环，任意网页写不进） |
+| S2 可插拔 | S2.1–S2.4 | 模块间零 import（协议层 contracts/changelog/versionGate/plugins/pinaxAdapter 除外）· 前端模块隔离（md.mjs 渲染协议除外）· 契约驱动（endpointFor + validateResponse）· 内核唯一进口（src/ 模块＋垫片中仅 src/kernel/pinaxAdapter.mjs 可引 core/**，OS-125）· 来源防护闸常绿（OS-136：`test/originGuard.test.mjs` 钉死 Host/Origin/Sec-Fetch-Site 三道闸＋强制 JSON content-type，daemon 只服务本机回环，任意网页写不进） |
 | S3 前端一致性 | S3.1–S3.3 | 裸色值零容忍（:root 令牌单一真源）· 浮层宪法（OS-48 不挤压正文）· 组件约定类齐备 |
 | S4 UX 跳转层级 | S4.1–S4.3 | 核心页签顶栏可达 · 关闭按钮两级约定（rm-x/page-close）· docs/UX-STRUCTURE.md 清单在 |
 
 ## 落地前四步
 
 ```bash
-# ① 单测门禁（453 例，OS-137 起含 test/historyRetention.test.mjs .history 保留策略 7 例）
+# ① 单测门禁（467 例，OS-137 起含 test/historyRetention.test.mjs .history 保留策略 7 例）
 node .zcode/run-gate.mjs
 
-# ② 交付标准门禁（S1–S4，Rea 式证据落盘）
+# ② 交付标准门禁（S0–S4，Rea 式证据落盘）
 node tools/acceptance/acceptance.mjs --json tools/acceptance/out/report-<日期>.json
 
 # ③ 知识图谱增量（Understand-Anything，改了哪些文件就重析哪些）
@@ -58,10 +59,10 @@ node tools/acceptance/acceptance.mjs --json tools/acceptance/out/report-<日期>
 
 ## 白名单与豁免（改架构时同步这里）
 
-- S2.1 白名单：`deduceSession → deduceEngine`（会话容器引引擎＝内核依赖）；
-  `core/**` vendor 内核不算模块；`pinaxAdapter.mjs` 是内核唯一进口＝能力协议面（OS-125）。
-- S2.4 唯一进口：仓根模块只有 `pinaxAdapter.mjs` 允许 import `core/**`（静态 `from` 与动态
-  `import()` 都算）；内核能力只经它的五组出口（factStore/deduce/enrich/projectMeta/projectImport）。
+- S2.1 白名单：`src/modules/deduce/deduceSession.mjs → src/modules/deduce/deduceEngine.mjs`（会话容器引引擎＝内核依赖）；
+  `core/**` vendor 内核不算模块；`src/kernel/pinaxAdapter.mjs` 是内核唯一进口＝能力协议面（OS-125）。
+- S2.4 唯一进口：src/ 模块＋仓根两个垫片中只有 `src/kernel/pinaxAdapter.mjs` 允许 import `core/**`（静态 `from` 与动态
+  `import()` 都算；OS-140 起扫描面＝`src/` 树全部 `.mjs` ＋垫片）；内核能力只经它的五组出口（factStore/deduce/enrich/projectMeta/projectImport）。
   `vendor/contracts`（@pinax/core 收编后的世界书契约，OS-132）与 `test/*.test.mjs` 不在扫描范围。
 - S4.2 关闭家族：模块卡 `rm-x`，整页 `page-close`。
 - S3.1 裸色值豁免：无（画布绘图用 getComputedStyle 现读令牌，见 public/graph.mjs）。

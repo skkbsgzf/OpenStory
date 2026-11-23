@@ -9,7 +9,7 @@
  *
  * 全程不落库——条目/会话/事件由调用方（daemon）按既有协议写。
  */
-import { analyzeChapter } from './public/analysis.mjs'
+import { analyzeChapter } from '../../../public/analysis.mjs'
 import {
   ROLEPLAY_BASE_SYSTEM,
   hostSystemPrompt,

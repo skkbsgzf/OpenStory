@@ -4,7 +4,7 @@
 // ./textUtil.mjs）外逐字未动。
 import fs from 'node:fs'
 import path from 'node:path'
-import { fail, ok } from './pinaxAdapter.mjs' // OS-125：内核 plumber 经唯一进口转供（本文件函数体内使用，循环引用安全）
+import { fail, ok } from '../../kernel/pinaxAdapter.mjs' // OS-125：内核 plumber 经唯一进口转供（本文件函数体内使用，循环引用安全）
 import { parseChapterNumber } from './textUtil.mjs'
 import { parseWorldbookEntryFile } from './textUtil.mjs'
 

@@ -19,7 +19,7 @@
 import { open, rename, unlink } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { randomBytes } from 'node:crypto'
-import { writeFileAtomic, TMP_PREFIX, syncDirectory } from './pinaxAdapter.mjs'
+import { writeFileAtomic, TMP_PREFIX, syncDirectory } from '../kernel/pinaxAdapter.mjs'
 
 function isBinaryContent(contents) {
   return ArrayBuffer.isView(contents) || contents instanceof ArrayBuffer

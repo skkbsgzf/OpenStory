@@ -17,7 +17,7 @@ import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, before, describe, it } from 'node:test'
-import { validateResponse } from '../contracts.mjs'
+import { validateResponse } from '../src/api/contracts.mjs'
 
 let base = ''
 let libRoot = ''
@@ -25,7 +25,7 @@ let daemon = null
 let port = 0
 
 before(async () => {
-  const { startDaemon } = await import('../daemon.mjs')
+  const { startDaemon } = await import('../src/host/daemon.mjs')
   base = await mkdtemp(join(tmpdir(), 'os135-write-endpoints-'))
   libRoot = join(base, 'lib')
   await mkdir(join(libRoot, '正文'), { recursive: true })
