@@ -1684,6 +1684,8 @@ html[data-doc-auto-gap="off"] .doc-block { margin-bottom: 0; }
 .cfg-card .field select.select { width: 100%; max-width: none; }
 .cfg-card .row { display: flex; gap: var(--ui-gap-md); flex-wrap: wrap; align-items: center; margin-top: var(--ui-gap-2xs); }
 .cfg-card .err { color: var(--danger); font-size: var(--ui-fs-sm); margin-top: var(--ui-gap-xs); }
+/* OS-145 设置 · 模块组：停用的模块整卡压暗（值可见、控件 disabled，重新启用即恢复） */
+.mp-card.mp-off { opacity: .55; }
 .cfg-switch input { width: auto; min-width: 0; }
 .cfg-note { font-size: var(--ui-fs-xs); color: var(--meta); line-height: 1.6; }
 

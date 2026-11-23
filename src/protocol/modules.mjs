@@ -33,6 +33,9 @@ export const MODULE_SPEC = 'openstory-module@1'
 const MODULES_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'modules')
 const ID_RE = /^[a-z][a-z0-9-]{1,39}$/u
 const VERSION_RE = /^\d+\.\d+\.\d+$/u
+/** OS-145：settings 字段口径与业务套件一致（key 允许点号分段，如 image.comfyUrl）。 */
+const SETTING_KEY_RE = /^[\w.]{1,40}$/u
+const SETTING_TYPES = new Set(['string', 'number', 'boolean', 'select'])
 
 /** ui-state 里的启停键（扁平写法；嵌套写法 `{ modules: { enabled } }` 也认）。 */
 export function moduleStateKey(id) {
@@ -77,6 +80,35 @@ export function validateModuleManifest(raw, { dirName = '' } = {}) {
     list.forEach((item, index) => {
       if (!item || typeof item !== 'object' || Array.isArray(item)) errors.push(`${key}[${index}] 必须是对象`)
       else if (!text(item.id ?? item.key).trim()) errors.push(`${key}[${index}] 缺 id/key`)
+    })
+  }
+  // OS-145：settings 升级为可渲染声明，字段口径对齐业务套件（openstory-suite@2）：
+  // { key, label, type:'string'|'number'|'boolean'|'select', default?, options? }。
+  // 值落库内 ui-state（modules.settings.<id>.<key>），不看这里的 default 是否等于现值。
+  if (Array.isArray(raw.settings)) {
+    raw.settings.forEach((setting, index) => {
+      if (!setting || typeof setting !== 'object' || Array.isArray(setting)) return
+      const settingKey = text(setting.key ?? setting.id).trim()
+      if (settingKey && !SETTING_KEY_RE.test(settingKey)) { errors.push(`settings[${index}] key 非法：${settingKey}`); return }
+      const type = text(setting.type).trim()
+      if (!SETTING_TYPES.has(type)) { errors.push(`settings[${index}]（${settingKey}）type 非法（string/number/boolean/select）`); return }
+      if (!text(setting.label).trim()) errors.push(`settings[${index}]（${settingKey}）缺 label`)
+      if (type === 'select') {
+        const options = Array.isArray(setting.options) ? setting.options.map((option) => text(option)) : []
+        if (options.length === 0) errors.push(`settings[${index}]（${settingKey}）select 缺 options`)
+        else if (setting.default !== undefined && !options.includes(text(setting.default))) {
+          errors.push(`settings[${index}]（${settingKey}）的 default 不在 options 里`)
+        }
+      }
+      if (type === 'boolean' && setting.default !== undefined && typeof setting.default !== 'boolean') {
+        errors.push(`settings[${index}]（${settingKey}）boolean 的 default 必须是布尔值`)
+      }
+      if (type === 'number' && setting.default !== undefined && !Number.isFinite(setting.default)) {
+        errors.push(`settings[${index}]（${settingKey}）number 的 default 必须是数字`)
+      }
+      if (type === 'string' && setting.default !== undefined && typeof setting.default !== 'string') {
+        errors.push(`settings[${index}]（${settingKey}）string 的 default 必须是字符串`)
+      }
     })
   }
   if (errors.length) return { ok: false, errors }

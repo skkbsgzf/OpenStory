@@ -39,6 +39,12 @@ L4 自持层→L3 pinaxAdapter→L2 core/pinax 24 文件→L1 磁盘库）。
    `modules.enabled.<id>`（缺省 true，值不删）。两层插拔各存各键、互不覆盖：右栏分析卡片级
    `analyzeEnabled`（旧）vs 整模块级 `modules.enabled.<id>`（本层）。新增 module manifest 必须过
    `test/modulePlugins.test.mjs` 的形状校验。
+   > **设置归一（OS-145）**：设置页只有一个入口——**内核设置区**（daemon 端口语义、库路径、数据目录、
+   > 凭据存储，L5 宿主所有，不插件化）＋**各模块自报设置区**（manifest `settings`，字段口径
+   > `{ key, label, type: string|number|boolean|select, default, options? }`，值落 ui-state
+   > `modules.settings.<id>.<key>`）。聚合与渲染是纯函数，在 `public/views/settingsAggregation.mjs`，
+   > app.js 只取数调用（OS-143 增量冻结）。旧配置键一次性迁移，marker `modules.settingsMigrated` 防重复；
+   > 停用模块＝设置区压暗不可编辑、值保留。凭据仍只存本机（agent-config/kb-config），不进 ui-state。
 7. **布局宪法（OS-140）**：仓根只允许「入口、包描述、文档」——`.mjs` 只有 `daemon.mjs`/`mcp.mjs`
    两个**入口垫片**（`export * from` 实现文件再出口全部符号；只有被 node 直接执行才调
    `main(argv)`，纯 import 不得启动服务）。自持模块全部收进 `src/` 六目录，新模块一律入对应子目录：

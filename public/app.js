@@ -143,6 +143,15 @@ const registryReady = import('./views/registry.mjs').then((mod) => {
   return mod
 }).catch((error) => { console.error('[registry] 页签注册表加载失败', error); return null })
 
+/* ---------- OS-145：设置归一（public/views/settingsAggregation.mjs）----------
+   聚合纯函数＋模块设置组渲染都在这张表里；app.js 只负责取数、调用、分发事件。
+   动态 import 与上面注册表同门风（app.js 是经典脚本，不能静态 import）。 */
+let settingsAggregation = null
+const settingsAggregationReady = import('./views/settingsAggregation.mjs').then((mod) => {
+  settingsAggregation = mod
+  return mod
+}).catch((error) => { console.error('[settings] 设置聚合模块加载失败', error); return null })
+
 const state = {
   libraries: [],
   warnings: [],
@@ -3373,6 +3382,8 @@ const SETTINGS_GROUPS = Object.freeze([
     // 套件清单在渲染时动态展开（见 settingsNavHtml）。
     sections: [
       { id: 'pluginsOverview', label: '插件总览', hint: '套件 / 技能 / 运行时 一份清单' },
+      // OS-145：模块插件（分析 / 生图识图 / 知识库）的启停与自报设置——排在总览之后
+      { id: 'moduleSettings', label: '模块', hint: '模块启停与各自设置' },
       { id: 'suites', label: '全部套件', hint: '小说 / 剧本 / 漫剧…' }
     ]
   }
@@ -3551,62 +3562,10 @@ async function resolveLibraryBookId() {
   return text(state.current?.name).trim() || 'default'
 }
 
+/** OS-143：剧本设置渲染已迁 public/views/settingsAggregation.mjs（scriptSectionHtml），这里只转交依赖。 */
 function settingsScriptSectionHtml() {
-  if (!state.current) {
-    return `<div class="step"><h3>剧本</h3><p class="sub">剧本设置是「按库」的——先选一个库。</p></div>`
-  }
-  const prefs = scriptPrefs()
-  const isScriptLib = (state.current.kind || '').includes('script') || (state.libDirs || []).includes('剧本')
-  return `
-    <div class="cfg-card">
-      <div class="cfg-head"><h3>自动排版</h3><span class="cfg-note">把自由输入转成规范剧本格式</span></div>
-      <div class="field">
-        <label class="cfg-switch">
-          <input type="checkbox" id="sc-pref-autoformat"${prefs.autoFormat ? ' checked' : ''}>
-          <span>启用自动排版（保存时自动规范化）</span>
-        </label>
-      </div>
-      <div class="sc-rule-list">
-        <div class="sc-rule"><code>洪信：你来了。</code><span>→</span><code>**洪信**：你来了。</code></div>
-        <div class="sc-rule"><code>洪信（压低声音）：…</code><span>→</span><code>**洪信**（压低声音）：…</code></div>
-        <div class="sc-rule"><code>【场景】山道</code><span>→</span><code>*〔场景：山道〕*</code></div>
-        <div class="sc-rule"><code>（幕落）</code><span>→</span><code>*〔幕落〕*</code></div>
-        <div class="sc-rule"><code>第一幕：雨前</code><span>→</span><code># 第一幕：雨前</code></div>
-      </div>
-      <span class="cfg-note">已是规范格式的行不会被二次包装（幂等）；不确定的行保持原样（保守）。</span>
-    </div>
-
-    <div class="cfg-card">
-      <div class="cfg-head"><h3>角色配色</h3><span class="cfg-note">每个角色一个专属色</span></div>
-      <div class="field">
-        <label class="cfg-switch">
-          <input type="checkbox" id="sc-pref-castcolors"${prefs.castColors ? ' checked' : ''}>
-          <span>给不同角色不同颜色（按名字稳定生成，换个库也一致）</span>
-        </label>
-      </div>
-      <div class="sc-cast-preview">${castColorPreviewHtml()}</div>
-      <span class="cfg-note">颜色由角色名 hash 到固定色相（HSL 42% 饱和度、深色文字），不用手工维护。</span>
-    </div>
-
-    ${isScriptLib ? '' : '<div class="cfg-note" style="padding:8px 0">提示：当前库不是剧本载体，这里的设置会在打开剧本页时生效。</div>'}
-
-    <div class="row">
-      <button class="btn-primary" data-action="script-pref-save">保存剧本设置</button>
-      <span class="cfg-note" id="sc-pref-note"></span>
-    </div>`
-}
-
-/** 角色配色预览：从当前剧本抽取角色，各显示一个色块。 */
-function castColorPreviewHtml() {
-  const work = dirWork('剧本')
-  const mod = state.scriptModule
-  if (!mod?.splitScriptBlocks || !work?.text) return '<span class="cfg-note">当前库没有剧本——打开剧本页后这里会显示角色配色预览。</span>'
-  const cast = [...new Set(mod.splitScriptBlocks(work.text).filter((b) => b.kind === 'line' && b.who).map((b) => b.who))]
-  if (!cast.length) return '<span class="cfg-note">剧本里还没有角色台词。</span>'
-  return cast.slice(0, 12).map((name) => {
-    const c = castColorOf(name)
-    return `<span class="cast-chip" style="background:${c.bg};color:${c.fg}">${esc(name)}</span>`
-  }).join('')
+  return settingsAggregation?.scriptSectionHtml({ state, scriptPrefs, dirWork, castColorOf, esc })
+    ?? '<div class="step"><h3>剧本</h3><p class="sub">设置模块正在加载…</p></div>'
 }
 
 /**
@@ -3663,7 +3622,8 @@ const SETTINGS_HELP = Object.freeze({
   data: '你的稿子始终是磁盘上的文件夹，这个工作台不另建数据库，删掉这个软件稿子也还在。下面是各项配置存在哪儿——都只在这台机器上。',
   kb: '知识库给 Agent 供弹药：技法配方、文风指纹、题材套路、读者信号、同型案例分库存放。写东西时 Agent 会自动取用，这里只看连接是否健康、每个库装了多少，不用做任何操作。',
   about: 'OpenStory 是给写小说用的工作台。它和 Pinax 桌面版看的是同一批库文件：两个入口，一份稿子，改哪边都算数。所有数据、密钥、会话都只留在本机，不上传也不联网同步。',
-  suiteSettings: '这里的每一项都是这个套件自己的规则。停用它，规则会退回程序内置的默认值，但你现在填的内容会保留下来，重新启用就回到你设的样子。'
+  suiteSettings: '这里的每一项都是这个套件自己的规则。停用它，规则会退回程序内置的默认值，但你现在填的内容会保留下来，重新启用就回到你设的样子。',
+  moduleSettings: '模块是工作面插件：分析、生图与识图、知识库。停用只是把入口和独占能力收起来，你填的设置值不会丢，重新启用就回来。内核设置（端口、库路径、凭据）归宿主，不随模块走。'
 })
 
 const RUNTIME_STATUS_LABEL = {
@@ -4210,25 +4170,6 @@ function settingsWritingSectionHtml() {
 
 
 /**
- * 「插件」节（OS-28）：应用只管插件的插拔——两块货架，业务套件 + Agent 运行时。
- * 每个插件的设置都归它自己的设置页（点进去），不在应用设置里摊开。
- */
-function settingsPluginsSectionHtml() {
-  return suitesSectionHtml() + settingsRuntimeSectionHtml() + settingsImageGenSectionHtml()
-}
-
-/**
- * 生图接口（S4）：真配置面在「设置 · 模型 · 生图」——这里只留一句指路，
- * 免得两处各摆一套字段、改了一边另一边不生效。
- */
-function settingsImageGenSectionHtml() {
-  return `<div class="step">
-    <h3>生图接口</h3>
-    <p class="sub">端点、模型、key 与开关都在「设置 · 模型 · 生图」里配；配好并测试可达后，推演里就能直接生成场景图。</p>
-  </div>`
-}
-
-/**
  * 「发现与导入」节（OS-28）：应用只管「从哪发现插件」和「怎么把稿子导进来」。
  * 三类货架都是目录制——丢文件即上新，本机覆盖内置。
  */
@@ -4464,6 +4405,21 @@ function settingsCombinedEnginesHtml() {
   ].join('')
 }
 
+/**
+ * OS-145：设置页「模块」组——工作面插件的启停开关＋各自自报的设置项。
+ * 聚合与渲染都是纯函数（public/views/settingsAggregation.mjs），这里只取数、转交。
+ * 值落库内 ui-state（modules.settings.<id>.<key>），停用＝压暗但值保留。
+ */
+function settingsModuleSettingsSectionHtml() {
+  const modules = state.plugins?.modules ?? []
+  if (!settingsAggregation) return '<div class="step"><h3>模块</h3><p class="sub">正在读取模块清单…</p></div>'
+  return settingsAggregation.renderSettingsModules(settingsAggregation.aggregateSettings({
+    modules,
+    enabled: Object.fromEntries(modules.map((mod) => [mod.id, moduleOn(mod.id)])),
+    state: state.current ? uiMemory(state.current.path).values : {}
+  }), { esc })
+}
+
 function settingsHtml() {
   const sectionRenderers = {
     // —— 本体设置（OS-98 合并：相关概念归一处）——
@@ -4480,6 +4436,7 @@ function settingsHtml() {
     suites: suitesSectionHtml,
     // 旧 id 重定向到统一的套件主面
     pluginsOverview: pluginsOverviewHtml,
+    moduleSettings: settingsModuleSettingsSectionHtml,
     suite: suitesSectionHtml,
     suiteSettings: suitesSectionHtml,
     suiteDetail: suitesSectionHtml,
@@ -4502,7 +4459,8 @@ function settingsHtml() {
     const isPluginGroup = group.id === 'plugins'
     // OS-120：插件组最前面是「总览」入口（三套一份清单）；其后是各套件。
     const overviewEntry = isPluginGroup
-      ? group.sections.filter((section) => section.id === 'pluginsOverview').map((section) => `
+      // OS-145：插件组里除「全部套件」（由动态套件清单渲染）外的固定节都按声明顺序出（总览 → 模块）
+      ? group.sections.filter((section) => section.id !== 'suites').map((section) => `
         <button class="settings-nav-item${section.id === navOn ? ' on' : ''}" data-settings-section="${esc(section.id)}">
           <b>${esc(section.label)}</b>
           <span>${esc(section.hint)}</span>
@@ -4640,6 +4598,7 @@ async function loadPlugins() {
       list: Array.isArray(payload.plugins) ? payload.plugins : [],
       byKind: payload.byKind && typeof payload.byKind === 'object' ? payload.byKind : {},
       stats: payload.stats && typeof payload.stats === 'object' ? payload.stats : null,
+      modules: Array.isArray(payload.modules) ? payload.modules : [],
       warnings: Array.isArray(payload.warnings) ? payload.warnings : []
     }
   } catch (error) {
@@ -4648,6 +4607,7 @@ async function loadPlugins() {
       list: [],
       byKind: {},
       stats: null,
+      modules: [],
       warnings: [],
       error: (error && error.code ? error.code + ' · ' : '') + text((error && error.message) || error)
     }
@@ -11638,6 +11598,19 @@ document.addEventListener('change', (event) => {
     setModuleHidden(target.dataset.moduleId, target.checked !== true)
     return
   }
+  // OS-145：模块插件启停与自报设置——值落库内 ui-state；停用不清值
+  if (target.dataset?.action === 'plugin-module-toggle' && target.dataset.moduleId) {
+    uiSet(`modules.enabled.${target.dataset.moduleId}`, target.checked === true, { immediate: true })
+    render()
+    return
+  }
+  if (target.dataset?.action === 'plugin-module-setting' && target.dataset.moduleId) {
+    const { moduleId, key, type } = target.dataset
+    const value = settingsAggregation?.coerceSettingValue(type, target.type === 'checkbox' ? target.checked : target.value)
+    if (value !== undefined) uiSet(`modules.settings.${moduleId}.${key}`, value, { immediate: true })
+    render()
+    return
+  }
   if (target.id === 'import-root') {
     state.impo.root = target.value
     return
@@ -12087,6 +12060,13 @@ async function loadUiState() {
     mem.values = {}
     mem.loaded = true
   }
+  // OS-145：旧配置键一次性迁移到 modules.settings.<id>.<key>（marker 防重复；坏档不崩）。
+  await settingsAggregationReady
+  const migrated = settingsAggregation?.migrateLegacySettings(mem.values)
+  if (migrated?.changed) {
+    mem.values = migrated.state
+    uiFlush()
+  }
   return mem.values
 }
 
@@ -12099,8 +12079,8 @@ function uiGet(key, fallback = null) {
   const mem = uiMemory()
   return key in mem.values ? mem.values[key] : fallback
 }
-/** OS-144 模块插件判定（前端唯一入口）：ui-state `modules.enabled.<id>`，缺省启用。 */
-function moduleOn(id) { const nested = uiGet('modules', null); if (nested && nested.enabled && Object.prototype.hasOwnProperty.call(nested.enabled, id)) return nested.enabled[id] !== false; return uiGet(`modules.enabled.${id}`, true) !== false }
+/** OS-144 模块插件判定（前端唯一入口）：ui-state `modules.enabled.<id>`（扁平键优先，缺省启用）。 */
+function moduleOn(id) { const flat = uiGet(`modules.enabled.${id}`, null); if (flat !== null) return flat !== false; const nested = uiGet('modules', null); if (nested && nested.enabled && Object.prototype.hasOwnProperty.call(nested.enabled, id)) return nested.enabled[id] !== false; return true }
 
 /** 防抖落库：短时间内多次设置只写一次。 */
 let uiFlushTimer = null

@@ -13,6 +13,7 @@ import { loadSkills, skillSummary, skillsForGenre } from '../../services/skills.
 import { effectiveSkillsDirs } from '../../services/systemPrompt.mjs'
 import { loadGenres } from '../../services/genres.mjs'
 import { listAllPlugins } from '../../protocol/plugins.mjs'
+import { MODULE_MANIFESTS } from '../../protocol/modules.mjs'
 import {
   listSuitesPublic,
   saveSuiteSettings,
@@ -70,6 +71,14 @@ export async function pluginsGet(ctx) {
     plugins: listed.plugins,
     byKind: listed.byKind,
     stats: listed.stats,
+    // OS-145：模块插件自报设置（设置页「模块」组的数据底；启停状态由前端按库内 ui-state 判定）
+    modules: MODULE_MANIFESTS.map((manifest) => ({
+      id: manifest.id,
+      name: manifest.name,
+      description: manifest.description,
+      pages: manifest.pages,
+      settings: manifest.settings
+    })),
     ...(listed.warnings.length ? { warnings: listed.warnings } : {})
   })
 }

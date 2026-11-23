@@ -4,7 +4,7 @@
   "name": "生图与识图",
   "version": "0.1.0",
   "core": false,
-  "description": "生图/识图工作面：ComfyUI 与 OpenAI 兼容生图、DSH 识图。独占端点随停用失效；设置里的生图/识图配置区与生成入口一并隐去，已存的配置值不删。",
+  "description": "生图/识图工作面：ComfyUI 与 OpenAI 兼容生图、DSH 识图。独占端点随停用失效；设置里的生图/识图配置区与生成入口一并隐去，已存的配置值不删。下面 settings 是模块自报的设置项（值落库内 ui-state modules.settings.comfyui.*）；API Key 等凭据仍只存本机 agent-config.json，不进 ui-state。",
   "endpoints": [
     "deduceImage",
     "referenceImageGenerate",
@@ -13,5 +13,10 @@
   "pages": [
     { "id": "image-settings", "label": "生图与识图", "slot": "settings" }
   ],
-  "settings": []
+  "settings": [
+    { "key": "image.backend", "label": "生图后端", "type": "select", "options": ["openai", "comfyui"], "default": "openai" },
+    { "key": "image.comfyUrl", "label": "ComfyUI 地址", "type": "string", "default": "http://127.0.0.1:8188" },
+    { "key": "image.comfyWorkflow", "label": "工作流 JSON 路径", "type": "string", "default": "" },
+    { "key": "image.comfyNodeMap", "label": "节点映射（positive:6,negative:7）", "type": "string", "default": "" }
+  ]
 }

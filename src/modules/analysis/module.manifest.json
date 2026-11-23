@@ -9,5 +9,8 @@
   "pages": [
     { "id": "analysis-panel", "label": "分析", "slot": "right" }
   ],
-  "settings": []
+  "settings": [
+    { "key": "analyze.enabled", "label": "启用右栏分析卡片", "type": "boolean", "default": true },
+    { "key": "analyze.deAiThreshold", "label": "去 AI 味阈值（0-100，越高越不敏感）", "type": "number", "default": 45 }
+  ]
 }

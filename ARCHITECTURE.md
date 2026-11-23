@@ -95,8 +95,23 @@ OS-123/124 解耦后，建库/导入/章节号解析全部自持，不再 vendor
 | 参考/世界书 | referenceStore(609，标签/双链/图谱，src/modules/worldbook/) |
 | Agent | agentStore(485，src/modules/agentbar/) / agentEvents(356，AG-UI canonical 事件模型＋SSE 投影，src/protocol/) / roleplayEngine(280) / roleplayPrompts(188)（后两者 src/modules/roleplay/） |
 | 插件货架（src/services/，数据目录仍在仓根 suites//styles//runtimes//genres//skills/） | suites(456) / skills(324) / runtimes(316) / genres(288) / stylePacks(121) |
-| 模块插件（OS-144，`src/modules/<id>/module.manifest.json`＝`openstory-module@1`） | analysis（manifest 声明；引擎仍是 public/analysis.mjs 零依赖纯函数，前端与 Node 共用，无 daemon 端点）/ comfyui（comfyEngine 198 生图；独占端点 deduceImage / referenceImageGenerate / visionDescribe）/ kb（kbRouter 131 / kbAdapter 222 / kbHealth 182；独占端点 kbStatusGet / kbConfigGet / kbConfigPut / kbTest）。启停判定单一入口 `src/protocol/modules.mjs` 的 isModuleEnabled（ui-state `modules.enabled.<id>`，缺省 true）；独占端点停用回 MODULE_DISABLED，共用端点不受影响，值与数据保留 |
+| 模块插件（OS-144，`src/modules/<id>/module.manifest.json`＝`openstory-module@1`） | analysis（manifest 声明；引擎仍是 public/analysis.mjs 零依赖纯函数，前端与 Node 共用，无 daemon 端点）/ comfyui（comfyEngine 198 生图；独占端点 deduceImage / referenceImageGenerate / visionDescribe）/ kb（kbRouter 131 / kbAdapter 222 / kbHealth 182；独占端点 kbStatusGet / kbConfigGet / kbConfigPut / kbTest）。启停判定单一入口 `src/protocol/modules.mjs` 的 isModuleEnabled（ui-state `modules.enabled.<id>`，缺省 true）；独占端点停用回 MODULE_DISABLED，共用端点不受影响，值与数据保留。设置见下方「模块自报设置」表 |
 | 引擎与周边（src/services/） | libState(191，src/protocol/) / jobCenter(171 任务中心) / nativePicker(131) / dsh-bridge(396) / dsh-cli(392) / embedding-server(156) / embeddingPaths(26) / cli-bridge(112) / style-check(167) |
+
+**模块自报设置（OS-145，manifest `settings` 列）**：`openstory-module@1` 的 `settings` 升级为可渲染声明，
+字段口径对齐业务套件（`openstory-suite@2`）：`{ key, label, type: string|number|boolean|select, default, options? }`。
+值落库内 ui-state `modules.settings.<id>.<key>`（扁平键，兼容嵌套写法）；设置页「插件中心 · 模块」按它渲染，
+停用＝设置区压暗但值保留。聚合纯函数在 `public/views/settingsAggregation.mjs`（零 import，Node 测试可直接跑；
+app.js 只取数调用）。旧配置键一次性迁移，marker `modules.settingsMigrated` 防重复；凭据（API Key 等）仍只存本机。
+
+| 模块 | manifest `settings` 键（类型 / 默认） |
+|---|---|
+| analysis | `analyze.enabled`（boolean / true） · `analyze.deAiThreshold`（number / 45） |
+| comfyui | `image.backend`（select: openai、comfyui / openai） · `image.comfyUrl`（string / http://127.0.0.1:8188） · `image.comfyWorkflow`（string / 空） · `image.comfyNodeMap`（string / 空） |
+| kb | `kb.baseUrl`（string / http://127.0.0.1:8080） · `kb.spaceId`（string / 空） · `kb.autoTest`（boolean / false） |
+
+> 内核设置（daemon 端口语义、库路径、数据目录、凭据存储）是 L5 宿主的，不进 manifest、不插件化；
+> 设置页把它们作为只读的「内核设置区」与各模块自报设置区聚合在同一个入口。
 
 - **边界**（OS-142 升格为路径规则）：`src/modules/**` 只准引三类——node 内置模块
   （`node:` 前缀）、`src/protocol/**`（Host API：index.mjs 七命名空间＋叶子件）、自己模块
