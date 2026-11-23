@@ -15,7 +15,7 @@
 ## 落地前四步
 
 ```bash
-# ① 单测门禁（446 例，OS-136 起含 test/originGuard.test.mjs 来源防护 8 例）
+# ① 单测门禁（453 例，OS-137 起含 test/historyRetention.test.mjs .history 保留策略 7 例）
 node .zcode/run-gate.mjs
 
 # ② 交付标准门禁（S1–S4，Rea 式证据落盘）

@@ -24,7 +24,7 @@
  */
 import { randomUUID } from 'node:crypto'
 import { createReadStream, existsSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs'
-import { copyFile, mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
+import { appendFile, copyFile, mkdir, readdir, readFile, rename, rm, unlink, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -127,7 +127,7 @@ import {
   setPrimaryCarrier
 } from './libraryManage.mjs'
 import { factStore } from './pinaxAdapter.mjs' // OS-125：内核唯一进口（S2.4），本仓其余模块不许直引 core/**
-import { readChange, readLatestByFile, readLog, logSummary, recordChange, contentHash } from './changelog.mjs'
+import { readChange, readLatestByFile, readLog, logSummary, logFilePath, recordChange, contentHash } from './changelog.mjs'
 import { checkSameSource, snapshotAndDiff } from './syncCheck.mjs'
 import { dropDraft, listDrafts, loadDraft, readUiState, saveDraft, writeUiState } from './libState.mjs'
 import { absorbLegacyDirs, backlinksOf, buildReferenceGraph, REFERENCE_DIR, notesVisibleAt, scanReferences } from './referenceStore.mjs'
@@ -501,6 +501,137 @@ export function historyBackupPath(root, file, now = new Date()) {
   }
 }
 
+/* ---------- OS-137：.history 保留策略（每文件配额＋日锚，滚动删除留痕）---------- */
+
+/** 每个原文件的备份配额缺省：50 份。环境变量 OPENSTORY_HISTORY_KEEP 可覆盖。 */
+export const HISTORY_KEEP_DEFAULT = 50
+
+/**
+ * 解析每文件备份配额。环境变量只认「纯数字且 ≥1」；解析失败/非法值（0、负数、
+ * 带尾巴的数字、乱码）一律回缺省——.history 是作者的救命索，策略宁可保守。
+ */
+export function resolveHistoryKeepPerFile(raw = process.env.OPENSTORY_HISTORY_KEEP) {
+  const trimmed = text(raw).trim()
+  if (!/^[0-9]+$/u.test(trimmed)) return HISTORY_KEEP_DEFAULT
+  const parsed = Number.parseInt(trimmed, 10)
+  if (!Number.isFinite(parsed) || parsed < 1) return HISTORY_KEEP_DEFAULT
+  return parsed
+}
+
+/** mtime → 可比较毫秒；解析不了返回 null（调用方一律当「不能排则不能删」）。 */
+function historyTime(mtime) {
+  const at = mtime instanceof Date ? mtime.getTime() : new Date(mtime).getTime()
+  return Number.isFinite(at) ? at : null
+}
+
+/** 自然日键（本机时区）：日锚按「天」算，不按毫秒差算。 */
+function historyDayKey(at) {
+  const day = new Date(at)
+  return `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`
+}
+
+/**
+ * OS-137：.history 保留策略（纯函数，不碰盘）。
+ *
+ * 规则（按保守优先排序）：
+ *   1. 绝不删最新一份——每个原文件 mtime 最新的备份永远保留；
+ *   2. 任何自然日至少保留该日最后一份（日锚）——高频编辑冲不掉跨天的历史；
+ *   3. 每个原文件保留最新 keepPerFile 份，超出的从最旧开始删。
+ * entries 是 [{ name, original, mtime }]（original＝原文件名/路径标识，mtime＝ISO 串或 Date），
+ * 按 original 分组、各组独立算配额；mtime 解析不了的条目绝不进删除清单。
+ * 返回应删清单（原条目对象），按 mtime 从旧到新。
+ */
+export function pruneHistoryBackups(entries, options = {}) {
+  const keepPerFile = resolveHistoryKeepPerFile(options.keepPerFile ?? process.env.OPENSTORY_HISTORY_KEEP)
+  const groups = new Map()
+  for (const entry of (Array.isArray(entries) ? entries : [])) {
+    if (!entry || typeof entry !== 'object') continue
+    const original = text(entry.original) || text(entry.name)
+    if (!groups.has(original)) groups.set(original, [])
+    groups.get(original).push(entry)
+  }
+  const deletions = []
+  for (const group of groups.values()) {
+    // mtime 解析不了的先摘出去——排不了序就绝不定罪
+    const valid = []
+    for (const entry of group) {
+      const at = historyTime(entry.mtime)
+      if (at !== null) valid.push({ entry, at })
+    }
+    // 新→旧；时间相等再比文件名，乱序输入也有确定结果
+    valid.sort((left, right) => right.at - left.at || text(left.entry.name).localeCompare(text(right.entry.name)))
+    const keep = new Set()
+    valid.forEach((ranked, index) => {
+      if (index < keepPerFile) keep.add(ranked.entry)   // 规则 3：配额内（index 0 即最新一份）
+    })
+    const latestOfDay = new Map()
+    for (const ranked of valid) {
+      const day = historyDayKey(ranked.at)
+      if (!latestOfDay.has(day)) latestOfDay.set(day, ranked)  // valid 已按新→旧，先见即该日最新
+    }
+    for (const ranked of latestOfDay.values()) keep.add(ranked.entry)  // 规则 2：日锚
+    if (valid.length > 0) keep.add(valid[0].entry)  // 规则 1：最新一份（显式红线，配额内已含，重复标记是有意保险）
+    for (const ranked of valid) {
+      if (!keep.has(ranked.entry)) deletions.push(ranked)
+    }
+  }
+  deletions.sort((left, right) => left.at - right.at)
+  return deletions.map((ranked) => ranked.entry)
+}
+
+/**
+ * OS-137：备份落盘后，对「同一原文件」的既有备份跑一次保留策略。
+ * 只扫这一个 .history 目录（不全库遍历），只认 `<原文件名>.bak-` 前缀
+ * （`.deleted-` 档与别人的备份不动）。每删一份往
+ * `.pinax/log/history-prune/<yyyy-mm>.jsonl` 追加一行留痕；有删除时在
+ * daemon 控制台打一行汇总。任何失败只报错不抛——保留策略绝不反噬救命索。
+ */
+async function pruneHistoryForFile(root, originalPath, keepPerFile) {
+  const historyDir = join(dirname(originalPath), '.history')
+  const prefix = `${basename(originalPath)}.bak-`
+  const runAt = new Date().toISOString()
+  let dirents
+  try {
+    dirents = await readdir(historyDir, { withFileTypes: true })
+  } catch { /* 没有这个 .history 目录＝没东西可删 */ return { ok: true, deleted: 0 } }
+  const entries = []
+  for (const dirent of dirents) {
+    if (!dirent.isFile() || !dirent.name.startsWith(prefix)) continue
+    let stats
+    try {
+      stats = statSync(join(historyDir, dirent.name))
+    } catch { continue }
+    entries.push({ name: dirent.name, original: basename(originalPath), mtime: stats.mtime.toISOString() })
+  }
+  const doomed = pruneHistoryBackups(entries, { keepPerFile })
+  let deleted = 0
+  for (const entry of doomed) {
+    const backupAbs = join(historyDir, entry.name)
+    const backupRel = relative(root, backupAbs).split(sep).join('/')
+    try {
+      await unlink(backupAbs)
+    } catch (error) {
+      console.error(`[history-prune] 删 ${backupRel} 失败：${text(error?.message || error)}`)
+      continue
+    }
+    deleted += 1
+    try {
+      const logRel = logFilePath('history-prune')
+      const logAbs = join(root, ...logRel.split('/'))
+      await mkdir(dirname(logAbs), { recursive: true })
+      const line = JSON.stringify({ file: backupRel, deleted: true, reason: 'over-quota', keepPerFile, runAt })
+      await appendFile(logAbs, `${line}\n`, 'utf-8')
+    } catch (error) {
+      console.error(`[history-prune] 写留痕日志失败：${text(error?.message || error)}`)
+    }
+  }
+  if (deleted > 0) {
+    const dirRel = relative(root, historyDir).split(sep).join('/')
+    console.log(`[history-prune] ${dirRel}：滚动删除 ${deleted} 份旧备份（每文件配额 ${keepPerFile}，留痕 .pinax/log/history-prune/）`)
+  }
+  return { ok: true, deleted }
+}
+
 /* ---------- 写协议错误码透传 ---------- */
 
 /**
@@ -830,6 +961,13 @@ async function writeChapterWithBackup(root, file, newText, logOptions = {}) {
       await mkdir(dirname(backup.path), { recursive: true })
       await copyFile(resolved.path, backup.path)
       backupRelative = backup.relative
+      // OS-137：新备份落盘后，对同一原文件的既有备份跑一次保留策略（滚动删除＋留痕）。
+      // 失败只报错不阻断写盘——清理是锦上添花，绝不能反噬救命索。
+      try {
+        await pruneHistoryForFile(root, resolved.path, resolveHistoryKeepPerFile())
+      } catch (error) {
+        console.error(`[history-prune] 保留策略执行失败：${text(error?.message || error)}`)
+      }
       // OS-89：读旧内容用于算 diff（.history 只是二进制快照，日志要的是可读差异）
       try { beforeText = await readFile(resolved.path, 'utf-8') } catch { beforeText = '' }
       existed = true
