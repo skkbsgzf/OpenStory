@@ -39,7 +39,7 @@
             32
           ],
           "tourOrder": 1,
-          "explanation": "三条命令即全部：npm install（@pinax/core 走 file: vendor tgz）、npm start（就是 node daemon.mjs → 127.0.0.1:8807）、npm test（node --test，零外部测试框架）。段落还交代了建库骨架目录（正文/大纲/世界书/构思/资料/日志/约束＋.pinax）与模型端点配置入口（左列 Pi-Agent 设置）。"
+          "explanation": "三条命令即全部：npm install（底座契约已收编进 vendor/contracts，OS-132 起 @pinax/core tgz 依赖已移除）、npm start（就是 node daemon.mjs → 127.0.0.1:8807）、npm test（node --test，零外部测试框架）。段落还交代了建库骨架目录（正文/大纲/世界书/构思/资料/日志/约束＋.pinax）与模型端点配置入口（左列 Pi-Agent 设置）。"
         },
         {
           "title": "架构一图与 fact-first",
@@ -216,7 +216,7 @@
             17
           ],
           "tourOrder": 1,
-          "explanation": "dependencies 只有四个，每个服务于明确的本地能力：@pinax/core 用 file:vendor tgz 引入（底座逐字 vendor 的产物，对应 core/ 的抽包路线）；sharp 管图像处理；@xenova/transformers 与 onnxruntime-web 支撑本地 embedding（transformers.js/WASM ONNX，给 WeKnora 当向量模型，替代 700MB+ 的 Ollama）。没有 Vue/React/Express——前端零框架、后端手写 node:http。"
+          "explanation": "dependencies 只有四个，每个服务于明确的本地能力：底座契约已收编进 vendor/contracts/worldbookFileContract.js（OS-132 收编，@pinax/core tgz 依赖已移除；core/ 的抽包路线不变）；sharp 管图像处理；@xenova/transformers 与 onnxruntime-web 支撑本地 embedding（transformers.js/WASM ONNX，给 WeKnora 当向量模型，替代 700MB+ 的 Ollama）。没有 Vue/React/Express——前端零框架、后端手写 node:http。"
         },
         {
           "title": "元信息与环境约束",

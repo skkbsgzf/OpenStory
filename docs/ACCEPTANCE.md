@@ -62,7 +62,7 @@ node tools/acceptance/acceptance.mjs --json tools/acceptance/out/report-<日期>
   `core/**` vendor 内核不算模块；`pinaxAdapter.mjs` 是内核唯一进口＝能力协议面（OS-125）。
 - S2.4 唯一进口：仓根模块只有 `pinaxAdapter.mjs` 允许 import `core/**`（静态 `from` 与动态
   `import()` 都算）；内核能力只经它的五组出口（factStore/deduce/enrich/projectMeta/projectImport）。
-  `@pinax/core`（npm 包，worldbook/lexicon 格式契约）与 `test/*.test.mjs` 不在扫描范围。
+  `vendor/contracts`（@pinax/core 收编后的世界书契约，OS-132）与 `test/*.test.mjs` 不在扫描范围。
 - S4.2 关闭家族：模块卡 `rm-x`，整页 `page-close`。
 - S3.1 裸色值豁免：无（画布绘图用 getComputedStyle 现读令牌，见 public/graph.mjs）。
 
