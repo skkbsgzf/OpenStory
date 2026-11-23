@@ -2587,8 +2587,11 @@ function readLegacyDeduceState(root, bookId) {
     // 已存在就带 expectedRevision 走乐观并发（避免覆盖别人刚写的）
     let expectedRevision = null
     let beforeFactRaw = '' // OS-107：写前原文（写后读不到旧内容）——变更日志的 before 靠它
+    // OS-135 修：路径声明必须提在 try 外——OS-113 起这一行写的是 existsSync(factPath)，
+    // 而 factPath 是另一个端点（deducePendingSettle）try 块里的局部 const，这里够不到，
+    // ReferenceError 让本端点每次调用都 500；顺带修正 documentPath 自己也只在 try 块内可见的问题。
+    const documentPath = join(authorized.root, '拆解', `${bookId}.json`)
     try {
-      const documentPath = join(authorized.root, '拆解', `${bookId}.json`)
       if (existsSync(documentPath)) {
         beforeFactRaw = await readFile(documentPath, 'utf-8')
         const existing = JSON.parse(beforeFactRaw)
@@ -2596,7 +2599,7 @@ function readLegacyDeduceState(root, bookId) {
         if (Number.isSafeInteger(rev) && rev >= 1) expectedRevision = rev
       }
     } catch { /* 读不到就当新建 */ }
-    const documentExisted = existsSync(factPath)  // OS-113 修：0 字节文件也算已存在（用 existsSync 而非内容非空）
+    const documentExisted = existsSync(documentPath)  // OS-113：0 字节文件也算已存在（用 existsSync 而非内容非空）
     // 书元数据：写进 patch 的 book 字段（内核要求 patch 顶层浅合并）
     const patch = {
       book: { id: bookId, title: text(request.title).trim() || bookId },
