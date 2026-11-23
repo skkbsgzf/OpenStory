@@ -7,10 +7,14 @@
  *     MODULE_DISABLED，但**值与数据保留**，重新启用即恢复。
  *
  * 目录形状（src/modules/<id>/module.manifest.json，OS-140 六目录宪法）：
- *   { spec:'openstory-module@1', id, name, version, core:false, endpoints:[…], pages:[…], settings:[…] }
+ *   { spec:'openstory-module@1', id, name, version, core:false, endpoints:[…], pages:[…], settings:[…],
+ *     settingsHint?, settingsJump? }
  *   · endpoints 列的是**该模块独占**的端点 id——多方共用的端点（如 fact 读端点）不登记，
  *     停用某个模块绝不能让共用端点失效；
  *   · pages/settings 是前端入口声明（页面自己用 ui-state 判定显隐，本文件是数据底）。
+ *   · settingsHint/settingsJump（OS-146）：模块的**真配置不在设置页**时用来指路——
+ *     hint 是一句「真配置在…」，jump 是设置页的目标区块 id（如 engines）。只指路，
+ *     不在设置页摆第二份输入框（没有消费者的设置项一律不留）。
  *
  * 启停状态复用库内 ui-state 通道（`.pinax/ui-state.json`）：
  *   `modules.enabled.<id>`（缺省 true；兼容扁平键写法）。停用只写这一个开关，
@@ -112,21 +116,29 @@ export function validateModuleManifest(raw, { dirName = '' } = {}) {
     })
   }
   if (errors.length) return { ok: false, errors }
-  return {
-    ok: true,
-    errors,
-    manifest: Object.freeze({
-      spec: MODULE_SPEC,
-      id,
-      name: text(raw.name).trim(),
-      version: text(raw.version).trim(),
-      core: raw.core,
-      description: text(raw.description).trim(),
-      endpoints: Object.freeze(raw.endpoints.map((endpoint) => text(endpoint).trim())),
-      pages: Object.freeze(raw.pages.map((page) => Object.freeze({ ...page, id: text(page.id ?? page.key).trim() }))),
-      settings: Object.freeze(raw.settings.map((setting) => Object.freeze({ ...setting, key: text(setting.key ?? setting.id).trim() })))
-    })
+  // OS-146：可选的指路字段（真配置在别处时用）。给了就必须是非空字符串——空串等于没写。
+  if (raw.settingsHint !== undefined && (typeof raw.settingsHint !== 'string' || !raw.settingsHint.trim())) {
+    errors.push('settingsHint 给了就必须是非空字符串')
   }
+  if (raw.settingsJump !== undefined && (typeof raw.settingsJump !== 'string' || !raw.settingsJump.trim())) {
+    errors.push('settingsJump 给了就必须是非空字符串（设置页区块 id）')
+  }
+  if (errors.length) return { ok: false, errors }
+  const manifest = {
+    spec: MODULE_SPEC,
+    id,
+    name: text(raw.name).trim(),
+    version: text(raw.version).trim(),
+    core: raw.core,
+    description: text(raw.description).trim(),
+    endpoints: Object.freeze(raw.endpoints.map((endpoint) => text(endpoint).trim())),
+    pages: Object.freeze(raw.pages.map((page) => Object.freeze({ ...page, id: text(page.id ?? page.key).trim() }))),
+    settings: Object.freeze(raw.settings.map((setting) => Object.freeze({ ...setting, key: text(setting.key ?? setting.id).trim() })))
+  }
+  // 没写就不带这两个键（校验结果本身也要能再喂回校验——空串会被当成「给了但空」）
+  if (raw.settingsHint !== undefined) manifest.settingsHint = raw.settingsHint.trim()
+  if (raw.settingsJump !== undefined) manifest.settingsJump = raw.settingsJump.trim()
+  return { ok: true, errors, manifest: Object.freeze(manifest) }
 }
 
 /** 扫描 src/modules/<id>/module.manifest.json（无 manifest 的目录＝普通模块，静默跳过）。 */

@@ -10,6 +10,13 @@
  *     字段口径对齐业务套件 settings schema：{ key, label, type, default, options? }；
  *     值落库内 ui-state（`modules.settings.<id>.<key>`，兼容嵌套写法）。
  *
+ * OS-146 复核口径（重要）：**界面上出现的每个设置项必须有真实消费者**。
+ * 生图/识图的真源是本机 agent-config.json（loadConfigV2().image），知识库的真源是
+ * 本机 kb-config.json（/api/kb/config），右栏卡片的真开关是 ui-state 的 analyzeEnabled——
+ * 这些都**不在这里**再放一份输入框（改了不生效＝死配置）。模块的真配置在别处时，
+ * manifest 只报两句指路：`settingsHint`（真配置在…）＋ `settingsJump`（设置页区块 id），
+ * 设置页渲染成一行说明＋一个跳转按钮。
+ *
  * 放在 `public/views/` 的理由：输出是**渲染用的分组结构**，主消费者是设置页（前端）；
  * 纯函数（零 import、不碰 DOM、不读全局 state、不写存储），Node 测试可直接 import，
  * 与 `views/registry.mjs` 同门风。app.js 只调用、不内联新逻辑（OS-143 增量冻结）。
@@ -17,9 +24,11 @@
  * 停用语义：模块停用＝该设置区压暗、不可编辑，**值保留**（enabled/editable 分开表示，
  * 值照样从 ui-state 读出来）——重新启用立刻恢复，与 OS-144 的插件语义一致。
  *
- * 旧键迁移：散落的旧配置键（analyseEnabled / image.* / kb.* 的旧读数）在
- * `migrateLegacySettings` 里一次性迁到新键；迁移后写 marker（`modules.settingsMigrated`），
- * 第二次进入不再迁移，因此不会覆盖作者后来改过的新值。坏档（类型不对）只跳过、不抛错。
+ * 旧键迁移：机制保留（`migrateLegacySettings`＋marker `modules.settingsMigrated`，只跑一次、
+ * 不覆盖新值、坏档不抛错）。OS-146 起迁移表为空——上一版把 ui-state 的 image.* / kb.* 旧读数
+ * 迁进 `modules.settings.*`，但那些键从来不是真源（生图在 agent-config、知识库在 kb-config），
+ * 迁过去也没人读，等于往库里写死键。以后真要有迁移，只准迁到 manifest 里声明过的键
+ * （test/moduleSettingsConsumers.test.mjs 钉死这条）。
  */
 
 /** 设置值类型（与 src/services/suites.mjs 的 SETTING_TYPES 同口径）。 */
@@ -138,6 +147,9 @@ export function aggregateSettings({ kernel = KERNEL_SETTINGS, modules = [], enab
         id,
         name: text(manifest.name).trim() || id,
         description: text(manifest.description).trim(),
+        // OS-146：真配置在别处时的指路（hint 一句话＋jump 设置页区块 id）；没有就空
+        settingsHint: text(manifest.settingsHint).trim(),
+        settingsJump: text(manifest.settingsJump).trim(),
         enabled: on,
         // 停用＝设置区只读（压暗、不可编辑），但值照旧读出来保留
         editable: on,
@@ -176,18 +188,12 @@ export function aggregateSettings({ kernel = KERNEL_SETTINGS, modules = [], enab
  * 旧键迁移表（一次性）。
  * legacy ＝ 旧键名（扁平或点路径，两种写法都认）；type/options 与目标 schema 同口径。
  *
- * 说明：analysis 的卡片级勾选 `analyzeEnabled` 在本仓是**数组**（OS-144 两层插拔的旧机制），
- * 不是模块开关——数组不会被当成布尔迁走（类型闸拦住），OS-144 的「两层各存各键」不变。
+ * OS-146：**现在为空**。上一版这里把 `analyzeEnabled` / `image.*` / `kb.*` 迁进
+ * `modules.settings.*`，但那些旧键没有一个是真源（生图＝agent-config.json，知识库＝
+ * kb-config.json，右栏卡片勾选＝ui-state 的 analyzeEnabled 数组），迁过去也没有消费者，
+ * 只是往库里写死键。铁律：**迁移目标必须是 manifest 里声明过的设置键**，否则不迁。
  */
-export const LEGACY_SETTING_MIGRATIONS = Object.freeze([
-  Object.freeze({ moduleId: 'analysis', key: 'analyze.enabled', legacy: 'analyzeEnabled', type: 'boolean' }),
-  Object.freeze({ moduleId: 'comfyui', key: 'image.backend', legacy: 'image.backend', type: 'select', options: ['openai', 'comfyui'] }),
-  Object.freeze({ moduleId: 'comfyui', key: 'image.comfyUrl', legacy: 'image.comfyUrl', type: 'string' }),
-  Object.freeze({ moduleId: 'comfyui', key: 'image.comfyWorkflow', legacy: 'image.comfyWorkflow', type: 'string' }),
-  Object.freeze({ moduleId: 'comfyui', key: 'image.comfyNodeMap', legacy: 'image.comfyNodeMap', type: 'string' }),
-  Object.freeze({ moduleId: 'kb', key: 'kb.baseUrl', legacy: 'kb.baseUrl', type: 'string' }),
-  Object.freeze({ moduleId: 'kb', key: 'kb.spaceId', legacy: 'kb.spaceId', type: 'string' })
-])
+export const LEGACY_SETTING_MIGRATIONS = Object.freeze([])
 
 /** 旧键取值：先认扁平键（`image.backend`），再按点路径下钻（`image: { backend }`）。 */
 function pickLegacyState(state, path) {
@@ -270,6 +276,7 @@ function settingFieldHtml(module, setting, esc) {
 /**
  * 设置页「模块」组 HTML。
  * 每个模块：启停开关（写 ui-state modules.enabled.<id>）＋ 自报设置项（按 schema 渲染）。
+ * 真配置在别处（manifest 给了 settingsHint）＝一行指路＋一个跳转按钮，不摆第二份输入框。
  * 停用：整卡压暗（.mp-off）、控件 disabled，值保留。
  *
  * @param {{groups:Array}} aggregation aggregateSettings 的输出
@@ -281,13 +288,20 @@ export function renderSettingsModules(aggregation, deps = {}) {
   if (!group) return ''
   const cards = (group.modules ?? []).map((module) => {
     const toggle = `<label class="cfg-switch"><input type="checkbox" data-action="plugin-module-toggle" data-module-id="${esc(module.id)}"${module.enabled ? ' checked' : ''}><span>启用「${esc(module.name)}」</span></label>`
+    // 指路行（OS-146）：真配置在 agent-config / kb-config 之类的宿主位置，这里只说明去哪找
+    const pointer = text(module.settingsHint)
+      ? `<div class="row"><span class="cfg-note">${esc(module.settingsHint)}</span>${text(module.settingsJump)
+        ? `<button type="button" class="btn-ghost" data-settings-section="${esc(module.settingsJump)}">去配置 →</button>`
+        : ''}</div>`
+      : ''
     const fields = module.settings.length
       ? module.settings.map((setting) => settingFieldHtml(module, setting, esc)).join('')
-      : '<span class="cfg-note">这个模块没有自报设置项。</span>'
+      : (text(module.settingsHint) ? '' : '<span class="cfg-note">这个模块没有自报设置项。</span>')
     const offNote = module.enabled ? '' : '<span class="cfg-note">已停用：设置值保留，重新启用立刻恢复。</span>'
     return `<div class="cfg-card mp-card${module.enabled ? '' : ' mp-off'}">
       <div class="cfg-head"><h3>${esc(module.name)}</h3></div>
       ${toggle}
+      ${pointer}
       ${fields}
       ${offNote}
     </div>`
@@ -297,6 +311,17 @@ export function renderSettingsModules(aggregation, deps = {}) {
     <p class="sub">内核设置（daemon 端口、库路径、数据目录、凭据存储）归宿主，见「引擎与存储」，不随模块走。</p>
     ${cards || '<p class="sub">还没有模块插件——模块把自己的设置写在 module.manifest.json 里就会出现在这里。</p>'}
   </div>`
+}
+
+/**
+ * 设置页「模块」组（OS-146：从 app.js 迁出——app.js 只留接线，渲染函数一律在 views/）。
+ * app.js 传：modules（/api/plugins 的 modules）、enabledFor(id)、uiState（当前库 ui-state）、esc。
+ * 还没有模块清单时（加载中）由调用方决定占位文案。
+ */
+export function moduleSettingsSectionHtml({ modules = [], enabledFor = () => true, uiState = {}, esc } = {}) {
+  const list = Array.isArray(modules) ? modules : []
+  const enabled = Object.fromEntries(list.map((module) => [module.id, enabledFor(module.id) !== false]))
+  return renderSettingsModules(aggregateSettings({ modules: list, enabled, state: uiState }), { esc })
 }
 
 /* ---------- 设置页渲染器（OS-143「只出不进」：从 app.js 原样迁出） ----------

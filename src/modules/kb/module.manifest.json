@@ -4,7 +4,7 @@
   "name": "知识库",
   "version": "0.1.0",
   "core": false,
-  "description": "知识库连接（WeKnora/embedding）：路由、适配与健康三件套。独占端点随停用失效；设置「引擎与存储」里的知识库连接配置区隐去，本机 kb-config 不删。下面 settings 是模块自报的连接项（值落库内 ui-state modules.settings.kb.*）；API Key 属宿主凭据，仍只存本机 kb-config.json，界面只回掩码。Agent 输入条上的「知识链」灯泡不属于本模块。",
+  "description": "知识库连接（WeKnora/embedding）：路由、适配与健康三件套。独占端点随停用失效；设置「引擎与存储」里的知识库连接配置区隐去，本机 kb-config 不删。连接参数的真源是本机 kb-config.json（经 /api/kb/config 读写，密钥只回掩码），本模块只报「配置在哪」，不再放第二份输入框（OS-146）。Agent 输入条上的「知识链」灯泡不属于本模块。",
   "endpoints": [
     "kbStatusGet",
     "kbConfigGet",
@@ -14,9 +14,7 @@
   "pages": [
     { "id": "kb-settings", "label": "知识库", "slot": "settings" }
   ],
-  "settings": [
-    { "key": "kb.baseUrl", "label": "WeKnora 服务地址", "type": "string", "default": "http://127.0.0.1:8080" },
-    { "key": "kb.spaceId", "label": "Space ID（多空间部署时填）", "type": "string", "default": "" },
-    { "key": "kb.autoTest", "label": "打开设置时自动测试连接", "type": "boolean", "default": false }
-  ]
+  "settings": [],
+  "settingsHint": "服务地址、API Key、Space ID 与分库映射都在「设置 · 引擎与存储 · 知识库」里配（真源是本机 kb-config.json，密钥只回掩码）。",
+  "settingsJump": "engines"
 }

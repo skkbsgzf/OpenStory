@@ -307,7 +307,7 @@ async function serveStatic(req, res, url, publicDir) {
 
 /** 这些端点从 HTTP query 取参（其余读 JSON body）。与契约 request.query 不完全重合
  *  （jobsGet 一类 GET 端点契约写了 query、实现仍读 body——拆分前即如此，原样保留）。 */
-const ENDPOINT_HAS_QUERY = new Set(['referenceAssetGet', 'habitsGet', 'chapterGet', 'agentSessions', 'agentSessionGet', 'agentSessionDelete', 'libraryDiagnose', 'filesGet', 'chaptersGet', 'chapterDelete', 'artifactsGet', 'suiteStateDataGet', 'agentPicksGet', 'briefGet', 'skillsGet', 'skillGet', 'enrichStatus', 'enrichGraph', 'kbStatusGet', 'agentDshModelsGet', 'factCurveGet', 'factEntriesGet', 'factBooksGet', 'referenceGet', 'referenceGraphGet', 'referenceNoteGet', 'deduceSessionGet', 'deduceSessionsGet', 'deduceOpeningGet', 'deduceAssets', 'deduceAssetFile', 'changeLogGet', 'changeLogEntry', 'changeLogSummary', 'uiStateGet', 'draftGet'])
+const ENDPOINT_HAS_QUERY = new Set(['referenceAssetGet', 'habitsGet', 'chapterGet', 'agentSessions', 'agentSessionGet', 'agentSessionDelete', 'libraryDiagnose', 'filesGet', 'chaptersGet', 'chapterDelete', 'artifactsGet', 'suiteStateDataGet', 'agentPicksGet', 'briefGet', 'skillsGet', 'skillGet', 'enrichStatus', 'enrichGraph', 'kbStatusGet', 'kbConfigGet', 'agentDshModelsGet', 'factCurveGet', 'factEntriesGet', 'factBooksGet', 'referenceGet', 'referenceGraphGet', 'referenceNoteGet', 'deduceSessionGet', 'deduceSessionsGet', 'deduceOpeningGet', 'deduceAssets', 'deduceAssetFile', 'changeLogGet', 'changeLogEntry', 'changeLogSummary', 'uiStateGet', 'draftGet'])
 
 async function handleApi(req, res, url, context) {
   const endpointId = endpointFor(req.method, url.pathname)
@@ -350,7 +350,8 @@ async function handleApi(req, res, url, context) {
     return sendError(res, API_ERROR_CODES.NOT_FOUND, `端点未实现：${endpointId}`)
   }
   // OS-144 模块插件闸：独占端点所属模块被停用 → MODULE_DISABLED（共用端点没有归属，照常放行）。
-  // 库根取法：请求 root（已授权）＞启动默认库＞库清单第一条；一个库都没有时无法判定，按启用处理。
+  // 库根取法（OS-146）：请求 root（已授权）优先——多库时按调用方自己的库判定；
+  // 启动默认库/库清单第一条只是没带 root 时的兜底，不是语义。一个库都没有时无法判定，按启用处理。
   const owner = await isModuleDisabledFor(endpointId, moduleGateRoot(checked.value, context, allowlist))
   if (owner) {
     const label = moduleManifest(owner)?.name ?? owner
@@ -359,7 +360,10 @@ async function handleApi(req, res, url, context) {
   return handler({ req, res, url, request: checked.value, context, allowlist, loaded })
 }
 
-/** 模块停用闸的库根解析（ui-state 是库内状态，没有库就只有缺省启用）。 */
+/** 模块停用闸的库根解析（ui-state 是库内状态，没有库就只有缺省启用）。
+ *  ① 请求里的 root（本机库清单之内才算数）＝**语义**：多库时按调用方所在的库判定；
+ *  ② 请求没带 root 才落到「启动默认库 ＞ 库清单第一条」——这是**兜底**（老调用/命令行），
+ *     不代表「按某个库的意思」；新调用方（kb 四端点等）一律带 root，别依赖兜底。 */
 function moduleGateRoot(request, context, allowlist) {
   const given = typeof request?.root === 'string' ? request.root.trim() : ''
   if (given) return allowlist.resolve(given) || ''

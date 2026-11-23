@@ -39,12 +39,17 @@ L4 自持层→L3 pinaxAdapter→L2 core/pinax 24 文件→L1 磁盘库）。
    `modules.enabled.<id>`（缺省 true，值不删）。两层插拔各存各键、互不覆盖：右栏分析卡片级
    `analyzeEnabled`（旧）vs 整模块级 `modules.enabled.<id>`（本层）。新增 module manifest 必须过
    `test/modulePlugins.test.mjs` 的形状校验。
-   > **设置归一（OS-145）**：设置页只有一个入口——**内核设置区**（daemon 端口语义、库路径、数据目录、
+   > **设置归一（OS-145/146）**：设置页只有一个入口——**内核设置区**（daemon 端口语义、库路径、数据目录、
    > 凭据存储，L5 宿主所有，不插件化）＋**各模块自报设置区**（manifest `settings`，字段口径
    > `{ key, label, type: string|number|boolean|select, default, options? }`，值落 ui-state
    > `modules.settings.<id>.<key>`）。聚合与渲染是纯函数，在 `public/views/settingsAggregation.mjs`，
    > app.js 只取数调用（OS-143 增量冻结）。旧配置键一次性迁移，marker `modules.settingsMigrated` 防重复；
    > 停用模块＝设置区压暗不可编辑、值保留。凭据仍只存本机（agent-config/kb-config），不进 ui-state。
+   > **OS-146 铁律：界面上出现的每个设置项必须有真实消费者**——生图/识图真源是 agent-config.json、
+   > 知识库真源是 kb-config.json、右栏卡片开关是 ui-state `analyzeEnabled`，这些**不许**在设置页再摆一份
+   > 输入框；真配置在别处的模块只写 `settingsHint`（一句指路）＋`settingsJump`（设置页区块 id），
+   > 渲染成一行说明＋跳转按钮。守卫 `test/moduleSettingsConsumers.test.mjs`（键→消费者文件:符号 表，
+   > 新键不在表里＝红）。
 7. **布局宪法（OS-140）**：仓根只允许「入口、包描述、文档」——`.mjs` 只有 `daemon.mjs`/`mcp.mjs`
    两个**入口垫片**（`export * from` 实现文件再出口全部符号；只有被 node 直接执行才调
    `main(argv)`，纯 import 不得启动服务）。自持模块全部收进 `src/` 六目录，新模块一律入对应子目录：
@@ -166,6 +171,9 @@ L4 自持层→L3 pinaxAdapter→L2 core/pinax 24 文件→L1 磁盘库）。
     - **app.js 只许减不许增**（修 bug 除外）；视图渲染函数本体**只出不进**——
       迁出（G5 起逐个搬去模块）时在 `VIEW_RENDERERS` 插座改注册名，注册表只存名字、
       绝不 import app.js（依赖方向恒为壳→表，门禁 S2.2 扫描面已含 views/registry.mjs）。
+    - **OS-146 补钉**：app.js 只留**接线**（取数 → 转交，必要时一行占位）；
+      **视图渲染函数一律在 `public/views/`**，写在 app.js 里算违约（判例：
+      `settingsModuleSettingsSectionHtml` 已迁 `views/settingsAggregation.mjs:moduleSettingsSectionHtml`）。
     - 页签词表/退场表/体裁裁剪/作用域校验不准改回 app.js 内联；
       词表外目录不出页签（OS-92）、退场目录无条件过滤（OS-84/86）的改动只能发生在注册表。
     - 判据：改页签行为时 `git diff public/app.js` 必须为零行增长；扩展页签只 diff
@@ -179,7 +187,7 @@ L4 自持层→L3 pinaxAdapter→L2 core/pinax 24 文件→L1 磁盘库）。
 ## 改完必跑（验收线，详见 `docs/ACCEPTANCE.md`）
 
 ```bash
-node .zcode/run-gate.mjs                    # ① 全量单测（489 例）
+node .zcode/run-gate.mjs                    # ① 全量单测（510 例）
 node tools/acceptance/acceptance.mjs        # ② 交付标准 S0–S4 门禁（16 检查，Rea 式证据；S0=布局宪法）
 # ③ .ua/ 知识图谱增量（/understand，skill 在 ~/.zcode/skills/understand*）
 # ④ 前端批次给作者截图讲场景（对照 design-system/DESIGN.md + docs/UX-STRUCTURE.md）

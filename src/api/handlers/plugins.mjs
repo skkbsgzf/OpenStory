@@ -72,12 +72,15 @@ export async function pluginsGet(ctx) {
     byKind: listed.byKind,
     stats: listed.stats,
     // OS-145：模块插件自报设置（设置页「模块」组的数据底；启停状态由前端按库内 ui-state 判定）
+    // OS-146：settingsHint/settingsJump ＝真配置在别处时的指路（设置页只指路，不摆第二份输入框）
     modules: MODULE_MANIFESTS.map((manifest) => ({
       id: manifest.id,
       name: manifest.name,
       description: manifest.description,
       pages: manifest.pages,
-      settings: manifest.settings
+      settings: manifest.settings,
+      settingsHint: manifest.settingsHint,
+      settingsJump: manifest.settingsJump
     })),
     ...(listed.warnings.length ? { warnings: listed.warnings } : {})
   })

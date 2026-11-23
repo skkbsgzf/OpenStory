@@ -30,7 +30,6 @@ import { createRequire } from 'node:module'
 import { pathToFileURL } from 'node:url'
 import { resolve } from 'node:path'
 import { isModuleEnabled } from '../protocol/modules.mjs'
-import { loadLibraries } from './authorize.mjs'
 
 const require = createRequire(import.meta.url)
 const PORT = Number(process.env.OPENSTORY_PORT) || 8807
@@ -109,19 +108,15 @@ const requireRoot = (args) => {
 }
 
 /**
- * 模块开关判定用的库根（OS-144）：显式 root 优先；没给就取本机库清单第一条
- * （与 daemon 模块闸的「默认库」口径一致）。库清单读不到＝没有库根＝缺省启用。
- * 这样 MCP 分析工具不带 root 也走同一判定，不留「模块停了还被调用」的旁路。
+ * 模块开关判定用的库根（OS-144 / OS-146 修正口径）：**只认显式 root**。
+ *   · 给了 root → 按该库的 ui-state 判定（该库停用分析＝MODULE_DISABLED）；
+ *   · 没给 root → 没有库上下文，不做模块闸（分析工具吃的是纯文本，本来不绑定库）。
+ *
+ * 绝不回落到「本机库清单第一条」：那会让工具行为随本机装了几个库、哪个排在前面漂移，
+ * 测试也就不再 hermetic（OS-146 复核实测过：本机任一库停用分析，MCP 测试直接红）。
  */
 function moduleRootOf(args) {
-  const given = String(args.root ?? '').trim()
-  if (given) return given
-  try {
-    const { libraries } = loadLibraries({ env: process.env })
-    return String(libraries[0]?.path ?? '').trim()
-  } catch {
-    return ''
-  }
+  return String(args.root ?? '').trim()
 }
 
 const tools = [
@@ -529,14 +524,14 @@ const tools = [
     description: '对一段文本跑分析引擎（纯本地计算，秒回）：stats（字数/段/句/对白比）+ rhythm（逐段字数）+ emotion（逐段情绪强度）+ style（句长/段长变异系数、套话、连接词）+ aiSmell（AI 味评分与四因子）+ issues（可定位到段落的问题清单）。配合 novel_read_chapter 用：读正文 → 丢进来分析。',
     inputSchema: {
       type: 'object',
-      properties: { text: { type: 'string', description: '要分析的正文 md 源文' }, root: { type: 'string', description: '可选：库根路径——给了就按该库的模块开关判定（分析模块停用＝MODULE_DISABLED）' } },
+      properties: { text: { type: 'string', description: '要分析的正文 md 源文' }, root: { type: 'string', description: '可选：库根路径——给了就按该库的模块开关判定（该库停用分析＝MODULE_DISABLED）；不给＝不做模块闸（分析吃纯文本，不绑定库）' } },
       required: ['text'],
       additionalProperties: false
     },
     async run(args) {
       if (typeof args.text !== 'string' || !args.text.trim()) throw invalidArgs('text')
-      // OS-144：分析模块停用 → 工具回 MODULE_DISABLED（与 daemon 同一判定入口；
-      // 没带 root 时按库清单默认库判定，不存在「跳过判定」的调用形态）
+      // OS-144 / OS-146：分析模块停用 → 工具回 MODULE_DISABLED（与 daemon 同一判定入口）。
+      // 只有显式给了 root 才有库上下文；没给 root 就不判定，绝不回落到本机库清单。
       const moduleRoot = moduleRootOf(args)
       if (moduleRoot && !(await isModuleEnabled(moduleRoot, 'analysis'))) {
         throw Object.assign(new Error('「分析」模块已停用——在设置里重新启用后再调这个工具'), { code: 'MODULE_DISABLED' })

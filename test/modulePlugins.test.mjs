@@ -5,7 +5,8 @@
  *   ① 三个 manifest 过契约形状校验，端点归属只登记**独占**端点；
  *   ② 启停判定只有单一入口 isModuleEnabled（ui-state `modules.enabled.<id>`，缺省 true）；
  *   ③ daemon 独占端点停用 → MODULE_DISABLED，共用端点照常，重新启用即恢复，值不丢；
- *   ④ 分析停用时旁路一并收口：扮演 AI 味闸跳过、MCP 分析工具回 MODULE_DISABLED。
+ *   ④ 分析停用时旁路一并收口：扮演 AI 味闸跳过、MCP 分析工具回 MODULE_DISABLED
+ *      （MCP 只在显式给 root 时才判定——没 root 没有库上下文，OS-146）。
  *
  * 夹具纪律：全部在系统临时目录建库，绝不碰作者真库。
  * 跑法：node --test test/modulePlugins.test.mjs
@@ -179,6 +180,47 @@ test('daemon：独占端点停用返回 MODULE_DISABLED，共用端点照常，�
   }
 })
 
+test('daemon kb 闸：多库时按请求 root 判定（A 停用 kb、B 启用 → 带 B 的 root 必须 200）', async () => {
+  const base = await mkdtemp(join(tmpdir(), 'openstory-os146-'))
+  const rootA = join(base, '夹具库A')
+  const rootB = join(base, '夹具库B')
+  for (const root of [rootA, rootB]) {
+    await mkdir(join(root, '.pinax'), { recursive: true })
+    await mkdir(join(root, '正文'), { recursive: true })
+  }
+  await writeUiState(rootA, { modules: { enabled: { kb: false } } })
+  await writeUiState(rootB, { modules: { enabled: { kb: true } } })
+  const preferencesPath = join(base, 'next-preferences.json')
+  await writeFile(preferencesPath, JSON.stringify({
+    recentProjects: [
+      { path: rootA, name: '夹具库A', at: '2026-11-24T00:00:00.000Z' },
+      { path: rootB, name: '夹具库B', at: '2026-11-23T00:00:00.000Z' }
+    ]
+  }), 'utf-8')
+  const daemon = await startDaemon({ port: 0, preferencesPath, env: { LOCALAPPDATA: base, APPDATA: base }, logger: { log() {} } })
+  const origin = `http://127.0.0.1:${daemon.port}`
+  try {
+    // 不带 root：兜底按库清单第一条（A，已停用）——这是兜底，不是语义
+    const fallback = await fetch(`${origin}/api/kb/status`)
+    assert.equal(fallback.status, 409)
+
+    // 带 B 的 root：按 B 判定（kb 启用）→ 放行，不被另一个库的停用误拦
+    const bStatus = await fetch(`${origin}/api/kb/status?root=${encodeURIComponent(rootB)}`)
+    assert.equal(bStatus.status, 200, '带 B 的 root 时不该被 A 的停用拦住')
+    assert.equal((await bStatus.json()).ok, true)
+
+    const bConfig = await fetch(`${origin}/api/kb/config?root=${encodeURIComponent(rootB)}`)
+    assert.equal(bConfig.status, 200, 'kbConfigGet 同样吃 root')
+
+    const aStatus = await fetch(`${origin}/api/kb/status?root=${encodeURIComponent(rootA)}`)
+    assert.equal(aStatus.status, 409, '带 A 的 root 仍按 A 的停用判定')
+    assert.equal((await aStatus.json()).error.code, 'MODULE_DISABLED')
+  } finally {
+    await daemon.close()
+    await rm(base, { recursive: true, force: true })
+  }
+})
+
 test('分析停用：扮演的去 AI 味闸跳过（不调用模型、原文逐字返回）；启用态照旧过闸', async () => {
   const prose = '他忽然觉得这一切仿佛宛如犹如一场梦。与此同时，然而，综上所述。'
   let calls = 0
@@ -202,16 +244,35 @@ test('分析停用：扮演的去 AI 味闸跳过（不调用模型、原文逐�
   assert.equal(gated.text, '改写后的正文。')
 })
 
-test('分析停用：MCP 分析工具不带 root 也按默认库判定（不留「跳过判定」的旁路）', async () => {
+test('MCP 分析工具：不带 root ＝没有库上下文，不做模块闸（即使本机库清单里的库停用了分析）', async () => {
   const { base, root, preferencesPath } = await makeLibrary()
   await writeUiState(root, { modules: { enabled: { analysis: false } } })
-  // 只给库清单、不给 root：工具应按清单里的默认库读到停用状态
+  // 只给库清单、不给 root：工具不该去读这份清单——分析吃纯文本，不绑定库（OS-146）
+  const mcp = startMcp({ ...process.env, PINAX_OS_PREFERENCES: preferencesPath })
+  try {
+    await mcp.request('initialize', { protocolVersion: '2024-11-05' })
+    const allowed = await mcp.request('tools/call', {
+      name: 'openstory_analysis_chapter',
+      arguments: { text: '他笑了。\n\n她哭了。' }
+    })
+    assert.equal(allowed.result.isError, false, '不带 root 必须仍然真算，不得读本机库清单')
+    const payload = JSON.parse(allowed.result.content[0].text)
+    assert.ok(payload.stats.chars > 0, '真的算了正文')
+  } finally {
+    mcp.close()
+    await rm(base, { recursive: true, force: true })
+  }
+})
+
+test('MCP 分析工具：同一库带 root ＝按该库判定，停用回 MODULE_DISABLED', async () => {
+  const { base, root, preferencesPath } = await makeLibrary()
+  await writeUiState(root, { modules: { enabled: { analysis: false } } })
   const mcp = startMcp({ ...process.env, PINAX_OS_PREFERENCES: preferencesPath })
   try {
     await mcp.request('initialize', { protocolVersion: '2024-11-05' })
     const blocked = await mcp.request('tools/call', {
       name: 'openstory_analysis_chapter',
-      arguments: { text: '他笑了。\n\n她哭了。' }
+      arguments: { text: '他笑了。\n\n她哭了。', root }
     })
     assert.equal(blocked.result.isError, true)
     assert.match(blocked.result.content[0].text, /^MODULE_DISABLED/u)

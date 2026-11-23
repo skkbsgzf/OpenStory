@@ -9,8 +9,6 @@
   "pages": [
     { "id": "analysis-panel", "label": "分析", "slot": "right" }
   ],
-  "settings": [
-    { "key": "analyze.enabled", "label": "启用右栏分析卡片", "type": "boolean", "default": true },
-    { "key": "analyze.deAiThreshold", "label": "去 AI 味阈值（0-100，越高越不敏感）", "type": "number", "default": 45 }
-  ]
+  "settings": [],
+  "settingsHint": "分析没有独立的可调参数：右栏勾哪几张卡片在右栏里直接勾（ui-state analyzeEnabled），去 AI 味阈值随扮演的改写闸走。"
 }

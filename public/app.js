@@ -3623,7 +3623,7 @@ const SETTINGS_HELP = Object.freeze({
   kb: '知识库给 Agent 供弹药：技法配方、文风指纹、题材套路、读者信号、同型案例分库存放。写东西时 Agent 会自动取用，这里只看连接是否健康、每个库装了多少，不用做任何操作。',
   about: 'OpenStory 是给写小说用的工作台。它和 Pinax 桌面版看的是同一批库文件：两个入口，一份稿子，改哪边都算数。所有数据、密钥、会话都只留在本机，不上传也不联网同步。',
   suiteSettings: '这里的每一项都是这个套件自己的规则。停用它，规则会退回程序内置的默认值，但你现在填的内容会保留下来，重新启用就回到你设的样子。',
-  moduleSettings: '模块是工作面插件：分析、生图与识图、知识库。停用只是把入口和独占能力收起来，你填的设置值不会丢，重新启用就回来。内核设置（端口、库路径、凭据）归宿主，不随模块走。'
+  moduleSettings: '模块是工作面插件：分析、生图与识图、知识库。停用只是把入口和独占能力收起来，稿件、已存配置和卡片勾选都不会丢，重新启用就回来。生图/识图与知识库的真配置在「引擎与存储」里（本卡片只指路）；内核设置（端口、库路径、凭据）归宿主，不随模块走。'
 })
 
 const RUNTIME_STATUS_LABEL = {
@@ -4405,19 +4405,14 @@ function settingsCombinedEnginesHtml() {
   ].join('')
 }
 
-/**
- * OS-145：设置页「模块」组——工作面插件的启停开关＋各自自报的设置项。
- * 聚合与渲染都是纯函数（public/views/settingsAggregation.mjs），这里只取数、转交。
- * 值落库内 ui-state（modules.settings.<id>.<key>），停用＝压暗但值保留。
- */
+/** OS-145：设置页「模块」组。OS-146：渲染函数已迁 views/settingsAggregation.mjs，这里只接线。 */
 function settingsModuleSettingsSectionHtml() {
-  const modules = state.plugins?.modules ?? []
-  if (!settingsAggregation) return '<div class="step"><h3>模块</h3><p class="sub">正在读取模块清单…</p></div>'
-  return settingsAggregation.renderSettingsModules(settingsAggregation.aggregateSettings({
-    modules,
-    enabled: Object.fromEntries(modules.map((mod) => [mod.id, moduleOn(mod.id)])),
-    state: state.current ? uiMemory(state.current.path).values : {}
-  }), { esc })
+  return settingsAggregation?.moduleSettingsSectionHtml({
+    modules: state.plugins?.modules ?? [],
+    enabledFor: moduleOn,
+    uiState: state.current ? uiMemory(state.current.path).values : {},
+    esc
+  }) ?? '<div class="step"><h3>模块</h3><p class="sub">正在读取模块清单…</p></div>'
 }
 
 function settingsHtml() {
@@ -11921,10 +11916,12 @@ async function loadStyles() {
 
 async function loadKbStatus() {
   // OS-97：状态与配置一起拉——设置页要能立即渲染表单，而不是等用户点开才读
+  // OS-146：带当前库 root——模块闸按这个库的 kb 开关判定（多库时不被别的库误拦）
+  const q = state.current?.path ? `?root=${encodeURIComponent(state.current.path)}` : ''
   try {
     const [status, config] = await Promise.all([
-      api('/api/kb/status').catch(() => null),
-      api('/api/kb/config').catch(() => null)
+      api(`/api/kb/status${q}`).catch(() => null),
+      api(`/api/kb/config${q}`).catch(() => null)
     ])
     state.kbStatus = status
     state.kbConfig = config ? { ...config.config, configPath: config.configPath, configError: config.configError } : null
@@ -11961,7 +11958,8 @@ async function saveKbConfig() {
   state.kbMsg = '保存中…'
   render()
   try {
-    const payload = await api('/api/kb/config', { method: 'PUT', body: JSON.stringify(readKbForm()) })
+    // OS-146：带当前库 root——模块闸按这个库判定，不被别的库的停用误拦
+    const payload = await api('/api/kb/config', { method: 'PUT', body: JSON.stringify({ ...readKbForm(), root: state.current?.path || '' }) })
     state.kbStatus = payload.status ?? state.kbStatus
     state.kbMsg = '已保存并重探服务'
     // 重新拉配置（拿回新的掩码）
@@ -11980,7 +11978,7 @@ async function testKbConnection() {
     const form = readKbForm()
     const payload = await api('/api/kb/test', {
       method: 'POST',
-      body: JSON.stringify({ baseUrl: form.baseUrl, apiKey: form.apiKey })
+      body: JSON.stringify({ baseUrl: form.baseUrl, apiKey: form.apiKey, root: state.current?.path || '' })
     })
     const w = payload.weknora || {}
     const e = payload.embedding || {}
@@ -12060,7 +12058,7 @@ async function loadUiState() {
     mem.values = {}
     mem.loaded = true
   }
-  // OS-145：旧配置键一次性迁移到 modules.settings.<id>.<key>（marker 防重复；坏档不崩）。
+  // OS-145/146：旧键迁移跑一次落 marker（OS-146 起迁移表为空——只防重扫，不写死键）。
   await settingsAggregationReady
   const migrated = settingsAggregation?.migrateLegacySettings(mem.values)
   if (migrated?.changed) {

@@ -166,6 +166,17 @@ test('settings schema：类型闸只收四种，select 的值必须在 options �
   assert.equal(coerceSettingValue('number', ''), undefined, '清空数字框不等于 0')
 })
 
+/**
+ * 旧键迁移用的夹具表（OS-146：默认表已清空——见文件头与 LEGACY_SETTING_MIGRATIONS 注释）。
+ * 机制本身还在，所以用注入的夹具表把「只迁一次 / 不覆盖新值 / 坏档不崩」钉住。
+ */
+const DEMO_MIGRATIONS = Object.freeze([
+  Object.freeze({ moduleId: 'analysis', key: 'analyze.enabled', legacy: 'analyzeEnabled', type: 'boolean' }),
+  Object.freeze({ moduleId: 'comfyui', key: 'image.backend', legacy: 'image.backend', type: 'select', options: ['openai', 'comfyui'] }),
+  Object.freeze({ moduleId: 'comfyui', key: 'image.comfyUrl', legacy: 'image.comfyUrl', type: 'string' }),
+  Object.freeze({ moduleId: 'kb', key: 'kb.baseUrl', legacy: 'kb.baseUrl', type: 'string' })
+])
+
 test('旧键迁移：只迁一次；第二次跑不覆盖新值；原对象不被修改', () => {
   const legacyState = {
     analyzeEnabled: true,
@@ -173,7 +184,7 @@ test('旧键迁移：只迁一次；第二次跑不覆盖新值；原对象不�
     'image.comfyUrl': 'http://127.0.0.1:9999',
     'kb.baseUrl': 'http://127.0.0.1:8080'
   }
-  const first = migrateLegacySettings(legacyState)
+  const first = migrateLegacySettings(legacyState, { migrations: DEMO_MIGRATIONS })
   assert.equal(first.changed, true)
   assert.equal(first.marker, SETTINGS_MARKER_VERSION)
   assert.equal(first.state[SETTINGS_MARKER_KEY], SETTINGS_MARKER_VERSION)
@@ -182,27 +193,18 @@ test('旧键迁移：只迁一次；第二次跑不覆盖新值；原对象不�
   assert.equal(first.state[moduleSettingKey('comfyui', 'image.comfyUrl')], 'http://127.0.0.1:9999')
   assert.equal(first.state[moduleSettingKey('kb', 'kb.baseUrl')], 'http://127.0.0.1:8080')
   assert.equal(legacyState[SETTINGS_MARKER_KEY], undefined, '不修改传入对象')
-  assert.ok(first.applied.length >= 4)
-  assert.deepEqual(LEGACY_SETTING_MIGRATIONS.map((rule) => `${rule.moduleId}:${rule.key}`), [
-    'analysis:analyze.enabled',
-    'comfyui:image.backend',
-    'comfyui:image.comfyUrl',
-    'comfyui:image.comfyWorkflow',
-    'comfyui:image.comfyNodeMap',
-    'kb:kb.baseUrl',
-    'kb:kb.spaceId'
-  ])
+  assert.equal(first.applied.length, 4)
 
   // 作者后来改了值——第二次进库（marker 已在）绝不覆盖
   const edited = { ...first.state, [moduleSettingKey('comfyui', 'image.backend')]: 'openai' }
-  const second = migrateLegacySettings(edited)
+  const second = migrateLegacySettings(edited, { migrations: DEMO_MIGRATIONS })
   assert.equal(second.changed, false)
   assert.equal(second.applied.length, 0)
   assert.equal(second.state[moduleSettingKey('comfyui', 'image.backend')], 'openai')
 
   // 新键已存在：旧键不覆盖新值（即使 marker 被删）
   const explicit = { 'image.backend': 'comfyui', [moduleSettingKey('comfyui', 'image.backend')]: 'openai' }
-  const kept = migrateLegacySettings(explicit)
+  const kept = migrateLegacySettings(explicit, { migrations: DEMO_MIGRATIONS })
   assert.equal(kept.state[moduleSettingKey('comfyui', 'image.backend')], 'openai')
   assert.ok(kept.skipped.some((rule) => rule.reason === 'target-exists'))
 })
@@ -215,7 +217,7 @@ test('旧键迁移：坏档不崩（数组/对象/数字全跳过），marker �
     'kb.baseUrl': 42
   }
   let first
-  assert.doesNotThrow(() => { first = migrateLegacySettings(broken) })
+  assert.doesNotThrow(() => { first = migrateLegacySettings(broken, { migrations: DEMO_MIGRATIONS }) })
   assert.equal(first.changed, true)
   assert.equal(first.state[SETTINGS_MARKER_KEY], SETTINGS_MARKER_VERSION)
   assert.equal(first.applied.length, 0, '坏值一个都不迁')
@@ -225,7 +227,7 @@ test('旧键迁移：坏档不崩（数组/对象/数字全跳过），marker �
   assert.equal(first.state.image, 'garbage', '坏档原样保留，不炸、不静默删')
 
   // 再跑一次：marker 在，什么都不做
-  const again = migrateLegacySettings(first.state)
+  const again = migrateLegacySettings(first.state, { migrations: DEMO_MIGRATIONS })
   assert.equal(again.changed, false)
 
   // 完全坏掉的输入（null/数组）也不崩
@@ -234,12 +236,31 @@ test('旧键迁移：坏档不崩（数组/对象/数字全跳过），marker �
   assert.equal(migrateLegacySettings(null).changed, true, '空状态也要落 marker，避免每次重复扫')
 })
 
-test('三个模块 manifest 的 settings 都是合法可渲染声明', () => {
+test('旧键迁移：OS-146 起默认表为空——不再往库里写没有消费者的 modules.settings.* 死键', () => {
+  assert.deepEqual(LEGACY_SETTING_MIGRATIONS, [], '默认迁移表必须为空（迁移目标必须是 manifest 声明过的键）')
+  const legacyState = {
+    analyzeEnabled: ['chapter-editorial'],
+    image: { backend: 'comfyui' },
+    'kb.baseUrl': 'http://127.0.0.1:8080'
+  }
+  const result = migrateLegacySettings(legacyState)
+  assert.equal(result.applied.length, 0, '一条都不迁')
+  assert.deepEqual(
+    Object.keys(result.state).filter((key) => key.startsWith('modules.settings.')),
+    [],
+    '没写出任何 modules.settings.* 键'
+  )
+  assert.equal(result.state[SETTINGS_MARKER_KEY], SETTINGS_MARKER_VERSION, 'marker 照写（避免每次重扫）')
+  assert.equal(result.state['image.backend'], undefined)
+  assert.equal(result.state.image.backend, 'comfyui', '旧数据原样保留，不删不改')
+})
+
+test('三个模块 manifest：settings 声明合法；OS-146 起不再有「改了不生效」的死设置项', () => {
   const { manifests, warnings } = loadModuleManifests()
   assert.deepEqual(warnings, [])
   assert.deepEqual(manifests.map((manifest) => manifest.id).sort(), ['analysis', 'comfyui', 'kb'])
   for (const manifest of manifests) {
-    assert.ok(manifest.settings.length > 0, `${manifest.id} 没自报设置项`)
+    assert.ok(Array.isArray(manifest.settings), `${manifest.id} 的 settings 必须是数组`)
     for (const setting of manifest.settings) {
       assert.match(setting.key, /^[\w.]{1,40}$/u)
       assert.ok(setting.label, `${manifest.id}:${setting.key} 缺 label`)
@@ -248,6 +269,18 @@ test('三个模块 manifest 的 settings 都是合法可渲染声明', () => {
         assert.ok(Array.isArray(setting.options) && setting.options.length > 0, `${manifest.id}:${setting.key} 缺 options`)
         assert.ok(setting.options.includes(setting.default), `${manifest.id}:${setting.key} default 不在 options 里`)
       }
+    }
+    // 真配置在别处的模块必须有指路（settingsHint），且指到设置页真实区块（只在 engines 有真配置区）
+    if (manifest.settings.length === 0) {
+      assert.ok(manifest.settingsHint, `${manifest.id} 没有自报设置项，就必须给 settingsHint 指路`)
+    }
+    if (manifest.settingsJump) assert.equal(manifest.settingsJump, 'engines', `${manifest.id} 指到了不存在的设置区块`)
+  }
+  // 死配置回归守卫：上一版这 7 个键界面可见但零消费者（生图＝agent-config / 知识库＝kb-config）
+  const deadKeys = ['analyze.enabled', 'analyze.deAiThreshold', 'image.backend', 'image.comfyUrl', 'image.comfyWorkflow', 'image.comfyNodeMap', 'kb.baseUrl', 'kb.spaceId', 'kb.autoTest']
+  for (const manifest of manifests) {
+    for (const setting of manifest.settings) {
+      assert.ok(!deadKeys.includes(setting.key), `${manifest.id}:${setting.key} 是死配置，不许回潮`)
     }
   }
   // 形状校验能拦住坏声明（不是静默放过）
@@ -273,4 +306,33 @@ test('三个模块 manifest 的 settings 都是合法可渲染声明', () => {
     settings: [{ key: 'x.y', label: 'X', type: 'json', default: '{}' }]
   })
   assert.equal(badType.ok, false)
+  // settingsHint/settingsJump 空串等于没写——拦住
+  const emptyHint = validateModuleManifest({
+    spec: 'openstory-module@1',
+    id: 'demo',
+    name: '演示',
+    version: '0.1.0',
+    core: false,
+    endpoints: [],
+    pages: [],
+    settings: [],
+    settingsHint: '   '
+  })
+  assert.equal(emptyHint.ok, false)
+})
+
+test('渲染指路：没有自报设置项的模块渲染指路行＋跳转按钮，不渲染空输入框', () => {
+  const esc = (value) => String(value ?? '').replace(/[&<>"]/gu, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]))
+  const html = renderSettingsModules(aggregateSettings({
+    modules: [
+      { id: 'comfyui', name: '生图与识图', settings: [], settingsHint: '真配置在「设置 · 引擎与存储」的生图区', settingsJump: 'engines' }
+    ],
+    enabled: {},
+    state: {}
+  }), { esc })
+  assert.match(html, /真配置在「设置 · 引擎与存储」的生图区/u)
+  assert.match(html, /data-settings-section="engines"/u, '跳转按钮指向设置页区块')
+  assert.match(html, /去配置/u)
+  assert.doesNotMatch(html, /没有自报设置项/u, '给了指路就不再显示「没有设置项」占位')
+  assert.doesNotMatch(html, /class="uikit-input"/u, '不许摆会写进死键的输入框')
 })

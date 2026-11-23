@@ -169,7 +169,8 @@ export const systemEndpoints = {
     method: 'GET',
     path: '/api/kb/status',
     // KB-ARCH P1：知识库状态聚合——WeKnora/embedding 健康灯＋六库文档数/解析状态。KB 未配置时 configured=false 降级，不报错。
-    request: { query: {} },
+    // OS-146：root 可选——带上就按该库的模块开关判定（多库时不再被「另一个库停用了 kb」误拦）；不带＝daemon 兜底。
+    request: { query: { root: 'string?' } },
     response: { ok: 'true', configured: 'boolean', backend: 'string?', configPath: 'string', configError: 'string?', services: 'object', lastCheck: 'string?', collections: 'array' },
     errors: ['MODULE_DISABLED']
   },
@@ -196,7 +197,8 @@ export const systemEndpoints = {
     method: 'GET',
     path: '/api/kb/config',
     // OS-97：读知识库配置（apiKey 掩码返回，不回明文）
-    request: { query: {} },
+    // OS-146：root 可选——模块闸按该库判定（同 kbStatusGet）
+    request: { query: { root: 'string?' } },
     response: { ok: 'true', config: 'object', configPath: 'string', masked: 'boolean' },
     errors: ['MODULE_DISABLED']
   },
@@ -206,7 +208,8 @@ export const systemEndpoints = {
     path: '/api/kb/config',
     // OS-97：写知识库配置（backend/baseUrl/apiKey/collections），写后立即重探服务
     // apiKey 传 '__KEEP__' 表示保留原值（前端不改密钥时不回传明文）
-    request: { body: { backend: 'string?', baseUrl: 'string?', apiKey: 'string?', spaceId: 'string?', collections: 'object?' } },
+    // OS-146：root 可选——模块闸按该库判定（多库时不被别的库的停用误拦）
+    request: { body: { root: 'string?', backend: 'string?', baseUrl: 'string?', apiKey: 'string?', spaceId: 'string?', collections: 'object?' } },
     response: { ok: 'true', status: 'object' },
     errors: ['INVALID_ENTRY', 'WRITE_PROTOCOL_IO_FAILED', 'MODULE_DISABLED']
   },
@@ -215,7 +218,8 @@ export const systemEndpoints = {
     method: 'POST',
     path: '/api/kb/test',
     // OS-97：连接测试——用当前配置探一次 WeKnora + embedding，返回逐项结果（不写盘）
-    request: { body: { baseUrl: 'string?', apiKey: 'string?' } },
+    // OS-146：root 可选——模块闸按该库判定（同 kbConfigPut）
+    request: { body: { root: 'string?', baseUrl: 'string?', apiKey: 'string?' } },
     response: { ok: 'true', weknora: 'object', embedding: 'object', collections: 'array' },
     errors: ['MODULE_DISABLED']
   },

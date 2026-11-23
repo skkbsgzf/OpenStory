@@ -1,11 +1,13 @@
 # OpenStory 架构
 
-> 七层实测分层（OS-133 归档）。所有数字实测于 2026-11-23（`wc -l` / `node --test` /
+> 七层实测分层（OS-133 归档）。所有数字实测于 2026-11-24（`wc -l` / `node --test` /
 > `tools/acceptance/acceptance.mjs`），不是抄的——下次动架构先重测再改这份文档。
 > OS-140 布局归一后数字已重测：自持模块收进 `src/` 六目录，仓根只留 `daemon.mjs`/`mcp.mjs`
 > 两个入口垫片（布局宪法见 AGENTS.md 硬规则 7；分层是逻辑职责，物理布局见路径表）。
-> OS-142 Host API 升格后 L4 已重测：54 文件 / 12,867 行（src/modules＋src/services＋src/protocol，
-> 协议层新增 index.mjs 入口＋五个转供叶子）；L5/L6 行数仍为上一批测值，动到再重测。
+> OS-146 复核时全表重测（G5a 之后 daemon/handlers 拆分、G6 之后前端新增 views/settingsAggregation.mjs
+> 都没进过表）：L7 `wc -l public/index.html public/app.js public/*.mjs public/views/*.mjs`＝
+> 17 文件 / 20,526 行；L5 `wc -l src/host/*.mjs`；L6 `wc -l src/api/contracts.mjs src/api/contracts/*.mjs`；
+> L4 `find src/{modules,services,protocol} -name '*.mjs' | xargs wc -l`。
 
 ## 数据优先级（一级公民声明）
 
@@ -26,22 +28,22 @@
 ## 七层分层（自上而下，依赖只许向下）
 
 ```
-L7  前端 public/               16 文件  20,157 行   无构建单页（浏览器/DSH webview）
-L6  契约层 src/api/contracts/  8 文件   1,373 行   七域聚合，101 端点
-L5  daemon（HTTP＋进程治理）   1 文件   5,424 行   node:http 手写路由＋OS-136 来源防护四层闸＋单实例锁/stamp/generation/health
-    └ mcp（伴生进程）          1 文件     726 行   stdio 24 工具，daemon HTTP 的薄适配层
-L4  本仓自持层                54 文件  12,867 行   建库/导入/fact 消费/参考/Agent/货架/协议层…（src/modules＋services＋protocol，OS-142 实测）
+L7  前端 public/               17 文件  20,526 行   无构建单页（浏览器/DSH webview）
+L6  契约层 src/api/contracts/  8 文件   1,381 行   七域聚合，101 端点（端点实现 handlers 7 文件 3,405 行，OS-141 拆出）
+L5  宿主层 src/host/            5 文件   1,657 行   daemon 631（node:http 手写路由＋OS-136 四层闸＋进程治理）/mcp 745（stdio 24 工具）/http 89/authorize 169/sse 23
+L4  本仓自持层                55 文件  13,090 行   建库/导入/fact 消费/参考/Agent/货架/协议层…（src/modules＋services＋protocol）
 L3  src/kernel/pinaxAdapter   1 文件      68 行   内核唯一进口（五能力组）
 L2  core/pinax              24 文件   4,332 行   fact 链底座（逐字 vendor，禁改）
 L1  磁盘库                  ——        ——       文件即真相（库＝文件夹，.pinax 兼容）
 ```
 
-### L7 前端 `public/` ——16 文件 / 20,157 行（OS-143 实测）
+### L7 前端 `public/` ——17 文件 / 20,526 行（OS-146 实测）
 
-- **职责**：工作台单页（无构建、原生 ES 模块）。`index.html`（2,756 行，样式令牌 `:root`
-  单一真源）＋ `app.js`（12,500 行，装配壳：路由/页签消费/左列 Agent）＋ 14 个零依赖模块
+- **职责**：工作台单页（无构建、原生 ES 模块）。`index.html`（2,759 行，样式令牌 `:root`
+  单一真源）＋ `app.js`（12,478 行，装配壳：路由/页签消费/左列 Agent）＋ 15 个零依赖模块
   （analysis/analysisModules/charts/graph/md/reference/referenceStore/script/scriptFact/
-  scriptFormat/storySource/storyTree/ui-kit＋`views/registry.mjs` 页签/路由声明式注册表）；
+  scriptFormat/storySource/storyTree/ui-kit＋`views/registry.mjs` 页签/路由声明式注册表
+  ＋`views/settingsAggregation.mjs` 设置聚合与设置页渲染）；
   echarts 本地 vendor（`public/vendor/echarts.min.js`）。
 - **页签/路由注册协议（OS-143）**：页签系统唯一真源在 `views/registry.mjs`（TAB_REGISTRY
   纯数据＋computeTabDefs/dirTabDefs/viewScope 纯函数，词表外目录不出页签、退场目录无条件
@@ -49,24 +51,28 @@ L1  磁盘库                  ——        ——       文件即真相（库�
   函数本体经 `VIEW_RENDERERS` 注册名插座解耦（registry 只存名字，绝不 import app.js，
   依赖方向恒为壳→表）。**`app.js` 增量冻结**：此后只许减不许增（修 bug 除外），
   视图代码只出不进（G5 逐个迁出，迁出后从模块侧重新注册渲染名）。
+  **口径补钉（OS-146）**：`app.js` 只留**接线**（取数 → 转交，必要时一行占位），
+  **视图渲染函数一律在 `public/views/`**——新增渲染函数留在 app.js 算违约
+  （判例：`settingsModuleSettingsSectionHtml` 本体已迁 `views/settingsAggregation.mjs`）。
 - **边界**：只经 HTTP 契约（L6）与 daemon 说话；不落任何内容性/状态性数据（OS-89，
   浏览器只做内存视图）；前端模块互不 import（门禁 S2.2，md.mjs 渲染协议除外；
   app.js 经动态 import 消费 registry/ui-kit 等 leaf 模块）。
 
-### L6 契约层 `src/api/` ——8 文件 / 1,373 行 / 101 端点
+### L6 契约层 `src/api/` ——8 文件 / 1,381 行 / 101 端点
 
 - **职责**：API 形状唯一真源（OS-130 契约分域）。`src/api/contracts.mjs`（221 行）聚合七域分片
   （`src/api/contracts/`）：
   library(6) / chapters(12) / fact(27) / reference(7) / agent(17) / plugins(10) / system(22)
   ＝ **101 端点**（`ENDPOINT_LIST` 实测 101）；请求/响应双端校验，daemon 与前端共享同一份。
+  端点实现（OS-141 拆出）在 `src/api/handlers/`：7 文件 3,405 行，键＝endpointId。
   错误码词表含 OS-136 来源防护两码：`FORBIDDEN_ORIGIN`（Host/Origin/Sec-Fetch-Site 拒收，403）、
   `UNSUPPORTED_MEDIA_TYPE`（带 body 非 JSON，400）。
 - **边界**：纯数据＋纯函数，零依赖（不 import node:path/fs，浏览器也能载入）；
   改形状＝改对应域分片，两端一起跟。
 
-### L5 daemon ——src/host/daemon.mjs 1 文件 / 5,424 行（＋src/host/mcp.mjs 伴生进程 726 行）
+### L5 宿主层 `src/host/` ——5 文件 / 1,657 行（daemon 631 ＋ mcp 745 ＋ http 89 ＋ authorize 169 ＋ sse 23）
 
-- **职责**：node:http 手写路由，只监听 127.0.0.1:8807（`DEFAULT_PORT` src/host/daemon.mjs:162）。
+- **职责**：node:http 手写路由，只监听 127.0.0.1:8807（`DEFAULT_PORT` src/host/http.mjs:16，daemon 第 76 行再出口）。
   仓根 `daemon.mjs`/`mcp.mjs` 是入口垫片（`export * from` ＋仅 node 直跑才调 main，OS-140）。
   endpointFor 契约分派＋validateResponse 响应校验；**唯一磁盘写入面**（原子写＋.history
   备份）；SSE 通道；**OS-136 来源防护四层闸**——①Host 闸全局生效（只认
@@ -77,11 +83,14 @@ L1  磁盘库                  ——        ——       文件即真相（库�
   专项测试 `test/originGuard.test.mjs`）；**OS-127 进程治理**——单实例锁
   （`%LOCALAPPDATA%/PinaxNext/openstory/daemon.lock`）、acquire/stamp/clear 三步闸、
   generation 代际继承、`/api/health` 读 DAEMON_RUNTIME。
-- **伴生进程**：`src/host/mcp.mjs`（726 行，stdio JSON-RPC，**24 工具**）是 daemon HTTP 的薄适配层
+- **伴生进程**：`src/host/mcp.mjs`（745 行，stdio JSON-RPC，**24 工具**）是 daemon HTTP 的薄适配层
   ——数据操作全部转发本机 daemon，唯一直算例外是 analysis 纯函数；不套娃（不开 agent 对话）。
+  **模块闸口径（OS-146）**：分析工具只在**显式给了 root** 时按该库的 `modules.enabled.analysis`
+  判定；不给 root ＝没有库上下文，不做模块闸——**绝不回落到本机库清单第一条**（那会让工具行为
+  随「本机装了几个库」漂移，测试不 hermetic）。
 - **边界**：业务逻辑下沉 L4；daemon 只做分派、校验、落盘与进程治理。
 
-### L4 本仓自持层 ——54 个 src/ 文件 / 12,867 行（OS-142 实测）
+### L4 本仓自持层 ——55 个 src/ 文件 / 13,090 行（OS-146 实测）
 
 OS-123/124 解耦后，建库/导入/章节号解析全部自持，不再 vendor。OS-140 起物理布局收进
 `src/`（域模块 `src/modules/`、外围服务 `src/services/`、协议件 `src/protocol/`），
@@ -98,17 +107,24 @@ OS-123/124 解耦后，建库/导入/章节号解析全部自持，不再 vendor
 | 模块插件（OS-144，`src/modules/<id>/module.manifest.json`＝`openstory-module@1`） | analysis（manifest 声明；引擎仍是 public/analysis.mjs 零依赖纯函数，前端与 Node 共用，无 daemon 端点）/ comfyui（comfyEngine 198 生图；独占端点 deduceImage / referenceImageGenerate / visionDescribe）/ kb（kbRouter 131 / kbAdapter 222 / kbHealth 182；独占端点 kbStatusGet / kbConfigGet / kbConfigPut / kbTest）。启停判定单一入口 `src/protocol/modules.mjs` 的 isModuleEnabled（ui-state `modules.enabled.<id>`，缺省 true）；独占端点停用回 MODULE_DISABLED，共用端点不受影响，值与数据保留。设置见下方「模块自报设置」表 |
 | 引擎与周边（src/services/） | libState(191，src/protocol/) / jobCenter(171 任务中心) / nativePicker(131) / dsh-bridge(396) / dsh-cli(392) / embedding-server(156) / embeddingPaths(26) / cli-bridge(112) / style-check(167) |
 
-**模块自报设置（OS-145，manifest `settings` 列）**：`openstory-module@1` 的 `settings` 升级为可渲染声明，
+**模块自报设置（OS-145 立、OS-146 收紧口径）**：`openstory-module@1` 的 `settings` 是渲染声明，
 字段口径对齐业务套件（`openstory-suite@2`）：`{ key, label, type: string|number|boolean|select, default, options? }`。
-值落库内 ui-state `modules.settings.<id>.<key>`（扁平键，兼容嵌套写法）；设置页「插件中心 · 模块」按它渲染，
-停用＝设置区压暗但值保留。聚合纯函数在 `public/views/settingsAggregation.mjs`（零 import，Node 测试可直接跑；
-app.js 只取数调用）。旧配置键一次性迁移，marker `modules.settingsMigrated` 防重复；凭据（API Key 等）仍只存本机。
+值落库内 ui-state `modules.settings.<id>.<key>`（扁平键，兼容嵌套写法）；聚合纯函数在
+`public/views/settingsAggregation.mjs`（零 import，Node 测试可直接跑；app.js 只取数调用）。
 
-| 模块 | manifest `settings` 键（类型 / 默认） |
-|---|---|
-| analysis | `analyze.enabled`（boolean / true） · `analyze.deAiThreshold`（number / 45） |
-| comfyui | `image.backend`（select: openai、comfyui / openai） · `image.comfyUrl`（string / http://127.0.0.1:8188） · `image.comfyWorkflow`（string / 空） · `image.comfyNodeMap`（string / 空） |
-| kb | `kb.baseUrl`（string / http://127.0.0.1:8080） · `kb.spaceId`（string / 空） · `kb.autoTest`（boolean / false） |
+**OS-146 铁律：界面上出现的每个设置项必须有真实消费者。** 上一版这里摆了 7 个输入框，
+但生图/识图的真源是本机 `agent-config.json`（`loadConfigV2().image/.vision`）、知识库的真源是
+本机 `kb-config.json`（`/api/kb/config`）、右栏卡片的真开关是 ui-state 的 `analyzeEnabled` 数组——
+那 7 个键一个都没有消费者（改了不生效），已全部删除；迁移表随之清空（不许往库里写没人读的死键）。
+真配置在别处的模块只报两句指路（manifest `settingsHint` 一句话 ＋ `settingsJump` 设置页区块 id），
+设置页渲染成一行说明＋「去配置 →」按钮，不再摆第二份输入框。守卫：`test/moduleSettingsConsumers.test.mjs`
+（键 → 消费者文件:符号 的表；新键不在表里＝红）。
+
+| 模块 | manifest `settings` | 指路（settingsHint / settingsJump） |
+|---|---|---|
+| analysis | 空（没有可调参数；卡片勾选在右栏、AI 味阈值随扮演闸走） | 说明只有 settingsHint |
+| comfyui | 空（真配置＝agent-config.json 的 image/vision） | 「设置 · 引擎与存储 · 对话模型与运行时」/ `engines` |
+| kb | 空（真配置＝kb-config.json，`/api/kb/config`） | 「设置 · 引擎与存储 · 知识库」/ `engines` |
 
 > 内核设置（daemon 端口语义、库路径、数据目录、凭据存储）是 L5 宿主的，不进 manifest、不插件化；
 > 设置页把它们作为只读的「内核设置区」与各模块自报设置区聚合在同一个入口。
