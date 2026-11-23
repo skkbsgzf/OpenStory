@@ -17,6 +17,9 @@
  * projectDoc.mjs／importAdapter.mjs 两个 fork 点文件的逐字函数体依赖它们。OS-125 起
  * 这两份的 import 重指向本文件（与其 OS-123「除 import 重指向外逐字未动」同一条纪律），
  * 于是 core/ 直引归零。仅限这两个既有 fork 点使用，新模块一律走五组出口。
+ * OS-138 写通道收敛补一条：hostWrite.mjs（全仓唯一写入口）也经本文件取
+ * writeFileAtomic／TMP_PREFIX／syncDirectory——原子写归一是 AGENTS.md 写通道红线的落点，
+ * 与上面两个 fork 点同属「最小补集」口径，其余新模块仍一律走五组出口。
  *
  * 循环引用说明：projectDoc/importAdapter → 本文件（取 plumber）、本文件 → 这两份（转引
  * 五组成员）。两侧被转引的都是函数声明（模块实例化期即初始化），且任何一侧都只在函数体内
@@ -35,7 +38,9 @@ import { derivePseudoChapters, hasRealChapters } from './core/pinax/next/fact/us
 import { causalSummary } from './core/pinax/next/fact/usecases/enrich/metrics.mjs'
 /* 内核 plumber 转供（见头部偏差注记；核心消费方＝projectDoc.mjs／importAdapter.mjs） */
 import { ok, fail } from './core/pinax/next/kernel/errors.mjs'
-import { writeFileAtomic } from './core/pinax/next/fs/atomicWrite.mjs'
+import { writeFileAtomic, TMP_PREFIX } from './core/pinax/next/fs/atomicWrite.mjs'
+/* OS-138：宿主写通道（hostWrite.mjs）的二进制分支要同前缀＋同目录 fsync，一并转出 */
+import { syncDirectory } from './core/pinax/electron/projects/fsDurability.mjs'
 /* projectMeta／projectImport：自有能力的统一出口（转引，不再包一层） */
 import { readProjectDocument, writeProjectDocument, nextCarriers, validateProjectDocument } from './projectDoc.mjs'
 import { planImport, runImport } from './importAdapter.mjs'
@@ -58,3 +63,5 @@ export const projectImport = Object.freeze({ planImport, runImport, parseChapter
 
 /** 内核 plumber 转供（仅 projectDoc.mjs／importAdapter.mjs 两个既有 fork 点使用；新模块不许用）。 */
 export { ok, fail, writeFileAtomic }
+/** OS-138 写通道收敛：hostWrite.mjs（全仓唯一写入口）经本文件取内核原子写原件（见头部偏差注记）。 */
+export { TMP_PREFIX, syncDirectory }

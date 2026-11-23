@@ -9,9 +9,10 @@
  * 与 Agent 运行时 kit（OS-9）分工：kit 管「模型对话走哪条通道」，套件管「业务域的默认规则」。
  */
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
-import { readFile, rename, writeFile } from 'node:fs/promises'
+import { mkdir, readFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { atomicWriteFile } from './hostWrite.mjs'
 import { loadSkills } from './skills.mjs'
 import { readAppVersion, minVersionGate } from './versionGate.mjs'
 import { resolveSuiteDependencies } from './dependencyGraph.mjs'
@@ -283,15 +284,9 @@ export async function loadSuiteState(statePath) {
 }
 
 async function saveSuiteState(statePath, state) {
-  await writeFileAtomic(statePath, JSON.stringify(state, null, 2))
-}
-
-async function writeFileAtomic(path, content) {
-  const { mkdir } = await import('node:fs/promises')
-  await mkdir(join(path, '..'), { recursive: true })
-  const tmp = `${path}.tmp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-  await writeFile(tmp, content, 'utf-8')
-  await rename(tmp, path)
+  // 原实现（OS-138 收敛前）先 mkdir 再写——目录创建留在调用点的口径不变
+  await mkdir(dirname(statePath), { recursive: true })
+  await atomicWriteFile(statePath, JSON.stringify(state, null, 2))
 }
 
 /** 套件公开形状：能力声明＋（schema 模式）按 schema 归一的当前值＋enabled。 */

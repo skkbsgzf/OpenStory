@@ -12,8 +12,9 @@
  */
 import { createHash, randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
-import { mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
+import { mkdir, readdir, readFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
+import { atomicWriteFile } from './hostWrite.mjs'
 
 function text(value) {
   return String(value ?? '')
@@ -131,9 +132,7 @@ export async function saveAgentConfig(configPath, patch = {}) {
     chineseReasoning: chinese
   })
   await mkdir(join(configPath, '..'), { recursive: true })
-  const tmp = `${configPath}.tmp-${randomUUID()}`
-  await writeFile(tmp, JSON.stringify({ ...next, updatedAt: new Date().toISOString() }, null, 2), 'utf-8')
-  await rename(tmp, configPath)
+  await atomicWriteFile(configPath, JSON.stringify({ ...next, updatedAt: new Date().toISOString() }, null, 2))
   return next
 }
 
@@ -260,9 +259,7 @@ async function readLines(dir, id) {
 
 async function writeLines(dir, id, lines) {
   await mkdir(dir, { recursive: true })
-  const tmp = `${sessionFilePath(dir, id)}.tmp-${randomUUID()}`
-  await writeFile(tmp, lines.map((line) => JSON.stringify(line)).join('\n') + '\n', 'utf-8')
-  await rename(tmp, sessionFilePath(dir, id))
+  await atomicWriteFile(sessionFilePath(dir, id), lines.map((line) => JSON.stringify(line)).join('\n') + '\n')
 }
 
 export async function createSession(sessionsDir, root, title = '', now = new Date()) {

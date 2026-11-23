@@ -13,9 +13,10 @@
  * 零依赖，可单测。
  */
 import { existsSync } from 'node:fs'
-import { copyFile, mkdir, readdir, readFile, rename, unlink, writeFile } from 'node:fs/promises'
+import { copyFile, mkdir, readdir, readFile, unlink } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { recordChange } from './changelog.mjs'
+import { atomicWriteFile } from './hostWrite.mjs'
 
 const text = (value) => String(value ?? '')
 
@@ -52,11 +53,10 @@ async function backupBefore(abs, stamp) {
   return backup
 }
 
+// OS-138：原子写归一 hostWrite.atomicWriteFile（fsync＋rename＋目录 fsync）；建目录留在本封装
 async function atomicWrite(abs, content) {
   await mkdir(dirname(abs), { recursive: true })
-  const tmp = `${abs}.tmp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-  await writeFile(tmp, content, 'utf-8')
-  await rename(tmp, abs)
+  await atomicWriteFile(abs, content)
 }
 
 /* ---------- 界面状态 ---------- */

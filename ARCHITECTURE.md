@@ -67,7 +67,7 @@ L1  磁盘库                  ——        ——       文件即真相（库�
   ——数据操作全部转发本机 daemon，唯一直算例外是 analysis 纯函数；不套娃（不开 agent 对话）。
 - **边界**：业务逻辑下沉 L4；daemon 只做分派、校验、落盘与进程治理。
 
-### L4 本仓自持层 ——37 个仓根模块 / 10,733 行
+### L4 本仓自持层 ——38 个仓根模块 / 10,775 行
 
 OS-123/124 解耦后，建库/导入/章节号解析全部自持，不再 vendor。按职责组（行数实测）：
 
@@ -75,7 +75,7 @@ OS-123/124 解耦后，建库/导入/章节号解析全部自持，不再 vendor
 |---|---|
 | 建库与导入（OS-123/124 fork 点） | projectDoc(563，建库＋project.json 合同) / importAdapter(582，整目录导入) / textUtil(97，章节号＋世界书契约判定) / libraryManage(298) |
 | fact 消费与校验 | enrichEngine(828，语义富化 6 窗) / factGuard(257) / deduceEngine(332，推演核封装) / deduceSession(496，多局会话容器) / deduceNarrative(159) / dependencyGraph(162，因果依赖图) / syncCheck(247，正文↔拆解一致性) |
-| 协议层（S2.1 白名单公共面） | chapters(191，读写协议) / changelog(385，diff＋月度 jsonl) / versionGate(110，插件版本闸) / plugins(161，三货架只读聚合) |
+| 协议层（S2.1 白名单公共面） | chapters(191，读写协议) / changelog(385，diff＋月度 jsonl) / versionGate(110，插件版本闸) / plugins(161，三货架只读聚合) / hostWrite(58，OS-138 宿主写协议唯一入口——原子写收敛，22 处内联 tmp＋rename 归一) |
 | 参考/世界书 | referenceStore(609，标签/双链/图谱) |
 | Agent | agentStore(488) / agentEvents(356，AG-UI canonical 事件模型＋SSE 投影) / roleplayEngine(280) / roleplayPrompts(188) |
 | 插件货架 | suites(459) / skills(323) / runtimes(314) / genres(287) / stylePacks(119) |
@@ -87,12 +87,13 @@ OS-123/124 解耦后，建库/导入/章节号解析全部自持，不再 vendor
 ### L3 pinaxAdapter.mjs ——1 文件 / 60 行（内核唯一进口）
 
 - **职责**（OS-125 解耦③）：全仓唯一允许 import `core/**` 的仓根模块（门禁 S2.4，
-  41 个仓根模块扫描）。**五能力组出口**：
+  42 个仓根模块扫描）。**五能力组出口**：
   `factStore`（S1 只读 list/get ＋ S2 writeFactFile 写协议）、`deduce`（opening/turn/settle
   端子）、`enrich`（伪章推导＋因果图三指标）、`projectMeta`（转引本仓 projectDoc）、
   `projectImport`（转引本仓 importAdapter/textUtil）；后两组是自有能力的统一出口。
   另有最小补集 plumber（`ok`/`fail`/`writeFileAtomic`）仅限 projectDoc/importAdapter
-  两个既有 fork 点使用。
+  两个既有 fork 点使用；OS-138 写通道收敛起 hostWrite.mjs（全仓唯一写入口）也经本文件
+  取 `writeFileAtomic`/`TMP_PREFIX`/`syncDirectory`，同属最小补集口径。
 - **消费方**（实测 import 本文件的）：chapters / daemon / deduceEngine / enrichEngine /
   factGuard / importAdapter / libraryManage / projectDoc，共 8 个。
 - **不在管辖**：worldbook 格式契约（vendor/contracts/worldbookFileContract.js）是格式契约面，

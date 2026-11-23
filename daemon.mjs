@@ -22,12 +22,12 @@
  *
  * 启动：`node openstory/daemon.mjs [--port=8807] [--root=<库路径>]`
  */
-import { randomUUID } from 'node:crypto'
 import { createReadStream, existsSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs'
-import { appendFile, copyFile, mkdir, readdir, readFile, rename, rm, unlink, writeFile } from 'node:fs/promises'
+import { appendFile, copyFile, mkdir, readdir, readFile, unlink, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
+import { atomicWriteFile } from './hostWrite.mjs' // OS-138：落盘一律走宿主写协议（原子写收敛）
 import {
   API_ERROR_CODES,
   endpointFor,
@@ -931,10 +931,8 @@ async function writeHabitsWithBackup(root, habits) {
     await mkdir(dirname(backup), { recursive: true })
     await writeFile(backup, prev)
   } catch { /* 首次没有旧稿 */ }
-  const tmp = `${path}.tmp-${Date.now()}`
   const nextText = JSON.stringify(habits, null, 2)
-  await writeFile(tmp, nextText, 'utf-8')
-  await rename(tmp, path)
+  await atomicWriteFile(path, nextText)
   // OS-89：习惯表修改也留 diff + log（AGENTS.md 第 10 条）
   await recordChange({
     root, module: '习惯', file: '习惯/habits.json',
@@ -972,9 +970,7 @@ async function writeChapterWithBackup(root, file, newText, logOptions = {}) {
       try { beforeText = await readFile(resolved.path, 'utf-8') } catch { beforeText = '' }
       existed = true
     }
-    const tmp = `${resolved.path}.tmp-${randomUUID()}`
-    await writeFile(tmp, newText, 'utf-8')
-    await rename(tmp, resolved.path)
+    await atomicWriteFile(resolved.path, newText)
     // OS-89：每一次修改都留 diff + log（AGENTS.md 第 10 条）。日志失败不影响写盘结果，
     // 但要如实回传给调用方，不能假装记上了。
     const logged = await recordChange({
@@ -1348,9 +1344,7 @@ async function handleApi(req, res, url, context) {
     }
     try {
       await mkdir(dirname(configPath), { recursive: true })
-      const tmp = `${configPath}.tmp-${Date.now()}`
-      await writeFile(tmp, JSON.stringify(next, null, 2), 'utf-8')
-      await rename(tmp, configPath)
+      await atomicWriteFile(configPath, JSON.stringify(next, null, 2))
     } catch (err) {
       return sendError(res, API_ERROR_CODES.WRITE_PROTOCOL_IO_FAILED, `知识库配置写入失败：${text(err?.message || err)}`)
     }
@@ -2617,9 +2611,7 @@ function readLegacyDeduceState(root, bookId) {
     const dir = join(authorized.root, '推演', safeDeduceBookId(bookId), '素材', '场景')
     await mkdir(dir, { recursive: true })
     const path = join(dir, `${name}.png`)
-    const tmp = `${path}.tmp-${Date.now()}`
-    await writeFile(tmp, Buffer.from(b64, 'base64'))
-    await rename(tmp, path)
+    await atomicWriteFile(path, Buffer.from(b64, 'base64')) // 二进制走 hostWrite 二进制分支
     return sendJson(res, 200, { ok: true, name, path: `推演/${safeDeduceBookId(bookId)}/素材/场景/${name}.png`, size })
   }
 
@@ -2827,12 +2819,10 @@ function readLegacyDeduceState(root, bookId) {
     if (wiki && typeof wiki === 'object') {
       try {
         const wikiPath = join(authorized.root, '拆解', `${bookId}.wiki.json`)
-        const tmpWiki = `${wikiPath}.tmp-${Date.now()}`
-        await writeFile(tmpWiki, JSON.stringify({
+        await atomicWriteFile(wikiPath, JSON.stringify({
           derivedFrom: { factRevision: Number(written.revision) || 1, schema: 'pinax-wiki-derived@1' },
           ...wiki
-        }, null, 2), 'utf-8')
-        await rename(tmpWiki, wikiPath)
+        }, null, 2))
       } catch (error) {
         // wiki 写失败不影响 fact 主档——但既然要记日志，就得让作者知道这次是同源档缺了一角
         wikiError = `兄弟 wiki 写失败：${text(error?.message || error)}`
@@ -3085,9 +3075,7 @@ function readLegacyDeduceState(root, bookId) {
     const imageAbs = resolveInsideRoot(authorized.root, imageRel, { allowMetadata: false })
     if (!imageAbs.ok) return sendError(res, imageAbs.code ?? API_ERROR_CODES.PATH_ESCAPE, imageAbs.message)
     await mkdir(dirname(imageAbs.path), { recursive: true })
-    const tmpImage = `${imageAbs.path}.tmp-${Date.now()}`
-    await writeFile(tmpImage, Buffer.from(b64, 'base64'))
-    await rename(tmpImage, imageAbs.path)
+    await atomicWriteFile(imageAbs.path, Buffer.from(b64, 'base64')) // 二进制走 hostWrite 二进制分支
 
     // 回填 frontmatter：cover 指向新图，images 数组追加（去重，保留最近 6 张）
     const nextData = { ...parsed.data }
@@ -4016,17 +4004,10 @@ function migrateLegacyConfig(raw) {
   }
 }
 
-/** 原子写回（tmp＋rename），带 updatedAt。rename 失败（Windows 上文件被占用）要收掉 tmp，不留垃圾。 */
+/** 原子写回（OS-138 归一 hostWrite.atomicWriteFile），带 updatedAt。写失败时临时文件由写协议统一收场，不留垃圾。 */
 async function writeConfigV2(configPath, config) {
   await mkdir(join(configPath, '..'), { recursive: true })
-  const tmp = `${configPath}.tmp-${randomUUID()}`
-  await writeFile(tmp, JSON.stringify({ ...config, updatedAt: new Date().toISOString() }, null, 2), 'utf-8')
-  try {
-    await rename(tmp, configPath)
-  } catch (error) {
-    await rm(tmp, { force: true }).catch(() => {})
-    throw error
-  }
+  await atomicWriteFile(configPath, JSON.stringify({ ...config, updatedAt: new Date().toISOString() }, null, 2))
 }
 
 /** 读配置：缺档＝全默认（不算错）；坏档＝全默认＋warning，不拦启动；旧格式＝迁移并写回。 */
@@ -4528,9 +4509,7 @@ async function bridgeDeduceCandidates(root, bookId, sessionId = '') {
     const backupPath = join(dirname(path), '.history', `${basename(path)}.bak-${Date.now()}`)
     await mkdir(dirname(backupPath), { recursive: true })
     await writeFile(backupPath, readFileSync(path))
-    const tmp = `${path}.tmp-${Date.now()}`
-    await writeFile(tmp, JSON.stringify(state, null, 2), 'utf-8')
-    await rename(tmp, path)
+    await atomicWriteFile(path, JSON.stringify(state, null, 2))
   } catch (error) {
     return { ok: false, code: 'WRITE_PROTOCOL_IO_FAILED', message: `推演会话写入失败：${text(error?.message || error)}` }
   }

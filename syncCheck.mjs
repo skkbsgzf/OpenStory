@@ -10,7 +10,7 @@
  *   「revision 1 与 4 差几版」；真实写作是频繁小改，需要的是「谁比谁新」。
  *   B) `snapshotAndDiff()` —— 唯一读盘入口：读 `<库>/.pinax/sync-state.json` 的上次快照，
  *      与本次正文快照比对，捞出「hash 变了、但变更日志里没有对应记录」的文件
- *      （＝绕过了写通道被外部改过），然后原子写回新快照（tmp ＋ rename）。
+ *      （＝绕过了写通道被外部改过），然后原子写回新快照（OS-138 归一 hostWrite.atomicWriteFile）。
  *
  * 判定口径（与 AGENTS.md 第 10 条对齐——每一次修改都必须留 log）：
  *   · 上次快照里没有该文件           → `firstSeen`（第一次见到，不是外部改动）；
@@ -19,9 +19,10 @@
  *
  * 零 npm 依赖；hash 复用 `changelog.mjs` 的 `contentHash()`，不在本模块重写一套指纹。
  */
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
+import { mkdir, readFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { contentHash } from './changelog.mjs'
+import { atomicWriteFile } from './hostWrite.mjs'
 
 /** 库内固定位置（AGENTS.md 第 9 条：界面/状态类数据都落 `.pinax/` 下）。 */
 export const SYNC_STATE_PATH = '.pinax/sync-state.json'
@@ -231,13 +232,13 @@ export async function snapshotAndDiff({ root, files = [] } = {}) {
 
   const checkedAt = new Date().toISOString()
   const target = syncStateFile(projectRoot)
-  const tmp = `${target}.tmp-${process.pid}-${Date.now()}`
   try {
     await mkdir(dirname(target), { recursive: true })
-    await writeFile(tmp, `${JSON.stringify({ checkedAt, files: stateFiles }, null, 2)}\n`, 'utf-8')
-    await rename(tmp, target) // 原子替换：半截写入永远不会被当成有效快照
+    // OS-138：原子替换归一 hostWrite.atomicWriteFile（fsync＋rename＋目录 fsync）——
+    // 半截写入永远不会被当成有效快照；失败时临时文件由写协议统一收走（原 `${tmp}.orphan`
+    // 留档不再生成，临时文件名归协议内部，见 hostWrite.mjs）。
+    await atomicWriteFile(target, `${JSON.stringify({ checkedAt, files: stateFiles }, null, 2)}\n`)
   } catch (error) {
-    try { await rename(tmp, `${tmp}.orphan`) } catch { /* 临时文件清理失败不影响主结论 */ }
     const failure = new Error(`同源快照写盘失败：${text(error?.message || error)}`)
     failure.code = 'WRITE_PROTOCOL_IO_FAILED'
     throw failure

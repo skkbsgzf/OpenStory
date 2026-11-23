@@ -8,9 +8,10 @@
  * 体裁选定后的实例化结果，是页签裁剪与 Agent 策略注入的唯一依据。
  */
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
+import { mkdir, readFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { atomicWriteFile } from './hostWrite.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 
@@ -223,11 +224,9 @@ export async function writeBrief(root, dirs, input = {}) {
     updatedAt: now
   }
   const target = briefPath(root)
-  const tmp = `${target}.tmp-${Date.now()}`
   try {
     await mkdir(dirname(target), { recursive: true })
-    await writeFile(tmp, JSON.stringify(brief, null, 2), 'utf-8')
-    await rename(tmp, target)
+    await atomicWriteFile(target, JSON.stringify(brief, null, 2))
   } catch (error) {
     return { ok: false, code: 'WRITE_PROTOCOL_IO_FAILED', message: `简报写入失败：${text(error?.message || error)}` }
   }

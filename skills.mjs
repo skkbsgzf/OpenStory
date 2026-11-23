@@ -12,10 +12,11 @@
  *   extract 抽取，产结构化数据
  */
 import { existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs'
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
+import { mkdir, readFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { minVersionGate, readAppVersion } from './versionGate.mjs'
+import { atomicWriteFile } from './hostWrite.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 
@@ -296,11 +297,9 @@ export async function writeAgentPicks(root, dirs, input = {}) {
   const now = new Date().toISOString()
   const brief = { schemaVersion: AGENT_PICKS_SPEC, style, methods, updatedAt: now }
   const target = agentPicksPath(root)
-  const tmp = `${target}.tmp-${Date.now()}`
   try {
     await mkdir(dirname(target), { recursive: true })
-    await writeFile(tmp, JSON.stringify(brief, null, 2), 'utf-8')
-    await rename(tmp, target)
+    await atomicWriteFile(target, JSON.stringify(brief, null, 2))
   } catch (error) {
     return { ok: false, code: 'WRITE_PROTOCOL_IO_FAILED', message: `选择链写入失败：${text(error?.message || error)}` }
   }

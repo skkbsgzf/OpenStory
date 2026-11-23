@@ -9,10 +9,11 @@
  * 会话状态：一个库一个推演会话文件 `.openstory/deduce/<bookId>.json`（原子写，不碰 Pinax 元数据）。
  */
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
-import { mkdir, rename, writeFile } from 'node:fs/promises'
+import { mkdir } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { deduce, factStore } from './pinaxAdapter.mjs' // OS-125：内核唯一进口（S2.4），本仓其余模块不许直引 core/**
 import { buildNarrativeContext, firstPersonify, readWikiSafe } from './deduceNarrative.mjs'
+import { atomicWriteFile } from './hostWrite.mjs'
 
 function text(value) {
   return String(value ?? '')
@@ -109,9 +110,7 @@ function loadState(root, bookId, sessionId = '') {
 async function saveState(root, bookId, state, sessionId = '') {
   const path = deduceStatePath(root, bookId, sessionId)
   await mkdir(dirname(path), { recursive: true })
-  const tmp = `${path}.tmp-${Date.now()}`
-  await writeFile(tmp, JSON.stringify(state, null, 2), 'utf-8')
-  await rename(tmp, path)
+  await atomicWriteFile(path, JSON.stringify(state, null, 2))
 }
 
 /**

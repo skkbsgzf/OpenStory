@@ -138,7 +138,7 @@ const KERNEL_ALLOW = new Set([
   // 不是平等功能模块——引擎引它属于内部组合，不是跨模块耦合。
   'deduceEngine.mjs -> deduceNarrative.mjs'
 ])
-const PROTOCOL = new Set(['contracts.mjs', 'chapters.mjs', 'changelog.mjs', 'versionGate.mjs', 'plugins.mjs', 'pinaxAdapter.mjs']) // 底层接口协议层（chapters=文件读写协议；changelog=变更日志协议，所有模块都要记 diff；versionGate=版本比对协议，三套插件规范共用；plugins=三套插件只读聚合层，daemon 与设置页共用同一份清单口径；pinaxAdapter=内核唯一进口，OS-125 解耦③的五组能力出口，见 S2.4）
+const PROTOCOL = new Set(['contracts.mjs', 'chapters.mjs', 'changelog.mjs', 'versionGate.mjs', 'plugins.mjs', 'pinaxAdapter.mjs', 'hostWrite.mjs']) // 底层接口协议层（chapters=文件读写协议；changelog=变更日志协议，所有模块都要记 diff；versionGate=版本比对协议，三套插件规范共用；plugins=三套插件只读聚合层，daemon 与设置页共用同一份清单口径；pinaxAdapter=内核唯一进口，OS-125 解耦③的五组能力出口，见 S2.4；hostWrite=宿主写协议唯一入口，OS-138 原子写收敛——落盘一律经它，见 AGENTS.md 写通道红线）
 const MODULES = rootMjs.filter((f) => [
   'deduceEngine.mjs', 'deduceSession.mjs', 'referenceStore.mjs', 'enrichEngine.mjs',
   'factGuard.mjs', 'kbRouter.mjs', 'kbAdapter.mjs', 'kbHealth.mjs', 'style-check.mjs', 'stylePacks.mjs', 'skills.mjs', 'genres.mjs'

@@ -16,8 +16,9 @@
  * 读不了/坏档＝拒绝登记并如实报，绝不覆盖重写作者电子侧的库清单。
  */
 import { existsSync, statSync } from 'node:fs'
-import { mkdir, readdir, readFile, rename, writeFile } from 'node:fs/promises'
+import { mkdir, readdir, readFile } from 'node:fs/promises'
 import { dirname, isAbsolute, resolve } from 'node:path'
+import { atomicWriteFile } from './hostWrite.mjs'
 import {
   createRegistry,
   createCarrierRegistry,
@@ -101,9 +102,7 @@ export async function registerLibrary(preferencesPath, root, name) {
   }
   const recentProjects = [record, ...document.recentProjects]
   await mkdir(dirname(target), { recursive: true })
-  const tmp = `${target}.tmp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-  await writeFile(tmp, JSON.stringify({ ...document, recentProjects }, null, 2), 'utf-8')
-  await rename(tmp, target)
+  await atomicWriteFile(target, JSON.stringify({ ...document, recentProjects }, null, 2))
   return { ok: true, duplicate: false, existed, libraries: recentProjects }
 }
 
