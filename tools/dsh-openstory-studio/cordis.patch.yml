@@ -1,0 +1,20 @@
+# 把 OpenStory 工作台作为 DSH 的一个 Host 插件接入。
+# 宿主侧 index.mjs 负责 OpenStory daemon 的生命周期；client.js 负责面板与右侧栏。
+- insert:
+    - id: dsh-openstory-studio
+      name: dsh-openstory-studio
+    # OpenStory 的 MCP server（mcp.mjs，24 工具）挂到 DSH：
+    # DSH 会话里的 Agent 才有 openstory_* 工具可调（读章节/写回/世界书/习惯…），
+    # 而不是只看到面板里粘过来的一段引用。写操作仍走 daemon 的 .history 备份与 diff/log。
+    - id: mcp-openstory
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: openstory
+        transport: stdio
+        command: !!js process.env.OPENSTORY_NODE || 'node'
+        args:
+          - 'mcp.mjs'
+        cwd: !!js process.env.OPENSTORY_PROJECT_DIR || 'D:/OpenStory'
+        env:
+          OPENSTORY_PORT: '8807'
+        failOnStartupError: false

@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "OpenStory studio",
+    "description": "Brings the local OpenStory novel workbench into DSH. Click OpenStory at the foot of the left sidebar to dock the workbench in the right sidebar while the DSH conversation stays in the main area; use the right sidebar's fullscreen control for a window-wide view, or the OpenStory card on the guide page. The plugin starts and watches the OpenStory daemon on 127.0.0.1:8807 (spawning it when needed, re-checking every 15s) and reaps only the process it spawned when disabled; a daemon you started yourself is left alone. Requires Node and an npm-installed OpenStory checkout."
+  }
+}

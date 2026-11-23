@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "OpenStory 小说工作台",
+    "description": "把本机 OpenStory 小说工作台接进 DSH：点左栏底部的「OpenStory」按钮，在右侧栏打开工作台，DSH 会话留在左边主区（右侧栏的「全屏」可放大整窗）；右侧栏 guide 页也有一张 OpenStory 卡片。插件随 DSH 启动并看护 127.0.0.1:8807 的 OpenStory daemon（必要时拉起、15s 自愈），停用插件时只回收自己拉起的进程，已有手工启动的 daemon 不受影响。前提：本机有 Node，OpenStory 仓库已 npm install。"
+  }
+}

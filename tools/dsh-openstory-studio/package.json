@@ -1,0 +1,29 @@
+{
+  "name": "dsh-openstory-studio",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "OpenStory 小说工作台作为 DSH 面板：随 DSH 拉起/看护本机 daemon，并以原生面板与右侧栏标签页呈现。",
+  "exports": {
+    ".": "./index.mjs",
+    "./client": "./client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "index.mjs",
+    "client.js",
+    "cordis.patch.yml",
+    "locale",
+    "icon.svg",
+    "README.md"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web"
+    }
+  }
+}
