@@ -26,7 +26,7 @@
 ## 快速开始
 
 ```bash
-npm install        # 装依赖（sharp/transformers；内核 vendor 自持，无 tgz 依赖）
+npm install        # 装依赖（transformers；sharp 只作其传递依赖，内核 vendor 自持，无 tgz 依赖）
 npm start          # node daemon.mjs → http://127.0.0.1:8807（单实例锁＋/api/health）
 npm run mcp        # 全模块 MCP server（24 工具，stdio）
 npm test           # node --test（438 例，零外部依赖）

@@ -79,7 +79,7 @@ OS-123/124 解耦后，建库/导入/章节号解析全部自持，不再 vendor
 | 参考/世界书 | referenceStore(609，标签/双链/图谱) |
 | Agent | agentStore(488) / agentEvents(356，AG-UI canonical 事件模型＋SSE 投影) / roleplayEngine(280) / roleplayPrompts(188) |
 | 插件货架 | suites(459) / skills(323) / runtimes(314) / genres(287) / stylePacks(119) |
-| 引擎与周边 | comfyEngine(198 生图) / kbAdapter(222) / kbHealth(181) / kbRouter(131) / libState(191) / jobCenter(171 任务中心) / nativePicker(131) / dsh-bridge(396) / dsh-cli(392) / embedding-server(150) / cli-bridge(112) / style-check(167) |
+| 引擎与周边 | comfyEngine(198 生图) / kbAdapter(222) / kbHealth(181) / kbRouter(131) / libState(191) / jobCenter(171 任务中心) / nativePicker(131) / dsh-bridge(396) / dsh-cli(392) / embedding-server(155) / embeddingPaths(25) / cli-bridge(112) / style-check(167) |
 
 - **边界**：模块间禁止直接 import（门禁 S2.1）——只经协议层（chapters/changelog/versionGate/
   plugins/pinaxAdapter）与 L3 进口；内核能力只从 L3 的五组出口取。

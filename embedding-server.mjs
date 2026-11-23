@@ -18,6 +18,9 @@
  * 只监听 127.0.0.1。
  */
 import { createServer } from 'node:http'
+import { dirname } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { resolveEmbeddingPaths } from './embeddingPaths.mjs'
 
 const args = process.argv.slice(2)
 function argValue(name, fallback) {
@@ -27,13 +30,15 @@ function argValue(name, fallback) {
 
 const PORT = Number(argValue('port', process.env.EMBED_PORT || 8808))
 const MODEL = argValue('model', process.env.EMBED_MODEL || 'Xenova/bge-small-zh-v1.5')
+// 仓根＝本文件所在目录（同 daemon.mjs 的 HERE 解法；OS-139 去硬编码），路径解析纯函数见 embeddingPaths.mjs
+const paths = resolveEmbeddingPaths(dirname(fileURLToPath(import.meta.url)))
 process.env.HF_ENDPOINT = process.env.HF_ENDPOINT || 'https://hf-mirror.com'
-process.env.TRANSFORMERS_CACHE = process.env.TRANSFORMERS_CACHE || 'D:/OpenStory/.cache/models'
+process.env.TRANSFORMERS_CACHE = process.env.TRANSFORMERS_CACHE || paths.cacheDir
 
 // 强制 WASM 后端（本机装 native onnxruntime-node 失败：预编译二进制下载被墙）
-process.env.ORT_WASM_PATH = 'D:/OpenStory/node_modules/@xenova/transformers/dist/'
+process.env.ORT_WASM_PATH = `${paths.transformersDist}/`
 const { pipeline, env } = await import('@xenova/transformers')
-env.backends.onnx.wasm.wasmPaths = 'D:/OpenStory/node_modules/@xenova/transformers/dist/'
+env.backends.onnx.wasm.wasmPaths = `${paths.transformersDist}/`
 env.backends.onnx.wasm.numThreads = 1
 env.remoteHost = process.env.HF_ENDPOINT || 'https://hf-mirror.com'
 env.remotePathTemplate = '{model}/resolve/{revision}/'
@@ -46,7 +51,7 @@ env.backends.onnx.wasm.proxy = false
 console.log(`[embedding] 加载模型 ${MODEL}（源 ${process.env.HF_ENDPOINT}）…`)
 const started = Date.now()
 // 本地模型：transformers 会把 model id 拼到 env.localModelPath 下，所以给根目录＋相对 id
-env.localModelPath = 'D:/OpenStory/.cache/models/'
+env.localModelPath = `${paths.cacheDir}/`
 env.allowRemoteModels = false
 const extractor = await pipeline('feature-extraction', 'Xenova/bge-small-zh-v1.5', { quantized: true })
 console.log(`[embedding] 模型就绪（${Date.now() - started}ms）`)
