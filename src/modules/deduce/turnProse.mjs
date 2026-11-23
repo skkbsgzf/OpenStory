@@ -17,8 +17,8 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 import { atomicWriteFile } from '../../protocol/hostWrite.mjs'
 import { deduceStatePath } from './deduceEngine.mjs'
-import { chatCompleteViaUpstream, resolveUpstreamSafe } from '../../services/chatUpstream.mjs'
-import { text } from '../../host/authorize.mjs'
+import { chatCompleteViaUpstream, resolveUpstreamSafe } from '../../protocol/upstream.mjs' // OS-142：上游模型通道经协议层叶子转出（模块纪律：modules 不直引 services）
+import { text } from '../../protocol/authorize.mjs' // OS-142：宿主文本归一经协议层叶子转出（模块纪律：modules 不直引 host）
 
 /** 读旧引擎推演状态（.openstory/deduce/<bookId>.json）——桥接用，只读。 */
 export function readLegacyDeduceState(root, bookId) {

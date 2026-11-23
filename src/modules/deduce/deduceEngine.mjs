@@ -11,9 +11,11 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { mkdir } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
-import { deduce, factStore } from '../../kernel/pinaxAdapter.mjs' // OS-125：内核唯一进口（S2.4），本仓其余模块不许直引 core/**
+import { fact } from '../../protocol/index.mjs' // OS-142：内核能力经 Host API fact 命名空间转出（模块纪律：modules 不直引 kernel/pinaxAdapter）
 import { buildNarrativeContext, firstPersonify, readWikiSafe } from './deduceNarrative.mjs'
 import { atomicWriteFile } from '../../protocol/hostWrite.mjs'
+
+const { deduce, factStore } = fact // OS-125 五组出口的推演端子＋fact 存储协议（经协议层转出，实现不换）
 
 function text(value) {
   return String(value ?? '')

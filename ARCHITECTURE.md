@@ -4,6 +4,8 @@
 > `tools/acceptance/acceptance.mjs`），不是抄的——下次动架构先重测再改这份文档。
 > OS-140 布局归一后数字已重测：自持模块收进 `src/` 六目录，仓根只留 `daemon.mjs`/`mcp.mjs`
 > 两个入口垫片（布局宪法见 AGENTS.md 硬规则 7；分层是逻辑职责，物理布局见路径表）。
+> OS-142 Host API 升格后 L4 已重测：54 文件 / 12,867 行（src/modules＋src/services＋src/protocol，
+> 协议层新增 index.mjs 入口＋五个转供叶子）；L5/L6 行数仍为上一批测值，动到再重测。
 
 ## 数据优先级（一级公民声明）
 
@@ -28,7 +30,7 @@ L7  前端 public/               15 文件  19,917 行   无构建单页（浏�
 L6  契约层 src/api/contracts/  8 文件   1,373 行   七域聚合，101 端点
 L5  daemon（HTTP＋进程治理）   1 文件   5,424 行   node:http 手写路由＋OS-136 来源防护四层闸＋单实例锁/stamp/generation/health
     └ mcp（伴生进程）          1 文件     726 行   stdio 24 工具，daemon HTTP 的薄适配层
-L4  本仓自持层                39 模块  10,821 行   建库/导入/fact 消费/参考/Agent/货架/协议层…（src/ 树）
+L4  本仓自持层                54 文件  12,867 行   建库/导入/fact 消费/参考/Agent/货架/协议层…（src/modules＋services＋protocol，OS-142 实测）
 L3  src/kernel/pinaxAdapter   1 文件      68 行   内核唯一进口（五能力组）
 L2  core/pinax              24 文件   4,332 行   fact 链底座（逐字 vendor，禁改）
 L1  磁盘库                  ——        ——       文件即真相（库＝文件夹，.pinax 兼容）
@@ -71,7 +73,7 @@ L1  磁盘库                  ——        ——       文件即真相（库�
   ——数据操作全部转发本机 daemon，唯一直算例外是 analysis 纯函数；不套娃（不开 agent 对话）。
 - **边界**：业务逻辑下沉 L4；daemon 只做分派、校验、落盘与进程治理。
 
-### L4 本仓自持层 ——39 个 src/ 模块 / 10,821 行
+### L4 本仓自持层 ——54 个 src/ 文件 / 12,867 行（OS-142 实测）
 
 OS-123/124 解耦后，建库/导入/章节号解析全部自持，不再 vendor。OS-140 起物理布局收进
 `src/`（域模块 `src/modules/`、外围服务 `src/services/`、协议件 `src/protocol/`），
@@ -81,30 +83,40 @@ OS-123/124 解耦后，建库/导入/章节号解析全部自持，不再 vendor
 |---|---|
 | 建库与导入（OS-123/124 fork 点，src/modules/library/） | projectDoc(563，建库＋project.json 合同) / importAdapter(582，整目录导入) / textUtil(97，章节号＋世界书契约判定) / libraryManage(297) |
 | fact 消费与校验 | enrichEngine(828，语义富化 6 窗，src/services/) / factGuard(257，src/protocol/) / deduceEngine(331，推演核封装，src/modules/deduce/) / deduceSession(491，多局会话容器) / deduceNarrative(159) / dependencyGraph(162，因果依赖图，src/protocol/) / syncCheck(248，正文↔拆解一致性，src/services/) |
-| 协议层（S2.1 白名单公共面，src/protocol/ ＋ src/api/） | chapters(191，读写协议) / changelog(385，diff＋月度 jsonl) / versionGate(113，插件版本闸) / plugins(161，三货架只读聚合) / hostWrite(58，OS-138 宿主写协议唯一入口——原子写收敛，22 处内联 tmp＋rename 归一) |
+| 协议层（OS-142 起为显式 Host API：`src/protocol/index.mjs` 入口＋叶子件，能力清单与版本约定见 [src/protocol/README.md](./src/protocol/README.md)） | index(host-api@1 入口：fact/prose/changelog/jobs/events/plugins/guard 七命名空间，全部冻结对象；键清单快照由 test/hostApi.test.mjs 钉死) / chapters(191，正文读写协议) / chapterWrite(正文写备份＋.history 保留策略) / changelog(385，diff＋月度 jsonl) / versionGate(113，插件版本闸) / plugins(161，三货架只读聚合) / dependencyGraph(162，套件依赖闭包) / agentEvents(356，AG-UI canonical 事件＋SSE 投影) / factGuard(257，FACT-FIRST 守卫) / libState(191，库内状态与草稿) / hostWrite(58，OS-138 宿主写协议唯一入口——原子写收敛，22 处内联 tmp＋rename 归一) ＋五个转供叶子 kernelPlumber / authorize / apiErrors / upstream / worldbookContract（OS-142：把 fork 点 plumber、路径授权、错误码、上游模型通道、世界书契约按原名转供给模块层） |
 | 参考/世界书 | referenceStore(609，标签/双链/图谱，src/modules/worldbook/) |
 | Agent | agentStore(485，src/modules/agentbar/) / agentEvents(356，AG-UI canonical 事件模型＋SSE 投影，src/protocol/) / roleplayEngine(280) / roleplayPrompts(188)（后两者 src/modules/roleplay/） |
 | 插件货架（src/services/，数据目录仍在仓根 suites//styles//runtimes//genres//skills/） | suites(456) / skills(324) / runtimes(316) / genres(288) / stylePacks(121) |
 | 引擎与周边（src/services/） | comfyEngine(198 生图) / kbAdapter(222) / kbHealth(182) / kbRouter(131) / libState(191，src/protocol/) / jobCenter(171 任务中心) / nativePicker(131) / dsh-bridge(396) / dsh-cli(392) / embedding-server(156) / embeddingPaths(26) / cli-bridge(112) / style-check(167) |
 
-- **边界**：模块间禁止直接 import（门禁 S2.1）——只经协议层（chapters/changelog/versionGate/
-  plugins/pinaxAdapter）与 L3 进口；内核能力只从 L3 的五组出口取。
+- **边界**（OS-142 升格为路径规则）：`src/modules/**` 只准引三类——node 内置模块
+  （`node:` 前缀）、`src/protocol/**`（Host API：index.mjs 七命名空间＋叶子件）、自己模块
+  目录内文件；模块间禁止直接 import（门禁 S2.1，静态 from 与动态 import() 都扫）。
+  内核能力只从协议层 `fact` 命名空间取（经 L3 五组出口转出，模块层不再直引 pinaxAdapter）；
+  **插件只准 import `src/protocol/index.mjs`**。豁免唯一且显式点名：
+  roleplayEngine→public/analysis.mjs（纯函数 AI 味分析，台账见 src/protocol/README.md）。
 
 ### L3 src/kernel/pinaxAdapter.mjs ——1 文件 / 68 行（内核唯一进口）
 
 - **职责**（OS-125 解耦③）：src/ 树＋仓根垫片里唯一允许 import `core/**` 的模块（门禁 S2.4，
-  52 个模块扫描）。**五能力组出口**：
+  78 个模块扫描）。**五能力组出口**：
   `factStore`（S1 只读 list/get ＋ S2 writeFactFile 写协议）、`deduce`（opening/turn/settle
   端子）、`enrich`（伪章推导＋因果图三指标）、`projectMeta`（转引本仓 projectDoc）、
   `projectImport`（转引本仓 importAdapter/textUtil）；后两组是自有能力的统一出口。
   另有最小补集 plumber（`ok`/`fail`/`writeFileAtomic`）仅限 projectDoc/importAdapter
   两个既有 fork 点使用；OS-138 写通道收敛起 hostWrite.mjs（全仓唯一写入口）也经本文件
   取 `writeFileAtomic`/`TMP_PREFIX`/`syncDirectory`，同属最小补集口径。
-- **消费方**（实测 import 本文件的）：chapters / daemon / deduceEngine / enrichEngine /
-  factGuard / importAdapter / libraryManage / projectDoc，共 8 个。
+- **消费方**（OS-142 后实测 import 本文件的，共 8 个）：API/宿主层 api/handlers/fact、
+  api/handlers/reference、services/systemPrompt（OS-142 未约束的面，直引保留）＋协议层转供面
+  protocol/index、protocol/kernelPlumber、protocol/hostWrite、protocol/chapters、
+  protocol/factGuard（S2.4 的 KERNEL_GATEWAY_ALLOW 显式豁免清单）。模块层
+  （deduceEngine/libraryManage/projectDoc/importAdapter）与 services/enrichEngine 自 OS-142
+  起改经协议层 `fact` 命名空间取，不再直引本文件。
 - **不在管辖**：worldbook 格式契约（vendor/contracts/worldbookFileContract.js）是格式契约面，
-  textUtil 直引，不经 adapter（解耦规划 §4「不动」）。
-- **边界**：内核换版本/换实现只改这一个文件；新模块一律走五组出口，不得绕行。
+  OS-142 起模块层经 src/protocol/worldbookContract.mjs 转供取用（护栏测试仍直引 vendor 本体），
+  不经 adapter（解耦规划 §4「不动」）。
+- **边界**：内核换版本/换实现只改这一个文件；新模块一律走协议层 fact 命名空间（即五组出口），
+  不得绕行。
 
 ### L2 core/pinax ——24 文件 / 4,332 行（fact 链底座，逐字 vendor）
 
@@ -168,7 +180,9 @@ OS-123/124 解耦后，建库/导入/章节号解析全部自持，不再 vendor
    fact 条目形状，一个字节不许变（金样护栏 `test/decoupleStep2.test.mjs`、
    `test/decoupleStep1.test.mjs`）。
 3. **S2.4 唯一进口**：src/ 模块与仓根垫片里只有 `src/kernel/pinaxAdapter.mjs` 可以 import `core/**`
-   （门禁静态扫描钉死）；`vendor/contracts/` 是格式契约面例外，仅 textUtil 及其护栏测试直引。
+   （门禁静态扫描钉死）；protocol/** 对 pinaxAdapter 的转出＝显式豁免清单（OS-142，
+   门禁 KERNEL_GATEWAY_ALLOW 点名，新增转供文件先补名单）。`vendor/contracts/` 是格式契约面
+   例外：模块层经 `src/protocol/worldbookContract.mjs` 转供取用，护栏测试直引 vendor 本体。
 4. **依赖只许向下**（L7→L6→L5→L4→L3→L2→L1 单向）；Pinax 从不 import OpenStory。
 5. **daemon 来源防护闸不许拆**（OS-136）：Host／Origin／Sec-Fetch-Site 三道闸＋强制 JSON
    content-type 是「作者浏览器里的任意网页写不进本机 daemon」的纵深防线；所有端点（含

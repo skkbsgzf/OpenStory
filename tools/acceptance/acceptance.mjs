@@ -179,17 +179,46 @@ for (const { rel, src } of scanned) {
     }
   }
 }
-// 模块 = 可插拔功能件；它们之间不得互相 import。
-// 白名单：① 协议层（contracts/changelog/versionGate/plugins/hostWrite/pinaxAdapter——OS-125 起 pinaxAdapter
-//        是内核唯一进口＝能力协议面，core/** 只许它引，见 S2.4；vendor 内核 core/pinax/** 是 fact 链底座，见 VENDORED.md）
-//        ② deduceSession→deduceEngine（会话容器引引擎＝内核依赖）
+// 模块纪律两套口径合取（OS-142 Host API 升格；都过才算过，只紧不松）：
+// ① 新口径（主，路径规则）：src/modules/** 的 import 只许三类——
+//      node 内置模块（node: 前缀裸说明符）、src/protocol/**（Host API：index.mjs 七命名空间
+//      入口＋各叶子转供件）、自己所在模块目录内的文件（模块内部组合）。
+//    扫描覆盖静态 from 与动态 import()、含 .js 相对说明符；node 内置必须带 node: 前缀。
+// ② 旧口径（保留）：清单模块（含 services 件与 factGuard）互不耦合，只许引协议层与
+//    KERNEL_ALLOW 内部边——旧白名单面继续受保护，防止 services 层退化。
+// 豁免唯一且显式点名（不许静默放过；台账在 src/protocol/README.md）：
+//    roleplayEngine → public/analysis.mjs：纯函数「AI 味」分析（浏览器侧同源实现），
+//    下沉 protocol 留后续批次。
+const MODULE_RULE_EXEMPT = new Set([
+  'src/modules/roleplay/roleplayEngine.mjs -> public/analysis.mjs'
+])
+const moduleRuleViolations = []
+for (const { rel, src } of srcMjs.filter((f) => f.rel.startsWith('src/modules/'))) {
+  const modDir = `${rel.slice(0, rel.lastIndexOf('/'))}/`
+  const specs = [...src.matchAll(/from\s+'([^']+)'/g), ...src.matchAll(/import\(\s*'([^']+)'\s*\)/g)]
+  for (const m of specs) {
+    const spec = m[1]
+    const line = src.slice(0, m.index).split('\n').length
+    if (spec.startsWith('node:')) continue // ① node 内置模块
+    if (spec.startsWith('./') || spec.startsWith('../')) {
+      const dep = resolveSpec(rel, spec)
+      if (dep.startsWith('src/protocol/')) continue // ② Host API 协议层
+      if (dep.startsWith(modDir)) continue // ③ 模块内部组合
+      if (MODULE_RULE_EXEMPT.has(`${rel} -> ${dep}`)) continue // 显式点名豁免
+      moduleRuleViolations.push(`${rel}:${line} '${spec}'`)
+    } else {
+      moduleRuleViolations.push(`${rel}:${line} 裸说明符 '${spec}'（模块只许 node: 前缀内置）`)
+    }
+  }
+}
+// 旧口径：协议层从文件名白名单改为路径规则（src/protocol/** 全量＋两份既有底层件）——
+// 白名单面只增不减：原七个文件全在覆盖内，新增协议件自动入列。
+const isProtocolPath = (rel) => rel.startsWith('src/protocol/') || rel === 'src/api/contracts.mjs' || rel === 'src/kernel/pinaxAdapter.mjs' // 底层接口协议层（src/protocol/**＝OS-142 Host API 全家：index.mjs 七命名空间入口＋chapters 正文协议＋chapterWrite 写备份＋changelog 变更日志＋versionGate 版本闸＋plugins 货架聚合＋dependencyGraph 依赖图＋factGuard fact 守卫＋hostWrite 宿主写协议（OS-138 原子写收敛）＋libState 库内状态＋kernelPlumber/authorize/apiErrors/upstream/worldbookContract 五个转供叶子；api/contracts.mjs＝端点契约；kernel/pinaxAdapter.mjs＝内核唯一进口，OS-125 五组能力出口，见 S2.4）
 const KERNEL_ALLOW = new Set([
-  'src/modules/deduce/deduceSession.mjs -> src/modules/deduce/deduceEngine.mjs',
   // OS-79：deduceNarrative 是推演引擎的内部子模块（只做叙事上下文拼装，纯函数），
-  // 不是平等功能模块——引擎引它属于内部组合，不是跨模块耦合。
+  // 不是平等功能模块——引擎引它属于内部组合，不是跨模块耦合（OS-142 起同属新口径③）。
   'src/modules/deduce/deduceEngine.mjs -> src/modules/deduce/deduceNarrative.mjs'
 ])
-const PROTOCOL = new Set(['src/api/contracts.mjs', 'src/protocol/chapters.mjs', 'src/protocol/changelog.mjs', 'src/protocol/versionGate.mjs', 'src/protocol/plugins.mjs', 'src/protocol/hostWrite.mjs', 'src/kernel/pinaxAdapter.mjs']) // 底层接口协议层（chapters=文件读写协议；changelog=变更日志协议，所有模块都要记 diff；versionGate=版本比对协议，三套插件规范共用；plugins=三套插件只读聚合层，daemon 与设置页共用同一份清单口径；pinaxAdapter=内核唯一进口，OS-125 解耦③的五组能力出口，见 S2.4；hostWrite=宿主写协议唯一入口，OS-138 原子写收敛——落盘一律经它，见 AGENTS.md 写通道红线）
 const MODULES = [
   'src/modules/deduce/deduceEngine.mjs', 'src/modules/deduce/deduceSession.mjs', 'src/modules/worldbook/referenceStore.mjs', 'src/services/enrichEngine.mjs',
   'src/protocol/factGuard.mjs', 'src/services/kbRouter.mjs', 'src/services/kbAdapter.mjs', 'src/services/kbHealth.mjs', 'src/services/style-check.mjs', 'src/services/stylePacks.mjs', 'src/services/skills.mjs', 'src/services/genres.mjs'
@@ -198,20 +227,25 @@ const crossEdges = []
 for (const mod of MODULES) {
   for (const dep of imports[mod] || []) {
     if (dep === mod) continue
-    if (PROTOCOL.has(dep)) continue
+    if (isProtocolPath(dep)) continue
     if (dep.startsWith('core/')) continue // vendor 内核＝底层，不算模块耦合
     const tag = `${mod} -> ${dep}`
     if (!KERNEL_ALLOW.has(tag)) crossEdges.push(tag)
   }
 }
-check('S2.1', 'S2', '功能模块间零直接耦合（协议层/vendor 内核除外）',
-  crossEdges.length === 0,
-  crossEdges.slice(0, 6).map((e) => {
-    const [mod, dep] = e.split(' -> ')
-    const ev = (importEvidence[mod] || []).find((s) => s.includes(dep))
-    return ev || lineOf(mod, dep)
-  }),
-  crossEdges.length ? `违规边：${crossEdges.join('; ')}` : '模块只引协议层、vendor 内核与白名单')
+check('S2.1', 'S2', `模块纪律：src/modules/** 只引 node 内置/protocol/**/模块内文件（${srcMjs.filter((f) => f.rel.startsWith('src/modules/')).length} 个模块文件）；清单模块零直接耦合`,
+  moduleRuleViolations.length === 0 && crossEdges.length === 0,
+  [
+    ...moduleRuleViolations.slice(0, 4),
+    ...crossEdges.slice(0, 3).map((e) => {
+      const [mod, dep] = e.split(' -> ')
+      const ev = (importEvidence[mod] || []).find((s) => s.includes(dep))
+      return ev || lineOf(mod, dep)
+    })
+  ].filter(Boolean),
+  moduleRuleViolations.length || crossEdges.length
+    ? `违规：${[...moduleRuleViolations, ...crossEdges].join('; ')}`
+    : '三类来源＋一条显式豁免（roleplayEngine→public/analysis.mjs）；内核能力只经协议层 fact 命名空间取')
 
 // S2.2 前端模块隔离（public/*.mjs 只共享 md.mjs 渲染协议）
 const publicMjs = ['analysis.mjs', 'charts.mjs', 'graph.mjs', 'reference.mjs', 'storyTree.mjs']
@@ -257,12 +291,28 @@ for (const { rel, src } of scanned) {
   for (const m of src.matchAll(coreImportRe)) coreViolators.push(`${rel} -> ${m[1]}`)
 }
 const adapterCoreUse = grepLine('src/kernel/pinaxAdapter.mjs', /from\s+'(?:\.{1,2}\/)+core\//)
+// OS-142：protocol/** 对 kernel/pinaxAdapter 的转出＝显式豁免（点名清单；实际转供面必须是
+// 清单的子集）。协议层是内核能力的唯一转供面——src/modules/** 只许经 protocol/** 取内核
+// 能力（S2.1 新口径），不许直引 pinaxAdapter；新增转供文件必须先给这个清单补名字，否则门禁红。
+const KERNEL_GATEWAY_ALLOW = new Set([
+  'src/protocol/index.mjs',        // Host API fact 命名空间：五组能力出口＋plumber 的正式转出
+  'src/protocol/kernelPlumber.mjs', // projectDoc/importAdapter 两个 fork 点的 plumber 转供
+  'src/protocol/hostWrite.mjs',    // OS-138 宿主写通道（writeFileAtomic/TMP_PREFIX/syncDirectory）
+  'src/protocol/chapters.mjs',     // 章节协议的 projectImport 转出
+  'src/protocol/factGuard.mjs'     // fact 只读通道的 factStore 转出
+])
+const gatewayUse = []
+for (const { rel, src } of scanned) {
+  if (!rel.startsWith('src/protocol/')) continue
+  if (/from\s+'(?:\.{1,2}\/)+kernel\/pinaxAdapter\.mjs'/.test(src)) gatewayUse.push(rel)
+}
+const gatewayRogue = gatewayUse.filter((rel) => !KERNEL_GATEWAY_ALLOW.has(rel))
 check('S2.4', 'S2', `内核唯一进口（${scanned.length} 个 src/ 模块＋垫片，仅 src/kernel/pinaxAdapter.mjs 引 core/**）`,
-  exists('src/kernel/pinaxAdapter.mjs') && !!adapterCoreUse && coreViolators.length === 0,
-  [adapterCoreUse, ...coreViolators.slice(0, 5)].filter(Boolean),
-  coreViolators.length
-    ? `违规进口：${coreViolators.join('; ')}——内核能力只经 pinaxAdapter 五组出口（factStore/deduce/enrich/projectMeta/projectImport）`
-    : '内核接触面收敛为 pinaxAdapter 单点（内核换版本只改这一个文件）')
+  exists('src/kernel/pinaxAdapter.mjs') && !!adapterCoreUse && coreViolators.length === 0 && gatewayRogue.length === 0,
+  [adapterCoreUse, ...coreViolators.slice(0, 4), `kernel 转供面（豁免清单内）：${gatewayUse.sort().join(' ')}`].filter(Boolean),
+  coreViolators.length || gatewayRogue.length
+    ? `违规进口：${[...coreViolators, ...gatewayRogue].join('; ')}——内核能力只经 pinaxAdapter 五组出口（factStore/deduce/enrich/projectMeta/projectImport），protocol 转供面以 KERNEL_GATEWAY_ALLOW 点名为准`
+    : '内核接触面收敛为 pinaxAdapter 单点（内核换版本只改这一个文件）；protocol/** 转出＝显式豁免（OS-142）')
 
 /* ================================================================
  * S3 前端一致性 —— OpenDesign 语义令牌口径

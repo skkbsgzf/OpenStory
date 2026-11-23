@@ -7,7 +7,9 @@
 // vendor/contracts/worldbookFileContract.js（逐字自 @pinax/core 0.16.0＝pinax-core e56a0bc，
 // 出处见 vendor/contracts/PROVENANCE.md 与 core/VENDORED.md；漂移走 vendor-drift 的 pinaxCore 段）。
 // （原经 core/pinax/shared/worldbookFileContract.js 两行垫片 re-export，垫片随 server 层一起移除。）
-import { parseWorldbookEntryFile as contractParseEntryFile } from '../../../vendor/contracts/worldbookFileContract.js'
+// OS-142 起：vendor 件本体不再由本文件直引，改经协议层叶子 protocol/worldbookContract.mjs 转供
+// （模块纪律：modules 只许引 node 内置/protocol/**/模块内文件；护栏测试仍直引 vendor 本体）。
+import { parseWorldbookEntryFile as contractParseEntryFile } from '../../protocol/worldbookContract.mjs'
 
 /** 中文数字表（「两」归一为 2；零到九）。 */
 const CHINESE_DIGITS = { 零: 0, 一: 1, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9, 两: 2 }

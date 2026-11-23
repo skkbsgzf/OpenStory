@@ -1,10 +1,10 @@
 // OS-123 解耦① fork 点：本文件自 core/pinax/next/runtime/projectImportAdapter.mjs 整文件拷贝
 // （vendor 提交 70a4f44），自本批起归本仓所有、不再经 scripts/vendor-core.mjs 同步；
-// 除三条 import 重指向（kernel errors 改经 pinaxAdapter 唯一进口、章节号/世界书解析改
-// ./textUtil.mjs）外逐字未动。
+// 除 import 重指向（kernel plumber 改经 protocol/kernelPlumber.mjs 协议层叶子——OS-142
+// Host API 模块纪律；章节号/世界书解析改 ./textUtil.mjs）外逐字未动。
 import fs from 'node:fs'
 import path from 'node:path'
-import { fail, ok } from '../../kernel/pinaxAdapter.mjs' // OS-125：内核 plumber 经唯一进口转供（本文件函数体内使用，循环引用安全）
+import { fail, ok } from '../../protocol/kernelPlumber.mjs' // OS-142：内核 plumber 经协议层叶子转供（fork 点专用；本文件函数体内使用，循环引用安全）
 import { parseChapterNumber } from './textUtil.mjs'
 import { parseWorldbookEntryFile } from './textUtil.mjs'
 

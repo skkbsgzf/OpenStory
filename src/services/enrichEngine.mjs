@@ -20,8 +20,10 @@
 
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { factStore, enrich } from '../kernel/pinaxAdapter.mjs' // OS-125：内核唯一进口（S2.4），本仓其余模块不许直引 core/**
+import { fact } from '../protocol/index.mjs' // OS-142：内核能力经 Host API fact 命名空间转出（与 src/modules 同纪律，不直引 kernel/pinaxAdapter）
 import { recordChange } from '../protocol/changelog.mjs'
+
+const { factStore, enrich } = fact // OS-125 五组出口的 fact 存储协议＋enrich 度量（经协议层转出，实现不换）
 
 const TRACE_HEADER = [
   '推理纪律：',

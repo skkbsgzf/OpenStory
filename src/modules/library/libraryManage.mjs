@@ -30,7 +30,9 @@ import {
   validateLibraryName,
   folderName
 } from './projectDoc.mjs'
-import { projectMeta, projectImport } from '../../kernel/pinaxAdapter.mjs' // OS-125：project.json 合同＋导入的统一出口（内核唯一进口）
+import { fact } from '../../protocol/index.mjs' // OS-142：project.json 合同＋导入经 Host API fact 命名空间转出（模块纪律：modules 不直引 kernel/pinaxAdapter）
+
+const { projectMeta, projectImport } = fact // OS-125 统一出口（经协议层转出，实现不换）
 
 function text(value) {
   return String(value ?? '')
