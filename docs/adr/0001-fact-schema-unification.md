@@ -29,9 +29,9 @@
 - **F5 · `pediaSchema.js` 是 re-export 桶，不是第二 schema**：`core/pinax/next/fact/domain/pediaSchema.js:1-13` 自述「只做 re-export」——词表/稳定 id/状态机/双时间轴/信封校验/视角校验各在自己文件里；旧入口 `wikihub/pediaSchema.mjs` 薄壳转发。**文件名里的「pedia」正是 pedia/v1→fact 谱系的活化石，内容就是 fact 的 domain 真源**。
 - **F6 · 仓内没有 pedia/v1 导入导出实现**：`grep -rni "pedia"`（除 node_modules/.history）只命中——core 平移件注释与 `FACT_SOURCE`、`core/VENDORED.md:85`、`core/.vendored-manifest.json`（指纹）、`scripts/vendor-deduce.mjs:19`（同步清单）。没有任何读/写 pedia/v1 数据的业务代码。
 - **F7 · 真源与派生分离是写协议的一部分**：`factFileStore.mjs:25-27`（写主 JSON 时始终剥顶层 `wiki`，另写兄弟 `<id>.wiki.json`，读侧两代兼容走 `readFactWiki()`）；`:41` `WIKI_DERIVED_SCHEMA = 'pinax-wiki-derived@1'`；`:348` patch 里 `wiki` ＝搬进兄弟文件（主 JSON 永远不落 wiki）；`:502-523` patch.wiki 优先、派生档先落主档后落。
-- **F8 · enrich 派生产出落在 patch 的 `wiki` 层**：`enrichEngine.mjs:744-750`——`factStore.writeFactFile({ root, bookId, patch: { wiki }, operationId, expectedRevision })`，注释明言「patch 只带 wiki，主 JSON 的 entries/book 一字不动，实际落在兄弟 `<bookId>.wiki.json`」（`:735-737`）。六槽位在 `wiki.slots`（`:722`）、因果图 `wiki.causalGraph`（`:731`）、需求层级 `wiki.characterProfiles[].needs`（`:496-516`）、台账 `wiki.ledger`（`:724`）；整包版本 `wiki-enrich@3`（`:717`）。读回走 `readFactWiki`（`:816`）。
+- **F8 · enrich 派生产出落在 patch 的 `wiki` 层**：`src/services/enrichEngine.mjs` 的 enrich 函数（写 wiki 派生段）——`factStore.writeFactFile({ root, bookId, patch: { wiki }, operationId, expectedRevision })`，注释明言「patch 只带 wiki，主 JSON 的 entries/book 一字不动，实际落在兄弟 `<bookId>.wiki.json`」（enrichEngine.mjs 内注释「patch 只带 wiki，主 JSON 的 entries/book 一字不动」）。六槽位在 `wiki.slots`、因果图 `wiki.causalGraph`、需求层级 `wiki.characterProfiles[].needs`、台账 `wiki.ledger`；整包版本 `wiki-enrich@3`。读回走 `readFactWiki`。
 - **F9 · scriptFact 产出的就是 fact.data/v3**：`public/scriptFact.mjs:81,108,132` 三处 `schema: 'fact.data/v3'`；头注释「产出符合 fact.data/v3 的条目骨架」（`:6`）、「fact 侧字段必须过 schema」（`:14`）。剧本↔fact 是仓内唯一双向转换、往返验证过（`docs/AUDIT-ARTIFACTS.md:39-40,65`）。
-- **F10 · fact 写通道已收敛**：库内写只有内核 `writeFactFile` 一个口（revision 自增＋operationId 幂等＋expectedRevision 乐观并发）；宿主侧经 `pinaxAdapter.factStore` 唯一进口（`pinaxAdapter.mjs:30,45`；OS-125，门禁 S2.4）。API 层的写端点 `POST /api/fact/entries/import` 也走它（`contracts/fact.mjs:30-48`；`daemon.mjs:2576-2605` 组 `patch: { book, entries }` 后调 `factStore.writeFactFile`）。
+- **F10 · fact 写通道已收敛**：库内写只有内核 `writeFactFile` 一个口（revision 自增＋operationId 幂等＋expectedRevision 乐观并发）；宿主侧经 `pinaxAdapter.factStore` 唯一进口（`pinaxAdapter.mjs:30,45`；OS-125，门禁 S2.4）。API 层的写端点 `POST /api/fact/entries/import` 也走它（`contracts/fact.mjs:30-48`；`src/api/handlers/fact.mjs` 的 factEntriesImport handler 组 `patch: { book, entries }` 后调 `factStore.writeFactFile`）。
 
 ## 三、裁定落点
 
@@ -53,16 +53,16 @@
 
 | 消费方 | 读/写通道 | 证据（文件:行） |
 |---|---|---|
-| **enrich**（语义增补） | 读：调用方经 `factFileStore.list` 取 entries 传入；读回派生走 `readFactWiki`。写：`writeFactFile patch.wiki`（内核校验闸）。 | `enrichEngine.mjs:23`（factStore 经 pinaxAdapter 唯一进口）、`:202-209`、`:744-750`、`:816` |
-| **剧情曲线** | 服务端 `factCurveGet`：读 `拆解/<id>.json` ＋ `readFactWiki`，plot 条目按 `provenance.chapters` 归组；前端 `/api/fact/curve` 消费。 | `daemon.mjs:1182-1249`（`:1204` readFactWiki、`:1207-1211` entries 归组）；`public/app.js:1340,7755`；`public/charts.mjs:2-8`（「fact 事件流」） |
-| **知识图谱** | `referenceGraphGet`：条目经 `factStore.createFactFileStore().list()` 读入，作为只读节点进 `buildReferenceGraph`。 | `daemon.mjs:2561-2574`（`:2568-2570`）；`referenceStore.mjs:385` |
+| **enrich**（语义增补） | 读：调用方经 `factFileStore.list` 取 entries 传入；读回派生走 `readFactWiki`。写：`writeFactFile patch.wiki`（内核校验闸）。 | `src/services/enrichEngine.mjs`（factStore 经 pinaxAdapter 唯一进口；写 wiki 派生段；readFactWiki） |
+| **剧情曲线** | 服务端 `factCurveGet`：读 `拆解/<id>.json` ＋ `readFactWiki`，plot 条目按 `provenance.chapters` 归组；前端 `/api/fact/curve` 消费。 | `src/api/handlers/fact.mjs` 的 factCurveGet handler（readFactWiki＋entries 归组）；`public/app.js`、`public/charts.mjs`；`public/charts.mjs:2-8`（「fact 事件流」） |
+| **知识图谱** | `referenceGraphGet`：条目经 `factStore.createFactFileStore().list()` 读入，作为只读节点进 `buildReferenceGraph`。 | `src/api/handlers/reference.mjs` 的 referenceGraphGet handler；`src/modules/worldbook/referenceStore.mjs` |
 | **推演** | `loadEntries`：`factStore.createFactFileStore({root}).list({limit:5000})`，与 `/api/entries` 同源。 | `deduceEngine.mjs:14`（唯一进口）、`:33-40` |
 
-辅证：条目级读端点 `factEntriesGet` 同走 `createFactFileStore().list()`（`daemon.mjs:1253-1305`，`:1266`）；故事源三形态数据源就是这两个读端点（`public/storySource.mjs:5`）。**结论：四方的读写全部收敛在 factFileStore 协议＋fact.data/v3 校验闸上，没有旁路 schema，合并路线在消费侧零新增改动。**
+辅证：条目级读端点 `factEntriesGet` 同走 `createFactFileStore().list()`（`src/api/handlers/fact.mjs` 的 factEntriesGet handler）；故事源三形态数据源就是这两个读端点（`public/storySource.mjs:5`）。**结论：四方的读写全部收敛在 factFileStore 协议＋fact.data/v3 校验闸上，没有旁路 schema，合并路线在消费侧零新增改动。**
 
 ## 五、后续动作（G5b 起导入导出的改动面）
 
-- **入向（已有通道，复用）**：`POST /api/fact/entries/import`（`contracts/fact.mjs:30-48`）→ `daemon.mjs:2576-2605` → 内核 `writeFactFile patch.entries`。NovelPedia 导入做成本地薄适配器：pedia/v1 数据 → fact.data/v3 条目，产出后走这同一条写通道，不另开写口。
+- **入向（已有通道，复用）**：`POST /api/fact/entries/import`（`contracts/fact.mjs:30-48`）→ `src/api/handlers/fact.mjs` factEntriesImport → 内核 `writeFactFile patch.entries`。NovelPedia 导入做成本地薄适配器：pedia/v1 数据 → fact.data/v3 条目，产出后走这同一条写通道，不另开写口。
 - **出向（尚无端点）**：仓内目前没有「fact→外部格式」的导出端点——FACT-FIRST 待接入清单里的 `export-rag` 只是规划（`FACT-FIRST.md:123`），未实现（本批 grep 实测无代码）。NovelPedia 导出与 RAG 导出同源：都从 fact.data/v3 条目投影，实现时新增读侧导出，不动写协议。
 - **不在改动面**：scriptFact 双向互转（落点 c 照旧）；四方消费方（§四，零改动）；内核写协议与 vendor 边界（core/** 只读复用，改动面在本仓适配器/端点层）。
 
