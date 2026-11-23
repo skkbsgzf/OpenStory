@@ -118,6 +118,31 @@ let uiKit = {
 }
 import('./ui-kit.mjs').then((mod) => { uiKit = mod }).catch(() => {})
 
+/* ---------- OS-143：页签/路由声明式注册表（public/views/registry.mjs）----------
+   app.js 是经典脚本（index.html 非 module 加载），只能动态 import 注册表；
+   boot() 首帧前 await 它，此后 renderTabs/go/openTabAdd/视图分派全部由注册表驱动。
+   词表与退场表（DIR_LABELS/DIR_ORDER/READONLY_DIRS/PAGE_TO_DIR_LOCAL/
+   DEFAULT_HIDDEN_TABS/RETIRED_DIRS）唯一真源在注册表，这里只留引用壳。
+   增量冻结（OS-143）：本文件此后只许减不许增（修 bug 除外），视图渲染函数只出不进。 */
+let registryModule = null
+/* 注册表词表/退场表的引用壳（真源在 registry.mjs；赋值见上方 registryReady 回调） */
+let DIR_LABELS = {}
+let DIR_ORDER = []
+let READONLY_DIRS = new Set()
+let PAGE_TO_DIR_LOCAL = {}
+let DEFAULT_HIDDEN_TABS = []
+let RETIRED_DIRS = []
+const registryReady = import('./views/registry.mjs').then((mod) => {
+  registryModule = mod
+  DIR_LABELS = mod.DIR_LABELS
+  DIR_ORDER = mod.DIR_ORDER
+  READONLY_DIRS = mod.READONLY_DIRS
+  PAGE_TO_DIR_LOCAL = mod.PAGE_TO_DIR_LOCAL
+  DEFAULT_HIDDEN_TABS = mod.DEFAULT_HIDDEN_TABS
+  RETIRED_DIRS = mod.RETIRED_DIRS
+  return mod
+}).catch((error) => { console.error('[registry] 页签注册表加载失败', error); return null })
+
 const state = {
   libraries: [],
   warnings: [],
@@ -474,6 +499,20 @@ function renderJobBall() {
 
 /* ---------- 渲染 ---------- */
 
+/* OS-143：视图渲染函数注册名映射（app.js 侧注册，注册表只存名字——registry 不 import app.js）。
+   本体暂留本文件（G5 逐个迁出），此处是出走的唯一插座：迁出后从模块侧重新 register 即可。 */
+const VIEW_RENDERERS = {
+  libraryHtml, createHtml, importHtml, repairHtml, writeHtml, habitsViewHtml,
+  referencePageHtml, deduceHtml, settingsHtml, artifactsHtml, dirViewHtml
+}
+/** 视图 → 渲染函数（注册表给注册名，这里取本体）；未注册＝装配错误，响亮失败。 */
+function viewHtml(view, ...args) {
+  const name = registryModule ? registryModule.renderNameForView(view) : null
+  const fn = name ? VIEW_RENDERERS[name] : null
+  if (!fn) throw new Error(`viewHtml：视图 ${view} 的渲染器未注册（${name ?? '视图不在注册表'}）`)
+  return fn(...args)
+}
+
 function render() {
   ensureJobsPolling()
   const current = state.current
@@ -489,19 +528,19 @@ function render() {
   viewEl.classList.toggle('content-locked', state.view === 'write' || state.view === 'dir:剧本'
     || state.view === 'deduce')
   if (state.view !== 'deduce') dedTypewriterStop()
-  if (state.view === 'libraries') viewEl.innerHTML = libraryHtml()
+  if (state.view === 'libraries') viewEl.innerHTML = viewHtml('libraries')
   else if (state.view === 'write') {
-    viewEl.innerHTML = writeHtml()
+    viewEl.innerHTML = viewHtml('write')
     // 版面换了 DOM：批注面板要重挂（否则右栏是空的），标注与吸顶也要重算
     renderAnalyzePanel()
     paintDocAnnotations()
     afterRefColMount()
   }
   else if (state.view === 'habits') {
-    viewEl.innerHTML = habitsViewHtml()
+    viewEl.innerHTML = viewHtml('habits')
   }
   else if (state.view === 'reference') {
-    viewEl.innerHTML = referencePageHtml()
+    viewEl.innerHTML = viewHtml('reference')
     // 图谱视图：挂大画布（focus 模式）；笔记视图：详情页右上角小图谱（本词条邻域）
     if ((state.reference.view || 'graph') === 'graph') {
       // 无数据时先拉再重渲——loading 态没有 canvas，mountReferenceGraph 会早退，
@@ -517,11 +556,11 @@ function render() {
     else if (state.reference.activePath && state.reference.note) mountDetailGraph()
     else if (state.reference.activeEntry) mountEntryGraph()
   }
-  else if (state.view === 'lib-create') viewEl.innerHTML = createHtml()
-  else if (state.view === 'lib-import') viewEl.innerHTML = importHtml()
-  else if (state.view === 'repair') viewEl.innerHTML = repairHtml()
+  else if (state.view === 'lib-create') viewEl.innerHTML = viewHtml('lib-create')
+  else if (state.view === 'lib-import') viewEl.innerHTML = viewHtml('lib-import')
+  else if (state.view === 'repair') viewEl.innerHTML = viewHtml('repair')
   else if (state.view === 'deduce') {
-    viewEl.innerHTML = deduceHtml()
+    viewEl.innerHTML = viewHtml('deduce')
     // 进入推演页自动续上已有局面（OS-60）：以前进来永远是空态，库里推过的拍看不到，
     // 得手动点「开始推演」——但那会额外推一拍，语义是错的。
     const engine = state.deduce.engine
@@ -601,11 +640,11 @@ function render() {
     if (state.deduce.mode === 'engine' && engine.view !== 'tree') mountDedFlow()
     else dedTypewriterStop()
   }
-  else if (state.view === 'settings') viewEl.innerHTML = settingsHtml()
-  else if (state.view === 'artifacts') viewEl.innerHTML = artifactsHtml()
+  else if (state.view === 'settings') viewEl.innerHTML = viewHtml('settings')
+  else if (state.view === 'artifacts') viewEl.innerHTML = viewHtml('artifacts')
   else if (state.view?.startsWith('dir:')) {
     const dir = state.view.slice(4)
-    viewEl.innerHTML = dirViewHtml(dir)
+    viewEl.innerHTML = viewHtml(state.view, dir)
     if (dir === '拆解') mountStorySourceChart()
     // OS-76：剧本页 fork 正文页——同样的左右栏挂载（图谱/摘要/分析面板）
     if (dir === '剧本') {
@@ -7314,27 +7353,9 @@ async function refreshLibraries() {
   } catch { /* 保住旧清单 */ }
 }
 
-/* ---------- 业务页扩展（OS-8：动态页签＋目录工作面＋推演页）---------- */
-
-/**
- * 目录名 → 页签标签。
- * OS-88（作者裁定）：demo 只做三种载体——长篇、短篇、剧本。**只保留有真实实现的标签**，
- * 其余（素材/漫画/视频/体验/联机/文档/人物/场景/大纲/构思/资料/约束）一律不进词表：
- * 它们没有专属页面，点进去只是一个裸 textarea，等于凭空许诺。
- * 已实现的真实页面：正文 / 世界书(参考载体) / 剧本 / 习惯 / 故事源(拆解) / 推演 / 日志(只读)。
- */
-const DIR_LABELS = {
-  正文: '正文',
-  世界书: '世界书',
-  剧本: '剧本',
-  日志: '日志',
-  // S2：拆解目录承载故事源（Fact 链可视化）——目录名不动，页签改叫故事源
-  拆解: '故事源'
-}
-const DIR_ORDER = ['正文', '世界书', '剧本', '日志']
-const READONLY_DIRS = new Set(['日志'])
-// 只留真正有 view 的映射；其余载体在 Pinax 主程序里，不在本 demo。
-const PAGE_TO_DIR_LOCAL = Object.freeze({ write: '正文', entries: '世界书', worldbook: '世界书', script: '剧本' })
+/* ---------- 业务页扩展（OS-8：动态页签＋目录工作面＋推演页）----------
+   OS-143：页签词表/退场表/默认隐藏种子已迁 public/views/registry.mjs（唯一真源），
+   本文件经顶部 registryReady 的引用壳消费它们；renderTabs/go 由注册表驱动。 */
 
 /**
  * 页签栏（OS-36）。
@@ -7344,22 +7365,6 @@ const PAGE_TO_DIR_LOCAL = Object.freeze({ write: '正文', entries: '世界书',
  * 全部是每库本机偏好（localStorage，按库路径分键），不写进 .pinax，不动任何稿子。
  */
 const TAB_HIDE_KEY = (root) => `openstory-tab-hidden::${root || ''}`
-
-/**
- * 默认收起种子（OS-48）：大纲/构思/资料/约束的定位已被「参考」覆盖，
- * 作者没表过态（localStorage 键不存在）时默认不出这四个页签。
- * 只作种子不落盘——作者一旦在「＋」里勾回或再收起，以作者的选择为准。
- */
-const DEFAULT_HIDDEN_TABS = Object.freeze(['dir:大纲', 'dir:构思', 'dir:资料', 'dir:约束'])
-
-/**
- * OS-84：已退场的旧目录（作者裁定：定位已被「参考」「习惯」覆盖，标签不再进「增加页签」面板）。
- *   · 大纲/构思/资料 → 内容迁进「参考」（referenceStore.ABSORBABLE_DIRS，参考页有迁入入口）
- *   · 约束 → 规则类内容归「习惯」(habits.json)，OS-59 起不再迁入参考
- * 退场只影响**入口**：目录空着就彻底不出现；还有文件的只降级为「旧·待迁」露出，
- * 保证老库里的稿子不会因为标签下架变成 UI 里再也打不开的死文件。
- */
-const RETIRED_DIRS = Object.freeze(['大纲', '构思', '资料', '约束'])
 
 /** 关掉的页签集合（按库分键）。dirsPage 记的是页签名（write/entries/dir:xxx/artifacts/wiki/deduce）。 */
 function hiddenTabs() {
@@ -7395,15 +7400,11 @@ function setTabHidden(view, hidden) {
  * 被 × 收起的内置页签（正文/世界书/产物/Wiki/推演）也在这里列出来，可勾回来。
  */
 function openTabAdd() {
-  if (!state.current) return
+  if (!state.current || !registryModule) return
   const hidden = hiddenTabs()
   const libDirs = state.libDirs
-  // 内置页签（有独立视图，不一定是目录）
-  const builtins = [
-    { view: 'artifacts', label: '产物', need: null },
-    { view: 'write', label: '正文', need: '正文' },
-    { view: 'deduce', label: '扮演', need: null }
-  ]
+  // 内置页签（有独立视图，不一定是目录）——OS-143：产物/正文/扮演由注册表 panel 条目给出
+  const builtins = registryModule.builtinPanelTabs()
   const builtinRows = builtins
     .filter((item) => (item.need ? libDirs.includes(item.need) : true))
     .map((item) => {
@@ -7413,9 +7414,8 @@ function openTabAdd() {
     }).join('')
   // 目录型页签（已有目录）
   // 「参考」「习惯」不是普通目录：它们分流到 reference/habits 专页（见 renderTabs）。
-  // 面板里要用同一个 view 键，否则勾选会写进 dir:参考 而页签栏根本不放它。
-  const DIR_TO_VIEW = { 参考: 'reference', 习惯: 'habits' }
-  const DIR_TO_LABEL = { 参考: '参考', 习惯: '习惯' }
+  // 面板里要用同一个 view 键，否则勾选会写进 dir:参考 而页签栏根本不放它——
+  // 注册表条目的 view 就是页签栏的键（OS-143）。
   // OS-86：已退场的旧目录彻底不出现——不管磁盘上还在不在、有多少篇。
   // 作者口径：没被官方认证的标签就是要消失，不做「旧·待迁」降级露出；
   // 内容清理走一次性迁移（大纲/构思/资料→参考，约束→习惯＋参考存档）。
@@ -7424,23 +7424,19 @@ function openTabAdd() {
     .filter((dir) => !RETIRED_DIRS.includes(dir))
     .sort((left, right) => DIR_ORDER.indexOf(left) - DIR_ORDER.indexOf(right))
     .map((dir) => {
-      const view = DIR_TO_VIEW[dir] || `dir:${dir}`
+      const entry = registryModule.dirTabEntry(dir)
+      const view = entry?.view || `dir:${dir}`
       const off = hidden.has(view)
-      const known = Boolean(DIR_LABELS[dir]) || Boolean(DIR_TO_VIEW[dir])
-      const label = DIR_TO_LABEL[dir] || DIR_LABELS[dir] || dir
+      const known = Boolean(entry)
+      const label = entry?.panelLabel || entry?.label || dir
       return `<button class="tab-pick${off ? '' : ' on'}" data-action="tab-toggle-pick" data-tab-view="${esc(view)}">
         <span class="tp-check">${off ? '' : '✓'}</span><b>${esc(label)}</b>${known ? '' : '<span class="tp-note">未识别</span>'}</button>`
     }).join('')
-  // OS-83：已识别但库里还没建的业务目录（剧本/人物/场景/素材/漫画/视频…）。
-  // 以前面板只列磁盘已有的目录，于是「剧本」这种模块在小说库里整块消失——作者以为功能不存在。
-  // 这里把它们如实列出来，点一下就建目录并加页签（走同一条 /api/dir 通道）。
-  const creatableRows = DIR_ORDER
-    .filter((dir) => Boolean(DIR_LABELS[dir]))
-    .filter((dir) => !libDirs.includes(dir))
-    .filter((dir) => !RETIRED_DIRS.includes(dir))
-    .filter((dir) => dir !== '正文' && dir !== '世界书' && dir !== '拆解' && dir !== '人物' && dir !== '场景')
-    .map((dir) => `<button class="tab-pick" data-action="tab-make-dir" data-dir-name="${esc(dir)}" title="库里还没有 ${esc(dir)}/ 目录——点一下建出来并加页签">
-      <span class="tp-check">＋</span><b>${esc(DIR_LABELS[dir])}</b><span class="tp-note">待建</span></button>`)
+  // OS-83：已识别但库里还没建的业务目录（剧本/日志…）——清单由注册表 creatableDirNames 给出，
+  // 点一下就建目录并加页签（走同一条 /api/dir 通道）。
+  const creatableRows = registryModule.creatableDirNames(libDirs)
+    .map((item) => `<button class="tab-pick" data-action="tab-make-dir" data-dir-name="${esc(item.dir)}" title="库里还没有 ${esc(item.dir)}/ 目录——点一下建出来并加页签">
+      <span class="tp-check">＋</span><b>${esc(item.label)}</b><span class="tp-note">待建</span></button>`)
     .join('')
   // 磁盘上有、但不在 DIR_LABELS 里的目录（作者自建的如「分镜」）也列出来——
   // 这是「加页签」的主用途之一；标「未识别」如实说明它不是内置载体。
@@ -7510,46 +7506,21 @@ async function createTabDir() {
   }
 }
 
+/* OS-143：页签推导全部由注册表驱动（computeTabDefs 纯函数，语义与旧扫描逐条对齐：
+   产物首格固定 → 正文（体裁裁剪）→ 目录型组（词表×退场过滤×DIR_ORDER 稳定排序）→ 扮演 → 设置。
+   注册表条目里的裁定注解（OS-12/19/44/48/75/84/86/88/92）见 public/views/registry.mjs。 */
 function renderTabs() {
   const tabsEl = document.getElementById('tabs')
-  if (!tabsEl) return
+  if (!tabsEl || !registryModule) return
   const hidden = state.current ? hiddenTabs() : new Set()
-  const defs = []
-  if (state.current) {
-    // OS-12：页签首格固定＝产物中心（产出物＋多版本＋历史）；「库」上移顶栏。
-    defs.push({ view: 'artifacts', label: '产物', ic: '产', closable: true })
-    // OS-19：正文/世界书也走 libDirs 判断——体裁声明后（如短故事）就不出世界书页签
-    const libDirs = state.libDirs
-    const hasDir = (name) => libDirs.includes(name)
-    const excluded = new Set((state.briefGenre?.excludedPages ?? []).map((page) => PAGE_TO_DIR_LOCAL[page] ?? page))
-    if (!state.brief || hasDir('正文')) defs.push({ view: 'write', label: '正文', ic: '章', closable: true })
-    // OS-48：这个页签暴露的其实是 fact 拆解条目（真源 拆解/*.json），改名「条目」消除与世界书目录/参考的定位混淆
-    const extra = libDirs
-      // OS-88：正文/世界书/推演 都有内置页签，不能再按目录重复出一个（此前推演会重复成两个）。
-      .filter((dir) => dir !== '正文' && dir !== '世界书' && dir !== '推演' && !excluded.has(dir))
-      // OS-88：只认有真实实现的标签——词表外的目录（素材/漫画/联机…）不出页签，不凭空许诺工作面
-      .filter((dir) => Boolean(DIR_LABELS[dir]) || dir === '参考' || dir === '习惯')
-      // OS-86：已退场的旧目录（大纲/构思/资料/约束）一律不出页签，不管磁盘上还剩什么
-      .filter((dir) => !RETIRED_DIRS.includes(dir))
-      .sort((left, right) => {
-        const li = DIR_ORDER.indexOf(left)
-        const ri = DIR_ORDER.indexOf(right)
-        return (li === -1 ? 99 : li) - (ri === -1 ? 99 : ri)
-      })
-      .map((dir) => ({
-        // 参考目录（OS-44）走专门的笔记系统页，不是通用文本页
-        view: dir === '参考' ? 'reference' : (dir === '习惯' ? 'habits' : `dir:${dir}`),
-        label: dir === '参考' ? '世界书' : (DIR_LABELS[dir] || dir),
-        ic: dir === '参考' ? '世' : (DIR_LABELS[dir] || dir).slice(0, 1),
-        readonly: READONLY_DIRS.has(dir),
-        closable: true
-      }))
-    defs.push(...extra)
-    defs.push({ view: 'deduce', label: '扮演', ic: '扮', closable: true })
-  }
-  // 设置是一个可关闭的页签（OS-32）：跟正文/产物同级，打开才出现，× 关掉回到原页
-  if (state.settings.open) defs.push({ view: 'settings', label: '设置', ic: '设', closable: true })
-  const visible = defs.filter((def) => !hidden.has(def.view))
+  const defs = registryModule.computeTabDefs({
+    current: state.current,
+    brief: state.brief ?? null,
+    briefGenre: state.briefGenre ?? null,
+    libDirs: state.libDirs,
+    settingsOpen: state.settings.open
+  })
+  const visible = registryModule.visibleTabDefs(defs, hidden)
   const tabHtml = visible.map((def) => `<button class="tab${state.view === def.view ? ' on' : ''}" data-view="${esc(def.view)}"><span class="ic">${esc(def.ic)}</span>${esc(def.label)}${def.readonly ? '<span class="pill">只读</span>' : ''}${def.closable ? `<span class="tab-x" data-action="${def.view === 'settings' ? 'settings-close' : 'tab-hide'}" data-tab-view="${esc(def.view)}" title="收起这个页签（不动磁盘上的东西）">×</span>` : ''}</button>`).join('')
   // 末尾「＋」：加回被收起的页签，或新建目录
   const addBtn = state.current ? '<button class="tab tab-add" data-action="tab-add-open" title="增加页签">＋</button>' : ''
@@ -10212,6 +10183,7 @@ function deduceAgentHtml() {
 /* ---------- 数据加载 ---------- */
 
 async function boot() {
+  await registryReady // OS-143：注册表先就位——首帧起 renderTabs/go/openTabAdd 全由它驱动
   applyTypography()   // OS-91：无库时也先套默认字号档，避免首帧跳变
   applyAgentCollapse() // OS-103
   // 运行时清单与 config 一起拉：chip 要能显示「DSH 原生」这类具体名字，不能等进设置页才加载
@@ -10578,10 +10550,11 @@ function go(view) {
     openDirWork(view.slice(4))
     return
   }
-  const flowPage = view === 'lib-create' || view === 'lib-import'
-  // OS-78 修：deduce 需要 state.current.path（peek 会话要 root），不能当无库可进的全局页
-  const globalPage = view === 'settings' || view === 'libraries'
-  if (view !== 'libraries' && !flowPage && !globalPage && !state.current) {
+  // OS-143：视图作用域校验由注册表驱动——flow（建库/导入）与 global（设置/库管理）
+  // 不需要先打开库；library 作用域与未知视图（null）没库就退回库清单页。
+  // OS-78 修：deduce 需要 state.current.path（peek 会话要 root），不能当无库可进的全局页。
+  const scope = registryModule ? registryModule.viewScope(view) : null
+  if (scope !== 'global' && scope !== 'flow' && !state.current) {
     state.view = 'libraries'
     render()
     return

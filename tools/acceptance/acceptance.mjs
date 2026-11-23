@@ -248,7 +248,9 @@ check('S2.1', 'S2', `模块纪律：src/modules/** 只引 node 内置/protocol/*
     : '三类来源＋一条显式豁免（roleplayEngine→public/analysis.mjs）；内核能力只经协议层 fact 命名空间取')
 
 // S2.2 前端模块隔离（public/*.mjs 只共享 md.mjs 渲染协议）
-const publicMjs = ['analysis.mjs', 'charts.mjs', 'graph.mjs', 'reference.mjs', 'storyTree.mjs']
+// OS-143：页签注册表 views/registry.mjs 纳入扫描面——它是纯数据＋纯函数（零 import），
+// app.js 经动态 import 消费它；依赖方向永远是壳→表，注册表绝不反向依赖 app.js。
+const publicMjs = ['analysis.mjs', 'charts.mjs', 'graph.mjs', 'reference.mjs', 'storyTree.mjs', 'views/registry.mjs']
 const SHARED_PROTOCOL = new Set(['md.mjs'])
 const pubCross = []
 for (const f of publicMjs) {
@@ -261,7 +263,7 @@ for (const f of publicMjs) {
     pubCross.push(`${f} -> ${dep}`)
   }
 }
-check('S2.2', 'S2', '前端分析/图谱/参考/树模块互不 import（md.mjs 渲染协议除外）',
+check('S2.2', 'S2', '前端分析/图谱/参考/树/页签注册表模块互不 import（md.mjs 渲染协议除外）',
   pubCross.length === 0, pubCross.map((e) => `public/${e}`),
   pubCross.length ? `违规：${pubCross.join('; ')}` : '')
 

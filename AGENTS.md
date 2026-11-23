@@ -146,6 +146,18 @@ L4 自持层→L3 pinaxAdapter→L2 core/pinax 24 文件→L1 磁盘库）。
     - 交付前必须在 **675px（DSH 右栏停靠宽）** 与 **420px** 两档宽度自查：正文可读、
       页签可横滚、控件不裁切。断点按**宽度**写，不按设备名/面板名写。
 
+20. **app.js 增量冻结（OS-143，作者立宪：活装配壳只减不增）。**
+    `public/app.js` 是消费壳，页签/路由唯一真源在 `public/views/registry.mjs`
+    （TAB_REGISTRY 声明式注册表：新增页签＝给注册表加一条纯数据，app.js 一行不动；
+    行为语义见 `test/tabRegistry.test.mjs` 的旧算法对拍）。自此：
+    - **app.js 只许减不许增**（修 bug 除外）；视图渲染函数本体**只出不进**——
+      迁出（G5 起逐个搬去模块）时在 `VIEW_RENDERERS` 插座改注册名，注册表只存名字、
+      绝不 import app.js（依赖方向恒为壳→表，门禁 S2.2 扫描面已含 views/registry.mjs）。
+    - 页签词表/退场表/体裁裁剪/作用域校验不准改回 app.js 内联；
+      词表外目录不出页签（OS-92）、退场目录无条件过滤（OS-84/86）的改动只能发生在注册表。
+    - 判据：改页签行为时 `git diff public/app.js` 必须为零行增长；扩展页签只 diff
+      `public/views/registry.mjs`。
+
 ## 发布规范（推送前必读）
 
 推 GitHub 前必过 [PUBLISHING.md](./PUBLISHING.md) 的检查单（协议干净/demo 干净/人机双读）；
@@ -154,7 +166,7 @@ L4 自持层→L3 pinaxAdapter→L2 core/pinax 24 文件→L1 磁盘库）。
 ## 改完必跑（验收线，详见 `docs/ACCEPTANCE.md`）
 
 ```bash
-node .zcode/run-gate.mjs                    # ① 全量单测（467 例）
+node .zcode/run-gate.mjs                    # ① 全量单测（489 例）
 node tools/acceptance/acceptance.mjs        # ② 交付标准 S0–S4 门禁（16 检查，Rea 式证据；S0=布局宪法）
 # ③ .ua/ 知识图谱增量（/understand，skill 在 ~/.zcode/skills/understand*）
 # ④ 前端批次给作者截图讲场景（对照 design-system/DESIGN.md + docs/UX-STRUCTURE.md）

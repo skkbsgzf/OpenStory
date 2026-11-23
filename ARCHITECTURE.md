@@ -26,7 +26,7 @@
 ## 七层分层（自上而下，依赖只许向下）
 
 ```
-L7  前端 public/               15 文件  19,917 行   无构建单页（浏览器/DSH webview）
+L7  前端 public/               16 文件  20,157 行   无构建单页（浏览器/DSH webview）
 L6  契约层 src/api/contracts/  8 文件   1,373 行   七域聚合，101 端点
 L5  daemon（HTTP＋进程治理）   1 文件   5,424 行   node:http 手写路由＋OS-136 来源防护四层闸＋单实例锁/stamp/generation/health
     └ mcp（伴生进程）          1 文件     726 行   stdio 24 工具，daemon HTTP 的薄适配层
@@ -36,14 +36,22 @@ L2  core/pinax              24 文件   4,332 行   fact 链底座（逐字 vend
 L1  磁盘库                  ——        ——       文件即真相（库＝文件夹，.pinax 兼容）
 ```
 
-### L7 前端 `public/` ——15 文件 / 19,917 行
+### L7 前端 `public/` ——16 文件 / 20,157 行（OS-143 实测）
 
 - **职责**：工作台单页（无构建、原生 ES 模块）。`index.html`（2,756 行，样式令牌 `:root`
-  单一真源）＋ `app.js`（12,529 行，路由/页签/左列 Agent）＋ 13 个零依赖模块
+  单一真源）＋ `app.js`（12,502 行，装配壳：路由/页签消费/左列 Agent）＋ 14 个零依赖模块
   （analysis/analysisModules/charts/graph/md/reference/referenceStore/script/scriptFact/
-  scriptFormat/storySource/storyTree/ui-kit）；echarts 本地 vendor（`public/vendor/echarts.min.js`）。
+  scriptFormat/storySource/storyTree/ui-kit＋`views/registry.mjs` 页签/路由声明式注册表）；
+  echarts 本地 vendor（`public/vendor/echarts.min.js`）。
+- **页签/路由注册协议（OS-143）**：页签系统唯一真源在 `views/registry.mjs`（TAB_REGISTRY
+  纯数据＋computeTabDefs/dirTabDefs/viewScope 纯函数，词表外目录不出页签、退场目录无条件
+  过滤都可测试）；`app.js` 是消费壳——renderTabs/go/openTabAdd 全由注册表驱动，视图渲染
+  函数本体经 `VIEW_RENDERERS` 注册名插座解耦（registry 只存名字，绝不 import app.js，
+  依赖方向恒为壳→表）。**`app.js` 增量冻结**：此后只许减不许增（修 bug 除外），
+  视图代码只出不进（G5 逐个迁出，迁出后从模块侧重新注册渲染名）。
 - **边界**：只经 HTTP 契约（L6）与 daemon 说话；不落任何内容性/状态性数据（OS-89，
-  浏览器只做内存视图）；前端模块互不 import（门禁 S2.2，md.mjs 渲染协议除外）。
+  浏览器只做内存视图）；前端模块互不 import（门禁 S2.2，md.mjs 渲染协议除外；
+  app.js 经动态 import 消费 registry/ui-kit 等 leaf 模块）。
 
 ### L6 契约层 `src/api/` ——8 文件 / 1,373 行 / 101 端点
 
