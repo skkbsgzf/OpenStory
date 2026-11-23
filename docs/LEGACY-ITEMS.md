@@ -3,6 +3,12 @@
 > OS-123→133 解耦与治理批次收官（2026-11-23）。这份文档是「没做完/不做」事项的**唯一台账**：
 > 凡不在三档之内的事，等于「已做完且有测试与门禁护栏」。新事项先入档再动工。
 
+## 【已裁定】——作者裁定固化，细节以 ADR 为准（裁定本身不是待办）
+
+| 裁定 | 日期 | 去向 |
+|---|---|---|
+| **G7 数据源归一：统一成 fact（合并路线）**——fact.data（v3/legacy v2）是唯一事实 schema；pedia/v1（NovelPedia）视为同源同质；OpenStory↔NovelPedia 导入导出一律走 fact.data/v3。 | 【已裁定 2026-11-23：统一成 fact】 | `docs/adr/0001-fact-schema-unification.md`（含四方消费方核查与 NovelPedia 字段映射实测清单；映射是唯一开放项） |
+
 ## 【作者动作】——需要作者在真实环境验证一次
 
 | 事项 | 现状与依据 | 风险 |
@@ -27,6 +33,7 @@
 
 | 事项 | 为什么不做 | 对标依据 |
 |---|---|---|
+| **fsBrowse 目录白名单** | 【已裁定 2026-11-23，作者授权主 agent】不加：白名单与 OS-110/119 的亲验行为冲突（浏览就是直达本机目录树＋记住上次文件夹）；OS-136 的来源防护四层闸已关闭跨站可达性，白名单要挡的威胁已不成立。 | `daemon.mjs`（fs-browse 记忆与端点，`fsBrowse`）；提交 `14a10a1`（OS-110）、`a59fb4b`（OS-119） |
 | **插件签名体系** | 本仓没有第三方插件分发场景：货架是本机目录＋内置样例，凭据只存本机。签名解决的是「分发渠道被投毒」，这里没有渠道就没有这个威胁模型——做签名是替不存在的场景付成本。能力约束走 OS-129 白名单（capabilities 声明对齐宿主真实实现）。 | `docs/plan/opendesign-architecture-20261122.md` §5「明确不建议抄的」；`docs/plan/plugin-governance-benchmark-20261122.md` §5 |
 | **Next.js（或任何构建链）** | 零 npm 构建依赖是本仓宪法（作者口径「完全本地」）。OpenDesign 用 Next.js 是因为它要做 Web 产品＋桌面壳双轨（141 MB standalone 产物）；OpenStory 单页＋无构建即可覆盖全部功能，换框架只引入构建产物与 SSR 概念，无功能收益。 | `docs/plan/opendesign-architecture-20261122.md` §5 |
 | **154 设计系统包的规模** | OpenDesign 的 154 个设计系统是**产品面**（海量主题货架），不是架构面。OpenStory 的口径是：语义令牌单一真源（`public/index.html` `:root`＋`design-system/tokens.css`）＋风格包按需覆盖——令牌机制同源，规模不跟。 | `docs/plan/opendesign-architecture-20261122.md` §5、§附实测出处 |
