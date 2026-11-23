@@ -191,8 +191,8 @@ check('S2.3', 'S2', `契约驱动架构（contracts ${contractCount} 端点；da
   '契约表是模块间调用的唯一底座；新增端点必须先进 contracts（域分片）')
 
 // S2.4 内核唯一进口（OS-125 解耦③）：仓根模块里只有 pinaxAdapter.mjs 可以 import core/**。
-// 静态 from 与动态 import() 都算；@pinax/core（npm 包，worldbook/lexicon 契约）不在此列；
-// test/*.test.mjs 等非仓根模块不在扫描范围。
+// 静态 from 与动态 import() 都算；worldbook/lexicon 契约（OS-132 起收编进本仓
+// vendor/contracts，非 core/** 路径）不在此列；test/*.test.mjs 等非仓根模块不在扫描范围。
 const coreImportRe = /(?:from\s+|import\(\s*)['"](?:\.\.?\/)?(core\/[^'"]+)['"]/g
 const coreViolators = []
 for (const f of rootMjs) {

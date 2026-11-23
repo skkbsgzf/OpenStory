@@ -2,7 +2,8 @@
  * OpenStory MCP server（OS-55）——零依赖 stdio JSON-RPC 2.0。
  *
  * 为什么自写而不用 @modelcontextprotocol/sdk：本仓零 npm 依赖（VENDORED 口径，
- * core/pinax 逐字 vendor、连 @pinax/core 都是 file: tgz）。MCP stdio 传输就是
+ * core/pinax 逐字 vendor、世界书契约自 OS-132 起收编进 vendor/contracts，tgz 依赖已移除）。
+ * MCP stdio 传输就是
  * newline-delimited JSON-RPC 2.0（官方 spec：消息以 \n 分隔、不得内嵌换行），
  * 服务端只需要 initialize / tools/list / tools/call 三个方法，自写约 200 行。
  *

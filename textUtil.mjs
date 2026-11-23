@@ -3,9 +3,11 @@
 //   · parseChapterNumber ＋ CHINESE_DIGITS ← core/pinax/server/mcp/projectImport.js:39,58-73
 //   · parseWorldbookEntryFile ＋ contractEntryToRuntime ＋ worldbookIsPlainObject ＋
 //     worldbookStringList ＋ WORLDBOOK_DERIVED_SRC ← core/pinax/server/services/localMirrorService.js:228,230-236,304-360
-// 契约判定（contractParseEntryFile）来自 @pinax/core 的世界书文件契约 v2
-// （原经 core/pinax/shared/worldbookFileContract.js 两行垫片 re-export，垫片随 server 层一起移除）。
-import { parseWorldbookEntryFile as contractParseEntryFile } from '@pinax/core/domain/worldbookFileContract'
+// 契约判定（contractParseEntryFile）来自世界书文件契约 v2——OS-132 起收编进本仓
+// vendor/contracts/worldbookFileContract.js（逐字自 @pinax/core 0.16.0＝pinax-core e56a0bc，
+// 出处见 vendor/contracts/PROVENANCE.md 与 core/VENDORED.md；漂移走 vendor-drift 的 pinaxCore 段）。
+// （原经 core/pinax/shared/worldbookFileContract.js 两行垫片 re-export，垫片随 server 层一起移除。）
+import { parseWorldbookEntryFile as contractParseEntryFile } from './vendor/contracts/worldbookFileContract.js'
 
 /** 中文数字表（「两」归一为 2；零到九）。 */
 const CHINESE_DIGITS = { 零: 0, 一: 1, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9, 两: 2 }

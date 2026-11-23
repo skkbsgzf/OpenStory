@@ -14,7 +14,7 @@
 | `core/pinax/next/fact/**` | `next/fact/**`（事实链底座，见 OS-29；同步走 `scripts/vendor-deduce.mjs`） |
 | `core/pinax/next/fs/**`、`core/pinax/next/kernel/{errors,factFileStore,wikiDerive}.mjs` | 同名上游文件（factFileStore 的落盘与派生底座） |
 | `core/pinax/electron/**` | `electron/**`（闭包拉进的 fs 耐久化，被 `next/fs/atomicWrite.mjs` 引用） |
-| `node_modules/@pinax/core` | 上游 npm 包 @pinax/core 0.16.0（载体的 domain/usecases 依赖；后续随底座升格处理） |
+| `vendor/contracts/worldbookFileContract.js`（OS-132 收编） | pinax-core `src/domain/worldbookFileContract.js`（收编自 npm 包 @pinax/core 0.16.0＝commit e56a0bc；tgz 依赖已移除，见 OS-132 一节） |
 | `projectDoc.mjs`（本仓自有） | 逐字归并自 `next/{kernel/projectSkeleton,project/**,shell/library/wizardKit}`，见 OS-124 |
 
 载体清单（`next/carriers/**`）、载体注册体系（pluginRegistry/carrierManifest 族）、
@@ -26,8 +26,10 @@
 - 载体**清单**（manifest.mjs）已不随底座走（OS-124 删除）——OpenStory 只用 projectKind/dataDirs/依赖闭包
   做建库，这两样连同 requires 均冻结在 `projectDoc.mjs` 的 CARRIERS 表里（与被删清单逐字一致）；
   载体**实现**（tools.mjs）从来不上底座（OpenStory 从不调用）。
-- `@pinax/core` 包是上游 pinax-core 抽包路线的既有产物（core README 禁 monorepo），
-  本仓作为消费者依赖；底座升格时按同一模式把 core/pinax/ 逐步上收。
+- `@pinax/core` 包是上游 pinax-core 抽包路线的既有产物（core README 禁 monorepo）。
+  OS-132 起已收编：唯一有消费方的 `worldbookFileContract` 进了本仓 `vendor/contracts/`，
+  file: tgz 依赖从 package.json 删除（`lexiconFileContract` 无消费方，不收编）；
+  底座升格时按同一模式把 core/pinax/ 逐步上收。
 
 
 ## OS-123 解耦①：server 层移除，章节号与导入自持
@@ -43,7 +45,8 @@ server 层（`core/pinax/server/**`，6 文件）与闭包垫片（`core/pinax/s
 | `importAdapter.mjs`（整文件） | `next/runtime/projectImportAdapter.mjs` |
 
 世界书契约 v2 判定直接 import `@pinax/core/domain/worldbookFileContract`
-（原 `core/pinax/shared/worldbookFileContract.js` 只是两行 re-export 垫片）。
+（原 `core/pinax/shared/worldbookFileContract.js` 只是两行 re-export 垫片）；
+OS-132 起该 import 改指本仓 `vendor/contracts/worldbookFileContract.js`（见 OS-132 一节）。
 护栏测试：`test/decoupleStep1.test.mjs`。
 OS-123 时现存 vendor 文件 53 个；`core/pinax/electron/**` 保留（`next/fs/atomicWrite.mjs:4`
 仍引用 `electron/projects/fsDurability.mjs`，无引用后才可删）。
@@ -86,6 +89,9 @@ daemon 侧封装在 `deduceEngine.mjs`（引擎确定性：同种子＋同事实
 
 ## OS-126 解耦④：上游漂移检测（vendor 指纹锚）
 
+> OS-132 起此节描述的锚升级为**双段**、并新增 `[上游已移位]` 档——见下方 OS-132 一节；
+> 本节保留 OS-126 时的单段口径作历史记录。
+
 `core/**` 的 24 个 vendor 文件有 sha256 指纹锚 `core/.vendored-manifest.json`
 （记录 `upstreamCommit=70a4f44` 与逐文件哈希），由零依赖脚本 `scripts/vendor-drift.mjs`
 （node:fs/crypto/path）维护：
@@ -105,6 +111,42 @@ npm run vendor:check                     # 同 check
 注意三点：① 哈希是**原始字节**级（两仓都以 CRLF 检出、逐字节拷贝，当前逐字节同源）——
 若一侧行尾策略改变会误报，届时以归一化比对人工复核；② 锚不含清单自身与本文档
 （本仓自有文档，随解耦批次正常追加，不算「本仓被改」）；③ 基线里
-`enrich/{metrics,pseudoChapters}.mjs` 两文件上游（含 70a4f44）无对应文件，check 恒 `[跳过]`
-——它们随本仓 OS-FACT 批次（be71a12）入库，上游全历史（`git log --all` 该路径为空）
-与工作树均无此文件，从未收编；上游若收编同名文件，锚不会比对到（需重跑 snapshot 入锚）。
+`enrich/{metrics,pseudoChapters}.mjs` 两文件上游（含 70a4f44）无对应文件——它们随本仓
+OS-FACT 批次（be71a12）入库，上游全历史（`git log --all` 该路径为空）与工作树均无此文件，
+从未收编；OS-132 起该情形单列为 `[上游已移位]` 信息档（不再与「本仓已删」的 `[跳过]` 混在同一档）。
+
+## OS-132 解耦⑤：@pinax/core 收编进 vendor/contracts，tgz 依赖移除；漂移检测双段＋上游已移位档
+
+`@pinax/core`（npm 包，file: tgz 载体 `vendor/core/pinax-core-0.16.0.tgz`）到 OS-131 为止只剩
+一个消费点：`textUtil.mjs` 引其 `domain/worldbookFileContract`（契约判定）＋
+`test/decoupleStep1.test.mjs` 引 `serializeWorldbookEntryFile`（护栏）；`lexiconFileContract`
+已无消费方。OS-132 把该文件**逐字收编**进本仓，甩掉整份 tgz 依赖：
+
+- `vendor/contracts/worldbookFileContract.js`：逐字拷贝自 @pinax/core **0.16.0** 的
+  `src/domain/worldbookFileContract.js`（＝pinax-core 仓 commit `e56a0bc`；tgz sha256
+  `db662543…`，见 `vendor/core/pinax-core-0.16.0.provenance.json` 与
+  `vendor/contracts/PROVENANCE.md`）。除文件头的 VENDORED 出处注释外一个字节未动；
+  上游是 ESM，本仓同为 ESM，原样直用。
+- `textUtil.mjs` 与 `test/decoupleStep1.test.mjs` 的 import 改指本仓路径；全仓 src/test 已无
+  `@pinax/core` import 残留；package.json dependencies 删除 `@pinax/core`（version 字段不动；
+  package-lock 同步——其传递依赖 marked 一并无消费方删除）。node_modules 里的实体不删
+  （新装环境自然没有）；`vendor/core/` 的 tgz 与 provenance json 留仓作审计凭证。
+- **收编规则与 core/pinax/** 相同：本仓不改，改动发生在上游（`D:/Pinax-core`）再同步。**
+
+漂移检测随之升级（`scripts/vendor-drift.mjs`）：
+
+- manifest 双段化：`sections.pinaxNext`（core/pinax ↔ `D:/Pinax-next`，映射规则不变，
+  原始字节哈希）＋ `sections.pinaxCore`（vendor/contracts ↔ `D:/Pinax-core/src/domain`，
+  锚 `upstreamCommit=e56a0bc`，映射 `contracts/<X>` ↔ `src/domain/<X>`）。旧单段 manifest
+  结构兼容读——pinaxNext 接管旧 `files`，pinaxCore 当空。
+- pinaxCore 段哈希口径＝**剥 VENDORED 出处头＋行尾归一化**（去 \r）后 sha256：收编件带
+  出处头而上游裸正文没有（`stripVendoredHeader`，只剥含 VENDORED 标记的首个块注释）；
+  tgz 载体是 LF 而上游 Windows 检出是 CRLF（本仓 core.autocrlf=true，重新检出也会变 CRLF）
+  ——原始字节比对两者都会恒误报。pinaxNext 段口径不变（原始字节）。
+- 新增输出档 `[上游已移位]`：锚里有、本仓还在、上游已无此文件 → 单列（信息级，
+  **不影响 exit code**）——如 pinaxNext 段的 `enrich/{metrics,pseudoChapters}.mjs`
+  （OS-FACT 批次入库，上游从未有）；「上游缺失**且本仓也没有**」维持 `[跳过]`。
+  exit 1 仍只由 本仓被改／上游已变／清单缺项 触发。
+- `snapshot` 生成两段新基线并入仓（`core/.vendored-manifest.json` 已重生成：
+  pinaxNext 24 文件 ＋ pinaxCore 1 文件）。护栏测试：`test/vendorDrift.test.mjs`
+  补「上游已移位」拆档用例＋双段 manifest 兼容读＋pinaxCore 段口径用例。

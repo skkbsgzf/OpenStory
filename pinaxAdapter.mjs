@@ -23,8 +23,9 @@
  * 使用对方出口、绝不在模块求值期调用——ESM 循环在此安全（test/decoupleStep3.test.mjs
  * 对两种加载序都做了冒烟）。
  *
- * 不在此文件的内核接触面：`@pinax/core`（npm 包，vendor tgz）的 worldbook/lexicon 契约
- * 由 textUtil.mjs 等直引——那是格式契约面，解耦规划 §4 明确「不动」，也不在 S2.4 管辖。
+ * 不在此文件的内核接触面：worldbook/lexicon 格式契约（OS-132 起收编进本仓
+ * vendor/contracts/worldbookFileContract.js，由 textUtil.mjs 等直引）——那是格式契约面，
+ * 解耦规划 §4 明确「不动」，也不在 S2.4 管辖。
  */
 import { createFactFileStore, writeFactFile, readFactWiki, FACT_DIR_NAME } from './core/pinax/next/kernel/factFileStore.mjs'
 import { openDeduceSession } from './core/pinax/next/fact/usecases/deduce/opening.js'

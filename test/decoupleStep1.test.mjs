@@ -17,7 +17,7 @@ import { join, resolve } from 'node:path'
 import { parseChapterNumber, parseWorldbookEntryFile } from '../textUtil.mjs'
 import { planImport, runImport } from '../importAdapter.mjs'
 import { createLibrary } from '../libraryManage.mjs'
-import { serializeWorldbookEntryFile } from '@pinax/core/domain/worldbookFileContract'
+import { serializeWorldbookEntryFile } from '../vendor/contracts/worldbookFileContract.js'
 
 /* ---------- 夹具 ---------- */
 
