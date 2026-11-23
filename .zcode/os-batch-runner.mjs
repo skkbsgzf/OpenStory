@@ -11,7 +11,7 @@
  *   · 每步把状态写进 status.json（主 agent 只看这个文件）
  *   · 门禁红 → 生成返工工单（原工单 + 失败输出）重派，最多 rounds 轮；仍红则该批失败、计划中止
  */
-import { spawnSync } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import { readFileSync, writeFileSync, mkdirSync, readdirSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -71,8 +71,41 @@ function tail(out, n = 2600) {
   return out.split('\n').filter((line) => /✖|not ok|AssertionError|Error:|fail \d|FAIL|✗/.test(line)).join('\n').slice(-n) || out.slice(-n)
 }
 
+/** 五道门禁里的两条 e2e（水浒／新建）都要连 127.0.0.1:8807 的 daemon。
+ *  坑（2026-11-24 实录）：daemon 用 nohup 挂在宿主进程树下，宿主一退就跟着死，
+ *  门禁于是报「水浒红／新建红」——看着像代码坏了，其实是门禁环境没了。
+ *  所以门禁前先自检，不在就拉起来，并把「重启过」写进门禁汇总（不静默）。 */
+function daemonHealthy() {
+  const probe = run(
+    process.execPath,
+    ['-e', "fetch('http://127.0.0.1:8807/api/health',{signal:AbortSignal.timeout(3000)}).then(function(r){process.exit(r.ok?0:1)}).catch(function(){process.exit(1)})"],
+    20_000,
+  )
+  return probe.code === 0
+}
+
+function ensureDaemon() {
+  if (daemonHealthy()) return 'daemon 在跑'
+  try {
+    const child = spawn(process.execPath, ['daemon.mjs', '--port=8807'], {
+      cwd: REPO,
+      detached: true,
+      stdio: 'ignore',
+    })
+    child.unref()
+  } catch (error) {
+    return 'daemon 拉不起来：' + String(error?.message || error)
+  }
+  for (let i = 0; i < 20; i++) {
+    spawnSync(process.execPath, ['-e', 'setTimeout(function(){},300)'], { timeout: 5000 })
+    if (daemonHealthy()) return 'daemon 曾掉线，已重启'
+  }
+  return 'daemon 重启后仍不健康（e2e 两条门禁会红）'
+}
+
 /** 五道门禁：全量测试 / 验收 / 水浒 / 新建 / vendor 漂移。 */
 function gates() {
+  const daemonNote = ensureDaemon()
   const dir = join(REPO, 'test')
   let files = []
   try {
@@ -92,6 +125,7 @@ function gates() {
     '水浒 ' + (shuihu.code === 0 ? '绿' : '红'),
     '新建 ' + (newproj.code === 0 ? '绿' : '红'),
     'vendor ' + (vendor.code === 0 ? '未动' : '被改'),
+    daemonNote,
   ].join(' · ')
   const failed = [tests, acceptance, shuihu, newproj, vendor].filter((r) => r.code !== 0)
   return { ok, summary, failTail: failed.map((r) => tail(r.out)).join('\n─────\n') }
