@@ -2,7 +2,7 @@
 
 **跑在浏览器 / DSH 里的小说工作台**——OpenDesign 形态的小说版。零 npm 构建依赖，daemon 只监听本机，库就是磁盘上的文件夹。
 
-![版本](https://img.shields.io/badge/version-v0.2.0-blue) ![node](https://img.shields.io/badge/node-%3E%3D18-green) ![tests](https://img.shields.io/badge/tests-467%20cases-brightgreen) ![endpoints](https://img.shields.io/badge/endpoints-101-blueviolet)
+![版本](https://img.shields.io/badge/version-v0.2.0-blue) ![node](https://img.shields.io/badge/node-%3E%3D18-green)
 
 ## 这是什么
 
@@ -29,7 +29,7 @@
 npm install        # 装依赖（transformers；sharp 只作其传递依赖，内核 vendor 自持，无 tgz 依赖）
 npm start          # node daemon.mjs → http://127.0.0.1:8807（单实例锁＋/api/health）
 npm run mcp        # 全模块 MCP server（24 工具，stdio）
-npm test           # node --test（467 例，零外部依赖）
+npm test           # node --test（零外部依赖）
 ```
 
 **作为 DSH 插件运行**（左栏底部 OpenStory → 右侧栏打开工作台，DSH 会话留在左边）：
@@ -43,17 +43,17 @@ npm test           # node --test（467 例，零外部依赖）
 
 ## 架构一图
 
-七层实测分层（数字实测于 2026-11-23，逐层职责与边界见 [ARCHITECTURE.md](./ARCHITECTURE.md)）：
+七层实测分层（文件数/行数由 `scripts/arch-stats.mjs` 扫描生成、验收 S0.2 逐字比对；逐层职责与边界、
+生成表都在 [ARCHITECTURE.md](./ARCHITECTURE.md)，本文不再抄数字）：
 
 ```
-L7  前端 public/               15 文件  19,917 行   无构建单页（ui-kit 统一规范）
-L6  契约层 src/api/contracts/  8 文件   1,373 行   七域聚合，101 端点，双端校验
-L5  src/host/daemon.mjs       1 文件   5,424 行   node:http 手写路由＋进程治理（单实例锁/stamp/generation/health）
-    └ src/host/mcp.mjs        1 文件     726 行   stdio 24 工具，daemon HTTP 薄适配（独立进程）
-L4  本仓自持层                39 模块  10,821 行   建库/导入自持（OS-123/124）＋fact 消费＋参考＋Agent＋货架＋协议层（src/ 树）
-L3  src/kernel/pinaxAdapter   1 文件      68 行   内核唯一进口（五能力组，门禁 S2.4）
-L2  core/pinax              24 文件   4,332 行   fact 链底座（逐字 vendor，禁改；npm run vendor:check 盯漂移）
-L1  磁盘库                  ——        ——       文件即真相（.pinax 兼容，与 Pinax 桌面端双向兼容）
+L7  前端 public/               无构建单页（ui-kit 统一规范）
+L6  契约层 src/api/contracts/  七域聚合，双端校验
+L5  src/host/                  node:http 手写路由＋MCP stdio（单实例锁/stamp/generation/health）
+L4  本仓自持层                 建库/导入自持（OS-123/124）＋fact 消费＋参考＋Agent＋货架＋协议层（src/ 树）
+L3  src/kernel/pinaxAdapter    内核唯一进口（五能力组，门禁 S2.4）
+L2  core/pinax                 fact 链底座（逐字 vendor，禁改；npm run vendor:check 盯漂移）
+L1  磁盘库                     文件即真相（.pinax 兼容，与 Pinax 桌面端双向兼容）
 ```
 
 仓根只有 `daemon.mjs`/`mcp.mjs` 两个入口垫片（OS-140 布局宪法：实现都在 `src/` 六目录）。
@@ -65,10 +65,10 @@ L1  磁盘库                  ——        ——       文件即真相（.pin
 | 路径 | 内容 |
 |---|---|
 | `daemon.mjs` / `mcp.mjs` | 仓根入口垫片（OS-140：`export * from` ＋仅 node 直跑才调 main）→ 实现 `src/host/` |
-| `src/host/` | daemon（101 端点契约分派＋进程治理）＋ MCP server（24 工具，零依赖 stdio；`npm run mcp`） |
+| `src/host/` | daemon（端点契约分派＋进程治理）＋ MCP server（24 工具，零依赖 stdio；`npm run mcp`） |
 | `src/api/` | 契约层 `contracts.mjs` ＋ `contracts/` 七域分片（OS-130 起分域，纯数据，两端共享） |
 | `src/protocol/` | 文件与协议层：chapters / changelog / versionGate / plugins / agentEvents / factGuard / dependencyGraph / hostWrite / libState |
-| `src/kernel/` ＋ `core/` ＋ `vendor/contracts/` | `pinaxAdapter.mjs` 内核唯一进口（五能力组）→ 24 文件 fact 链（逐字 vendor，[VENDORED.md](./core/VENDORED.md) 记出处边界，禁改；`npm run vendor:check` 盯漂移） |
+| `src/kernel/` ＋ `core/` ＋ `vendor/contracts/` | `pinaxAdapter.mjs` 内核唯一进口（五能力组）→ fact 链底座（逐字 vendor，[VENDORED.md](./core/VENDORED.md) 记出处边界，禁改；`npm run vendor:check` 盯漂移） |
 | `src/modules/` | 域模块：library/（建库/导入自持，OS-123/124 fork 点，`.pinax/project.json` 与 Pinax 桌面端双向兼容）、deduce/（推演）、roleplay/（扮演调度＋四层提示词）、worldbook/（参考索引）、agentbar/（Agent 存储） |
 | `src/services/` | 外围服务：kb*（知识库）、embedding-server、cli-bridge/dsh-*/runtimes（模型驱动）、suites/stylePacks/style-check/skills/genres（货架装载）、jobCenter / nativePicker / comfyEngine / syncCheck / enrichEngine |
 | `public/` | 工作台单页（app.js＋reference/graph/md/analysis/charts/ui-kit/storySource 等零依赖模块；echarts 本地 vendor） |
@@ -76,12 +76,12 @@ L1  磁盘库                  ——        ——       文件即真相（.pin
 | `workflows/` | ComfyUI 文生图工作流 |
 | `tools/dsh-openstory-studio/` | DSH 插件 bundle：宿主侧 daemon 生命周期＋客户端右侧栏工作台（`sidebar.footer.action`／`sidebarRightTabs`） |
 | `samples/水浒传/` | 公版演示库（导入即体验） |
-| `test/` | 467 例（node --test，含 daemon 端到端、入口垫片契约与解耦金样护栏） |
+| `test/` | 全量 `node --test`（含 daemon 端到端、入口垫片契约与解耦金样护栏） |
 | `docs/` | 架构与规划（[ARCHITECTURE.md](./ARCHITECTURE.md) 七层分层、[遗留台账](./docs/LEGACY-ITEMS.md)、[推演×数据路线](./docs/plan/deduce-data-roadmap-20261118.md) 等） |
 
 ## 出处与致谢
 
-OpenStory 自 [Pinax-next](https://github.com/skkbsgzf/Pinax-StoryHarness) 的 openstory/ 线独立而来（2026-11-14 起，OS-1→OS-133 批次逐批交付）；内核（`core/pinax` 24 文件＋`vendor/contracts` 1 文件）逐字 vendor 自同仓与 pinax-core 仓（见 [core/VENDORED.md](./core/VENDORED.md)），建库/导入/章节号已自持，上游漂移由 `npm run vendor:check` 盯防。设计对标 OpenDesign（dsHarness 生态）的插件接入与用户体验口径。
+OpenStory 自 [Pinax-next](https://github.com/skkbsgzf/Pinax-StoryHarness) 的 openstory/ 线独立而来（2026-11-14 起，OS-1→OS-133 批次逐批交付）；内核（`core/pinax` 全树＋`vendor/contracts`）逐字 vendor 自同仓与 pinax-core 仓（见 [core/VENDORED.md](./core/VENDORED.md)），建库/导入/章节号已自持，上游漂移由 `npm run vendor:check` 盯防。设计对标 OpenDesign（dsHarness 生态）的插件接入与用户体验口径。
 
 ## 发布规范
 

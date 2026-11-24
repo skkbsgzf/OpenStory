@@ -56,4 +56,35 @@
 
 ## 施工回报（编排器自动归档）
 
+> 模型 deepseek-v4.1-flash · 第 1 轮 · 测试 绿（tests 529 · pass 527 · fail 0 · skip 2） · 门禁 绿 · 水浒 绿 · 新建 绿 · vendor 未动 · daemon 在跑
+
+```text
+CHANGED:
+- `scripts/arch-stats.mjs`（新建：按层扫描文件数／行数＋附加指标，默认打印并回写 ARCHITECTURE.md 标记段，`--check` 逐字比对）
+- `ARCHITECTURE.md`（分层手写数字改为生成段 `arch-stats:start/end`；标记外所有会漂的文件数／行数／按域端点数改为「见生成表」）
+- `package.json`（`scripts` 加一条 `"arch:stats": "node scripts/arch-stats.mjs"`，其余键未动）
+- `tools/acceptance/acceptance.mjs`（新增 S0.2「架构文档数字与实测一致」，调 `--check`；只增不减）
+- `AGENTS.md`（补一句 arch:stats 回写＋门禁比对；同步检查数 17→18、单测数 523→529）
+- `README.md`（架构一图去数字改为指向生成表；去掉 467/101 数字徽章与正文计数；`test/` 行改「全量 node --test」）
+- `docs/ACCEPTANCE.md`（检查数 17→18、S0 行补 S0.1–S0.2 与回写说明、单测数 523→529）
+
+VERIFIED:
+- `node --check scripts/arch-stats.mjs`、`node --check tools/acceptance/acceptance.mjs` 通过。
+- `node scripts/arch-stats.mjs` 两次输出逐字相同：`sha256 = e339d10a5fdfe32f943faf9ba8ad6601696854fec293064f6126c069c56d482b`（两文件 `cmp` 也一致）。
+- `npm run arch:stats` 退出 0，`ARCHITECTURE.md 生成段已是最新`；跨 cwd 跑 `node /d/OpenStory/scripts/arch-stats.mjs --check` 也通过。
+- 反证实验：把生成段 L7 文件数 `19` 改成 `18` →
+  `node scripts/arch-stats.mjs --check` 输出
+  `✗ 架构文档数字与实测不一致（scripts/arch-stats.mjs --check） / 行 4: - 文档: | L7 前端 | ... | 18 | 20,759 | / + 实测: ... | 19 | 20,759 |`，退出码 1；
+  `node tools/acceptance/acceptance.mjs` 中 `✗ [S0.2]`，总退出码 1。已改回 19 并复跑全绿。
+- `node .zcode/run-gate.mjs`：tests 529 / pass 527 / fail 0 / skipped 2（既有 2 例 skip，未新增或放宽任何断言）。
+- `node tools/acceptance/acceptance.mjs`：**18 过 / 0 挂 / 0 警**。
+- 未执行任何 git 命令，未启动/杀 daemon，未改 `core/**`、`vendor/**`、`src/**`、`public/**`；未在仓内留探针（临时输出只写系统 /tmp）。
+
+LIMITATIONS:
+- 默认模式会回写 `ARCHITECTURE.md`（AGENTS 的措辞是「跑 arch:stats 回写」），所以它是唯一会顺手改文档的命令；`--check` 只读。
+- `AGENTS.md` 仍有两处「101 端点」（第 13 行硬规则段、仓内地图），本单只要求补一句，未改；端点真源现由生成表负责。
+- `docs/plan/*` 里历史规划文本的旧数字（24 文件/4,332 行等）属归档记录，未动。
+- `public/app.js` 实测 12,471 行，与旧文档 12,472 差 1（旧数为手工回填，以脚本实测为准）。
+```
+
 ## 验收记录（主 agent 填）

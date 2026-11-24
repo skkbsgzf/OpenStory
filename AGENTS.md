@@ -202,14 +202,17 @@ L4 自持层→L3 pinaxAdapter→L2 core/pinax 24 文件→L1 磁盘库）。
 ## 改完必跑（验收线，详见 `docs/ACCEPTANCE.md`）
 
 ```bash
-node .zcode/run-gate.mjs                    # ① 全量单测（523 例）
-node tools/acceptance/acceptance.mjs        # ② 交付标准 S0–S4 门禁（17 检查，Rea 式证据；S0=布局宪法）
+node .zcode/run-gate.mjs                    # ① 全量单测（529 例）
+node tools/acceptance/acceptance.mjs        # ② 交付标准 S0–S4 门禁（18 检查，Rea 式证据；S0=布局宪法）
 # ③ .ua/ 知识图谱增量（/understand，skill 在 ~/.zcode/skills/understand*）
 # ④ 前端批次给作者截图讲场景（对照 design-system/DESIGN.md + docs/UX-STRUCTURE.md）
 ```
 
 ①② 全绿才合入。MCP 工具增删必须同步：`mcp/skills/*.md`、`test/mcp.test.mjs` 的工具数、
 `DEMO.md`、`tools/acceptance/acceptance.mjs` 的 S1.1 覆盖面。
+
+改了文件结构或行数之后跑 `npm run arch:stats` 回写文档，门禁会比对（`node scripts/arch-stats.mjs --check` 只查不写）——
+`ARCHITECTURE.md` 的分层数字只在生成段里，人不再手填。
 
 ## 仓内地图
 

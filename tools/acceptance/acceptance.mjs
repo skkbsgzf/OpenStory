@@ -20,6 +20,7 @@
  * 退出码：0 = 全过；1 = 有 FAIL（新增检查项默认 WARN 不拦截，见 CHECKS 注释）
  */
 import { readFileSync, readdirSync, statSync, writeFileSync, mkdirSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
 import { join, dirname, relative, resolve as pathResolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { NAMING_TABLE, TAB_REGISTRY, LOG_MODULES, computeTabDefs, viewScope } from '../../public/views/registry.mjs'
@@ -90,6 +91,23 @@ check('S0.1', 'S0', `布局宪法：仓根只允许两个入口垫片（实测 $
   rootMjs.length === 2 && rootMjs.includes('daemon.mjs') && rootMjs.includes('mcp.mjs'),
   rootMjs.map((f) => `${f} → ${exists(join('src/host', f)) ? `src/host/${f}` : '?'}`),
   rootExtra.length ? `仓根多出的 .mjs（应迁 src/）：${rootExtra.join(', ')}` : '实现全部在 src/，仓根无散落模块')
+
+// S0.2 架构文档数字与实测一致（OS-150）：ARCHITECTURE.md 的生成段（arch-stats 标记之间）
+// 必须逐字等于 scripts/arch-stats.mjs 的实测输出——文件数/行数从此不再靠人手回填。
+// 走 --check 而不是 import 计算函数：验的就是作者/CI 会跑的那条命令与退出码。
+let archStatsOk = false
+let archStatsEvidence = []
+try {
+  const out = execFileSync(process.execPath, ['scripts/arch-stats.mjs', '--check'], { cwd: REPO, encoding: 'utf-8' })
+  archStatsOk = true
+  archStatsEvidence = [lineOf('tools/acceptance/acceptance.mjs', 'S0.2 架构文档数字与实测一致'), out.trim().split('\n')[0]]
+} catch (error) {
+  const detail = String(error.stdout || error.stderr || error.message || '').trim().split('\n').slice(0, 4)
+  archStatsEvidence = [`scripts/arch-stats.mjs --check 退出码 ${error.status ?? '?'}`, ...detail]
+}
+check('S0.2', 'S0', '架构文档数字与实测一致（scripts/arch-stats.mjs --check 逐字比对生成段）',
+  archStatsOk, archStatsEvidence,
+  archStatsOk ? '' : 'ARCHITECTURE.md 生成段与实测不符——跑 npm run arch:stats 回写（手改一个数字就会红）')
 
 /* ================================================================
  * S1 Agentic —— MCP / skill / 知识库 / dsh runtime / 多 CLI
