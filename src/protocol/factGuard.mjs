@@ -8,7 +8,8 @@
  * 设计取舍：不做「硬失败」。作者急着写作时，事实链没建好也得能写——但降级必须留痕，
  * 否则「事实链是一级公民」就成了一句空话。所以这里一律返回 { source, degraded, notes }。
  *
- * 依赖：只依赖 core/pinax 的 factFileStore（与 /api/entries 同源）＋ Node fs。
+ * 依赖：只依赖内核 fact 存储协议（经 pinaxAdapter 的 factStore 出口，OS-156 起实现自持于
+ * `src/kernel/fact/factFileStore.mjs`，与 /api/entries 同源）＋ Node fs。
  */
 import { existsSync, readdirSync, statSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'

@@ -1,24 +1,6 @@
 {
   "generatedAt": "2026-11-24T04:47:13.948Z",
   "sections": {
-    "pinaxNext": {
-      "upstreamCommit": "70a4f44",
-      "files": {
-        "pinax/electron/projects/fsDurability.mjs": "1649ff0c57ede07fdc47b0fdad371d408fe8b6f2faae8f167b1384e93c586196",
-        "pinax/next/fact/domain/aliases.js": "c75bef1bfab87950fe73ae9d6ce599f8f7dc67365cf45f3714f512809c8d800a",
-        "pinax/next/fact/domain/pediaSchema.js": "ec5a6bdfd1b58aabab66a4842c1a6cca16bfba429d8a72bc8704c0ba9575f2f3",
-        "pinax/next/fact/domain/perspective.js": "5e1861579699e1b458bdb98ad5dd43f53f625818347d382c416fb869b33d29fc",
-        "pinax/next/fact/domain/schema.js": "7675f1c350aa07d786c0ac4569e33175d48bf865664cb2e92111b97463c9f3b0",
-        "pinax/next/fact/domain/stableId.js": "dab8a57aed216c32c9876c137c9799fd476b4bbebb0ca638a03c15bbbc646668",
-        "pinax/next/fact/domain/status.js": "f3ff5dc32bb1148257d7491a6bbe3001879f198650fae84b65f91ec60ee0f570",
-        "pinax/next/fact/domain/validity.js": "ce85b43b274f37d8a730869cfc5c9a1e8f22ec42947954a6906cbe1388388db1",
-        "pinax/next/fact/domain/vocabulary.js": "0913c738011b6af713e6176930b89082057a2a68c8fcc7355caa62768e5b0c3c",
-        "pinax/next/fs/atomicWrite.mjs": "ed69320608cd47cf33483765676c7d73a98587ec91b0a7e7ea83bb2cd9fa0507",
-        "pinax/next/kernel/errors.mjs": "56c86bee841da5012ee629b168b67c7ad164dcfa2db91d082840e11033b28e91",
-        "pinax/next/kernel/factFileStore.mjs": "f0eacf9b57db79d75c51cab4ca763d6a7648cc83925b869f5d2060d0a81fe42e",
-        "pinax/next/kernel/wikiDerive.mjs": "b5fea8d5a55231b3eb580a3d07c8870d1ef076a6ffb861c63d1b83e1b201917b"
-      }
-    },
     "pinaxCore": {
       "upstreamCommit": "e56a0bc",
       "files": {

@@ -1,10 +1,10 @@
 /**
  * OS-125 解耦③：内核唯一进口（pinaxAdapter）。
  *
- * 本文件是**全仓唯一允许 import `core/**` 的模块**（门禁 S2.4 钉死，
- * tools/acceptance/acceptance.mjs；OS-140 起位于 src/kernel/，core/ 相对路径两层上溯）。
- * 内核升版本/换实现时，只改这一个文件；
- * 消费方永远只见下面的四组能力出口，不见 core/ 路径（docs/plan/decouple-pinax-core-20261122.md §3）。
+ * 本文件是**全仓唯一的内核能力出口**（门禁 S2.4 钉死，tools/acceptance/acceptance.mjs）。
+ * OS-156 起 `core/pinax/` 已全部转自有（写协议 store 是最后一件，落 `src/kernel/fact/`），
+ * 本文件不再 import 任何 `core/**`——它只把自持内核件组装成四组能力出口；
+ * 消费方永远只见下面的四组能力出口，不见内核文件路径（docs/plan/decouple-pinax-core-20261122.md §3）。
  *
  * 四组能力出口（OS-155 起；推演端子已归扮演模块，不再在此）：
  *   factStore     —— fact 存储协议（S1 只读 list/get ＋ S2 writeFactFile 写协议＋wiki 旁挂）
@@ -29,6 +29,8 @@
  * 从这里取；hostWrite.mjs／kernelPlumber.mjs 同期改指 src/kernel/ 直取（不再经本文件绕道）。
  * OS-154：enrich 两件（pseudoChapters/metrics）已转自有并改指 `src/kernel/enrich/`，core 原件删除；
  * 本文件仍转出同一组函数（同一实现对象），四组出口与 core 侧的 factStore 未动（OS-155 起 deduce 已随推演链离开 adapter）。
+ * OS-156：写协议 store（factFileStore，756 行）落 `src/kernel/fact/factFileStore.mjs`，core 剩余 13 件
+ * 一并删除——本文件自此不 import 任何 core/**，四组出口形状与码值一个字未改（改名单在 OS-157）。
  *
  * 循环引用说明：projectDoc/importAdapter → 本文件（取 plumber）、本文件 → 这两份（转引
  * 四组成员）。两侧被转引的都是函数声明（模块实例化期即初始化），且任何一侧都只在函数体内
@@ -39,11 +41,11 @@
  * vendor/contracts/worldbookFileContract.js，由 textUtil.mjs 等直引）——那是格式契约面，
  * 解耦规划 §4 明确「不动」，也不在 S2.4 管辖。
  */
-import { createFactFileStore, writeFactFile, readFactWiki, FACT_DIR_NAME } from '../../core/pinax/next/kernel/factFileStore.mjs'
+import { createFactFileStore, writeFactFile, readFactWiki, FACT_DIR_NAME } from './fact/factFileStore.mjs'
 import { derivePseudoChapters, hasRealChapters } from './enrich/pseudoChapters.mjs'
 import { causalSummary } from './enrich/metrics.mjs'
 /* 内核 plumber 转供（见头部偏差注记；核心消费方＝projectDoc.mjs／importAdapter.mjs）
-   OS-152：管道三件已影子复制进 src/kernel/（core 原件保留供 factFileStore 用），本处改指自持件。 */
+   OS-152：管道三件已影子复制进 src/kernel/，本处即取自持件（OS-156 起 core 原件已删）。 */
 import { ok, fail } from './errors.mjs'
 import { writeFileAtomic, TMP_PREFIX } from './atomicWrite.mjs'
 /* OS-138：宿主写通道（hostWrite.mjs）的二进制分支要同前缀＋同目录 fsync，一并转出 */

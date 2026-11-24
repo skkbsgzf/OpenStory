@@ -1,17 +1,19 @@
 /**
  * OS-153 fact 词表与校验转自有护栏（node:test，零依赖）——src/kernel/fact/domain/ 8 件。
  *
- * 影子迁移（设计稿 §0.3-1）：8 件**逐字复制**进 src/kernel/fact/domain/，core 原件保留
- * （factFileStore 仍指 core，搬家是 OS-156）。因此这里做四类锁：
+ * 影子迁移（设计稿 §0.3-1）：8 件**逐字复制**进 src/kernel/fact/domain/（OS-156 起 core 原件
+ * 已删，本目录是唯一真源）。因此这里做四类锁：
  *   ① 三层样本逐字段校验：合法条目零 error；缺必填/坏类型/未知枚举/id 漂移各报预期码；
  *   ② stableEntryId：同输入同 id（中文名稳定、别名不参与 id）；
  *   ③ 双时间轴与状态机的边界（null／闭区间端点／交叉区间／合法与非法转移）；
- *   ④ 等价锁：与 core 原件同输入下 errors／warnings 逐条相等，桶的导出面与常量同值。
+ *   ④ 金样锁：18 组语料的 errors／warnings 全字段输出 sha256 逐组冻结（OS-156 删除 core 原件前
+ *      由 src≡core 等价对拍实测），桶的导出面与常量值同样冻结。
  *
  * 全部是纯函数用例，不落盘——绝不碰作者真库。
  */
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { createHash } from 'node:crypto'
 
 import {
   validateFactEntry,
@@ -33,9 +35,6 @@ import {
   transitionEntryStatus
 } from '../src/kernel/fact/domain/status.js'
 import * as domain from '../src/kernel/fact/domain/index.mjs'
-/* core 原件只读引用（测试文件不在 S2.4 扫描面；等价对的对照组） */
-import * as coreSchema from '../core/pinax/next/fact/domain/schema.js'
-import * as coreBucket from '../core/pinax/next/fact/domain/pediaSchema.js'
 
 /* ---------- 三层样本（worldview／character／plot） ---------- */
 
@@ -303,25 +302,71 @@ function badIdEntry() {
   return worldviewEntry({ id: 'NOT-HEX' })
 }
 
-test('等价：src/kernel/fact/domain 与 core 原件对同一语料的 errors／warnings 逐条相等', () => {
-  for (const [label, entry] of mutationCorpus()) {
-    const mine = validateFactEntry(entry)
-    const core = coreSchema.validateFactEntry(entry)
-    assert.equal(mine.ok, core.ok, `${label}：ok 应同值`)
-    assert.deepEqual(mine.errors, core.errors, `${label}：errors 应逐条相同`)
-    assert.deepEqual(mine.warnings, core.warnings, `${label}：warnings 应逐条相同`)
+/**
+ * 金样（OS-156）：删除 core 原件**前**在 src≡core 等价对拍下实测冻结——同一份锁，core 不再需要。
+ * 键＝语料标签，值＝validateFactEntry 输出的 sha256（含 ok/errors/warnings 全字段，任何字段漂移都会变）。
+ */
+const DOMAIN_GOLDENS = {
+  'worldview 合法': '7be7e12c6422bbf1b942637a3cf71f9a78fa0bb252416a978a4a095d3f11d6ef',
+  'character 合法': '7be7e12c6422bbf1b942637a3cf71f9a78fa0bb252416a978a4a095d3f11d6ef',
+  'plot 合法': '7be7e12c6422bbf1b942637a3cf71f9a78fa0bb252416a978a4a095d3f11d6ef',
+  '缺 definition': 'fe6ef08efa8a8d492c7097638f1ffb8ccda37cdeb58e7fe61517504e0287304a',
+  '缺 provenance': '229b3c5a2642f9da92d429cf9596c891e877781bf727a1995adebb6d8462a285',
+  '未知 layer': '84951f9950481ec80b64dd3afde572912c6a2a88f0246f9580f62b90e5771eab',
+  '未知 slot': '186050f4d609b6f072a9996fbff3b650dedd4dfeba9e83ccc292ae2a468e4db7',
+  '未知 status': '6d3e884c4602f2beaea75e76f3155b027bbe708f229497152a954f1ca89a9cf6',
+  'id 漂移': '99749d1fd0c3a0b704181154d779f8e5489613c592817e9d1608aba43c60c2b2',
+  'id 坏格式': '5ef5d491b17b35c2d4b450175fd8b5c37acd5f52612761e9363f19937c6b3648',
+  'analyze 带 quote 原文': '2e0e30057063058532ec7ad1bc267ef1aa3425596463e8128b7c24d673727a38',
+  'supporting 缺 goal（author）': '2ca8d797c7272ada4aaa7af965ee3da5a4c84daf3ff79479653b3b374c47de52',
+  'supporting 缺 goal（analyze）': '7fec4f1b672220601b5a3c7820eeaca4d4106b021f442d493161fb25c95a1943',
+  '节奏窗口逆序': '7a77c68a0088cd26e7d9f1ea7757c77b7bf3e596689159c204cc082edb18afe1',
+  '事件轨未知': '3e57f1379af2ea3f84a712b943a04d182220db27818e965f86d1b0b352fa319c',
+  '结构模板未知 kind': '8e9116f1f8549b3c7e47d0e6c03434b0d44377a940687de03c33d2dc58de1917',
+  '关系目标空': 'e41eb298eb03ce941da7e26644eb0b4c60d309531df9d7247cc435fd0f24b7bf',
+  '非对象': 'd8a7a5cee6b1f00ce42107eb91e62a96e2030d7204fbafeb38f1d648307ce3ef'
+}
+
+test('金样：18 组语料的 errors／warnings 逐条冻结（OS-156 删 core 原件前 src≡core 实测）', () => {
+  const digest = (value) => createHash('sha256').update(JSON.stringify(value)).digest('hex')
+  const corpus = mutationCorpus()
+  assert.deepEqual(corpus.map(([label]) => label), Object.keys(DOMAIN_GOLDENS), '语料标签与金样一一对应，不许增减')
+  for (const [label, entry] of corpus) {
+    assert.equal(digest(validateFactEntry(entry)), DOMAIN_GOLDENS[label], `${label}：校验输出与金样不符（行为漂移）`)
   }
 })
 
-test('等价：桶 index.mjs 的导出面与常量值同 core 的 pediaSchema 桶', () => {
-  const mineKeys = Object.keys(domain).sort()
-  const coreKeys = Object.keys(coreBucket).sort()
-  assert.deepEqual(mineKeys, coreKeys, '导出名一个不多一个不少（改名会断调用方）')
-  for (const key of coreKeys) {
-    if (typeof coreBucket[key] === 'function') {
-      assert.equal(typeof domain[key], 'function', `${key} 仍是函数`)
-      continue
-    }
-    assert.deepEqual(domain[key], coreBucket[key], `${key} 的常量值/枚举顺序应与 core 相同`)
+/** 桶导出面（排序后）与常量值摘要：删除 core 原件前由 src≡core 的导出面对拍实测冻结。 */
+const DOMAIN_EXPORTS = [
+  'CAST_ROLE_TIERS', 'CATEGORY_MAP', 'CHARACTER_ANCHOR_CHANNELS', 'DEFAULT_ENTRY_STATUS',
+  'DEFAULT_RHYTHM_SPEC', 'ENTRY_STATUSES', 'FACT_LAYERS', 'FACT_SCHEMA', 'FACT_SCHEMA_LEGACY',
+  'FACT_SOURCE', 'KNOWLEDGE_KINDS', 'NOVELTY_TAGS', 'OTHER_SLOT', 'PLOT_EVENT_TRACKS',
+  'PROVENANCE_MODES', 'RHYTHM_WINDOW_DEFAULTS', 'STATUS_TRANSITIONS', 'STRUCTURE_TEMPLATE_KINDS',
+  'WORLDVIEW_SLOTS', 'WORLDVIEW_SLOT_NAMES',
+  'canTransitionStatus', 'checkPerspective', 'createRhythmSpec', 'instantiateStructureTemplate',
+  'intersectValidity', 'isActiveAt', 'isOrderedSlot', 'isWorldviewEntry', 'knowledgeReferencesOf',
+  'normalizeKnowledgeLedger', 'normalizeSpan', 'sha1Hex', 'slotForCategory', 'spansOverlap',
+  'stableEntryId', 'transitionEntryStatus', 'validateFactEntry', 'validateStatusTransition',
+  'validateValidityShape', 'validityBounds', 'validityFromSpan'
+]
+const DOMAIN_CONSTANTS_DIGEST = 'f2a919aac636166dcde7ad46a90812947426dbbcc15d922297ef2e6ae3dd388c'
+/** 常量导出（其余导出都是函数）：清单来自删除 core 原件前的桶导出面。 */
+const DOMAIN_CONSTANTS = [
+  'CAST_ROLE_TIERS', 'CATEGORY_MAP', 'CHARACTER_ANCHOR_CHANNELS', 'DEFAULT_ENTRY_STATUS',
+  'DEFAULT_RHYTHM_SPEC', 'ENTRY_STATUSES', 'FACT_LAYERS', 'FACT_SCHEMA', 'FACT_SCHEMA_LEGACY',
+  'FACT_SOURCE', 'KNOWLEDGE_KINDS', 'NOVELTY_TAGS', 'OTHER_SLOT', 'PLOT_EVENT_TRACKS',
+  'PROVENANCE_MODES', 'RHYTHM_WINDOW_DEFAULTS', 'STATUS_TRANSITIONS', 'STRUCTURE_TEMPLATE_KINDS',
+  'WORLDVIEW_SLOTS', 'WORLDVIEW_SLOT_NAMES'
+]
+
+test('金样：桶 index.mjs 的导出面与常量值冻结（导出名一个不多一个不少；枚举值/顺序不许漂）', () => {
+  assert.deepEqual(Object.keys(domain).sort(), DOMAIN_EXPORTS, '导出名就是调用面（改名/增删都会断调用方）')
+  for (const name of DOMAIN_EXPORTS) {
+    const isConstant = DOMAIN_CONSTANTS.includes(name)
+    assert.equal(typeof domain[name] === 'function', !isConstant, `${name}：${isConstant ? '应是常量' : '应是函数'}`)
   }
+  const constants = {}
+  for (const key of DOMAIN_EXPORTS) if (typeof domain[key] !== 'function') constants[key] = domain[key]
+  const digest = createHash('sha256').update(JSON.stringify(constants)).digest('hex')
+  assert.equal(digest, DOMAIN_CONSTANTS_DIGEST, '常量值与枚举顺序与金样不符')
 })

@@ -35,16 +35,16 @@
 | L7 前端 | `public/`（含 `views/`） | 19 | 20,838 |
 | L6 契约层 | `src/api/contracts/` | 8 | 1,391 |
 | L5 宿主层 | `src/host/` | 5 | 1,663 |
-| L4 自持层 | `src/{modules,services,protocol}/` | 66 | 14,462 |
-| L3 内核进口 | `src/kernel/` | 9 | 1,139 |
-| L2 内核 | `core/pinax/` | 13 | 2,550 |
+| L4 自持层 | `src/{modules,services,protocol}/` | 66 | 14,463 |
+| L3 内核进口 | `src/kernel/` | 10 | 1,899 |
+| L2 内核 | `core/pinax/` | 0 | 0 |
 | L1 磁盘库 | 库＝文件夹（无代码） | — | — |
 
 | 附加指标 | 实测 |
 |---|---:|
 | `public/app.js` 行数 | 12,466 |
 | 契约端点数（`method:` 计数） | 101 |
-| 测试文件数（`test/*.test.mjs`） | 69 |
+| 测试文件数（`test/*.test.mjs`） | 70 |
 <!-- arch-stats:end -->
 
 ```
@@ -162,8 +162,9 @@ OS-123/124 解耦后，建库/导入/章节号解析全部自持，不再 vendor
 
 ### L3 src/kernel/pinaxAdapter.mjs（内核唯一进口）
 
-- **职责**（OS-125 解耦③）：src/ 树＋仓根垫片里唯一允许 import `core/**` 的模块（门禁 S2.4
-  扫描 `src/` 全部模块＋两个垫片）。**四能力组出口**（OS-155 起；`deduce` 已随推演链归模块退出）：
+- **职责**（OS-125 解耦③；OS-156 起 core/** 已退役）：全仓**唯一的内核能力装配点**——从
+  `src/kernel/**` 的自持内核件组装四组出口，消费方一律经它（门禁 S2.4 扫描 `src/` 全部模块＋
+  两个垫片，口径自 OS-156 收紧为「任何文件都不许 import `core/**`」）。**四能力组出口**（OS-155 起；`deduce` 已随推演链归模块退出）：
   `factStore`（S1 只读 list/get ＋ S2 writeFactFile 写协议）、`enrich`（伪章推导＋因果图三指标）、
   `projectMeta`（转引本仓 projectDoc）、`projectImport`（转引本仓 importAdapter/textUtil）；
   后两组是自有能力的统一出口。
@@ -172,8 +173,7 @@ OS-123/124 解耦后，建库/导入/章节号解析全部自持，不再 vendor
   `writeFileAtomic`/`TMP_PREFIX`/`syncDirectory`，同属最小补集口径。
   **OS-152 管道件自持**：`errors.mjs`（表名 `KERNEL_ERROR_CODES`，25 个值仍 `PINAX_*` 未改）、
   `atomicWrite.mjs`、`fsDurability.mjs` 已影子复制进 `src/kernel/`，adapter 与
-  hostWrite/kernelPlumber 均取这一份；core 三件原件保留（仍供 `core/.../factFileStore.mjs`），
-  等最后一个 core 侧消费者搬家时再删（设计稿 §0.3-1、§6.7）。
+  hostWrite/kernelPlumber 均取这一份；core 三件原件随 OS-156 删除（设计稿 §0.3-1、§6.7）。
   **OS-153 领域件自持**：`fact/domain/` 8 件（`aliases`/`perspective`/`schema`/`stableId`/`status`/
   `validity`/`vocabulary` ＋ re-export 桶 `index.mjs`，即 core 的 `pediaSchema.js`）逐字复制进
   `src/kernel/fact/domain/`，合计 1,233 行——**自有副本**是后续事实链的表达层底座；core 原件保留、
@@ -192,6 +192,14 @@ OS-123/124 解耦后，建库/导入/章节号解析全部自持，不再 vendor
   `fact.deduce` 退出 Host API（**host-api@2**），`deduceEngine.mjs` 改引模块内 `./engine/index.mjs`。
   core **22 → 13 文件**（指纹锚同步除名 9 项）。llmPort 的规范/兼容两种形态与坏形状降级口径
   见 [docs/deduce-llm-port.md](./docs/deduce-llm-port.md)（封装层 `normalizeLlmPort` 做形状校验）。
+  **OS-156 写协议自持（core 清零）**：`factFileStore.mjs`（756 行，全仓 fact 写入唯一通道）逐字迁入
+  `src/kernel/fact/factFileStore.mjs`（除 import 重指向外一行未改；错误表名在自持 `errors.mjs` 里叫
+  `KERNEL_ERROR_CODES`，迁移件内 `as NEXT_ERROR_CODES` 保持逐字），adapter `factStore` 组改指新位置；
+  core 剩余 13 件（store 1 ＋ `wikiDerive` 1 ＋ domain 8 ＋ 管道 3）**全部删除**，`core/pinax/` 归零，
+  `core/.vendored-manifest.json` 的 pinaxNext 段同步移除（只留 pinaxCore 段）。写协议直测见
+  `test/factWriteProtocol.test.mjs`（operationId 幂等／expectedRevision 冲突／revision 自增／
+  多条目 upsert／派生档分离／校验闸失败原样不动）。
+  core **13 → 0 文件**；自持后门禁 S2.4 由「只有 adapter 可引 core/**」收紧为「core/** 进口面为零」。
 - **消费方**（OS-142 后 import 本文件的）：API/宿主层 api/handlers/fact、
   api/handlers/reference、services/systemPrompt（OS-142 未约束的面，直引保留）＋协议层转供面
   protocol/index、protocol/chapters、protocol/factGuard（S2.4 的 KERNEL_GATEWAY_ALLOW 显式豁免清单；

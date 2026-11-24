@@ -1,18 +1,20 @@
 /**
  * OS-152 管道件转自有护栏（node:test，零依赖）——src/kernel/{errors,atomicWrite,fsDurability}.mjs。
  *
- * 影子迁移（设计稿 §0.3-1）：三件**复制**进 src/kernel/，core 原件保留供 factFileStore 用。
+ * 影子迁移（设计稿 §0.3-1）：三件**复制**进 src/kernel/（OS-156 起 core 原件已删，本目录是唯一真源）。
  * 因此这里做三类锁：
  *   ① 码表 26 个**值**逐字锁定（快照式）——表名可改（NEXT_ERROR_CODES→KERNEL_ERROR_CODES），
  *      值一条都不许动（值就是经 /api 出去的 code，OS-157 才谈改名）；
  *   ② 行为锁：未知码回落 INVALID_INPUT、原子写的失败清场/前缀/目录 fsync、syncDirectory
  *      对「平台不支持目录 fsync」的免疫；
- *   ③ 等价锁：src/kernel/ 三件与 core 原件在同一输入下同值（能直接对比就直接对比）。
+ *   ③ 金样锁：三件的调用序/返回值/字节在 OS-156 删除 core 原件前由 src≡core 实测冻结，
+ *      此后按金样逐字比对（core 不再需要）。
  *
  * 测试只碰 mkdtemp 临时目录，绝不碰作者真库。
  */
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { createHash } from 'node:crypto'
 import { mkdir, mkdtemp, open, readdir, readFile, rm, unlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
@@ -20,10 +22,6 @@ import { basename, dirname, join } from 'node:path'
 import { KERNEL_ERROR_CODES, ok, fail, throwFailure } from '../src/kernel/errors.mjs'
 import { writeFileAtomic, TMP_PREFIX, recoverInterruptedWrites } from '../src/kernel/atomicWrite.mjs'
 import { syncDirectory } from '../src/kernel/fsDurability.mjs'
-/* core 原件只读引用（测试文件不在 S2.4 扫描面；等价对的对照组） */
-import * as coreErrors from '../core/pinax/next/kernel/errors.mjs'
-import * as coreAtomic from '../core/pinax/next/fs/atomicWrite.mjs'
-import * as coreFs from '../core/pinax/electron/projects/fsDurability.mjs'
 
 /** 码表值快照（键序＝源文件声明序）。改这里＝改对外 code，要等 OS-157 的显式改名单。
  *  条数说明：工单/设计稿写「26 个码」，源文件实测 25 条（core 原件同）——快照按实测锁 25，
@@ -194,7 +192,6 @@ test('writeFileAtomic 失败清场：临时文件必被 unlink，目标文件原
 
 test('TMP_PREFIX 是 .pinax-tmp-（recoverInterruptedWrites 的回收口径）', () => {
   assert.equal(TMP_PREFIX, '.pinax-tmp-')
-  assert.equal(coreAtomic.TMP_PREFIX, TMP_PREFIX, '与 core 原件同前缀')
 })
 
 test('recoverInterruptedWrites 只清 .pinax-tmp-*，绝不误删正文；目录缺失＝skipped', async () => {
@@ -237,58 +234,61 @@ test('syncDirectory：平台不支持的目录 fsync（EINVAL/ENOTSUP/EISDIR/win
   assert.equal(calls[0][2], 'r')
 })
 
-/* ---------- ④ 与 core 原件行为等价 ---------- */
+/* ---------- ④ 金样（OS-156 删除 core 原件前，src≡core 对拍实测冻结） ---------- */
 
-test('等价：码表键序与值、ok/fail 输出与 core 原件逐字相同', () => {
-  assert.deepEqual(Object.keys(KERNEL_ERROR_CODES), Object.keys(coreErrors.NEXT_ERROR_CODES))
-  assert.deepEqual({ ...KERNEL_ERROR_CODES }, { ...coreErrors.NEXT_ERROR_CODES })
-  for (const key of Object.keys(coreErrors.NEXT_ERROR_CODES)) {
-    assert.deepEqual(fail(key, 'msg'), coreErrors.fail(key, 'msg'), `码 ${key} 的 fail 输出应同值`)
-  }
-  assert.deepEqual(fail('UNKNOWN_CODENAME', 'msg'), coreErrors.fail('UNKNOWN_CODENAME', 'msg'), '未知码回落路径同值')
-  assert.deepEqual(fail('IO_FAILED', 'msg', { a: 1 }), coreErrors.fail('IO_FAILED', 'msg', { a: 1 }), 'details 分支同值')
-  assert.deepEqual(ok({ a: 1 }), coreErrors.ok({ a: 1 }))
-  for (const source of [fail, coreErrors.fail]) {
-    assert.throws(() => (source === fail ? throwFailure(fail('IO_FAILED', 'x')) : coreErrors.throwFailure(coreErrors.fail('IO_FAILED', 'x'))),
-      (error) => error.code === 'PINAX_IO_FAILED' && error.message === 'x')
-  }
+test('金样：码表 × fail 输出的全矩阵冻结（键序/值/details 分支/未知码回落/ok）', () => {
+  const matrix = []
+  for (const key of Object.keys(KERNEL_ERROR_CODES)) matrix.push([key, fail(key, 'msg')])
+  matrix.push(['UNKNOWN_CODENAME', fail('UNKNOWN_CODENAME', 'msg')])
+  matrix.push(['IO_FAILED+details', fail('IO_FAILED', 'msg', { a: 1 })])
+  matrix.push(['ok', ok({ a: 1 })])
+  const digest = createHash('sha256').update(JSON.stringify(matrix)).digest('hex')
+  /* 删除 core 原件前的实测值：当时同一矩阵与 core 原件 fail/ok 输出逐条深等。 */
+  assert.equal(digest, '037fdac7038d546ef3d35c002c6e275ff0d0b04fc755a0d00766d88a42c7c2fe')
 })
 
-test('等价：writeFileAtomic 同一注入桩下调用序与返回值相同', async () => {
+test('金样：writeFileAtomic 同一注入桩下调用序与返回值冻结（临时文件→fsync→rename→目录 fsync）', async () => {
   const target = join(tmpdir(), 'os152-equiv', 'x.md')
-  /* 临时文件名含随机 hex，归一成 <hex> 后再比调用序（前后缀与参数都不许差） */
-  const scrub = (value) => (typeof value === 'string' && basename(value).startsWith(TMP_PREFIX)
-    ? join(dirname(value), `${TMP_PREFIX}<hex>`)
-    : value)
-  const run = async (impl) => {
-    const { calls, deps } = stubDeps()
-    const returned = await impl.writeFileAtomic(target, '内容', deps)
-    return { returned, normalized: calls.map(([kind, ...rest]) => [kind, ...rest.map(scrub)]) }
+  /* 临时文件名含随机 hex、target 含机器相关 tmpdir：都洗成占位符后比调用序（顺序与参数一个不许差） */
+  const scrub = (value) => {
+    if (typeof value !== 'string') return value
+    if (basename(value).startsWith(TMP_PREFIX)) return '<tmp>'
+    if (value === target) return '<target>'
+    if (value === dirname(target)) return '<dir>'
+    return value
   }
-  assert.deepEqual(await run({ writeFileAtomic }), await run(coreAtomic))
+  const { calls, deps } = stubDeps()
+  const returned = await writeFileAtomic(target, '内容', deps)
+  assert.equal(returned, target, '返回目标绝对路径')
+  assert.deepEqual(calls.map(([kind, ...rest]) => [kind, ...rest.map(scrub)]), [
+    ['open', '<tmp>', 'w'],
+    ['writeFile', '内容', 'utf-8'],
+    ['sync'],
+    ['close'],
+    ['rename', '<tmp>', '<target>'],
+    ['open', '<dir>', 'r'],
+    ['sync'],
+    ['close']
+  ])
 })
 
-test('等价：recoverInterruptedWrites 对同一现场返回同一结果', async () => {
-  const makeScene = async (prefix) => {
-    const { root, cleanup } = await fixture(prefix)
+test('金样：recoverInterruptedWrites 对同一现场返回同一结果（removed 列表与 skipped 档）', async () => {
+  const { root, cleanup } = await fixture('os152-rec-')
+  try {
     await writeFile(join(root, '正文.md'), '正文', 'utf-8')
     await writeFile(join(root, `${TMP_PREFIX}123456`), 'x', 'utf-8')
-    return { root, cleanup }
-  }
-  const a = await makeScene('os152-rec-a-')
-  const b = await makeScene('os152-rec-b-')
-  try {
-    const mine = await recoverInterruptedWrites(a.root)
-    const core = await coreAtomic.recoverInterruptedWrites(b.root)
-    assert.deepEqual(mine, core)
-    assert.deepEqual((await readdir(a.root)).sort(), (await readdir(b.root)).sort())
-  } finally {
-    await a.cleanup()
-    await b.cleanup()
-  }
+    await writeFile(join(root, `${TMP_PREFIX}654321`), 'x', 'utf-8')
+    const recovered = await recoverInterruptedWrites(root)
+    assert.deepEqual({ ...recovered, removed: [...recovered.removed].sort() }, {
+      removed: [`${TMP_PREFIX}123456`, `${TMP_PREFIX}654321`],
+      skipped: false
+    })
+    assert.deepEqual((await readdir(root)).sort(), ['正文.md'], '半成品清干净、正文完好')
+    assert.deepEqual(await recoverInterruptedWrites(join(root, '不存在')), { removed: [], skipped: true })
+  } finally { await cleanup() }
 })
 
-test('等价：syncDirectory 对同一错码集合的吞吐一致（豁免面与 core 同口径）', async () => {
+test('金样：syncDirectory 对错码 × 平台的吞吐矩阵冻结（豁免面与 core 原件同口径）', async () => {
   const cases = [
     { code: 'EINVAL', platform: 'linux' },
     { code: 'ENOTSUP', platform: 'linux' },
@@ -298,29 +298,35 @@ test('等价：syncDirectory 对同一错码集合的吞吐一致（豁免面与
     { code: 'EACCES', platform: 'win32' },
     { code: 'ENOENT', platform: 'linux' }
   ]
-  const outcome = async (impl, { code, platform }) => {
-    try {
-      await impl.syncDirectory('/whatever', { open: async () => { throw Object.assign(new Error(code), { code }) }, platform })
-      return 'resolved'
-    } catch (error) {
-      return `rejected:${error.code}`
-    }
-  }
-  for (const item of cases) {
-    assert.equal(await outcome({ syncDirectory }, item), await outcome(coreFs, item), `${item.platform}/${item.code} 行为应同口径`)
+  /* 删除 core 原件前的实测值（当时与 core 原件逐格同值） */
+  const golden = [
+    'resolved',
+    'resolved',
+    'resolved',
+    'resolved',
+    'rejected:EPERM',
+    'rejected:EACCES',
+    'rejected:ENOENT'
+  ]
+  for (const [index, item] of cases.entries()) {
+    const outcome = await (async () => {
+      try {
+        await syncDirectory('/whatever', { open: async () => { throw Object.assign(new Error(item.code), { code: item.code }) }, platform: item.platform })
+        return 'resolved'
+      } catch (error) {
+        return `rejected:${error.code}`
+      }
+    })()
+    assert.equal(outcome, golden[index], `${item.platform}/${item.code} 行为与金样不符`)
   }
 })
 
-test('等价：真落盘字节一致（同内容写两个临时库，逐字节比对）', async () => {
-  const a = await fixture('os152-bytes-a-')
-  const b = await fixture('os152-bytes-b-')
+test('金样：真落盘字节逐字节冻结（CRLF 原样保留，不做行尾改写）', async () => {
+  const { root, cleanup } = await fixture('os152-bytes-')
   try {
     const contents = '第一章\r\n中文：隰有荷华。\n尾行\n'
-    await writeFileAtomic(join(a.root, 'x.md'), contents)
-    await coreAtomic.writeFileAtomic(join(b.root, 'x.md'), contents)
-    assert.ok((await readFile(join(a.root, 'x.md'))).equals(await readFile(join(b.root, 'x.md'))))
-  } finally {
-    await a.cleanup()
-    await b.cleanup()
-  }
+    await writeFileAtomic(join(root, 'x.md'), contents)
+    const written = await readFile(join(root, 'x.md'))
+    assert.deepEqual(written, Buffer.from(contents, 'utf-8'), '写入字节与入参逐字节相同')
+  } finally { await cleanup() }
 })

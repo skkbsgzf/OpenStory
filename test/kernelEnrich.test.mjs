@@ -8,9 +8,9 @@
  *   ② `wikiDerive` 转出的伪章结果与 `enrich/pseudoChapters` 同值（合并后不许再分叉）；
  *   ③ `causalSummary` 三指标对固定小图的读数（闭环率／耦合度／断点敏感度）；
  *   ④ `deriveWiki` 幂等；`factPack` 打包形状与查询区间语义（无界／相交／角色知情）。
- * 另有等价锁：`deriveWiki` 与本批仍保留的 core 原件同输入深等；`buildFactPack` 的 core 原件
- * 已在 OS-155 删除，等价锁改为**摘要金样**（下列 8 组查询的输出 sha256 在删除前由 src≡core
- * 的等价对拍实测冻结——同一份锁，core 原件不再需要）。
+ * 另有金样锁：`buildFactPack` 的 core 原件在 OS-155 删除、`deriveWiki` 的 core 原件在 OS-156 删除，
+ * 两者的等价锁都改为**摘要金样**（下列查询/语料的输出 sha256 在删除前由 src≡core 的等价对拍
+ * 实测冻结——同一份锁，core 原件不再需要）。
  *
  * 全部是纯函数用例，不落盘——绝不碰作者真库。
  */
@@ -22,9 +22,6 @@ import * as enrichPseudo from '../src/kernel/enrich/pseudoChapters.mjs'
 import * as enrichMetrics from '../src/kernel/enrich/metrics.mjs'
 import * as wikiDerive from '../src/kernel/fact/wikiDerive.mjs'
 import { buildFactPack } from '../src/kernel/fact/factPack.mjs'
-/* core 原件只读引用（测试文件不在 S2.4 扫描面；等价对的对照组。wikiDerive 本批不删；
-    factPack 的 core 原件已随 OS-155 删除——它的等价锁改为下方的摘要金样） */
-import * as coreWikiDerive from '../core/pinax/next/kernel/wikiDerive.mjs'
 
 /* ---------- ① 伪章数边界 ---------- */
 
@@ -83,10 +80,12 @@ test('wikiDerive 转出的伪章结果与 enrich/pseudoChapters 同值（0/1/220
       `derivePseudoChapters(plots, ${chars}) 两份实现必须同值`
     )
   }
-  // 转出面本身也不能缩水：四个导出名与 core 原件一致
+  // 转出面本身也不能缩水：四个导出名必须仍在，且伪章公式只有 enrich 一份（同函数对象）
   for (const name of ['plotMinSegment', 'pseudoChapterCount', 'derivePseudoChapters', 'hasRealChapters']) {
-    assert.equal(typeof wikiDerive[name], typeof coreWikiDerive[name], `导出 ${name} 必须仍可经 wikiDerive 取到`)
+    assert.equal(typeof wikiDerive[name], 'function', `导出 ${name} 必须仍可经 wikiDerive 取到`)
   }
+  assert.equal(wikiDerive.derivePseudoChapters, enrichPseudo.derivePseudoChapters, '§9-6 合并后两边必须是同一实现')
+  assert.equal(wikiDerive.pseudoChapterCount, enrichPseudo.pseudoChapterCount, '§9-6 合并后两边必须是同一实现')
 })
 
 /* ---------- ③ causalSummary 三指标 ---------- */
@@ -183,15 +182,19 @@ test('deriveWiki 幂等：同输入跑两遍深等（含伪章/人物/图谱/时
   assert.equal(first.quality.traceableRate, 0.91)
 })
 
-test('等价：deriveWiki 与 core 原件同输入深等', () => {
+test('金样：deriveWiki 两份语料的输出 sha256 冻结（OS-156 删 core 原件前由 src≡core 等价对拍实测）', () => {
   const options = { sourceText: '第1章 开端\n' }
-  assert.deepEqual(wikiDerive.deriveWiki(wikiEnvelope(), options), coreWikiDerive.deriveWiki(wikiEnvelope(), options))
-  // 真章书分支也对照一次（distinct validity.from > 1 时不走伪章）
+  const digestOf = (value) => createHash('sha256').update(JSON.stringify(value)).digest('hex')
+  /* ① 全 plot validity.from=1 → 伪章分支 */
+  assert.equal(digestOf(wikiDerive.deriveWiki(wikiEnvelope(), options)),
+    '92f660f30f49f26dac49c307a869d2907ba007f48e749e56a989deb250ab4e69')
+  /* ② distinct validity.from > 1 → 真章分支 */
   const real = wikiEnvelope()
   real.entries = real.entries.map((entry, index) => entry.layer === 'plot'
     ? { ...entry, validity: { from: Math.floor(index / 3) } }
     : entry)
-  assert.deepEqual(wikiDerive.deriveWiki(real, options), coreWikiDerive.deriveWiki(real, options))
+  assert.equal(digestOf(wikiDerive.deriveWiki(real, options)),
+    'b15461b396f19d22f6ead52960ff1e0415986acc728e991ccb68facb6aec2033')
 })
 
 /* ---------- ⑤ factPack 打包形状与查询语义 ---------- */

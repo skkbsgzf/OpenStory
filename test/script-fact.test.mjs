@@ -11,7 +11,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { scriptToFact, factToScript } from '../public/scriptFact.mjs'
 import { parseScript } from '../public/script.mjs'
-import { validateFactEntry } from '../core/pinax/next/fact/domain/schema.js'
+import { validateFactEntry } from '../src/kernel/fact/domain/index.mjs'
 
 const SAMPLE = join(process.cwd(), 'test', 'fixtures', 'screenplay-sample.md')
 

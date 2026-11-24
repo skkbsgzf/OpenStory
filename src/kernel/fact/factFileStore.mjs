@@ -2,8 +2,10 @@ import { randomUUID } from 'node:crypto'
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { appendFile, mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { basename, join, resolve } from 'node:path'
-import { NEXT_ERROR_CODES, fail } from './errors.mjs'
-import { validateFactEntry } from '../fact/domain/pediaSchema.js'
+/* OS-156：管道件取自持副本 src/kernel/errors.mjs；该文件 OS-152 起把表名改为 KERNEL_ERROR_CODES
+   （值逐字未变），本文件内沿用原名 NEXT_ERROR_CODES 以保持逐字迁移——逻辑一行未改。 */
+import { KERNEL_ERROR_CODES as NEXT_ERROR_CODES, fail } from '../errors.mjs'
+import { validateFactEntry } from './domain/index.mjs'
 import { deriveWiki } from './wikiDerive.mjs'
 
 /**

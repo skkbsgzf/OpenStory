@@ -1,10 +1,10 @@
 /**
  * OS-125 解耦③ 护栏（node:test，零依赖）——内核唯一进口（pinaxAdapter）。
  *
- *   · 全仓断言：src/ 树（递归）的全部 .mjs ＋仓根两个入口垫片里 import `core/` 下模块
- *     （静态 from ＋动态 import()）的只剩 src/kernel/pinaxAdapter.mjs——
- *     与门禁 S2.4（tools/acceptance/acceptance.mjs）同口径，这里锁测试侧副本
- *     （OS-140 起扫描范围随布局归一改为 src/ 树）；
+ *   · 全仓断言：src/ 树（递归）的全部 .mjs ＋仓根两个入口垫片里**没有任何** import `core/`
+ *     下模块（静态 from ＋动态 import()）——OS-156 起 core/pinax 全树已转自有，与门禁 S2.4
+ *     （tools/acceptance/acceptance.mjs）同口径，这里锁测试侧副本
+ *     （OS-140 起扫描范围随布局归一改为 src/ 树；adapter 也在扫描面内）；
  *   · 四组能力出口形状锁：factStore/enrich/projectMeta/projectImport 成员一个不差
  *     （OS-155 起 `deduce` 已退出——推演端子归扮演模块，形状锁移到
  *     `src/modules/deduce/engine/index.mjs`，见本文件同名用例）；
@@ -43,7 +43,6 @@ test('全仓唯一进口：src/ 模块里 import core/** 的只有 src/kernel/pi
       if (st.isDirectory()) { walk(full, rel); continue }
       if (!name.endsWith('.mjs')) continue
       const src = readFileSync(full, 'utf-8')
-      if (rel === 'src/kernel/pinaxAdapter.mjs') continue
       for (const m of src.matchAll(coreImportRe)) violators.push(`${rel} -> ${m[1]}`)
     }
   }
@@ -54,10 +53,11 @@ test('全仓唯一进口：src/ 模块里 import core/** 的只有 src/kernel/pi
       violators.push(`${name} -> ${m[1]}`)
     }
   }
-  assert.deepEqual(violators, [], `core/** 只许 src/kernel/pinaxAdapter.mjs 引，违规：${violators.join('; ')}`)
-  // 反向断言：adapter 自己确实在引内核（唯一进口是真进口，不是空壳）
+  assert.deepEqual(violators, [], `core/** 已退役（OS-156），任何模块都不许再引 core/**，违规：${violators.join('; ')}`)
+  // 反向断言：adapter 仍从自持内核件组装出口（唯一进口是真装配，不是空壳）
   const adapterSrc = readFileSync(join(ROOT, 'src/kernel/pinaxAdapter.mjs'), 'utf-8')
-  assert.match(adapterSrc, /from '\.\.\/\.\.\/core\/pinax\/next\/kernel\/factFileStore\.mjs'/)
+  assert.match(adapterSrc, /from '\.\/fact\/factFileStore\.mjs'/, 'factStore 组指 src/kernel/fact/factFileStore.mjs')
+  assert.doesNotMatch(adapterSrc, /(?:from\s+|import\(\s*)['"](?:\.\.?\/)+core\//, 'adapter 已无 core 可引（OS-156）')
 })
 
 test('四组能力出口形状锁（成员与顺序都是接触面契约）', () => {
