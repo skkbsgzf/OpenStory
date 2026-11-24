@@ -8,6 +8,8 @@
 > 都没进过表）：L7 `wc -l public/index.html public/app.js public/*.mjs public/views/*.mjs`＝
 > 17 文件 / 20,526 行；L5 `wc -l src/host/*.mjs`；L6 `wc -l src/api/contracts.mjs src/api/contracts/*.mjs`；
 > L4 `find src/{modules,services,protocol} -name '*.mjs' | xargs wc -l`。
+> OS-148 落命名单一真源表时又重测了一次 L7：18 文件 / 20,716 行（views/chapterLoad.mjs
+> 与 views/registry.mjs 的增量此前没进表），`app.js` 12,472 行（只减不增的现行值）。
 
 ## 数据优先级（一级公民声明）
 
@@ -28,7 +30,7 @@
 ## 七层分层（自上而下，依赖只许向下）
 
 ```
-L7  前端 public/               17 文件  20,526 行   无构建单页（浏览器/DSH webview）
+L7  前端 public/               18 文件  20,716 行   无构建单页（浏览器/DSH webview）
 L6  契约层 src/api/contracts/  8 文件   1,381 行   七域聚合，101 端点（端点实现 handlers 7 文件 3,405 行，OS-141 拆出）
 L5  宿主层 src/host/            5 文件   1,657 行   daemon 631（node:http 手写路由＋OS-136 四层闸＋进程治理）/mcp 745（stdio 24 工具）/http 89/authorize 169/sse 23
 L4  本仓自持层                55 文件  13,090 行   建库/导入/fact 消费/参考/Agent/货架/协议层…（src/modules＋services＋protocol）
@@ -37,13 +39,13 @@ L2  core/pinax              24 文件   4,332 行   fact 链底座（逐字 vend
 L1  磁盘库                  ——        ——       文件即真相（库＝文件夹，.pinax 兼容）
 ```
 
-### L7 前端 `public/` ——17 文件 / 20,526 行（OS-146 实测）
+### L7 前端 `public/` ——18 文件 / 20,716 行（OS-148 实测）
 
 - **职责**：工作台单页（无构建、原生 ES 模块）。`index.html`（2,759 行，样式令牌 `:root`
-  单一真源）＋ `app.js`（12,478 行，装配壳：路由/页签消费/左列 Agent）＋ 15 个零依赖模块
+  单一真源）＋ `app.js`（12,472 行，装配壳：路由/页签消费/左列 Agent）＋ 16 个零依赖模块
   （analysis/analysisModules/charts/graph/md/reference/referenceStore/script/scriptFact/
   scriptFormat/storySource/storyTree/ui-kit＋`views/registry.mjs` 页签/路由声明式注册表
-  ＋`views/settingsAggregation.mjs` 设置聚合与设置页渲染）；
+  ＋`views/settingsAggregation.mjs` 设置聚合与设置页渲染＋`views/chapterLoad.mjs` 章节加载状态机）；
   echarts 本地 vendor（`public/vendor/echarts.min.js`）。
 - **页签/路由注册协议（OS-143）**：页签系统唯一真源在 `views/registry.mjs`（TAB_REGISTRY
   纯数据＋computeTabDefs/dirTabDefs/viewScope 纯函数，词表外目录不出页签、退场目录无条件
@@ -54,6 +56,16 @@ L1  磁盘库                  ——        ——       文件即真相（库�
   **口径补钉（OS-146）**：`app.js` 只留**接线**（取数 → 转交，必要时一行占位），
   **视图渲染函数一律在 `public/views/`**——新增渲染函数留在 app.js 算违约
   （判例：`settingsModuleSettingsSectionHtml` 本体已迁 `views/settingsAggregation.mjs`）。
+- **命名单一真源（OS-148/G8a·G8d）**：同一概念在五层（磁盘目录／页签名／changelog 模块／
+  契约域／MCP 工具名前缀）的名字只有一份数据——`views/registry.mjs` 的 `NAMING_TABLE`
+  （19 个概念，含 `dir/tab/panelLabel/logModule/contract/mcpPrefix` 六列＋三列实况补注）。
+  页签条目的 `dir`/`label`/`panelLabel` 由 `tabNaming(概念id)` 派生；`DIR_LABELS`/`DIR_ORDER`/
+  `READONLY_DIRS`/`PAGE_TO_DIR_LOCAL`/`LOG_MODULES` 逐键派生；后端**只 re-export**——
+  `src/protocol/naming.mjs` 是 Host 侧取表口，`chapterWrite.moduleOfPath`（目录→日志模块）、
+  `deduceSession.DEDUCE_SESSION_DIR`、各模块写日志的 `LOG_MODULES` 常量都从这里取，
+  `app.js` 的「视图→日志模块」走 `logModuleForView()`。表为什么落在注册表而不是独立
+  `public/naming.mjs`：注册表有「零 import」纯度门禁，且它本来就是目录词表/页签名的唯一真源
+  （理由钉在 AGENTS.md 硬规则 21）。门禁：`test/naming.test.mjs`＋验收 S2.5。
 - **边界**：只经 HTTP 契约（L6）与 daemon 说话；不落任何内容性/状态性数据（OS-89，
   浏览器只做内存视图）；前端模块互不 import（门禁 S2.2，md.mjs 渲染协议除外；
   app.js 经动态 import 消费 registry/ui-kit 等 leaf 模块）。

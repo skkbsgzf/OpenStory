@@ -22,6 +22,7 @@
 import { readFileSync, readdirSync, statSync, writeFileSync, mkdirSync } from 'node:fs'
 import { join, dirname, relative, resolve as pathResolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { NAMING_TABLE, TAB_REGISTRY, LOG_MODULES } from '../../public/views/registry.mjs'
 
 const REPO = pathResolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
 
@@ -316,9 +317,46 @@ check('S2.4', 'S2', `内核唯一进口（${scanned.length} 个 src/ 模块＋�
     ? `违规进口：${[...coreViolators, ...gatewayRogue].join('; ')}——内核能力只经 pinaxAdapter 五组出口（factStore/deduce/enrich/projectMeta/projectImport），protocol 转供面以 KERNEL_GATEWAY_ALLOW 点名为准`
     : '内核接触面收敛为 pinaxAdapter 单点（内核换版本只改这一个文件）；protocol/** 转出＝显式豁免（OS-142）')
 
-/* ================================================================
- * S3 前端一致性 —— OpenDesign 语义令牌口径
- * ================================================================ */
+// S2.5 命名真源表一致（OS-148/G8a·G8d）：五层名字只从 public/views/registry.mjs 的
+// NAMING_TABLE 取。跑两条：① 页签条目逐条回表（dir/label/panelLabel 相等）；
+// ② 代码里实际写日志的模块名（LOG_MODULES 常量＋任何残留的 module: '中文名' 字面量）
+// 全部登在表的 logModule/dirLogModule 列上——漏登或另写一份＝红。
+const namingById = new Map(NAMING_TABLE.map((row) => [row.id, row]))
+const tabNamingMiss = TAB_REGISTRY
+  .filter((entry) => !entry.retired && entry.label)
+  .filter((entry) => {
+    const row = namingById.get(entry.concept)
+    if (!row) return true
+    return row.tab !== entry.label
+      || (row.panelLabel ?? null) !== (entry.panelLabel ?? null)
+      || (row.dirTab === false ? null : row.dir ?? null) !== (entry.dir ?? null)
+  })
+  .map((entry) => `TAB_REGISTRY:${entry.id}`)
+const namingModules = new Set()
+for (const row of NAMING_TABLE) {
+  if (row.logModule) namingModules.add(row.logModule)
+  if (row.dirLogModule) namingModules.add(row.dirLogModule)
+}
+const logModuleRaw = []
+for (const { rel, src } of srcMjs) {
+  for (const m of src.matchAll(/module:\s*'([\u4e00-\u9fa5][^']*)'/gu)) logModuleRaw.push({ at: rel, name: m[1] })
+}
+const logModuleUse = new Set([...Object.values(LOG_MODULES), ...logModuleRaw.map((item) => item.name)])
+const logModuleMiss = [...logModuleUse].filter((name) => !namingModules.has(name))
+const namingEvidence = [
+  ...tabNamingMiss.slice(0, 3),
+  ...logModuleMiss.slice(0, 3).map((name) => `日志模块「${name}」未登表`),
+  ...logModuleRaw.slice(0, 2).map((item) => `${item.at} module: '${item.name}'（字面量，应走 LOG_MODULES）`),
+  lineOf('public/views/registry.mjs', 'NAMING_TABLE = Object.freeze')
+].filter(Boolean)
+check('S2.5', 'S2',
+  `命名真源表一致（${NAMING_TABLE.length} 概念；页签 ${TAB_REGISTRY.filter((e) => !e.retired && e.label).length} 条回表／日志模块 ${logModuleUse.size} 个登表）`,
+  tabNamingMiss.length === 0 && logModuleMiss.length === 0,
+  namingEvidence,
+  tabNamingMiss.length || logModuleMiss.length
+    ? `页签层/日志层有名字没走命名表：${[...tabNamingMiss, ...logModuleMiss].join(', ')}`
+    : '页签/日志两层都从 NAMING_TABLE 取名（后端经 src/protocol/naming.mjs 只 re-export）')
+
 console.log('\n── S3 前端一致性 ──')
 
 const html = readRepo('public/index.html')

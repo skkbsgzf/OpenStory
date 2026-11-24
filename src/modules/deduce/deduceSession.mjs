@@ -12,9 +12,11 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { mkdir, rename, writeFile } from 'node:fs/promises'
 import { dirname, join, relative, sep } from 'node:path'
 import { atomicWriteFile } from '../../protocol/hostWrite.mjs'
+import { LOG_MODULES, namingEntry } from '../../protocol/naming.mjs' // OS-148：目录名/日志模块名只从命名表取
 
 export const DEDUCE_SESSION_SCHEMA = 'openstory.deduce-session/v1'
-export const DEDUCE_SESSION_DIR = '推演'
+/** 会话目录名（命名表 roleplay 行的 dir——「推演」是磁盘目录、页签叫「扮演」）。 */
+export const DEDUCE_SESSION_DIR = namingEntry('roleplay').dir
 
 function text(value) {
   return String(value ?? '')
@@ -278,7 +280,7 @@ export async function saveDeduceSession(root, bookId, session) {
       const { recordChange } = await import('../../protocol/changelog.mjs')
       await recordChange({
         root,
-        module: '推演',
+        module: LOG_MODULES.roleplay,
         file: relativeTo(root, path).split('\\').join('/'),
         op: existed ? 'update' : 'create',
         before: beforeText,

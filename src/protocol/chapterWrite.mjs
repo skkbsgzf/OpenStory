@@ -12,6 +12,7 @@ import { existsSync, readFileSync, statSync } from 'node:fs'
 import { basename, dirname, join, relative, sep } from 'node:path'
 import { atomicWriteFile } from './hostWrite.mjs'
 import { recordChange, logFilePath } from './changelog.mjs'
+import { logModuleForDir } from './naming.mjs' // OS-148：目录→日志模块名只从命名表取
 import { API_ERROR_CODES } from '../api/contracts.mjs'
 import { resolveInsideRoot, text } from '../host/authorize.mjs'
 
@@ -174,11 +175,11 @@ export function mapWriteErrorCode(code) {
 /**
  * OS-89：从库内相对路径推模块名（'参考/人物/李逵.md' → '参考'）。
  * 写通道的调用方大多不必显式传 module，靠这个默认推断即可。
+ * OS-148：目录→模块名唯一真源在命名表（拆解目录的既有日志名是「故事源」，不迁移）。
  */
 export function moduleOfPath(file) {
   const first = text(file).split('/')[0] || ''
-  if (first === '拆解') return '故事源'
-  return first || 'misc'
+  return logModuleForDir(first) ?? (first || 'misc')
 }
 
 /**

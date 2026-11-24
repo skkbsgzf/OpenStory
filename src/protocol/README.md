@@ -35,6 +35,7 @@
 | `upstream.mjs` | 上游模型通道：chatCompleteViaUpstream/resolveUpstreamSafe/resolveChatUpstream | 模块层（turnProse） |
 | `worldbookContract.mjs` | 世界书文件契约 v2 `parseWorldbookEntryFile`（vendor 件本体不直引） | textUtil；护栏测试仍直引 vendor 本体 |
 | `modules.mjs` | 模块插件（OS-144）：manifest 装载/形状校验、端点归属 `MODULE_ENDPOINT_OWNERS`、启停唯一入口 `isModuleEnabled` / `isModuleDisabledFor`（ui-state `modules.enabled.<id>`） | daemon 路由停用闸、MCP 分析工具、API handler（扮演 AI 味闸） |
+| `naming.mjs` | 五层命名单一真源（OS-148）：`NAMING_TABLE` / `LOG_MODULES` / `namingEntry` / `logModuleForDir`（目录→日志模块名）等，**从 `public/views/registry.mjs` 原样 re-export** | 写通道（chapterWrite 的 moduleOfPath）、各模块写日志取 `LOG_MODULES`、推演会话目录名 |
 | `chapters.mjs` 等 | 各协议件本体（index.mjs 聚合它们的导出） | 协议层内部与 API/宿主层 |
 
 ## 版本约定
@@ -49,6 +50,7 @@
 | 豁免 | 原因 | 去向 |
 |---|---|---|
 | `src/modules/roleplay/roleplayEngine.mjs → public/analysis.mjs`（analyzeChapter 算「AI 味」） | 纯函数分析，浏览器侧同源实现（public/analysis.mjs 同时服务前端页面）；`public/**` 是浏览器直载面，不适合被 protocol 反向依赖 | 下沉到协议层留后续批次（届时改走协议层并删豁免） |
+| `src/protocol/naming.mjs → public/views/registry.mjs`（OS-148：表＋查表纯函数） | 命名表必须同时被浏览器（注册表派生 DIR_LABELS/页签名）与 Node（写通道推断日志模块名）消费，而浏览器拿不到 `src/`；注册表有「零 import」纯度门禁不能再把表拆成独立 public 模块。被引文件是零 import／零 DOM／零存储的纯数据＋纯函数，等同数据文件（先例：daemon 直引 `public/analysis.mjs`） | 表仍只有一份；若将来拆出真正的前端/后端共享数据层（OS-132 式收编），这条边随之消失 |
 
 除此以外 `src/modules/**` 不得出现三类来源（node 内置 / `src/protocol/**` / 模块目录内）
 之外的任何 import——门禁 S2.1 直接红，证据带 file:line。

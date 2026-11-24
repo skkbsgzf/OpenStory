@@ -13,6 +13,7 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { atomicWriteFile } from '../protocol/hostWrite.mjs'
 import { recordChange } from '../protocol/changelog.mjs'
+import { LOG_MODULES } from '../protocol/naming.mjs' // OS-148：日志模块名只从命名表取
 
 export function text(value) {
   return String(value ?? '')
@@ -107,7 +108,7 @@ export async function writeHabitsWithBackup(root, habits) {
   await atomicWriteFile(path, nextText)
   // OS-89：习惯表修改也留 diff + log（AGENTS.md 第 10 条）
   await recordChange({
-    root, module: '习惯', file: '习惯/habits.json',
+    root, module: LOG_MODULES.habits, file: '习惯/habits.json',
     op: existed ? 'update' : 'create',
     before: beforeText, after: nextText, actor: 'author'
   }).catch(() => {})

@@ -22,6 +22,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fact } from '../protocol/index.mjs' // OS-142：内核能力经 Host API fact 命名空间转出（与 src/modules 同纪律，不直引 kernel/pinaxAdapter）
 import { recordChange } from '../protocol/changelog.mjs'
+import { LOG_MODULES } from '../protocol/naming.mjs' // OS-148：日志模块名只从命名表取
 
 const { factStore, enrich } = fact // OS-125 五组出口的 fact 存储协议＋enrich 度量（经协议层转出，实现不换）
 
@@ -758,7 +759,7 @@ export async function enrichBook({ root, bookId, entries, book, llmPort, protago
       const afterWikiRaw = readFileSync(join(root, '拆解', `${bookId}.wiki.json`), 'utf-8')
       const logged = await recordChange({
         root,
-        module: '拆解',
+        module: LOG_MODULES.storysource,
         file: wikiRel,
         op: beforeWikiRaw ? 'update' : 'create',
         before: beforeWikiRaw,

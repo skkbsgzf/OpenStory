@@ -92,4 +92,76 @@
 
 ## 施工回报（编排器自动归档）
 
+> 模型 deepseek-v4.1-flash · 第 1 轮 · 测试 绿（tests 523 · pass 521 · fail 0 · skip 2） · 门禁 绿 · 水浒 绿 · 新建 绿 · vendor 未动 · daemon 在跑
+
+```text
+CHANGED:
+- `public/views/registry.mjs` — 新增 `NAMING_TABLE`（19 概念 × 概念 id／`dir`／`tab`／`panelLabel`／`logModule`／`contract`／`mcpPrefix` 六列＋`dirLabel`／`dirLogModule`／`dirTab` 三列实况补注）＋查表纯函数 `namingEntry`／`namingEntryForDir`／`logModuleForDir`／`logModuleForView`／`LOG_MODULES`；`DIR_LABELS`／`DIR_ORDER`／`READONLY_DIRS`／`PAGE_TO_DIR_LOCAL` 与 `TAB_REGISTRY` 九条页签的 `dir`/`label`/`panelLabel` 全部改由表派生（`tabNaming()`）
+- `public/app.js` — `moduleOfCurrentView()` 的 5 段字面量映射改为 `registryModule.logModuleForView(state.view)`（12,477 → 12,472 行，只减不增）
+- `src/protocol/naming.mjs`（新建）— Host 侧取表口，只 re-export
+- `src/protocol/chapterWrite.mjs` — `moduleOfPath` 的 `拆解 → 故事源` 硬编码改 `logModuleForDir()`
+- `src/protocol/libState.mjs` — `module: '界面状态'` → `LOG_MODULES.uiState`
+- `src/protocol/README.md` — 登记 naming.mjs 转供件＋豁免台账新行
+- `src/api/handlers/fact.mjs` — 两处 `module: '拆解'` → `LOG_MODULES.storysource`
+- `src/services/enrichEngine.mjs` — `module: '拆解'` → `LOG_MODULES.storysource`
+- `src/services/habits.mjs` — `module: '习惯'` → `LOG_MODULES.habits`
+- `src/modules/deduce/deduceSession.mjs` — `DEDUCE_SESSION_DIR` 取表 dir、`module: '推演'` → `LOG_MODULES.roleplay`
+- `test/naming.test.mjs`（新建）— 5 例：表覆盖页签／表覆盖日志模块（显式清单＋src 无中文 module 字面量）／契约域与 MCP 前缀真实存在／单一来源（映射逐键派生＋app.js 无第二份）
+- `tools/acceptance/acceptance.mjs` — 新增 S2.5「命名真源表一致」（16 → 17 项）
+- `AGENTS.md` — 硬规则 21「新增或改名一个概念，先改命名表」；验收数字 510 例 → 523 例、16 → 17 检查
+- `PUBLISHING.md` — 新增检查单 ⑥「命名真源一致」（指向 S2.5 与 test/naming.test.mjs）
+- `ARCHITECTURE.md` — L7 新增「命名单一真源（OS-148）」段（表在哪、谁消费、为什么落在注册表）；L7 数字重测为 18 文件 / 20,716 行、app.js 12,472 行
+- `docs/ACCEPTANCE.md` — 16 → 17 检查、单测 467 → 523 例、S2 检查面补 S2.5
+
+表的最终内容（`public/views/registry.mjs` 的 `NAMING_TABLE`，列：id｜目录｜页签｜面板名｜日志模块｜契约域｜MCP 前缀）：
+
+'''
+chapters    正文   正文    —     正文        chapters   openstory_novel_
+reference   参考   世界书  参考   参考        reference  openstory_reference_
+worldbook   世界书  —      —     —           —          —
+script      剧本   剧本    —     剧本        chapters   —
+storysource 拆解   故事源  —     拆解/故事源  fact       openstory_fact_curve
+roleplay    推演   扮演    —     推演        fact       openstory_deduce_
+habits      习惯   习惯    习惯   习惯        system     openstory_habits_
+log         日志   日志    —     —           chapters   —
+artifacts   —     产物    —     —           system     —
+settings    —     设置    —     —           system     —
+uiState     —      —      —     界面状态     system     —
+libraries   —      —      —     —           library    openstory_libraries
+analysis    —      —      —     —           —          openstory_analysis_chapter
+enrich      —      —      —     拆解        fact       openstory_enrich_
+vision      —      —      —     —           system     openstory_vision_describe
+imagegen    —      —      —     —           reference  openstory_image_generate
+kb          —      —      —     —           system     —
+shelf       —      —      —     —           plugins    openstory_skills_
+agent       —      —      —     —           agent      —
+'''
+
+改掉的映射点（文件:符号）：
+- `public/views/registry.mjs:DIR_LABELS`（`拆解: '故事源'` 等五条字面量）→ 表派生
+- `public/views/registry.mjs:DIR_ORDER` / `READONLY_DIRS` / `PAGE_TO_DIR_LOCAL` → 表派生
+- `public/views/registry.mjs:TAB_REGISTRY` 九条页签 `dir`/`label`/`panelLabel` → `tabNaming()`
+- `public/app.js:moduleOfCurrentView`（view→正文/参考/习惯/推演）→ `logModuleForView()`
+- `public/app.js:groupLabel`、`scriptViewHtml`、`dirViewHtml` 三处目录→显示名 → 经已派生的 `DIR_LABELS`（等价，零改动）
+- `src/protocol/chapterWrite.mjs:moduleOfPath`（拆解→故事源）→ `logModuleForDir()`
+- `src/api/handlers/fact.mjs:742,1065`、`src/services/enrichEngine.mjs:761`、`src/modules/deduce/deduceSession.mjs:281`、`src/services/habits.mjs:110`、`src/protocol/libState.mjs:102` → `LOG_MODULES.*`
+- `src/modules/deduce/deduceSession.mjs:DEDUCE_SESSION_DIR`（'推演'）→ 表 `roleplay.dir`
+
+VERIFIED:
+- `node --check` 对 11 个改动的 js/mjs 文件全过
+- `node --test test/*.test.mjs` → tests 523 / pass 521 / fail 0 / skipped 2（既有 skip，未新增跳过）；本单新增 5 例，518→523
+- `node --test test/tabRegistry.test.mjs` → 12/12 绿，缺省页签快照文件一字未改
+- `node --test test/naming.test.mjs` → 5/5 绿
+- `node tools/acceptance/acceptance.mjs` → 17 过 / 0 挂 / 0 警（含新增 `S2.5 命名真源表一致`）
+- `wc -l public/app.js` → 12,472（原 12,477，未增长）
+- 用 node 直接 import registry 校验派生值：`DIR_LABELS`＝`{正文,世界书,剧本,拆解:故事源,日志}`、`DIR_ORDER`＝正文/世界书/剧本/日志、`READONLY_DIRS`＝日志、`PAGE_TO_DIR_LOCAL` 四键，与改前逐字节一致；`moduleOfPath` 九个路径样例输出与改前一致
+
+LIMITATIONS:
+- 表落在 `public/views/registry.mjs` 而非独立 `public/naming.mjs`：注册表有「零 import」纯度门禁（test/tabRegistry.test.mjs），独立成文件就必须 import，与门禁冲突且不许放宽既有断言。代价是 `src/protocol/naming.mjs → public/views/registry.mjs` 一条转供边（protocol→public），已按仓内规矩登记进 `src/protocol/README.md` 豁免台账；若日后有真正的前后端共享数据层，这条边应随之消失。
+- 「拆解」概念的 changelog 模块名实况有两个：显式写入用「拆解」（fact/enrich），按目录推断用「故事源」（moduleOfPath，OS-107 起既有库日志就在这个目录名里）。表用 `logModule`＋`dirLogModule` 两列并存以保行为不变，未迁移既有日志目录。
+- 未改的三处审计项（列出而非偷改）：`public/app.js` 的 `dirRows` 过滤（`dir !== '正文' && dir !== '世界书' && dir !== '推演'`，是页签归属判定而非显示名映射）、`public/app.js:DECISION_LABELS`（建库导入决策 id → 分类名，含大纲/构思/资料/约束等已退场概念，不属五层命名）、各处 `moduleLogHtml('参考')`/`loadModuleLog('推演')` 这类直接传模块名的实参（非拼接映射）。
+- MCP 工具名按工单要求一字未改，表只登记前缀供核对。
+- 没有启动 daemon、也没有做浏览器端点击验证（工单禁止启动进程）；前端改动靠 node 直接 import 注册表做等价校验＋单测＋门禁断言。
+```
+
 ## 验收记录（主 agent 填）

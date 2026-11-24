@@ -16,6 +16,7 @@ import { existsSync } from 'node:fs'
 import { copyFile, mkdir, readdir, readFile, unlink } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { recordChange } from './changelog.mjs'
+import { LOG_MODULES } from './naming.mjs' // OS-148：日志模块名只从命名表取
 import { atomicWriteFile } from './hostWrite.mjs'
 
 const text = (value) => String(value ?? '')
@@ -99,7 +100,7 @@ export async function writeUiState(root, patch) {
     await atomicWrite(abs, `${JSON.stringify(next, null, 2)}\n`)
     // 记日志（界面状态也属于「修改」，作者要能看到谁动了什么）
     await recordChange({
-      root, module: '界面状态', file: UI_STATE_PATH, op: existsSync(abs) ? 'update' : 'create',
+      root, module: LOG_MODULES.uiState, file: UI_STATE_PATH, op: existsSync(abs) ? 'update' : 'create',
       before: JSON.stringify(current), after: JSON.stringify(next), actor: 'author'
     })
     return { ok: true, state: next, ...(backup ? { backup: backup.split(/[\\/]/u).slice(-3).join('/') } : {}) }

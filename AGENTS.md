@@ -179,6 +179,20 @@ L4 自持层→L3 pinaxAdapter→L2 core/pinax 24 文件→L1 磁盘库）。
     - 判据：改页签行为时 `git diff public/app.js` 必须为零行增长；扩展页签只 diff
       `public/views/registry.mjs`。
 
+21. **命名单一真源（OS-148/G8a·G8d）：新增或改名一个概念，先改命名表再改代码。**
+    - 表＝`public/views/registry.mjs` 的 `NAMING_TABLE`（概念 id ＋ 六列：`dir` 磁盘目录 /
+      `tab` 页签名 / `panelLabel`「＋」面板名 / `logModule` changelog 模块名 /
+      `contract` 契约域 / `mcpPrefix` MCP 工具名前缀；另有三列实况补注 `dirLabel`/
+      `dirLogModule`/`dirTab`）。**全仓只有这一份数据**——后端经
+      `src/protocol/naming.mjs` 只 re-export，不许再抄一份字面量。
+    - 五层的名字只从表里取：页签条目的 `dir`/`label`/`panelLabel` 由 `tabNaming(概念id)` 派生；
+      写日志用 `LOG_MODULES.<概念>`；按目录推断日志用 `logModuleForDir()`；
+      前端「视图→日志模块」用 `logModuleForView()`。`DIR_LABELS`/`DIR_ORDER`/
+      `READONLY_DIRS`/`PAGE_TO_DIR_LOCAL` 同样由表逐键派生，不得退回手写字面量。
+    - 改名只改表的对应格，跨层跟着变；**MCP 工具名不在表里改名**（表只登记前缀供核对，
+      改名会破坏外部调用方）。门禁：`test/naming.test.mjs` ＋ `node tools/acceptance/acceptance.mjs`
+      的 S2.5。
+
 ## 发布规范（推送前必读）
 
 推 GitHub 前必过 [PUBLISHING.md](./PUBLISHING.md) 的检查单（协议干净/demo 干净/人机双读）；
@@ -187,8 +201,8 @@ L4 自持层→L3 pinaxAdapter→L2 core/pinax 24 文件→L1 磁盘库）。
 ## 改完必跑（验收线，详见 `docs/ACCEPTANCE.md`）
 
 ```bash
-node .zcode/run-gate.mjs                    # ① 全量单测（510 例）
-node tools/acceptance/acceptance.mjs        # ② 交付标准 S0–S4 门禁（16 检查，Rea 式证据；S0=布局宪法）
+node .zcode/run-gate.mjs                    # ① 全量单测（523 例）
+node tools/acceptance/acceptance.mjs        # ② 交付标准 S0–S4 门禁（17 检查，Rea 式证据；S0=布局宪法）
 # ③ .ua/ 知识图谱增量（/understand，skill 在 ~/.zcode/skills/understand*）
 # ④ 前端批次给作者截图讲场景（对照 design-system/DESIGN.md + docs/UX-STRUCTURE.md）
 ```

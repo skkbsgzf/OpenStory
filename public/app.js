@@ -12340,15 +12340,10 @@ window.addEventListener('beforeunload', flushDraftsOnUnload)
 bootStyles()
 boot()
 
-/** OS-89：当前视图对应的模块名（用于「模块加载时检索自己的 log」）。 */
+/** OS-89：当前视图对应的模块名（用于「模块加载时检索自己的 log」）。
+ * OS-148：视图→日志模块名唯一真源在命名表（registry.logModuleForView），这里不再抄一份映射。 */
 function moduleOfCurrentView() {
-  const view = state.view || ''
-  if (view === 'write') return '正文'
-  if (view === 'reference') return '参考'
-  if (view === 'habits') return '习惯'
-  if (view === 'deduce') return '推演'
-  if (view.startsWith('dir:')) return view.slice(4)
-  return ''
+  return registryModule ? registryModule.logModuleForView(state.view) : ''
 }
 
 /* ---------- OS-92：标签编辑器（chip field）交互 ---------- */

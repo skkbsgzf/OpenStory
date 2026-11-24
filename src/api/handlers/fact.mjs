@@ -57,6 +57,7 @@ import {
 import { writeChapterWithBackup } from '../../protocol/chapterWrite.mjs'
 import { createChapter } from '../../protocol/chapters.mjs'
 import { recordChange } from '../../protocol/changelog.mjs'
+import { LOG_MODULES } from '../../protocol/naming.mjs' // OS-148：日志模块名只从命名表取
 import { atomicWriteFile } from '../../protocol/hostWrite.mjs'
 
 /* ---------- 分析面板 fact 曲线（KB-ARCH 对齐拆解线算法）---------- */
@@ -741,7 +742,7 @@ export async function deducePendingSettle(ctx) {
     const afterFactRaw = await readFile(join(root, '拆解', `${bookId}.json`), 'utf-8')
     const logged = await recordChange({
       root,
-      module: '拆解',
+      module: LOG_MODULES.storysource,
       file: factRel,
       op: entryExisted ? 'update' : 'create',
       before: beforeFactRaw,
@@ -1064,7 +1065,7 @@ export async function factEntriesImport(ctx) {
     const afterFactRaw = await readFile(join(authorized.root, '拆解', `${bookId}.json`), 'utf-8')
     const logged = await recordChange({
       root: authorized.root,
-      module: '拆解',
+      module: LOG_MODULES.storysource,
       file: factRel,
       op: documentExisted ? 'update' : 'create',
       before: beforeFactRaw,

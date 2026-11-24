@@ -28,6 +28,19 @@ LICENSE 与 vendor 归属自洽；`core/VENDORED.md` 记逐字 vendor 出处；p
 
 `samples/*/` 只留内容文件；运行残留/备份/会话一律清除；自带 README（怎么导入＋体验入口）；素材确认来源可公开。
 
+### ⑥ 命名真源一致（OS-148）
+
+五层名字（磁盘目录／页签／changelog 模块／契约域／MCP 前缀）只许来自
+`public/views/registry.mjs` 的 `NAMING_TABLE`，后端经 `src/protocol/naming.mjs` 转供。
+发布前跑：
+
+```bash
+node tools/acceptance/acceptance.mjs     # S2.5 命名真源表一致 必须 ✓
+node --test test/naming.test.mjs         # 页签层/日志层都回表、无第二份字面量
+```
+
+新概念没登表、或页签/日志层自己写了一份名字——两项都会红。
+
 ## 二、提交描述规范
 
 - 标题 `type：一句话`（feat/fix/docs/chore/refactor/test），**≤72 字**，不用句号
