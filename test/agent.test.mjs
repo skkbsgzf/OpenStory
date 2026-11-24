@@ -539,10 +539,10 @@ test('daemon 端到端：待确认卡——采纳写正文＋备份；改文件�
   }
 })
 
-test('默认路径：跟随 LOCALAPPDATA/PinaxNext/openstory', () => {
+test('默认路径：跟随 LOCALAPPDATA/OpenStory/openstory', () => {
   assert.equal(
     defaultAgentConfigPath({ LOCALAPPDATA: 'C:/Users/x/AppData/Local' }).replaceAll('\\', '/'),
-    'C:/Users/x/AppData/Local/PinaxNext/openstory/agent-config.json'
+    'C:/Users/x/AppData/Local/OpenStory/openstory/agent-config.json'
   )
   assert.equal(defaultAgentConfigPath({}), '')
 })

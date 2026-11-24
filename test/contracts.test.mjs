@@ -298,7 +298,7 @@ test('CLI：端口/root 解析与非法端口回落', () => {
 test('默认库清单路径：跟随 LOCALAPPDATA，找不到给空串', () => {
   assert.equal(
     defaultPreferencesPath({ LOCALAPPDATA: 'C:\\Users\\x\\AppData\\Local' }).replaceAll('\\', '/'),
-    'C:/Users/x/AppData/Local/PinaxNext/next-preferences.json'
+    'C:/Users/x/AppData/Local/OpenStory/next-preferences.json'
   )
   assert.equal(defaultPreferencesPath({}), '')
 })

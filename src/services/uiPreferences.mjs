@@ -3,7 +3,7 @@
  *
  * 与库内 ui-state（.pinax/ui-state.json，随库走）分工：
  *   · 库内 ui-state＝跟稿子走的界面状态（页签/模块开关/选中项），换机器靠库文件复原；
- *   · 本机 ui-preferences＝不随库走的机器级偏好，落本机院子（%LOCALAPPDATA%/PinaxNext/openstory/）。
+ *   · 本机 ui-preferences＝不随库走的机器级偏好，落本机院子（%LOCALAPPDATA%/OpenStory/openstory/）。
  *
  * 落这一份的理由：浏览器存储按「协议＋主机＋端口」隔离，:8807 存的皮肤 :8810 读不到——
  * 这正是「换个端口就不是同一份设置」的根因。放到服务端本机文件后，任何端口打开同一项目
@@ -16,6 +16,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { mkdir } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { atomicWriteFile } from '../protocol/hostWrite.mjs'
+import { courtyardPath } from '../protocol/courtyard.mjs'
 
 function text(value) {
   return String(value ?? '')
@@ -23,8 +24,7 @@ function text(value) {
 
 /** 机器级偏好文件：与 agent-config.json 同一院子。env 注入便于测试隔离。 */
 export function defaultUiPreferencesPath(env = process.env) {
-  const base = text(env.LOCALAPPDATA || env.APPDATA).trim()
-  return base ? join(base, 'PinaxNext', 'openstory', 'ui-preferences.json') : ''
+  return courtyardPath(env, 'openstory', 'ui-preferences.json')
 }
 
 /** 皮肤 id 归一：只认 [\w-]，长度 ≤64；其它值回退缺省。 */

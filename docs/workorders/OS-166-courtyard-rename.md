@@ -7,7 +7,7 @@
 | 依赖 | 段 C 全部完成（与插件加载器重写同批） |
 | 允许改动 | `src/**`、`test/**`、`tools/**`、`docs/**`、`ARCHITECTURE.md`、`AGENTS.md`、`README.md`、`PUBLISHING.md` |
 | 风险 | **高**（动真实数据目录；主 agent 开工前已备份现场） |
-| 状态 | 待派 |
+| 状态 | ✅ 已验收（2026-11-24） |
 
 ## 目标
 
@@ -53,4 +53,55 @@
 
 ## 施工回报（编排器自动归档）
 
+- 唯一解析源：`src/protocol/courtyard.mjs`（实现）＋ `src/host/courtyard.mjs`（宿主唯一门面，
+  `export * from '../protocol/courtyard.mjs'`）。实现下沉协议层是为了过门禁 S2.1：模块层只准引
+  `node:` 内置／`src/protocol/**`／模块目录内文件，不为此开豁免。
+- 路径改线：工单预警 9 处，实测 **12 文件／13 调用点**（`suites.mjs` 两处）：
+  1. `src/host/authorize.mjs`：`join(base,'PinaxNext','next-preferences.json')` → `courtyardPath(env,'next-preferences.json')`
+  2. `src/host/daemon.mjs`：`join(base,'PinaxNext','openstory','daemon.lock')` → `courtyardPath(env,'openstory','daemon.lock')`
+  3. `src/modules/agentbar/agentStore.mjs`：`base ? join(base,'PinaxNext','openstory') : ''` → `courtyardPath(env,'openstory')`
+  4. `src/modules/kb/kbAdapter.mjs`：`join(base,'PinaxNext','openstory','kb-config.json')` → `courtyardPath(env,'openstory','kb-config.json')`
+  5. `src/services/genres.mjs`：`…/genres` → `courtyardPath(env,'openstory','genres')`
+  6. `src/services/nativePicker.mjs`：`…/fs-browse.json` → `courtyardPath(env,'openstory','fs-browse.json')`
+  7. `src/services/runtimes.mjs`：`…/runtimes` → `courtyardPath(env,'openstory','runtimes')`
+  8. `src/services/skills.mjs`：`…/skills` → `courtyardPath(env,'openstory','skills')`
+  9. `src/services/stylePacks.mjs`：`…/styles` → `courtyardPath(env,'openstory','styles')`
+  10. `src/services/suites.mjs`：`…/suites` → `courtyardPath(env,'openstory','suites')`
+  11. `src/services/suites.mjs`：`…/suite-state.json` → `courtyardPath(env,'openstory','suite-state.json')`
+  12. `src/services/systemPrompt.mjs`：`…/kb-config.json` → `courtyardPath(process.env,'openstory','kb-config.json')`
+  13. `src/services/uiPreferences.mjs`：`…/ui-preferences.json` → `courtyardPath(env,'openstory','ui-preferences.json')`
+- 迁移语义：空环境首启建新院（`reason=created`）；旧院在且新院不在 → 递归只拷贝（跳 `*.tmp-*` 与
+  `daemon.lock`）＋写 `.migrated-from-pinaxnext.json`；标记或目标院已存在 → 不重拷；`LOCALAPPDATA`
+  与 `APPDATA` 都没有 → `ensureCourtyard('')` 回 `no-base`，`courtyardRoot/courtyardPath` 回空串，
+  不静默猜路径。旧院只读、不删、不改写，日志与标记均写明「旧院保留给 Pinax 桌面端」。
+- UI/文档：`public/app.js`、`public/index.html`、`public/views/settingsAggregation.mjs` 的路径提示改新院；
+  `AGENTS.md` 第 10 条加旧院冻结行；`ARCHITECTURE.md` 加双院现状与冻结行；`README.md` 加数据位置段；
+  `docs/LEGACY-ITEMS.md` 记裁定；`genres/`、`runtimes/`、`skills/`、`suites/` 的协议 README 同步。
+- 既有测试只改路径期望（等价加强，无删除、无 skip、无放宽）：agent / browseRoot / contracts /
+  daemonSingleInstance / kbAdapter / runtimes / styles / suites / uiPreferences 等；新增
+  `test/courtyard.test.mjs` 6 例（空院、迁移、tmp 跳过、幂等、目标已存在、缺 env 与 APPDATA 兜底）。
+
 ## 验收记录（主 agent 填）
+
+- **专项测试**：`node --test test/courtyard.test.mjs` 6/6 通过；
+  `node --test test/courtyard.test.mjs test/moduleCoverage.test.mjs` 10/10 通过。
+- **全量测试**：`node --test test/*.test.mjs` → 642 顶层项／**670 tests，668 pass，0 fail，2 skipped**
+  （OS-165 基线 664 例，本单净增 6 例）。
+- **验收门禁**：`node tools/acceptance/acceptance.mjs` → **23 过／0 挂／0 警**；
+  S2.1 通过（实现下沉 `src/protocol/`，未新增模块耦合豁免），S2.7 维持 14 模块／端点 105/105。
+- **架构统计**：`npm run arch:stats` 回写——前端 23 文件 21,219 行；宿主 7 文件 1,724 行；
+  自持层 73 文件 15,849 行；`app.js` 11,840 行（顺手修掉 HEAD 里「Agent 运行时」提示的
+  `openstory`／`untimes` 断行，净降 1 行）；契约 105 端点；测试 85 文件。
+- **迁移演练**（临时 `LOCALAPPDATA`，真实院子未被触碰）：
+  - 新院文件清单：`.migrated-from-pinaxnext.json`、`agent-config.json`、`kb-config.json`、
+    `openstory/nested/note.md`、`openstory/suite-state.json`（拷贝 4 个文件）。
+  - 标记内容：`schema=openstory.courtyard-migration/v1`、`from=<临时>/PinaxNext`、
+    `to=<临时>/OpenStory`、`at=2026-11-24T08:55:52.606Z`、`entries=4`、
+    `note=旧院保留给 Pinax 桌面端（未删除、未改写）`。
+  - 旧院仍在：`true`，且 `agent-config.json.tmp-98765`、`openstory/daemon.lock` 仍在旧院。
+  - 残留未拷贝：`tmp-copied=false`、`lock-copied=false`。
+- **grep `PinaxNext` 剩余命中**：仅三类——① `src/protocol/courtyard.mjs` 的迁移常量与注释、
+  ② `src/host/courtyard.mjs` 门面注释、③ 文档（新冻结说明＋历史 plan/workorder 归档）。
+  **产品代码零直拼**，模块层与 services 层全部经 `courtyardPath`。
+- **纪律核对**：未启动/未杀 daemon；未动 `.zcode/`；未碰真实 `%LOCALAPPDATA%`；
+  所有验证在 `mkdtemp` 临时目录内完成，探针脚本执行后删除。

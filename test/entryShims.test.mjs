@@ -30,7 +30,7 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms))
 function makeLockEnv() {
   const lockDir = mkdtempSync(join(tmpdir(), 'openstory-os159-'))
   const env = { ...process.env, LOCALAPPDATA: lockDir }
-  const lockPath = join(lockDir, 'PinaxNext', 'openstory', 'daemon.lock')
+  const lockPath = join(lockDir, 'OpenStory', 'openstory', 'daemon.lock')
   const cleanup = () => rmSync(lockDir, { recursive: true, force: true })
   return { env, lockPath, cleanup }
 }

@@ -15,18 +15,18 @@
 import { spawn } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
+import { courtyardPath } from '../protocol/courtyard.mjs'
 
 const t = (v) => String(v ?? '')
 
 /* ---------- 本机偏好（OS-119，OS-141 daemon 拆分落位）----------
  * 目录浏览器「上次选的文件夹」记忆与「弹不出原生框」降级记忆都落
- * %LOCALAPPDATA%/PinaxNext/openstory/fs-browse.json（本机一级，与库无关）：
+ * %LOCALAPPDATA%/OpenStory/openstory/fs-browse.json（本机一级，与库无关）：
  * 新建库时还没有库可写，而「浏览」按钮在建库表单里就要用——只能落本机。 */
 
 /** OS-119：目录浏览器「上次选的文件夹」记忆（本机偏好，与库无关）。 */
 export function browseMemoryPath(env = process.env) {
-  const base = t(env.LOCALAPPDATA || env.APPDATA).trim()
-  return base ? join(base, 'PinaxNext', 'openstory', 'fs-browse.json') : ''
+  return courtyardPath(env, 'openstory', 'fs-browse.json')
 }
 
 export function readBrowseMemory(env = process.env) {

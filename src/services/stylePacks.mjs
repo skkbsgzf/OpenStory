@@ -4,7 +4,7 @@
  * 一套皮＝一个 JSON 文件：`{ id, name, description, tokens: { '--bg': …, … } }`。
  * daemon 合并两个目录（后者按 id 覆盖前者）：
  *   1) 内置 `openstory/styles/`（随仓走的三套）；
- *   2) 本机 `%LOCALAPPDATA%/PinaxNext/openstory/styles/`（作者/社区/Agent 丢文件即上新）。
+ *   2) 本机 `%LOCALAPPDATA%/OpenStory/openstory/styles/`（作者/社区/Agent 丢文件即上新）。
  *
  * 防注入两条硬口径：
  *   · token 名限 `--kebab`（`/^--[a-z0-9-]+$/i`）；
@@ -20,6 +20,7 @@ export function isHexColor(value) {
 }
 import { fileURLToPath } from 'node:url'
 import { readdir, readFile } from 'node:fs/promises'
+import { courtyardPath } from '../protocol/courtyard.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 /** OS-140 布局归一：本模块迁到 src/services/——货架数据目录（styles/）仍在仓根。 */
@@ -34,8 +35,7 @@ export function builtinStylesDir() {
 }
 
 export function defaultUserStylesDir(env = process.env) {
-  const base = text(env.LOCALAPPDATA || env.APPDATA).trim()
-  return base ? join(base, 'PinaxNext', 'openstory', 'styles') : ''
+  return courtyardPath(env, 'openstory', 'styles')
 }
 
 const TOKEN_KEY = /^--[a-z0-9-]{1,48}$/iu

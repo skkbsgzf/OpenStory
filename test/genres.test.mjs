@@ -35,7 +35,7 @@ async function makeFixture() {
   await writeFile(preferencesPath, JSON.stringify({
     recentProjects: [{ path: root, name: '夹具库', at: '2026-11-16T00:00:00.000Z' }]
   }), 'utf-8')
-  return { base, root, preferencesPath, userGenres: join(base, 'PinaxNext', 'openstory', 'genres') }
+  return { base, root, preferencesPath, userGenres: join(base, 'OpenStory', 'openstory', 'genres') }
 }
 
 /* ---------- 体裁规整 ---------- */

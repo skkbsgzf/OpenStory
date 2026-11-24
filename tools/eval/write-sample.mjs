@@ -46,7 +46,7 @@ function readPackBody(pack) {
   return raw.split(/^---$/m).slice(2).join('---').trim()
 }
 async function retrievePrecedent(query) {
-  const cfg = resolveCollections('C:/Users/Administrator/AppData/Local/PinaxNext/openstory/kb-config.json')
+  const cfg = resolveCollections('C:/Users/Administrator/AppData/Local/OpenStory/openstory/kb-config.json')
   if (!cfg.ok) return { hits: [], note: 'kb-config 不可用' }
   const route = routeQuery({ intent: 'precedent' })
   const ids = route.collectionIds.map((a) => cfg.map[a]).filter(Boolean)

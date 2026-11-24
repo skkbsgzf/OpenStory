@@ -13,6 +13,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { atomicWriteFile } from '../protocol/hostWrite.mjs'
 import { PAGE_TO_DIR_LOCAL } from '../protocol/naming.mjs'
+import { courtyardPath } from '../protocol/courtyard.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 /** OS-140 布局归一：本模块迁到 src/services/——货架数据目录（genres/）仍在仓根。 */
@@ -35,8 +36,7 @@ export function builtinGenresDir() {
 }
 
 export function defaultUserGenresDir(env = process.env) {
-  const base = text(env.LOCALAPPDATA || env.APPDATA).trim()
-  return base ? join(base, 'PinaxNext', 'openstory', 'genres') : ''
+  return courtyardPath(env, 'openstory', 'genres')
 }
 
 function range(value) {

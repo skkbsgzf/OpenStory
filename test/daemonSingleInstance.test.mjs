@@ -36,7 +36,7 @@ const HERE = join(fileURLToPath(import.meta.url), '..', '..')
 function makeLockEnv() {
   const lockDir = mkdtempSync(join(tmpdir(), 'openstory-os127-'))
   const env = { ...process.env, LOCALAPPDATA: lockDir }
-  const lockPath = join(lockDir, 'PinaxNext', 'openstory', 'daemon.lock')
+  const lockPath = join(lockDir, 'OpenStory', 'openstory', 'daemon.lock')
   const cleanup = () => rmSync(lockDir, { recursive: true, force: true })
   return { lockDir, env, lockPath, cleanup }
 }
@@ -81,9 +81,9 @@ async function waitHealthy(port, pid, timeoutMs = 20_000) {
 test('锁路径：跟 LOCALAPPDATA 走，缺了退 APPDATA，再缺就是无处落锁', () => {
   assert.equal(
     daemonLockPath({ LOCALAPPDATA: 'D:/临时' }),
-    join('D:/临时', 'PinaxNext', 'openstory', 'daemon.lock')
+    join('D:/临时', 'OpenStory', 'openstory', 'daemon.lock')
   )
-  assert.equal(daemonLockPath({ APPDATA: 'E:/漫游' }), join('E:/漫游', 'PinaxNext', 'openstory', 'daemon.lock'))
+  assert.equal(daemonLockPath({ APPDATA: 'E:/漫游' }), join('E:/漫游', 'OpenStory', 'openstory', 'daemon.lock'))
   assert.equal(daemonLockPath({}), '')
 })
 

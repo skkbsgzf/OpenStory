@@ -95,7 +95,7 @@ function readSignalBody() {
 }
 /** 真检索：kbAdapter 直连 WeKnora knowledge-search（precedent 意图，弱命中丢弃）。 */
 async function retrievePrecedent(task) {
-  const cfg = resolveCollections('C:/Users/Administrator/AppData/Local/PinaxNext/openstory/kb-config.json')
+  const cfg = resolveCollections('C:/Users/Administrator/AppData/Local/OpenStory/openstory/kb-config.json')
   if (!cfg.ok) return { hits: [], note: 'kb-config 不可用：' + cfg.error }
   const route = routeQuery({ genre: task.genre, intent: 'precedent' })
   const ids = route.collectionIds.map((alias) => cfg.map[alias]).filter(Boolean)

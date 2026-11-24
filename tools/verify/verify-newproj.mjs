@@ -90,7 +90,7 @@ try {
   results.filter((r) => !r.ok).forEach((r) => console.log('  ✗ ' + r.n + ' — ' + r.d))
 } finally {
   try {
-    const prefsPath = process.env.LOCALAPPDATA + '/PinaxNext/next-preferences.json'
+    const prefsPath = process.env.LOCALAPPDATA + '/OpenStory/next-preferences.json'
     const prefs = JSON.parse(await readFile(prefsPath, 'utf-8'))
     const before = (prefs.recentProjects || []).length
     prefs.recentProjects = (prefs.recentProjects || []).filter((p) => !created.some((c) => p.path === c))

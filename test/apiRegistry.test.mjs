@@ -27,7 +27,7 @@ import { createRootAllowlist, loadLibraries } from '../src/host/authorize.mjs'
 /** 隔离夹具：临时 LOCALAPPDATA＋预置 NO_DESKTOP 记忆＋空货架目录。 */
 function makeFixture() {
   const fixtureDir = mkdtempSync(join(tmpdir(), 'openstory-os141-'))
-  const openstoryDir = join(fixtureDir, 'PinaxNext', 'openstory')
+  const openstoryDir = join(fixtureDir, 'OpenStory', 'openstory')
   mkdirSync(openstoryDir, { recursive: true })
   // nativePick 首查「本机弹不出原生框」的记忆（OS-118/119）——预写后立即 400 早退，不 spawn PowerShell。
   writeFileSync(join(openstoryDir, 'fs-browse.json'), JSON.stringify({ nativeDialog: 'NO_DESKTOP' }), 'utf-8')
@@ -59,15 +59,15 @@ function makeRes() {
 function makeContext(fixtureDir) {
   return {
     port: 0,
-    preferencesPath: join(fixtureDir, 'PinaxNext', 'next-preferences.json'),
+    preferencesPath: join(fixtureDir, 'OpenStory', 'next-preferences.json'),
     extraRoots: [],
     defaultRoot: '',
-    agentConfigPath: join(fixtureDir, 'PinaxNext', 'openstory', 'agent-config.json'),
-    agentSessionsDir: join(fixtureDir, 'PinaxNext', 'openstory', 'sessions'),
+    agentConfigPath: join(fixtureDir, 'OpenStory', 'openstory', 'agent-config.json'),
+    agentSessionsDir: join(fixtureDir, 'OpenStory', 'openstory', 'sessions'),
     stylesDirs: [],
     runtimesDirs: [],
     suitesDirs: [],
-    suiteStatePath: join(fixtureDir, 'PinaxNext', 'openstory', 'suite-state.json'),
+    suiteStatePath: join(fixtureDir, 'OpenStory', 'openstory', 'suite-state.json'),
     genresDirs: [],
     skillsDirs: [],
     // 只有夹具 LOCALAPPDATA＋无效 DSH_CLI：模型探测 spawn 即 ENOENT，绝不碰真机 dsh

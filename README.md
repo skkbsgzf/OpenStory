@@ -23,6 +23,12 @@
 2. **daemon 只监听 127.0.0.1**：不做 HTTPS/隧道/多用户；凭据只存本机（配置读写走掩码＋`__KEEP__`），响应只回掩码。
 3. **插件不常驻**：套件/运行时按声明加载，停用＝规则退回内置默认（值保留）。
 
+**数据位置（OS-166 起双院分家）**：库永远在作者自己的目录里（稿件、`.pinax/`、`.openstory/` 都在库内）；
+机器级凭据、界面偏好、单实例锁与本机货架落新院 `%LOCALAPPDATA%/OpenStory/openstory/`。
+旧院 `%LOCALAPPDATA%/PinaxNext/` 冻结给 Pinax 桌面端：首启只**一次性拷贝**到新院并留
+`.migrated-from-pinaxnext.json` 标记（跳 `*.tmp-*` 与 `daemon.lock`），不迁移、不删除、不改写。
+所有路径只从 `src/protocol/courtyard.mjs` 解析，`src/host/courtyard.mjs` 是宿主层唯一门面。
+
 ## 快速开始
 
 ```bash
@@ -48,7 +54,7 @@ npm test           # node --test（零外部依赖）
 
 ```
 L7  前端 public/               无构建单页（ui-kit 统一规范）
-L6  契约层 src/api/contracts/  七域聚合，双端校验
+L6  契约层 src/api/contracts/  八域聚合，双端校验
 L5  src/host/                  node:http 手写路由＋MCP stdio（单实例锁/stamp/generation/health）
 L4  本仓自持层                 建库/导入自持（OS-123/124）＋fact 消费＋参考＋Agent＋货架＋协议层（src/ 树）
 L2  src/kernel/                自有内核（openstory-kernel@1：管道件/fact 链/enrich，门禁 S2.4'）
@@ -65,7 +71,7 @@ L1  磁盘库                     文件即真相（.pinax 兼容，与 Pinax �
 |---|---|
 | `src/host/daemon.mjs` / `src/host/mcp.mjs` | 启动入口（OS-159：实现文件自带直跑判定，仓根不再放垫片） |
 | `src/host/` | daemon（端点契约分派＋进程治理）＋ MCP server（24 工具，零依赖 stdio；`npm run mcp`） |
-| `src/api/` | 契约层 `contracts.mjs` ＋ `contracts/` 七域分片（OS-130 起分域，纯数据，两端共享） |
+| `src/api/` | 契约层 `contracts.mjs` ＋ `contracts/` 八域分片（OS-130 起分域，OS-162 加 `exchange`，纯数据，两端共享） |
 | `src/protocol/` | 文件与协议层：chapters / changelog / versionGate / plugins / agentEvents / factGuard / dependencyGraph / hostWrite / libState |
 | `src/kernel/` | 自有内核（`openstory-kernel@1`：管道件＋fact 链＋enrich，公开面 `index.mjs`；出处与文件对应见 [docs/kernel-provenance.md](./docs/kernel-provenance.md)） |
 | `src/modules/` | 域模块与工作面插件：14 份 `module.manifest.json`（`openstory-module@1`）——核心四个 chapters / worldbook / script / roleplay（`core:true` 恒启用、不可停用），普通插件 analysis / comfyui / kb / habits / storysource / artifacts / exchange，宿主域登记 agentbar / deduce / library（零端点零页签）；另外 library/（建库/导入自持，OS-123/124 fork 点，`.pinax/project.json` 与 Pinax 桌面端双向兼容）、deduce/（推演）、roleplay/（扮演调度＋四层提示词）、worldbook/（参考索引）、agentbar/（Agent 存储）。端点归属 105/105 有主，见 `ARCHITECTURE.md`「模块插件清单」 |

@@ -735,7 +735,7 @@ function libraryHtml() {
           <button class="btn-primary" data-action="flow-create">＋新建库</button>
           <button class="btn-ghost" data-action="flow-import">导入稿件</button>
         </div>
-        <div class="hint">库清单：${esc(state.preferencesPath || '%LOCALAPPDATA%\\PinaxNext\\next-preferences.json')}</div>
+        <div class="hint">库清单：${esc(state.preferencesPath || '%LOCALAPPDATA%\\OpenStory\\next-preferences.json')}</div>
       </div>`
     : `<div class="filter">${filters}</div><div class="cards">${cards}</div>`
 
@@ -4159,9 +4159,9 @@ function settingsWritingSectionHtml() {
  */
 function settingsDiscoverSectionHtml() {
   const shelves = [
-    { label: '业务套件', dir: '%LOCALAPPDATA%\\PinaxNext\\openstory\\suites' },
-    { label: 'Agent 运行时', dir: '%LOCALAPPDATA%\\PinaxNext\\openstory\\runtimes' },
-    { label: '风格包', dir: '%LOCALAPPDATA%\\PinaxNext\\openstory\\styles' }
+    { label: '业务套件', dir: '%LOCALAPPDATA%\\OpenStory\\openstory\\suites' },
+    { label: 'Agent 运行时', dir: '%LOCALAPPDATA%\\OpenStory\\openstory\\runtimes' },
+    { label: '风格包', dir: '%LOCALAPPDATA%\\OpenStory\\openstory\\styles' }
   ]
   const rows = shelves.map((shelf) => `<div class="discover-row"><div><b>${esc(shelf.label)}</b></div><div class="hint">${esc(shelf.dir)}</div></div>`).join('')
   return `<div class="step"><h3>插件货架</h3>${rows}</div>
@@ -4176,10 +4176,9 @@ function settingsDiscoverSectionHtml() {
 function settingsCombinedDataSectionHtml() {
   return `<div class="step">
     <h3>货架路径<span class="sub">丢文件即上新，本机目录覆盖内置</span></h3>
-    <div class="kv-line"><span class="k">业务套件</span><span class="v">%LOCALAPPDATA%\PinaxNext\openstory\suites</span></div>
-    <div class="kv-line"><span class="k">Agent 运行时</span><span class="v">%LOCALAPPDATA%\PinaxNext\openstory
-untimes</span></div>
-    <div class="kv-line"><span class="k">风格包</span><span class="v">%LOCALAPPDATA%\PinaxNext\openstory\styles</span></div>
+    <div class="kv-line"><span class="k">业务套件</span><span class="v">%LOCALAPPDATA%\OpenStory\openstory\suites</span></div>
+    <div class="kv-line"><span class="k">Agent 运行时</span><span class="v">%LOCALAPPDATA%\OpenStory\openstory\runtimes</span></div>
+    <div class="kv-line"><span class="k">风格包</span><span class="v">%LOCALAPPDATA%\OpenStory\openstory\styles</span></div>
   </div>
   <div class="step">
     <h3>库与稿件</h3>
@@ -4232,10 +4231,10 @@ function settingsSyncSectionHtml() {
 
 function settingsDataSectionHtml() {
   const paths = [
-    { label: '库清单', path: state.preferencesPath || '%LOCALAPPDATA%\\PinaxNext\\next-preferences.json' },
-    { label: 'Agent 配置', path: agent.configPath || '%LOCALAPPDATA%\\PinaxNext\\openstory\\agent-config.json' },
-    { label: '运行时套件货架', path: state.settings.userDir || '%LOCALAPPDATA%\\PinaxNext\\openstory\\runtimes' },
-    { label: '风格包货架', path: (state.stylesDirs || [])[0] || '%LOCALAPPDATA%\\PinaxNext\\openstory\\styles' }
+    { label: '库清单', path: state.preferencesPath || '%LOCALAPPDATA%\\OpenStory\\next-preferences.json' },
+    { label: 'Agent 配置', path: agent.configPath || '%LOCALAPPDATA%\\OpenStory\\openstory\\agent-config.json' },
+    { label: '运行时套件货架', path: state.settings.userDir || '%LOCALAPPDATA%\\OpenStory\\openstory\\runtimes' },
+    { label: '风格包货架', path: (state.stylesDirs || [])[0] || '%LOCALAPPDATA%\\OpenStory\\openstory\\styles' }
   ]
   return `<div class="step">
     <h3>本机路径</h3>

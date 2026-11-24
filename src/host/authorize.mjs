@@ -2,7 +2,7 @@
  * root 授权与路径安全（OS-141 daemon 拆分）——daemon 与 handler 共用的纯函数层。
  *
  * 三件事：
- *   · 库清单：读 %LOCALAPPDATA%/PinaxNext/next-preferences.json（与 Electron 库管理器同一份数据），
+ *   · 库清单：读 %LOCALAPPDATA%/OpenStory/next-preferences.json（与 Electron 库管理器同一份数据），
  *     坏档/缺档不拦启动，按空清单＋warning 回；
  *   · root 白名单：库清单 ＋ 启动时 `--root=` 显式授权——作者指定了哪个库，daemon 才敢碰哪个库；
  *   · 路径安全：相对路径 resolve 后必须落在 root 内（照 S2 的路径逃逸拒收写法），
@@ -12,6 +12,7 @@
 import { readFileSync, realpathSync } from 'node:fs'
 import { isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { API_ERROR_CODES, isPlainObject, normalizeLibraries } from '../api/contracts.mjs'
+import { courtyardPath } from './courtyard.mjs'
 
 export function text(value) {
   return String(value ?? '')
@@ -23,10 +24,9 @@ export const METADATA_DIR = '.pinax'
 /** 库内不许当页签目录的名字：元数据与备份目录。 */
 export const RESERVED_LIB_DIRS = new Set([METADATA_DIR, '.history', '.openstory', 'node_modules'])
 
-/** 与 Electron 库管理器同一份数据：%LOCALAPPDATA%/PinaxNext/next-preferences.json。 */
+/** 与 Electron 库管理器同一份数据：%LOCALAPPDATA%/OpenStory/next-preferences.json。 */
 export function defaultPreferencesPath(env = process.env) {
-  const base = text(env.LOCALAPPDATA || env.APPDATA).trim()
-  return base ? join(base, 'PinaxNext', 'next-preferences.json') : ''
+  return courtyardPath(env, 'next-preferences.json')
 }
 
 /** 旧环境变量名（品牌前缀时代）：双读兼容一个大版本。拼接写法避免误读为错误码前缀。 */

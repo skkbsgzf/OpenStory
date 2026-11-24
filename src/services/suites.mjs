@@ -2,7 +2,7 @@
  * OpenStory 业务套件（插件）系统（OS-15）——DSH 插件同构：版本号/归属/独立设置页/非常驻。
  *
  * 套件＝目录＋manifest（openstory-suite@1）：
- *   内置 openstory/suites/ ＋本机 %LOCALAPPDATA%/PinaxNext/openstory/suites/（本机按 id 覆盖内置）。
+ *   内置 openstory/suites/ ＋本机 %LOCALAPPDATA%/OpenStory/openstory/suites/（本机按 id 覆盖内置）。
  * manifest 声明 settings schema（string/number/boolean/select），值存本机 suite-state.json：
  *   { suites: { <id>: { enabled: boolean, values: {...}, updatedAt } } }——enabled 缺省 true，
  *   停用＝该套件的规则退回内置默认（非常驻的落地点），值保留不丢。
@@ -16,6 +16,7 @@ import { atomicWriteFile } from '../protocol/hostWrite.mjs'
 import { loadSkills } from './skills.mjs'
 import { readAppVersion, minVersionGate } from '../protocol/versionGate.mjs'
 import { resolveSuiteDependencies } from '../protocol/dependencyGraph.mjs'
+import { courtyardPath } from '../protocol/courtyard.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 /** OS-140 布局归一：本模块迁到 src/services/——货架数据目录（suites/）仍在仓根。 */
@@ -34,13 +35,11 @@ export function builtinSuitesDir() {
 }
 
 export function defaultUserSuitesDir(env = process.env) {
-  const base = text(env.LOCALAPPDATA || env.APPDATA).trim()
-  return base ? join(base, 'PinaxNext', 'openstory', 'suites') : ''
+  return courtyardPath(env, 'openstory', 'suites')
 }
 
 export function defaultSuiteStatePath(env = process.env) {
-  const base = text(env.LOCALAPPDATA || env.APPDATA).trim()
-  return base ? join(base, 'PinaxNext', 'openstory', 'suite-state.json') : ''
+  return courtyardPath(env, 'openstory', 'suite-state.json')
 }
 
 /** settings schema 单字段校验；返回 {ok} 或 {ok:false, reason}。 */

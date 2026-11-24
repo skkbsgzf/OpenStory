@@ -7,7 +7,7 @@
 
 ```
 genres/<genre-id>.json          ← 内置（随仓）
-%LOCALAPPDATA%/PinaxNext/openstory/genres/   ← 本机（社区自带，按 id 覆盖内置）
+%LOCALAPPDATA%/OpenStory/openstory/genres/   ← 本机（社区自带，按 id 覆盖内置）
 ```
 
 内置只提供 **六类**（短故事 / 长篇连载 / 短剧漫剧 / 文学文艺 / 院线电影 / 电视剧），

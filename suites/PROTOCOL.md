@@ -7,7 +7,7 @@
 ## 1. 注册＝放一个目录
 
 ```
-suites/                          ← 内置 openstory/suites/ 或本机 %LOCALAPPDATA%/PinaxNext/openstory/suites/
+suites/                          ← 内置 openstory/suites/ 或本机 %LOCALAPPDATA%/OpenStory/openstory/suites/
   <suite-id>/
     manifest.json                ← 注册表（唯一必需）
     settings.html                ← 可选：自带设置页（capabilities.settings.mode="page" 时）

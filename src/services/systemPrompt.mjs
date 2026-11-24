@@ -20,6 +20,7 @@ import { precedentPromptSectionForGenre } from '../modules/kb/kbRouter.mjs'
 import { scanReferences, notesVisibleAt, buildReferenceGraph } from '../modules/worldbook/referenceStore.mjs'
 import { factStore } from '../kernel/index.mjs'
 import { listChapters } from '../protocol/chapters.mjs'
+import { courtyardPath } from '../protocol/courtyard.mjs'
 
 /** 生效技能目录（OS-68）：内置＋本机之外，再叠加启用中套件捆绑的 skills/。 */
 export function effectiveSkillsDirs({ skillsDirs, suitesDirs, suiteStatePath, env }) {
@@ -91,7 +92,7 @@ export async function systemPromptFor(root, libraries, genresDirs, skillsDirs, {
       applied.brief = true
       // KB-ARCH P0：同题材先例检索（案例库＋套路库）——kb-config 缺失或 KB 不可用时静默降级，不阻塞对话
       const kbSection = await precedentPromptSectionForGenre(genre?.name ?? loaded.brief.genre, {
-        configPath: join(process.env.LOCALAPPDATA || process.env.APPDATA || '', 'PinaxNext', 'openstory', 'kb-config.json')
+        configPath: courtyardPath(process.env, 'openstory', 'kb-config.json')
       })
       if (kbSection) {
         lines.push('', kbSection)

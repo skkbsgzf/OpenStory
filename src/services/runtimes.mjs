@@ -3,7 +3,7 @@
  *
  * 发现目录（后者按 id 覆盖前者，同风格包口径）：
  *   1) 内置 openstory/runtimes/（随仓的参考套件 echo-kit）；
- *   2) 本机 %LOCALAPPDATA%/PinaxNext/openstory/runtimes/（作者/社区/Agent 丢目录即上新）。
+ *   2) 本机 %LOCALAPPDATA%/OpenStory/openstory/runtimes/（作者/社区/Agent 丢目录即上新）。
  *
  * schemaVersion 必须精确等于 openstory-runtime-kit@1：别的版本跳过＋warning，不做半懂兼容。
  * 安全把门：id 形态、sidecar 必有 command 且 cmd 非空、endpoint 必有 http(s) url、
@@ -16,6 +16,7 @@ import { readFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { minVersionGate, readAppVersion } from '../protocol/versionGate.mjs'
+import { courtyardPath } from '../protocol/courtyard.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 /** OS-140 布局归一：本模块迁到 src/services/——货架数据目录（runtimes/）仍在仓根。 */
@@ -34,8 +35,7 @@ export function builtinRuntimesDir() {
 }
 
 export function defaultUserRuntimesDir(env = process.env) {
-  const base = text(env.LOCALAPPDATA || env.APPDATA).trim()
-  return base ? join(base, 'PinaxNext', 'openstory', 'runtimes') : ''
+  return courtyardPath(env, 'openstory', 'runtimes')
 }
 
 function validChatPath(value) {

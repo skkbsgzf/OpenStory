@@ -44,8 +44,8 @@ process.stdout.write('假CLI：' + lastLine.slice(-40))
     base, root, preferencesPath, fakeCli, hangCli,
     configPath: join(base, 'agent-config.json'),
     sessionsDir: join(base, 'sessions'),
-    runtimesDir: join(base, 'PinaxNext', 'openstory', 'runtimes'),
-    // env.LOCALAPPDATA=base 时默认货架＝base/PinaxNext/openstory/runtimes（上面那行）
+    runtimesDir: join(base, 'OpenStory', 'openstory', 'runtimes'),
+    // env.LOCALAPPDATA=base 时默认货架＝base/OpenStory/openstory/runtimes（上面那行）
   }
 }
 

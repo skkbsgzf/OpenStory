@@ -109,7 +109,7 @@ test('风格包路径：内置随仓，本机跟 LOCALAPPDATA', () => {
   assert.ok(builtinStylesDir().includes('styles'), '内置目录在仓内 styles/ 下')
   assert.equal(
     defaultUserStylesDir({ LOCALAPPDATA: 'C:/Users/x/AppData/Local' }).replaceAll('\\', '/'),
-    'C:/Users/x/AppData/Local/PinaxNext/openstory/styles'
+    'C:/Users/x/AppData/Local/OpenStory/openstory/styles'
   )
   assert.equal(defaultUserStylesDir({}), '')
 })

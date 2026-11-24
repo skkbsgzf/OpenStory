@@ -101,8 +101,9 @@ L4 自持层→L2 自有内核 `src/kernel/`→L1 磁盘库；OS-157 起 L2/L3 �
    | 套件（业务插件）启停与设置值 | `<库>/.openstory/plugins/suite-state.json`（OS-160 起随库走；机器级同名文件降为「没开库时的缺省」，旧库不迁移） |
    | 每一版修改的 diff 与日志 | `<库>/.pinax/log/<模块>/<yyyy-mm>.jsonl` |
    | 旧版原文备份（二进制快照） | 同目录 `.history/<file>.bak-<stamp>`（现有机制，保留；OS-137 起滚动保留：每文件配额 50 份＋日锚，绝不删最新，删除留痕 `.pinax/log/history-prune/`） |
-   | 本机凭据/模型端点 | `%LOCALAPPDATA%/PinaxNext/openstory/agent-config.json`（含密钥，不入库） |
-   | 机器级界面偏好（皮肤，无库也生效） | `%LOCALAPPDATA%/PinaxNext/openstory/ui-preferences.json`（OS-158，不入库；任何端口共用一份） |
+   | 本机凭据/模型端点 | `%LOCALAPPDATA%/OpenStory/openstory/agent-config.json`（含密钥，不入库） |
+   | 机器级界面偏好（皮肤，无库也生效） | `%LOCALAPPDATA%/OpenStory/openstory/ui-preferences.json`（OS-158，不入库；任何端口共用一份） |
+   | 旧院（冻结，OpenStory 不读不写不删） | `%LOCALAPPDATA%/PinaxNext/`（OS-166 起只作为 Pinax 桌面端的院；首启一次性**拷贝**到新院并留 `.migrated-from-pinaxnext.json` 标记，绝不迁移/删除旧院） |
 
 11. **每一次修改都必须有 diff + log，且可被模块自检索。**
     - 写操作一律经 `src/protocol/changelog.mjs` 的 `recordChange()`：自动算 unified diff、

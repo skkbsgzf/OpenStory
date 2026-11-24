@@ -22,7 +22,7 @@ test('路由：五个意图各归其库；未知意图拒收', () => {
 })
 
 test('配置：六库映射可解析；缺文件降级不抛', () => {
-  const good = resolveCollections('C:/Users/Administrator/AppData/Local/PinaxNext/openstory/kb-config.json')
+  const good = resolveCollections('C:/Users/Administrator/AppData/Local/OpenStory/openstory/kb-config.json')
   assert.equal(good.ok, true)
   assert.equal(good.map['文风库'].length > 10, true)
   assert.deepEqual(routeQuery({ intent: 'style' }).collectionIds.map((alias) => good.map[alias]).filter(Boolean).length, 1)

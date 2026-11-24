@@ -34,7 +34,7 @@ async function makeFixture() {
     base, root, preferencesPath,
     configPath: join(base, 'agent-config.json'),
     sessionsDir: join(base, 'sessions'),
-    userRuntimes: join(base, 'PinaxNext', 'openstory', 'runtimes')
+    userRuntimes: join(base, 'OpenStory', 'openstory', 'runtimes')
   }
 }
 

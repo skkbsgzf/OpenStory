@@ -87,7 +87,7 @@ test('KB 配置：缺档＝未配置（不是错误）；坏档记 warning；bac
 test('默认配置路径：跟随 LOCALAPPDATA', () => {
   assert.equal(
     defaultKbConfigPath({ LOCALAPPDATA: 'C:/x' }).replaceAll('\\', '/'),
-    'C:/x/PinaxNext/openstory/kb-config.json'
+    'C:/x/OpenStory/openstory/kb-config.json'
   )
   assert.equal(defaultKbConfigPath({}), '')
 })

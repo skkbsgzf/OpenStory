@@ -7,7 +7,7 @@
 
 ```
 skills/<skill-id>/SKILL.md         ← 内置（随仓）
-%LOCALAPPDATA%/PinaxNext/openstory/skills/<skill-id>/SKILL.md   ← 本机
+%LOCALAPPDATA%/OpenStory/openstory/skills/<skill-id>/SKILL.md   ← 本机
 ```
 
 一个 skill ＝ 一个目录＋`SKILL.md`（Markdown＋YAML frontmatter）。可带 `references/`、`scripts/` 等附属文件。

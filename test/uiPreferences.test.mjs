@@ -2,7 +2,7 @@
  * OS-158 机器级界面偏好（皮肤）用例（node:test）。
  *
  * 钉死三件事：
- *   ① 路径只一处解析，跟随 LOCALAPPDATA/PinaxNext/openstory/ui-preferences.json（env 注入隔离）；
+ *   ① 路径只一处解析，跟随 LOCALAPPDATA/OpenStory/openstory/ui-preferences.json（env 注入隔离）；
  *   ② 读写走真文件、原子写、坏档回落、皮肤 id 校验——不碰浏览器存储、不碰作者真库；
  *   ③ 契约层真的注册了 /api/ui-preferences 的 GET/PUT 两端（前端全靠它换端口同一份）。
  *
@@ -27,12 +27,12 @@ function fixture() {
   return { base, env, target: defaultUiPreferencesPath(env), cleanup: () => rmSync(base, { recursive: true, force: true }) }
 }
 
-test('默认路径：跟随 LOCALAPPDATA/PinaxNext/openstory，且 APPDATA 兜底', () => {
+test('默认路径：跟随 LOCALAPPDATA/OpenStory/openstory，且 APPDATA 兜底', () => {
   const f = fixture()
   try {
-    assert.equal(f.target.replaceAll('\\', '/').endsWith('/PinaxNext/openstory/ui-preferences.json'), true)
+    assert.equal(f.target.replaceAll('\\', '/').endsWith('/OpenStory/openstory/ui-preferences.json'), true)
     assert.equal(defaultUiPreferencesPath({ LOCALAPPDATA: '', APPDATA: 'C:/fallback' }).replaceAll('\\', '/'),
-      'C:/fallback/PinaxNext/openstory/ui-preferences.json'.replaceAll('\\', '/'))
+      'C:/fallback/OpenStory/openstory/ui-preferences.json'.replaceAll('\\', '/'))
   } finally { f.cleanup() }
 })
 
@@ -49,7 +49,7 @@ test('读：文件不存在／坏档都回空偏好，不抛', () => {
   const f = fixture()
   try {
     assert.deepEqual(readUiPreferences(f.target), { preferences: {}, error: '' })
-    mkdirSync(join(f.base, 'PinaxNext', 'openstory'), { recursive: true })
+    mkdirSync(join(f.base, 'OpenStory', 'openstory'), { recursive: true })
     writeFileSync(f.target, '{ 坏档', 'utf-8')
     const bad = readUiPreferences(f.target)
     assert.deepEqual(bad.preferences, {})

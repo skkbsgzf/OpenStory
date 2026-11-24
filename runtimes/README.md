@@ -17,7 +17,7 @@ runtimes/
 发现目录（后者按 id 覆盖前者，同风格包口径）：
 
 1. 内置：`openstory/runtimes/`
-2. 本机：`%LOCALAPPDATA%/PinaxNext/openstory/runtimes/`　——作者/社区/Agent 丢目录即上新
+2. 本机：`%LOCALAPPDATA%/OpenStory/openstory/runtimes/`　——作者/社区/Agent 丢目录即上新
 
 ## manifest.json 字段
 

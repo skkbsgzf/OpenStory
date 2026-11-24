@@ -45,7 +45,7 @@ export const SETTINGS_MARKER_VERSION = 1
  */
 export const KERNEL_SETTINGS = Object.freeze([
   Object.freeze({ id: 'daemon', label: 'daemon 端口', note: '127.0.0.1:8807，只监听本机' }),
-  Object.freeze({ id: 'libraryPath', label: '库路径', note: '库清单在 %LOCALAPPDATA%/PinaxNext/next-preferences.json' }),
+  Object.freeze({ id: 'libraryPath', label: '库路径', note: '库清单在 %LOCALAPPDATA%/OpenStory/next-preferences.json' }),
   Object.freeze({ id: 'dataDir', label: '数据目录', note: '草稿 / 推演 / 日志 / 界面状态都在库内 .pinax/' }),
   Object.freeze({ id: 'credentials', label: '凭据存储', note: '本机 agent-config.json / kb-config.json，响应只回掩码' })
 ])

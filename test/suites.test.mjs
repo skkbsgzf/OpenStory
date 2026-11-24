@@ -51,8 +51,8 @@ async function makeFixture() {
     base, root, preferencesPath,
     configPath: join(base, 'agent-config.json'),
     sessionsDir: join(base, 'sessions'),
-    userSuites: join(base, 'PinaxNext', 'openstory', 'suites'),
-    suiteStatePath: join(base, 'PinaxNext', 'openstory', 'suite-state.json')
+    userSuites: join(base, 'OpenStory', 'openstory', 'suites'),
+    suiteStatePath: join(base, 'OpenStory', 'openstory', 'suite-state.json')
   }
 }
 
@@ -165,10 +165,10 @@ test('契约：suites 三端点形状', () => {
   assert.equal(validateResponse('suiteStatePut', { ok: true, enabled: false }).ok, true)
 })
 
-test('默认路径：跟随 LOCALAPPDATA/PinaxNext/openstory', () => {
+test('默认路径：跟随 LOCALAPPDATA/OpenStory/openstory', () => {
   assert.equal(
     defaultSuiteStatePath({ LOCALAPPDATA: 'C:/Users/x/AppData/Local' }).replaceAll('\\', '/'),
-    'C:/Users/x/AppData/Local/PinaxNext/openstory/suite-state.json'
+    'C:/Users/x/AppData/Local/OpenStory/openstory/suite-state.json'
   )
   assert.equal(defaultUserSuitesDir({}).replaceAll('\\', '/').endsWith('openstory/suites'), false)
   assert.equal(defaultUserSuitesDir({}), '')

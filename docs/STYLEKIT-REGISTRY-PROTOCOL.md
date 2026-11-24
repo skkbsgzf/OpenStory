@@ -7,7 +7,7 @@
 
 ```
 stylekits/<id>.json                                  ← 内置
-%LOCALAPPDATA%/PinaxNext/openstory/stylekits/        ← 本机（社区/个人，按 id 覆盖内置）
+%LOCALAPPDATA%/OpenStory/openstory/stylekits/        ← 本机（社区/个人，按 id 覆盖内置）
 ```
 
 ## 必填与可选

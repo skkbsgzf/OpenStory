@@ -36,10 +36,10 @@ describe('defaultBrowseRoot / browseMemoryPath', () => {
     assert.equal(defaultBrowseRoot({}), '')
   })
 
-  it('记忆落本机偏好（LOCALAPPDATA/PinaxNext/openstory），不在库内也不在浏览器存储', async () => {
+  it('记忆落本机偏好（LOCALAPPDATA/OpenStory/openstory），不在库内也不在浏览器存储', async () => {
     const { browseMemoryPath } = await import('../src/host/daemon.mjs')
-    assert.equal(browseMemoryPath({ LOCALAPPDATA: 'C:\\L' }), join('C:\\L', 'PinaxNext', 'openstory', 'fs-browse.json'))
-    assert.equal(browseMemoryPath({ APPDATA: 'C:\\R' }), join('C:\\R', 'PinaxNext', 'openstory', 'fs-browse.json'))
+    assert.equal(browseMemoryPath({ LOCALAPPDATA: 'C:\\L' }), join('C:\\L', 'OpenStory', 'openstory', 'fs-browse.json'))
+    assert.equal(browseMemoryPath({ APPDATA: 'C:\\R' }), join('C:\\R', 'OpenStory', 'openstory', 'fs-browse.json'))
     assert.equal(browseMemoryPath({}), '')
   })
 })

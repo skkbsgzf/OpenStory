@@ -11,6 +11,7 @@
  */
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { courtyardPath } from '../../protocol/courtyard.mjs'
 
 function text(value) {
   return String(value ?? '')
@@ -30,8 +31,7 @@ function fail(code, message) {
 /* ---------- 配置 ---------- */
 
 export function defaultKbConfigPath(env = process.env) {
-  const base = text(env.LOCALAPPDATA || env.APPDATA).trim()
-  return base ? join(base, 'PinaxNext', 'openstory', 'kb-config.json') : ''
+  return courtyardPath(env, 'openstory', 'kb-config.json')
 }
 
 /**

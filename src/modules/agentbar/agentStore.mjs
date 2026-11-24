@@ -15,6 +15,7 @@ import { readFileSync } from 'node:fs'
 import { mkdir, readdir, readFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { atomicWriteFile } from '../../protocol/hostWrite.mjs'
+import { courtyardPath } from '../../protocol/courtyard.mjs'
 
 function text(value) {
   return String(value ?? '')
@@ -23,8 +24,7 @@ function text(value) {
 /* ---------- 路径 ---------- */
 
 export function defaultAgentHome(env = process.env) {
-  const base = text(env.LOCALAPPDATA || env.APPDATA).trim()
-  return base ? join(base, 'PinaxNext', 'openstory') : ''
+  return courtyardPath(env, 'openstory')
 }
 
 export function defaultAgentConfigPath(env = process.env) {

@@ -32,18 +32,18 @@
 <!-- arch-stats:start -->
 | 层 | 目录 | 文件数 | 行数 |
 |---|---|---:|---:|
-| L7 前端 | `public/`（含 `views/`） | 23 | 21,220 |
+| L7 前端 | `public/`（含 `views/`） | 23 | 21,219 |
 | L6 契约层 | `src/api/contracts/` | 9 | 1,440 |
-| L5 宿主层 | `src/host/` | 6 | 1,715 |
-| L4 自持层 | `src/{modules,services,protocol}/` | 72 | 15,736 |
+| L5 宿主层 | `src/host/` | 7 | 1,724 |
+| L4 自持层 | `src/{modules,services,protocol}/` | 73 | 15,849 |
 | L2 自有内核 | `src/kernel/` | 11 | 1,871 |
 | L1 磁盘库 | 库＝文件夹（无代码） | — | — |
 
 | 附加指标 | 实测 |
 |---|---:|
-| `public/app.js` 行数 | 11,841 |
+| `public/app.js` 行数 | 11,840 |
 | 契约端点数（`method:` 计数） | 105 |
-| 测试文件数（`test/*.test.mjs`） | 84 |
+| 测试文件数（`test/*.test.mjs`） | 85 |
 <!-- arch-stats:end -->
 
 ```
@@ -104,8 +104,14 @@ L7 前端 → L6 契约层 → L5 宿主层 → L4 自持层 → L2 自有内核
   node fetch/curl/直接调 src/host/mcp.mjs——不受影响）；④带 body 必须 application/json（跨站
   text/plain 简单请求从此写不进来；`FORBIDDEN_ORIGIN`=403、`UNSUPPORTED_MEDIA_TYPE`=400，
   专项测试 `test/originGuard.test.mjs`）；**OS-127 进程治理**——单实例锁
-  （`%LOCALAPPDATA%/PinaxNext/openstory/daemon.lock`）、acquire/stamp/clear 三步闸、
+  （`%LOCALAPPDATA%/OpenStory/openstory/daemon.lock`）、acquire/stamp/clear 三步闸、
   generation 代际继承、`/api/health` 读 DAEMON_RUNTIME。
+- **本机院子双院现状（OS-166）**：新院 `%LOCALAPPDATA%/OpenStory/` 归 OpenStory；旧院
+  `%LOCALAPPDATA%/PinaxNext/` **冻结给 Pinax 桌面端，OpenStory 不读、不写、不删**。首启时
+  `src/protocol/courtyard.mjs`（经 `src/host/courtyard.mjs` 原样转供）检测旧院在、新院不在，
+  递归拷贝全部条目（跳 `*.tmp-*` 与 `daemon.lock`），写
+  `.migrated-from-pinaxnext.json`（`schema/from/to/at/entries/note`）；目标已存在或标记已写
+  即不再重复。所有本机路径解析从这一处取，env 注入只用于测试隔离。
 - **伴生进程**：`src/host/mcp.mjs`（stdio JSON-RPC，**24 工具**）是 daemon HTTP 的薄适配层
   ——数据操作全部转发本机 daemon，唯一直算例外是 analysis 纯函数；不套娃（不开 agent 对话）。
   **模块闸口径（OS-146）**：分析工具只在**显式给了 root** 时按该库的 `modules.enabled.analysis`
@@ -222,7 +228,8 @@ llmPort 规范/兼容形态见 [docs/deduce-llm-port.md](./docs/deduce-llm-port.
 | `.pinax/{drafts,log,ui-state.json,proposals,state}` | 草稿 / 模块日志（append-only jsonl） / 界面状态 / 提案 |
 | `.openstory/{deduce,brief.json,agent-picks.json}` | 引擎会话状态 / 项目简报 / Agent 选择链 |
 | `<同目录>/.history/` | 每版写前备份（二进制快照）；OS-137 起滚动保留——每原文件最新 `OPENSTORY_HISTORY_KEEP`（缺省 50）份＋每个自然日的最后一份（日锚），最新一份绝不删，删除留痕 `.pinax/log/history-prune/<yyyy-mm>.jsonl` |
-| `%LOCALAPPDATA%/PinaxNext/openstory/`（不入库） | agent-config.json（凭据）、daemon.lock（进程治理）、suites/styles/runtimes 本机货架 |
+| `%LOCALAPPDATA%/OpenStory/openstory/`（不入库） | agent-config.json（凭据）、daemon.lock（进程治理）、suites/styles/runtimes 本机货架 |
+| `%LOCALAPPDATA%/PinaxNext/`（不入库，冻结） | 旧院，只归 Pinax 桌面端；OS-166 首启只从此处一次性拷贝到新院，不迁移、不删除、不改写 |
 
 - **边界**：除本机货架与锁文件外，一切状态落库内固定位置；关掉浏览器/换机器/清缓存，
   重新打开库必须完全复原（OS-89 判据）。
