@@ -300,12 +300,19 @@ test('迁移规划：列文件算目标路径，子目录递归，目标冲突�
 test('迁移规划：白名单外的目录一律拒绝（动稿口子收窄）', async () => {
   const base = await mkdtemp(join(tmpdir(), 'openstory-absorb-'))
   try {
-    const bad = await absorbLegacyDirs(join(base, '库'), ['世界书', '正文', '日志'])
+    const bad = await absorbLegacyDirs(join(base, '库'), ['正文', '日志'])
     assert.equal(bad.ok, false)
     assert.match(bad.message, /只接受/u)
     assert.equal(bad.moves.length, 0)
     const none = await absorbLegacyDirs(join(base, '库'), [])
     assert.equal(none.ok, false)
+    // OS-164/G8b 合法更新：世界书/ 从「白名单外」升为 Pinax 载体兼容输入
+    const legacy = join(base, '库', '世界书')
+    await mkdir(legacy, { recursive: true })
+    await writeFile(join(legacy, '林冲.md'), '载体条目\n', 'utf-8')
+    const planned = await absorbLegacyDirs(join(base, '库'), ['世界书'])
+    assert.equal(planned.ok, true)
+    assert.equal(planned.moves[0].toRel, '参考/世界书/林冲.md')
   } finally {
     await rm(base, { recursive: true, force: true })
   }

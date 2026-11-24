@@ -80,8 +80,12 @@ test('建库：novel 主模块全链；重复路径拒绝；非绝对路径拒�
     assert.equal(created.document.kind, 'novel')
     assert.equal(created.needsPrimary, false)
     const dirs = await readdir(created.root)
-    for (const dir of ['正文', '大纲', '世界书', '构思', '资料', '日志', '约束', '.pinax']) {
+    // OS-164/G8b 合法更新：退场四目录不再随新库落盘，参考/ 作为真笔记目录补进来。
+    for (const dir of ['正文', '参考', '世界书', '日志', '.pinax']) {
       assert.ok(dirs.includes(dir), `骨架缺 ${dir}`)
+    }
+    for (const retired of ['大纲', '构思', '资料', '约束']) {
+      assert.ok(!dirs.includes(retired), `新库不该再建退场目录 ${retired}`)
     }
     const prefs = JSON.parse(await readFile(preferencesPath, 'utf-8'))
     assert.equal(prefs.recentProjects[0].name, '长夜')

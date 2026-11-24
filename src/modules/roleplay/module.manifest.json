@@ -1,0 +1,32 @@
+{
+  "spec": "openstory-module@1",
+  "id": "roleplay",
+  "name": "扮演",
+  "version": "0.1.0",
+  "core": true,
+  "description": "扮演工作面（核心模块，core:true——永远启用、不可停用）：独占 deduce*/roleplay* 会话与推演端点（含 session/turn/settle/branch/assets/promote/export 等）；deduceImage 归生图模块，不在此列。推演/ 目录只存会话、素材与导出，页签「扮演」由视图驱动。",
+  "endpoints": [
+    "deducePresent",
+    "deduceOpeningGet",
+    "deduceSettle",
+    "deduceSessionGet",
+    "deduceSessionPut",
+    "deduceArchive",
+    "deduceTurn",
+    "roleplayOpeningGet",
+    "roleplayTurn",
+    "deduceExport",
+    "deducePromote",
+    "deducePendingSettle",
+    "deduceSessionsGet",
+    "deduceSessionManage",
+    "deduceBranch",
+    "deduceAssets",
+    "deduceAssetFile"
+  ],
+  "pages": [
+    { "id": "deduce", "label": "扮演", "slot": "tab" }
+  ],
+  "settings": [],
+  "settingsHint": "扮演是核心工作面，不可停用也没有可调参数：会话状态落库内「推演/」，模型与运行时在「设置 · 引擎与存储」里配。"
+}

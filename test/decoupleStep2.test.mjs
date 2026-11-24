@@ -50,10 +50,11 @@ const GOLDEN = Object.freeze({
     }),
     enabled: Object.freeze(['pinax.carrier.novel']),
     dirs: Object.freeze({
-      skeleton: Object.freeze(['正文', '大纲', '世界书', '构思', '资料', '日志', '约束']),
+      // OS-164/G8b 合法更新：四个退场目录不再随新库落盘，参考/ 与 世界书/ 同时建。
+      skeleton: Object.freeze(['正文', '参考', '世界书', '日志']),
       pluginRegistered: Object.freeze([])
     }),
-    listing: Object.freeze(['.pinax', '世界书', '大纲', '日志', '构思', '正文', '约束', '资料']),
+    listing: Object.freeze(['.pinax', '世界书', '参考', '日志', '正文']),
     pinax: Object.freeze(['project.json', 'proposals', 'state'])
   }),
   script: Object.freeze({
@@ -67,10 +68,11 @@ const GOLDEN = Object.freeze({
     }),
     enabled: Object.freeze(['pinax.carrier.script']),
     dirs: Object.freeze({
-      skeleton: Object.freeze(['剧本', '人物', '场景', '大纲', '世界书', '资料', '日志', '约束']),
+      // OS-164/G8b 合法更新：剧本库同理，退场目录不建、补参考/。
+      skeleton: Object.freeze(['剧本', '人物', '场景', '参考', '世界书', '日志']),
       pluginRegistered: Object.freeze([])
     }),
-    listing: Object.freeze(['.pinax', '世界书', '人物', '剧本', '场景', '大纲', '日志', '约束', '资料']),
+    listing: Object.freeze(['.pinax', '世界书', '人物', '剧本', '参考', '场景', '日志']),
     pinax: Object.freeze(['project.json', 'proposals', 'state'])
   }),
   bare: Object.freeze({

@@ -51,8 +51,9 @@ async function forceDisable(root) {
   await writeFile(join(root, '.pinax', 'ui-state.json'), JSON.stringify(state), 'utf-8')
 }
 
-test('manifest：两个核心模块 core:true，端点归属精确；script 零独占', () => {
-  assert.deepEqual([...CORE_MODULE_IDS].sort(), ['chapters', 'script'])
+test('manifest：四个核心模块 core:true，端点归属精确；script 零独占', () => {
+  // OS-163 落地 chapters/script；OS-164 再落地 worldbook/roleplay——核心恒为四枚。
+  assert.deepEqual([...CORE_MODULE_IDS].sort(), ['chapters', 'roleplay', 'script', 'worldbook'])
   for (const id of CORE_MODULE_IDS) {
     assert.equal(isCoreModule(id), true)
     assert.equal(moduleManifest(id)?.core, true, `${id} 必须 core:true`)
@@ -61,6 +62,14 @@ test('manifest：两个核心模块 core:true，端点归属精确；script 零�
     'chapterDelete', 'chapterGet', 'chapterPut', 'chaptersCreate', 'chaptersGet', 'chaptersRename', 'draftGet'
   ])
   assert.deepEqual([...moduleManifest('script').endpoints], [], '剧本没有独占端点（借 chapters 通道）')
+  assert.deepEqual([...moduleManifest('worldbook').endpoints].sort(), [
+    'referenceAbsorb', 'referenceAssetGet', 'referenceGet', 'referenceGraphGet', 'referenceNoteGet'
+  ], '世界书独占五端点；生图端点不归它')
+  assert.equal(moduleManifest('roleplay').endpoints.includes('deduceImage'), false, '生图端点归 comfyui')
+  assert.equal(moduleOfEndpoint('deduceImage'), 'comfyui')
+  assert.equal(moduleOfEndpoint('referenceImageGenerate'), 'comfyui')
+  assert.ok(moduleManifest('roleplay').endpoints.includes('deduceTurn'))
+  assert.ok(moduleManifest('roleplay').endpoints.includes('roleplayTurn'))
   for (const endpoint of moduleManifest('chapters').endpoints) {
     assert.ok(HANDLERS[endpoint], `${endpoint} 必须有 handler`)
     assert.ok(ENDPOINTS[endpoint], `${endpoint} 必须登记契约`)
@@ -80,8 +89,10 @@ test('证据①恒启用：ui-state 写成 false 也拦不住，独占端点无�
   try {
     await forceDisable(root)
     for (const id of CORE_MODULE_IDS) assert.equal(await isModuleEnabled(root, id), true, `${id} 恒启用`)
-    for (const endpoint of moduleManifest('chapters').endpoints) {
-      assert.equal(await isModuleDisabledFor(endpoint, root), null, `${endpoint} 无停用闸`)
+    for (const manifest of MODULE_MANIFESTS.filter((item) => item.core)) {
+      for (const endpoint of manifest.endpoints) {
+        assert.equal(await isModuleDisabledFor(endpoint, root), null, `${endpoint} 无停用闸`)
+      }
     }
     assert.equal(await isModuleEnabled(root, 'habits'), false, '普通模块仍按 ui-state 停用（对照）')
   } finally {
@@ -104,6 +115,11 @@ test('证据②拒写：daemon uiStatePut 写核心键 false → MODULE_CORE，�
     const nested = await put({ modules: { enabled: { script: false } } })
     assert.equal(nested.status, 409)
     assert.equal((await nested.json()).error.code, 'MODULE_CORE')
+    for (const id of ['worldbook', 'roleplay']) {
+      const flatOne = await put({ [`modules.enabled.${id}`]: false })
+      assert.equal(flatOne.status, 409, `${id} 扁平键写入必须拒`)
+      assert.equal((await flatOne.json()).error.code, 'MODULE_CORE')
+    }
 
     // 拒写之后文件没被改写（核心键 false 不落盘）
     const persisted = JSON.parse(await readFile(join(root, '.pinax', 'ui-state.json'), 'utf-8'))
@@ -121,18 +137,19 @@ test('证据②拒写：daemon uiStatePut 写核心键 false → MODULE_CORE，�
   }
 })
 
-test('证据③页签恒在：显式启用集合为空也不裁正文／剧本，注册表声明模块归属', () => {
-  const writeTab = TAB_REGISTRY.find((entry) => entry.id === 'write')
-  const scriptTab = TAB_REGISTRY.find((entry) => entry.id === 'script')
-  assert.equal(writeTab.module, 'chapters')
-  assert.equal(scriptTab.module, 'script')
-  assert.equal(writeTab.moduleCore, true)
-  assert.equal(scriptTab.moduleCore, true)
+test('证据③页签恒在：显式启用集合为空也不裁四个核心页签，注册表声明模块归属', () => {
+  for (const [tabId, moduleId] of [['write', 'chapters'], ['script', 'script'], ['reference', 'worldbook'], ['deduce', 'roleplay']]) {
+    const tab = TAB_REGISTRY.find((entry) => entry.id === tabId)
+    assert.equal(tab.module, moduleId, `${tabId} 的模块归属`)
+    assert.equal(tab.moduleCore, true, `${tabId} 核心页签恒在`)
+  }
 
-  const ctx = { current: { path: '/lib' }, libDirs: ['正文', '剧本'], brief: null, briefGenre: null, settingsOpen: false }
+  const ctx = { current: { path: '/lib' }, libDirs: ['正文', '剧本', '参考', '推演'], brief: null, briefGenre: null, settingsOpen: false }
   const empty = computeTabDefs({ ...ctx, modulesEnabled: new Set() }).map((def) => def.view)
   assert.ok(empty.includes('write'), '正文页签恒在')
   assert.ok(empty.includes('dir:剧本'), '剧本页签恒在')
+  assert.ok(empty.includes('reference'), '世界书页签恒在')
+  assert.ok(empty.includes('deduce'), '扮演页签恒在')
   assert.ok(!empty.includes('habits'), '普通模块仍按启用集合裁掉（对照）')
   // 目录型页签路径也要过同一条闸
   assert.ok(dirTabDefs({ libDirs: ['正文', '剧本', '习惯'], excluded: new Set(), modulesEnabled: new Set() })
@@ -152,6 +169,12 @@ test('证据④端点恒通：ui-state 写 false 后正文／章节端点照常 
     const chapter = await fetch(`${origin}/api/chapter?${q}&file=${encodeURIComponent('正文/001-风雪山神庙.md')}`)
     assert.equal(chapter.status, 200)
     assert.match((await chapter.json()).text, /林冲推门而入/u)
+    const reference = await fetch(`${origin}/api/reference?${q}`)
+    assert.equal(reference.status, 200, '世界书独占端点恒通')
+    assert.equal((await reference.json()).ok, true)
+    const sessions = await fetch(`${origin}/api/deduce/sessions?${q}`)
+    assert.equal(sessions.status, 200, '扮演独占端点恒通')
+    assert.equal((await sessions.json()).ok, true)
   } finally {
     await daemon.close()
     await rm(base, { recursive: true, force: true })
@@ -160,7 +183,7 @@ test('证据④端点恒通：ui-state 写 false 后正文／章节端点照常 
 
 test('设置页：核心模块恒启用，开关 checked+disabled，带「核心模块」徽标', () => {
   const modules = MODULE_MANIFESTS.map((manifest) => ({ ...manifest }))
-  const agg = aggregateSettings({ modules, enabled: { chapters: false, script: false }, state: {} })
+  const agg = aggregateSettings({ modules, enabled: { chapters: false, script: false, worldbook: false, roleplay: false }, state: {} })
   const group = agg.groups.find((item) => item.id === 'modules')
   for (const id of CORE_MODULE_IDS) {
     const card = group.modules.find((item) => item.id === id)

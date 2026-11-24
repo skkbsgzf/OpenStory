@@ -58,10 +58,17 @@ const CARRIER_TITLES = Object.freeze({
 export const PROJECT_SPEC = 'pinax-project@3'
 export const LEGACY_PROJECT_SPECS = Object.freeze(['pinax-project@1', 'pinax-project@2'])
 export const METADATA_DIR = '.pinax'
+/**
+ * 新建库骨架（OS-164 / G8b 作者裁定）：
+ *   · 「参考/」是真正的笔记目录（冻结不改名、不迁移既有库）；
+ *   · 「世界书/」只是 Pinax 载体兼容输入——建库时同时建出来，导入时 absorb 进「参考/」；
+ *   · 四个已退场目录不再随新库落盘：大纲→参考，构思→习惯＋参考，资料→参考，约束→习惯＋参考。
+ * 既有库一律不迁移、不补建（旧库不迁移红线）；这里只管「新建时长什么样」。
+ */
 export const PROJECT_KINDS = Object.freeze({
-  novel: Object.freeze(['正文', '大纲', '世界书', '构思', '资料', '日志', '约束']),
-  screenplay: Object.freeze(['剧本', '人物', '场景', '大纲', '世界书', '资料', '日志', '约束']),
-  generic: Object.freeze(['文档', '资料', '日志', '约束'])
+  novel: Object.freeze(['正文', '参考', '世界书', '日志']),
+  screenplay: Object.freeze(['剧本', '人物', '场景', '参考', '世界书', '日志']),
+  generic: Object.freeze(['文档', '日志'])
 })
 export function isKnownKind(kind) {
   return Object.prototype.hasOwnProperty.call(PROJECT_KINDS, String(kind || ''))

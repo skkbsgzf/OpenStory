@@ -395,10 +395,16 @@ test('daemon 端点：迁入旧目录——搬进参考、源进 .history、白�
     body: JSON.stringify(body)
   })
   try {
-    // 白名单外：世界书不在 ABSORBABLE_DIRS，整单拒绝
-    const bad = await post({ root, dirs: ['世界书'] })
+    // 白名单外：正文/日志不是可吸收的旧目录，整单拒绝
+    const bad = await post({ root, dirs: ['正文'] })
     assert.equal(bad.status, 400)
     assert.equal((await bad.json()).error.code, 'INVALID_ENTRY')
+    // OS-164/G8b：世界书/ 升为 Pinax 载体兼容输入，可 absorb 进 参考/世界书/（合法更新）
+    await mkdir(join(root, '世界书'), { recursive: true })
+    await writeFile(join(root, '世界书', '林冲.md'), '兼容输入条目。', 'utf-8')
+    const carrier = await post({ root, dirs: ['世界书'] })
+    assert.equal(carrier.status, 200)
+    assert.equal((await carrier.json()).moved[0].to, '参考/世界书/林冲.md')
 
     // 正常迁移：两目录两文件
     const done = await post({ root, dirs: ['大纲', '资料'] })

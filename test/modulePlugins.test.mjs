@@ -92,7 +92,7 @@ test('模块 manifest：普通模块都过形状校验，spec/id/core 口径统�
     const checked = validateModuleManifest(manifest, { dirName: manifest.id })
     assert.equal(checked.ok, true, `${manifest.id} 应过校验：${checked.errors?.join('；')}`)
     assert.equal(manifest.spec, MODULE_SPEC)
-    // OS-163：核心两枚（chapters/script）恒启用；其余仍一律非核心。原「全非核心」断言按批次
+    // OS-163/164：核心四枚（chapters/script/worldbook/roleplay）恒启用；其余仍一律非核心。原「全非核心」断言按批次
     // 等价加强为「core 标记与核心清单严格一致」，强度不减（普通模块仍必须 false）。
     assert.equal(manifest.core, CORE_MODULE_IDS.includes(manifest.id), `${manifest.id} 的 core 标记与核心清单不一致`)
     for (const endpoint of manifest.endpoints) {

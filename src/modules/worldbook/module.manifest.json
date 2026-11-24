@@ -1,0 +1,20 @@
+{
+  "spec": "openstory-module@1",
+  "id": "worldbook",
+  "name": "世界书",
+  "version": "0.1.0",
+  "core": true,
+  "description": "世界书工作面（核心模块，core:true——永远启用、不可停用）：独占 referenceGet / referenceGraphGet / referenceNoteGet / referenceAssetGet / referenceAbsorb。referenceImageGenerate 归生图模块，不在此列；fact 读端点为共享通道，如实登记但不随本模块启停。目录归属见 G8b：参考/ 是真正的笔记目录（冻结不改名），世界书/ 是 Pinax 载体兼容输入，导入走 absorb 进参考/。",
+  "endpoints": [
+    "referenceGet",
+    "referenceGraphGet",
+    "referenceNoteGet",
+    "referenceAssetGet",
+    "referenceAbsorb"
+  ],
+  "pages": [
+    { "id": "reference", "label": "世界书", "slot": "tab" }
+  ],
+  "settings": [],
+  "settingsHint": "世界书是核心工作面，不可停用也没有可调参数：条目写在「参考/」（页签名「世界书」），旧载体的「世界书/」只作兼容输入，导入时 absorb 进参考/。"
+}

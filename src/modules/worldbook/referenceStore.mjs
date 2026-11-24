@@ -22,13 +22,15 @@ export const TAG_NOTE_DIR = '标签'
 export const REFERENCE_EXTENSIONS = Object.freeze(['.md', '.markdown', '.txt'])
 
 /**
- * 旧目录迁入参考（OS-48）只认这四个——动稿的口子必须收窄。
- * 世界书/日志/正文等不在迁移范围：世界书目录归 worldbook 载体，日志只读，正文是主载体。
+ * 旧目录迁入参考（OS-48）只认下面这些——动稿的口子必须收窄。
+ * OS-164/G8b 裁定：世界书/ 是 Pinax 载体兼容输入，不再是无主旧目录——
+ * 从载体导入后它的条目要能 absorb 进真正的笔记目录 参考/（落 参考/世界书/…）。
+ * 日志只读、正文是主载体，仍不在迁移范围。
  */
 // OS-59 口径修正：规则类内容归「习惯」（习惯/habits.json），不再迁入世界书。
 // 所以旧目录里只有「创作型条目」类的才可吸收；约束（写作纪律这类规则）留在原地，
 // 由作者在习惯页签里录入，避免把规则混进世界书这个纯条目库。
-export const ABSORBABLE_DIRS = Object.freeze(['大纲', '构思', '资料'])
+export const ABSORBABLE_DIRS = Object.freeze(['大纲', '构思', '资料', '世界书'])
 
 /** 标签笔记的 frontmatter 标记（`kind: tag` 才算标签定义）。 */
 export const TAG_NOTE_KIND = 'tag'

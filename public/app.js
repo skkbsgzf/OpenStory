@@ -159,11 +159,19 @@ const workbenchViewsReady = import('./views/workbenchViews.mjs').then((mod) => {
 let scriptViews = null
 const scriptViewsReady = import('./views/scriptViews.mjs').then((mod) => { scriptViews = mod; return mod })
   .catch((error) => { console.error('[views] 剧本视图模块加载失败', error); return null })
+/* OS-164：世界书纯视图（views/referenceViews.mjs）——词条详情/编辑器/图谱/左栏模块的 HTML 构造住这里 */
+let referenceViews = null
+const referenceViewsReady = import('./views/referenceViews.mjs').then((mod) => { referenceViews = mod; return mod })
+  .catch((error) => { console.error('[views] 世界书视图模块加载失败', error); return null })
+/* OS-164：扮演纯视图（views/deduceViews.mjs）——推演/叙事流的纯 HTML 构造住这里；状态机与打字机留本文件 */
+let deduceViews = null
+const deduceViewsReady = import('./views/deduceViews.mjs').then((mod) => { deduceViews = mod; return mod })
+  .catch((error) => { console.error('[views] 扮演视图模块加载失败', error); return null })
 /* OS-161：前端模块 id 清单（与各模块目录的 module.manifest.json 对齐；后端 manifest 装载结果在此镜像，
    页签可见性只按这张表 × moduleOn(id) 判定，新增模块须同步这里一行）。 */
-const MODULE_IDS = ['analysis', 'comfyui', 'kb', 'habits', 'storysource', 'artifacts', 'exchange', 'chapters', 'script']
-// OS-163：核心模块恒启用（与后端 isModuleEnabled 的 core 分支同口径）——UI 不因 ui-state 的 false 隐藏核心页签。
-const CORE_MODULE_IDS = ['chapters', 'script']
+const MODULE_IDS = ['analysis', 'comfyui', 'kb', 'habits', 'storysource', 'artifacts', 'exchange', 'chapters', 'script', 'worldbook', 'roleplay']
+// OS-163/164：核心模块恒启用（与后端 isModuleEnabled 的 core 分支同口径）——UI 不因 ui-state 的 false 隐藏核心页签。
+const CORE_MODULE_IDS = ['chapters', 'script', 'worldbook', 'roleplay']
 
 /* OS-149：运行时货架过滤（views/runtimeShelf.mjs）——fixture 套件不进作者可见列表；纯函数在 views/，这里只接线 */
 let runtimeShelf = null
@@ -3390,8 +3398,10 @@ const SETTINGS_SECTIONS = Object.freeze(
  */
 const WORKBENCH_MODULES = Object.freeze([
   { id: 'chapters', label: '章节树', slot: '左栏', suite: 'writing', hint: '卷/章两级，写小说时随手切章' },
-  { id: 'graph', label: '参考图谱', slot: '左栏', suite: 'writing', hint: '参考与章节/条目的关系图' },
-  { id: 'summary', label: '参考摘要', slot: '左栏', suite: 'writing', hint: 'AI 基于图谱总结本章要点' },
+  // OS-164/G8b：叫法统一取命名表（与页签「世界书」一致）；模块清单在 registry 异步装载前定义，
+  // 所以用 getter 动态取表，fallback 与表内值同字，装载前后都不出现「参考图谱/参考摘要」旧叫法。
+  { id: 'graph', get label() { return registryModule?.namingEntry?.('reference')?.graphLabel || '世界书图谱' }, slot: '左栏', suite: 'writing', hint: '世界书与章节/条目的关系图' },
+  { id: 'summary', get label() { return registryModule?.namingEntry?.('reference')?.summaryLabel || '世界书摘要' }, slot: '左栏', suite: 'writing', hint: 'AI 基于图谱总结本章要点' },
   { id: 'plotCurve', label: '剧情曲线', slot: '右栏', suite: 'writing', hint: '情绪曲线 / 事件密度（需拆解 fact）' },
   { id: 'style', label: '文风分析', slot: '右栏', suite: 'writing', hint: '句长/段长变异系数 + 套话与连接词' },
   { id: 'rhythm', label: '节奏', slot: '右栏', suite: 'writing', hint: '逐段字数起伏' },
@@ -5205,85 +5215,21 @@ async function generateReferenceImage() {
 /** 拆解词条详情（OS-103）：世界书第二来源的只读展示——类型、首次出现章节、定义、
  *  以及它属于哪层（worldview/character/plot…）。想改它得改库内拆解文件（不在笔记通道）。 */
 function referenceEntryDetailHtml(entryId) {
-  const ref = state.reference
-  const entry = (ref.factEntries || []).find((item) => String(item?.id ?? '') === String(entryId))
-  if (!entry) {
-    return `<div class="ref-detail"><div class="ref-detail-head"><h1 class="ref-title">词条不存在</h1></div>
-      <p class="ds-empty">这条拆解词条可能已被移除或改过 id——点左侧其他词条看看。</p></div>`
-  }
-  const LAYER_LABEL = { worldview: '世界观', character: '角色', plot: '剧情', location: '地点', item: '道具', scene: '场景', term: '术语' }
-  const layer = String(entry.layer ?? '').toLowerCase()
-  const fc = Number(entry.firstChapter)
-  const firstChapter = Number.isFinite(fc) && fc >= 0 ? fc : (Array.isArray(entry.chapters) && entry.chapters.length ? Math.min(...entry.chapters.filter(Number.isInteger)) : 0)
-  const relations = Array.isArray(entry.relations) ? entry.relations : []
-  const anchors = entry.anchors && typeof entry.anchors === 'object' ? entry.anchors : null
-  const speech = anchors && Array.isArray(anchors.speech) ? anchors.speech.filter(Boolean) : []
-  return `<div class="ref-detail">
-    <div class="ref-detail-head">
-      <h1 class="ref-title">${esc(String(entry.name || '（无名）'))}</h1>
-      <span class="ref-detail-path">拆解词条 · ${esc(LAYER_LABEL[layer] || layer || '未分层')}</span>
-      <span class="fc-badge${firstChapter > 0 ? '' : ' fc-base'}">${firstChapter > 0 ? `首次出现在第${firstChapter}章` : '原生共识'}</span>
-      <span class="sp"></span>
-      <span class="count">只读 · 来源 拆解/（改动请走世界书笔记或 enrich）</span>
-    </div>
-    <div class="ref-flow">
-      <aside class="ref-side-cards">
-        <div class="ref-graph-slot">
-          <div class="ref-slot-head">关系图谱</div>
-          <div class="graph-box detail"><canvas id="ref-entry-canvas"></canvas></div>
-        </div>
-      </aside>
-      ${entry.definition ? `<p class="brief-text">${esc(String(entry.definition))}</p>` : '<p class="ds-empty">这条词条还没有定义。</p>'}
-      ${entry.fact && entry.fact !== entry.definition ? `<div class="ref-doc"><p class="ds-line">${esc(String(entry.fact))}</p></div>` : ''}
-      ${speech.length ? `<section class="ds-sec"><h4>关键台词</h4>${speech.slice(0, 6).map((line) => `<p class="ds-line">${esc(String(line))}</p>`).join('')}</section>` : ''}
-      ${relations.length ? `<section class="ds-sec"><h4>关系</h4>${relations.slice(0, 10).map((rel) => `<p class="ds-line">${esc(String(rel?.name ?? rel?.to ?? ''))}${rel?.kind || rel?.type ? `（${esc(String(rel.kind || rel.type))}）` : ''}</p>`).join('')}</section>` : ''}
-      ${Array.isArray(entry.chapters) && entry.chapters.length ? `<section class="ds-sec"><h4>出现章节</h4><p class="ds-line">${entry.chapters.slice(0, 20).map((n) => `第${n}章`).join('、')}</p></section>` : ''}
-      ${entry.status ? `<p class="ds-tension">状态：${esc(String(entry.status))}</p>` : ''}
-    </div>
-  </div>`
+  return referenceViews.referenceEntryDetailHtml(entryId, state.reference.factEntries, { esc })
 }
 
 function referenceEditorHtml() {
   const ref = state.reference
   const note = ref.note
   if (!note) return ''
-  // OS-53：实时渲染逐块编辑——textarea「编辑/保存/取消」退役，点进去直接改
+  // OS-164：纯 HTML 构造已迁 views/referenceViews.mjs；这里保留逐块编辑的状态写入副作用。
   const { body: bodySource, fmLen } = stripFrontmatterOf(note.text)
   ref.noteText = text(note.text)
   ref.fmLen = fmLen
-  const body = renderRefDocBody(bodySource)
-  const tagChips = (Array.isArray(note.tags) ? note.tags : [])
-    .map((tag) => `<button class="pill tag-pick" data-ref-tag="${esc(tag)}" title="按这个标签筛选">#${esc(tag)}</button>`).join('')
-  const mdPlain = (source) => text(source).replace(/[*_`#>[\]()|]/gu, ' ').replace(/-{2,}/gu, ' ').replace(/\s+/gu, ' ').trim()
-  const excerpt = mdPlain(note.excerpt) || mdPlain(bodySource).slice(0, 120)
-  // OS-81（作者裁定）：条目名是 H1；上半区左 60% 摘要正文（无卡）/ 右 40% 图片槽＋图谱槽两张卡；
-  // 往下的详情全屏铺开；「关联说明」整块删除——要干净的前端。
-  // OS-81 修：卡片浮在右侧（float），简介+详情在左侧流动——
-  // 卡片结束后正文自然变全宽。不再用 grid 行（右栏比摘要高很多时会留一大截空白）。
-  return `<div class="ref-detail">
-    <div class="ref-detail-head">
-      ${ref.from === 'graph' ? '<button class="btn-ghost" data-action="ref-back-graph" title="回到关系图谱">← 返回图谱</button>' : ''}
-      <h1 class="ref-title">${esc(note.title || note.path)}</h1>
-      <span class="ref-detail-path">${esc(note.path)}${note.chars !== undefined ? ` · ${note.chars} 字` : ''}</span>
-      <label class="fc-edit" title="首次出现章节：这条知识从第几章开始成立（0＝原生共识，开篇即成立）。agent 上下文按它过滤防剧透">首次出现 <input type="number" min="0" class="fc-input" id="ref-first-chapter" value="${Number(note.firstChapter) || 0}" data-fc-path="${esc(note.path)}"> 章起</label>
-      <span class="sp"></span>
-      <span class="doc-autosave" id="ref-autosave"></span>
-      <span class="count">点正文直接改，失焦自动保存</span>
-      <button class="btn-ghost" data-action="ref-to-agent">发给 Agent</button>
-    </div>
-    <div class="ref-flow">
-      <aside class="ref-side-cards">
-        ${refImagesSlotHtml(note)}
-        <div class="ref-graph-slot">
-          <div class="ref-slot-head">关系图谱</div>
-          <div class="graph-box detail"><canvas id="ref-detail-canvas"></canvas></div>
-        </div>
-      </aside>
-      <div class="brief-tags">${tagChips}</div>
-      <p class="brief-text">${esc(excerpt)}</p>
-      <div class="ref-doc">${body}</div>
-    </div>
-  </div>`
+  return referenceViews.referenceEditorHtml({
+    ref, note, bodySource, body: renderRefDocBody(bodySource),
+    imagesSlot: refImagesSlotHtml(note), esc, text
+  })
 }
 
 /** 参考页整体（OS-48：侧栏导航 + 视图制主区）。 */
@@ -5671,77 +5617,23 @@ function referencePageHtml() {
     // OS-89：参考模块自己的修改日志（AGENTS.md 第 10 条）
     changelogHtml: moduleLogHtml('参考', { title: '参考修改记录' })
   })
-  // 同源版本状态条：工具条下方、ref-grid 上方。
-  // referenceShellHtml 在 reference.mjs 里（本轮不改那个文件），所以在装配后的字符串上插一刀；
-  // 标记找不到就退回整块前置——宁可位置差一点，不能让状态条消失。
-  // 用函数式 replacement：路径/reason 里可能出现 $& 这类序列，字符串替换会把它当分组引用吃掉。
-  const syncBar = syncBarHtml()
-  // OS-115：进场提示＝发现不同步时的一条带动作横幅（状态条之下、ref-grid 之上）
-  const syncPrompt = syncPromptHtml()
-  const syncBlock = `${syncBar}${syncPrompt}`
-  const shellWithSync = syncBlock
-    ? (shell.includes('<div class="ref-grid">')
-      ? shell.replace('<div class="ref-grid">', () => `${syncBlock}<div class="ref-grid">`)
-      : `${syncBlock}${shell}`)
-    : shell
-  // 参考页自己就是双链文档工作面（侧栏导航/正文/反链），
-  // 不再套题材左栏——那三块是给「小说」这类非双链页用的。
-  return `<div class="topic-workspace"><div class="topic-main">${errorHtml()}${ref.flash ? `<div class="ok-note">${esc(ref.flash)}</div>` : ''}${shellWithSync}</div></div>`
+  // OS-164：同步状态条＋进场提示由宿主取数，插入位置由 views/referenceViews.mjs 的纯函数决定
+  // （函数式 replacement：路径/reason 里可能出现 $& 序列，不能当分组引用吃掉）。
+  const syncBlock = `${syncBarHtml()}${syncPromptHtml()}`
+  return referenceViews.referencePageHtml({ ref, shell, syncBlock, errorBox: errorHtml(), esc })
 }
 
 /** 参考页·关系图谱视图（OS-51）：大画布＋节点信息卡（简介＋跳转按钮）＋标签筛选行。 */
 function referenceGraphHtml() {
-  const rc = state.refCol
-  if (rc.graphError) return `<div class="error-box">${esc(rc.graphError)}</div>`
-  if (!rc.graph) return '<div class="loading">正在构图…</div>'
-  const stats = rc.graph.stats || {}
-  const byKind = stats.byKind || {}
-  const legend = [
-    ['reference', '参考', 'var(--accent)'],
-    ['tag', '标签', 'var(--warn)'],
-    ['artifact', '章节/产物', 'var(--ok)'],
-    ['entry', '条目（只读）', 'var(--meta)']
-  ].filter(([kind]) => byKind[kind]).map(([, label, color]) =>
-    `<span><i style="background:${color}"></i>${esc(label)}</span>`).join('')
-  const ref = state.reference
-  const focusNode = ref.focus ? rc.graph.nodes.find((node) => node.id === ref.focus) : null
-  const hint = focusNode
-    ? `聚焦「${focusNode.label || focusNode.id}」的邻域——跳转走卡片按钮，点空白复位`
-    : '点节点看简介与跳转，点空白复位'
-  // 标签筛选行（作者口径：在图谱里按固定标签筛子图）
-  const topTags = (ref.tags || []).slice(0, 10)
-  const tagBar = topTags.length
-    ? `<div class="ref-graph-tagbar"><button class="chart-tab${ref.tagFilter ? '' : ' on'}" data-action="ref-graph-tag" data-tag="">全部</button>${topTags.map((tag) =>
-      `<button class="chart-tab${ref.tagFilter === tag.name ? ' on' : ''}" data-action="ref-graph-tag" data-tag="${esc(tag.name)}">#${esc(tag.name)} ${tag.count}</button>`).join('')}</div>`
-    : ''
-  // 节点信息卡（点节点→邻域聚焦＋卡片；跳转只走卡片按钮）
-  const card = focusNode ? refNodeCardHtml(focusNode) : ''
-  return `<div class="ref-graph">
-    <div class="ref-graph-meta">${stats.nodes ?? 0} 个节点 · ${stats.edges ?? 0} 条边 · ${esc(hint)}</div>
-    ${tagBar}
-    <div class="graph-box big" id="ref-graph-box"><canvas id="ref-graph-canvas"></canvas>${card}</div>
-    <div class="graph-legend">${legend || '<span>没有节点</span>'}</div>
-  </div>`
+  return referenceViews.referenceGraphHtml({
+    rc: state.refCol, ref: state.reference, esc, text,
+    nodeCardHtml: (node) => refNodeCardHtml(node)
+  })
 }
 
 /** 图谱节点信息卡：类型徽章＋标签＋一句话摘要＋「打开详情」。 */
 function refNodeCardHtml(node, variant = '') {
-  const kindLabels = { reference: '参考', tag: '标签', artifact: '章节/产物', entry: '条目' }
-  const degree = (state.refCol.graph?.edges || [])
-    .filter((edge) => edge.a === node.id || edge.b === node.id).length
-  const tags = Array.isArray(node.tags) ? node.tags : []
-  const tagChips = tags.map((tag) => `<button class="pill tag-pick" data-ref-tag="${esc(tag)}">#${esc(tag)}</button>`).join('')
-  const excerpt = text(node.excerpt).replace(/[*_`#>[\]()|]/gu, ' ').replace(/-{2,}/gu, ' ').replace(/\s+/gu, ' ').trim()
-  return `<div class="ref-node-card${variant ? ` ${esc(variant)}` : ''}">
-    <div class="rn-head"><span class="rn-kind ${esc(node.kind)}">${esc(kindLabels[node.kind] || node.kind)}</span><b>${esc(node.label || node.id)}</b></div>
-    ${tagChips ? `<div class="rn-tags">${tagChips}</div>` : ''}
-    ${excerpt ? `<p class="rn-excerpt">${esc(excerpt.slice(0, 90))}</p>` : ''}
-    <div class="rn-ops">
-      <span class="rn-deg">${degree} 条关联</span>
-      <span class="sp"></span>
-      <button class="btn-ghost" data-action="ref-node-open">打开详情 →</button>
-    </div>
-  </div>`
+  return referenceViews.refNodeCardHtml(node, { edges: state.refCol.graph?.edges || [], esc, text, variant })
 }
 
 /**
@@ -5953,7 +5845,7 @@ function graphModuleHtml() {
   if (rc.graphError) return `<div class="error-box">${esc(rc.graphError)}</div>`
   if (rc.graphLoading) return '<div class="loading">正在构图…</div>'
   const graph = rc.graph
-  if (!graph) return '<div class="empty">点「重新构图」生成参考图谱。</div>'
+  if (!graph) return `<div class="empty">点「重新构图」生成${registryModule?.namingEntry?.('reference')?.graphLabel || '世界书图谱'}。</div>`
   const byKind = graph.stats?.byKind || {}
   const legend = [
     ['reference', '参考', 'var(--accent)'],
@@ -6025,27 +5917,11 @@ const REF_MODULES = Object.freeze([
 /** 左栏模块卡（章节树/世界书图谱/世界书摘要）——抽出来供正文页与剧本页共用。 */
 function refModulesHtml({ prepend = '', modules = null } = {}) {
   if (!state.current) return ''
-  const hidden = hiddenModules()
-  const source = Array.isArray(modules) ? modules : REF_MODULES
-  const visible = source.filter((mod) => !hidden.has(mod.id))
   const openState = state.refCol.open ?? (state.refCol.open = {})
-  const cards = visible.map((mod) => {
-    const open = openState[mod.id] !== false
-    const badge = mod.badge()
-    const body = open ? mod.render() : ''
-    return `<section class="ref-mod" data-ref-mod="${esc(mod.id)}" data-open="${open ? '1' : '0'}">
-      <div class="ref-mod-head">
-        <button class="rm-toggle" data-action="refmod-toggle" data-module-id="${esc(mod.id)}" aria-expanded="${open ? 'true' : 'false'}">
-          <span class="rm-title">${esc(mod.label)}</span>
-          ${badge ? `<span class="rm-badge">${esc(badge)}</span>` : ''}
-          <span class="rm-chev">›</span>
-        </button>
-        <button class="rm-x" data-action="module-close" data-module-id="${esc(mod.id)}" title="关闭「${esc(mod.label)}」（设置里可重新打开）" aria-label="关闭">×</button>
-      </div>
-      ${body ? `<div class="ref-mod-body">${body}</div>` : ''}
-    </section>`
-  }).join('')
-  return prepend + cards
+  return referenceViews.refModulesHtml({
+    prepend, modules: Array.isArray(modules) ? modules : REF_MODULES,
+    hidden: hiddenModules(), openState, esc
+  })
 }
 
 function refColHtml() {
@@ -9039,29 +8915,12 @@ let deduceTreeCleanup = null
 
 /** 选中节点的右上提示面板：回到这一拍 / 从这拍开新分支。 */
 function deduceTreePickHtml() {
-  const engine = state.deduce.engine
-  const node = (engine.session?.nodes || []).find((item) => item.id === engine.treePick)
-  if (!node) return ''
-  const branchLabel = (node.branchId || 'main') === 'main' ? '主线' : node.branchId
-  return `<span class="ded-tree-pick-label">选中：第 ${Number(node.round) || 0} 拍 · ${esc(branchLabel)}</span>
-    <button class="btn-primary" data-action="deduce-tree-back"${engine.turnBusy ? ' disabled' : ''} title="切到这一拍所在的分支与拍号，回「当前局面」继续">回到这一拍</button>
-    <button class="btn-ghost" data-action="deduce-tree-branch"${engine.turnBusy ? ' disabled' : ''} title="以这一拍为分叉点开一条新分支，下一拍走新路">从这拍开新分支</button>`
+  return deduceViews.deduceTreePickHtml({ engine: state.deduce.engine, esc })
 }
 
 /** 树视图：整宽画布＋右上选中提示（选中节点后出现）。 */
 function deduceTreeHtml() {
-  const engine = state.deduce.engine
-  const nodes = engine.session?.nodes || []
-  const branchCount = new Set(nodes.map((node) => node.branchId || 'main')).size
-  return `${flowError(engine.error || '')}
-    <div class="ded-tree-wrap">
-      <div class="ded-tree-bar">
-        <span class="ded-buffer-stat">共 ${nodes.length} 拍 · ${branchCount} 条分支</span>
-        <span class="sub">横轴＝拍号，纵轴＝分支 · 点节点选中，空白拖动平移，滚轮缩放</span>
-      </div>
-      <div class="ded-tree-host" id="deduce-tree-host"></div>
-      <div class="ded-tree-pick" id="deduce-tree-pick"${engine.treePick ? '' : ' hidden'}>${deduceTreePickHtml()}</div>
-    </div>`
+  return deduceViews.deduceTreeHtml({ engine: state.deduce.engine, esc, flowError, pickHtml: deduceTreePickHtml() })
 }
 
 /** 挂导图：只更新选中面板、不整页重渲——保住作者拖好的视野。 */
@@ -9213,28 +9072,7 @@ function deduceHtml() {
  * 这里如实告诉作者缺什么、补了会怎样——而不是让他对着两张检定单发呆。
  */
 function dedPackHtml() {
-  const data = state.deduce.engine.data || {}
-  const who = Array.isArray(data.sceneCard?.who) ? data.sceneCard.who.filter(Boolean).length : 0
-  const where = data.sceneCard?.where && data.sceneCard.where !== '未标记地点'
-  const hook = data.sceneCard?.hook && data.sceneCard.hook !== '……'
-  const fronts = Array.isArray(data.fronts) ? data.fronts.length : 0
-  const sources = new Set((data.candidates || []).map((candidate) => candidate.source))
-  const rich = sources.has('必然') || sources.has('戏剧')
-  const items = [
-    { ok: who >= 2, label: '在场角色', hint: who >= 2 ? `${who} 人` : '太少——补 character 条目' },
-    { ok: Boolean(where), label: '地点', hint: where ? '已标' : '世界书里还没有他知道的地点' },
-    { ok: Boolean(hook), label: '挂起伏笔', hint: hook ? '有' : '没有悬着的伏笔，扮演张力会平' },
-    { ok: fronts > 0, label: '前线时钟', hint: fronts ? `${fronts} 条在走` : '没有前线——威胁不会被推着走' },
-    { ok: rich, label: '候选来源', hint: rich ? [...sources].join('／') : '只有命运骰——补条目才会出「必然」' }
-  ]
-  return `<section class="ded-card ded-pack">
-      <div class="ded-card-head"><h3>世界底账</h3><span class="sub">扮演的根基在这份拆解里</span></div>
-      ${items.map((item) => `<div class="ded-pack-row ${item.ok ? 'ok' : 'gap'}">
-        <span class="ded-pack-ic">${item.ok ? '✓' : '○'}</span>
-        <span class="ded-pack-label">${esc(item.label)}</span>
-        <span class="ded-pack-hint">${esc(item.hint)}</span>
-      </div>`).join('')}
-    </section>`
+  return deduceViews.dedPackHtml({ data: state.deduce.engine.data, esc })
 }
 
 /**
@@ -9246,167 +9084,34 @@ function dedPackHtml() {
 
 /** 序章消息：◆ 你是谁 / 眼前场景 默认展开，前情提要默认收起（点开）。缺数据如实说缺。 */
 function deducePrologueHtml(narrative) {
-  const engine = state.deduce.engine
-  const recapOpen = engine.introOpen?.recap === true
-
-  // —— 你是谁（一句话写进序章，不再单开卡） ——
-  const id = narrative.identity || null
-  // OS-90 角色扮演框架：明说「你扮演的就是这个角色」——尤其 POV 名字抽象时（如「叙述者」），
-  // 玩家得知道这三个字就是自己。选项都是这个角色的行动，其他角色会自己行动。
-  const idLine = !id
-    ? '<p class="fl-line is-missing">还没选定视角人物——设置里填「以谁的眼睛看」，这里会显示你的身份与目标。</p>'
-    : id.missing
-      ? `<p class="fl-line">你扮演 <b>${esc(id.name)}</b>。<span class="is-missing">这个角色还没有档案（去世界书写一条，或跑 enrich 生成人物档）。</span></p>`
-      : `<p class="fl-line">你扮演 <b>${esc(id.name)}</b>${id.archetype ? `<span class="fl-arch">${esc(id.archetype)}</span>` : ''}${id.identity ? `，${esc(id.identity)}` : ''}。</p>
-        ${id.goal ? `<p class="fl-goal">你要 ${esc(id.goal)}</p>` : ''}
-        <p class="fl-line is-missing fl-role-hint">下面的选项都是你（${esc(id.name)}）能做的事；别人（场景里其他角色）会自己行动，世界也会回应。</p>
-        ${id.personality && id.personality.length ? `<p class="fl-chips-row">${id.personality.map((p) => `<span class="fl-chip">${esc(p)}</span>`).join('')}</p>` : ''}`
-
-  // —— 眼前场景 ——
-  const sc = narrative.scene || { text: '', others: [], where: '' }
-  const othersInline = (sc.others || []).map((o) => `<b>${esc(o.name)}</b>`).join('、')
-  const sceneLine = `${sc.text ? `<p class="fl-line fl-scene">${esc(sc.text)}</p>` : ''}
-    ${othersInline ? `<p class="fl-line">你面前：${othersInline}。</p>` : ''}
-    ${!sc.where ? '<p class="fl-line is-missing">地点未标注——在世界书里给这个场景补一条地点条目，这里会说明你在哪。</p>' : ''}`
-
-  // —— 前情提要（默认收起：序章不必每次都背一遍书） ——
-  const rc = narrative.recap || { story: '', soFar: [], recent: [] }
-  const recapRows = []
-  if (rc.story) recapRows.push(`<p class="fl-line fl-story">${esc(rc.story)}</p>`)
-  if (rc.soFar && rc.soFar.length) {
-    recapRows.push(`<div class="fl-sofar">${rc.soFar.map((c) => `<div class="fl-sofar-row"><b>第${c.chapter}章${c.title ? ` ${esc(c.title)}` : ''}</b><span>${esc(c.summary)}</span></div>`).join('')}</div>`)
-  }
-  if (rc.recent && rc.recent.length) {
-    recapRows.push(`<div class="fl-recent">${rc.recent.map((r) => `<div class="fl-recent-row"><span class="fl-rn-inline">第${r.round}拍</span>${esc(r.excerpt)}…</div>`).join('')}</div>`)
-  }
-
-  const missingNote = narrative.missing && narrative.missing.length
-    ? `<div class="fl-missing-note">缺：${narrative.missing.map((m) => ({ pov: '视角人物', 'character-profile': '角色档案', location: '地点', recap: '前情' }[m] || m)).join(' · ')}</div>`
-    : ''
-
-  return `<section class="fl-msg fl-msg-prologue">
-    <span class="fl-rn">序章</span>
-    <div class="fl-prose">
-      <div class="fl-prologue-head"><span class="fl-prologue-mark">◆</span>序章</div>
-      ${idLine}
-      ${sceneLine}
-      <button class="fl-recap-toggle" data-action="gg-toggle" data-gg-key="recap" aria-expanded="${recapOpen ? 'true' : 'false'}">${recapOpen ? '▾ 收起前情提要' : '▸ 前情提要'}</button>
-      ${recapOpen ? `<div class="fl-recap-body">${recapRows.join('') || '<p class="fl-line is-missing">这本书还没有摘要——跑 enrich 后这里会显示整本书讲了什么。</p>'}</div>` : ''}
-      ${missingNote}
-    </div>
-  </section>`
+  return deduceViews.deducePrologueHtml({ narrative, recapOpen: state.deduce.engine.introOpen?.recap === true, esc })
 }
 
 /** 你的回合：这一拍选了哪条候选 / 自己写了什么（choiceId 在会话节点里，回放同源）。 */
 /** 命运回合行的人话文案（OS-88）。服务端同款在 deduceEngine.humanizeFateText（按 trace 重写）；
  *  这里兜历史拍——会话节点只存了 text 没存 trace，旧黑话「剧情检定 2d6=…」从文本拆骰点翻人话。 */
 function fateHumanFromLegacy(chosen) {
-  const m = /^剧情检定 2d6=(\d+)\+(\d+)\=(\d+)：(顺遂|受阻)$/.exec(text(chosen?.text || ''))
-  if (!m) return ''
-  const a = Number(m[1]); const b = Number(m[2]); const sum = Number(m[3])
-  const success = m[4] === '顺遂'
-  return success
-    ? `世界不拦你——事情按眼下最自然的走向推进（命运骰 ${sum}：${a}+${b} 顺遂）`
-    : `世界设了坎——这一步会受阻，有代价要收拾（命运骰 ${sum}：${a}+${b} 受阻）`
+  return deduceViews.fateHumanFromLegacy(chosen, { text })
 }
 
 function deduceTurnLineHtml(node) {
-  const chosen = (node.candidates || []).find((candidate) => candidate.id === node.choiceId)
-  if (!node.choiceId || !chosen) return ''
-  // OS-88：命运候选历史拍是黑话文本——渲染时翻人话；新档已是人话（正则不中）原样
-  const chosenText = chosen.source === '命运' ? (fateHumanFromLegacy(chosen) || chosen.text) : chosen.text
-  // OS-91：酒馆式——你拍板的行动就是右侧气泡里那句话，不挂任何元标签
-  return `<div class="fl-you"><span class="fl-you-text">${esc(chosenText)}</span></div>`
+  return deduceViews.deduceTurnLineHtml(node, { esc, text })
 }
 
 /** 待确认事实卡（OS-82 回填闭环）：这一拍结算产出的 fact 条目——写进拆解前的最后一道闸。
  *  「写入拆解」走 writeFactFile 单条 upsert（只进这一条，不动其他条目）；「忽略」只出队不落库。 */
 function deducePendingFactHtml(item) {
-  const entry = item?.entry ?? {}
-  const decidedBy = text(item?.decidedBy)
-  const decidedLabel = decidedBy === 'author' ? '作者裁定' : decidedBy === 'fate' ? '命运之笔' : decidedBy || '推演产出'
-  return `<section class="fl-msg ded-factcard" data-pending-id="${esc(text(item?.id))}">
-    <div class="ded-factcard-head">
-      <span class="ded-factcard-badge">事实待确认</span>
-      <span class="ded-factcard-meta">${esc(text(entry.layer || 'plot'))} · 第 ${Number(item?.round) || 0} 拍 · ${esc(decidedLabel)}</span>
-    </div>
-    <p class="ded-factcard-name">${esc(text(entry.name))}</p>
-    <p class="ded-factcard-def">${esc(text(entry.definition))}</p>
-    <div class="ded-factcard-ops">
-      <button class="fl-btn is-primary" data-action="deduce-pending-write" data-id="${esc(text(item?.id))}" title="写入库内拆解文件（单条追加，不动其他条目）">写入拆解</button>
-      <button class="fl-btn" data-action="deduce-pending-dismiss" data-id="${esc(text(item?.id))}" title="不落库，把这张卡移出队列">忽略</button>
-    </div>
-  </section>`
+  return deduceViews.deducePendingFactHtml(item, { esc, text })
 }
 
 /** 本拍正文：历史拍是静态纸卡；最新一拍（草稿）带打字机／编辑态与动作行。 */
 function deduceProseMsgHtml(node, live) {
-  const engine = state.deduce.engine
-  const round = Number(node.round) || 0
-  if (!live) {
-    const prose = text(node.prose).trim()
-    // OS-99：历史拍回放——节点里存过参与角色（beats），署名气泡一起回放
-    const beatsHtml = (Array.isArray(node.beats) ? node.beats : []).map((beat) => `<div class="fl-beat"><span class="fl-beat-name">${esc(beat.name)}</span><span class="fl-beat-text">${esc(beat.text)}</span></div>`).join('')
-    return `<section class="fl-msg">
-      <span class="fl-rn">第 ${round} 拍</span>
-      <div class="fl-prose"><p class="fl-text${prose ? '' : ' is-empty'}">${prose ? esc(prose) : '（这一拍没有正文）'}</p></div>
-      ${beatsHtml}
-    </section>`
-  }
-  const draft = engine.draft
-  const editing = engine.draftEdit === true
-  const head = `<span class="fl-rn">第 ${round} 拍${draft?.prose ? ` · ${text(draft.prose).length} 字` : ''}</span>`
-  const proseError = draft?.proseError ? `<div class="warn-box">${esc(draft.proseError)}——可以直接改，或点「↻ 重写」。</div>` : ''
-  if (editing) {
-    return `<section class="fl-msg is-live">
-      ${head}
-      <div class="fl-prose">
-        ${proseError}
-        <textarea class="fl-draft-input" id="deduce-draft" placeholder="这一拍的正文草稿（200–400 字）">${esc(draft.prose)}</textarea>
-        <div class="fl-actions">
-          <span class="fl-actions-note" id="deduce-draft-chars">${text(draft.prose).length} 字 · 失焦自动保存</span>
-          <button class="fl-btn is-primary" data-action="deduce-engine-next"${engine.turnBusy || engine.busy ? ' disabled' : ''} title="收下这一拍进本章缓冲，推新的局面">下一拍 →</button>
-          <button class="fl-btn" data-action="deduce-engine-regen"${engine.turnBusy ? ' disabled' : ''} title="让模型重写这一拍的正文（覆盖草稿）">${engine.turnBusy ? '成文中…' : '↻ 重写'}</button>
-          <button class="fl-btn" data-action="deduce-promote-flow" title="把这一拍正文写进 正文/ 成正式章节（自动下一章号）">⇪ 转正</button>
-          <button class="fl-btn" data-action="deduce-draft-edit" title="收起编辑器，回到展示">✓ 收起</button>
-        </div>
-      </div>
-    </section>`
-  }
-  const stageText = text(draft.prose).trim()
-    ? text(draft.prose)
-    : '（这一拍还没有正文——点「✎ 编辑」自己写，或点「↻ 重写」让模型出稿。）'
-  return `<section class="fl-msg is-live">
-    ${head}
-    <div class="fl-prose">
-      ${proseError}
-      <div class="fl-text-body" data-action="deduce-tw-skip" title="点一下立即全显">
-        <span class="fl-text" id="deduce-dialog-text" data-stage-text="${esc(stageText)}"></span><span class="fl-caret" id="deduce-dialog-caret">▍</span>
-      </div>
-      <div class="fl-actions">
-        <span class="fl-actions-note">进本章缓冲 · 「下一拍」后可继续写</span>
-        <button class="fl-btn is-primary" data-action="deduce-engine-next"${engine.turnBusy || engine.busy ? ' disabled' : ''} title="收下这一拍进本章缓冲，推新的局面">下一拍 →</button>
-        <button class="fl-btn" data-action="deduce-engine-regen"${engine.turnBusy ? ' disabled' : ''} title="让模型重写这一拍的正文（覆盖草稿）">${engine.turnBusy ? '成文中…' : '↻ 重写'}</button>
-        <button class="fl-btn" data-action="deduce-draft-edit" title="就地编辑这一拍的正文草稿">✎ 编辑</button>
-      </div>
-    </div>
-  </section>`
+  return deduceViews.deduceProseMsgHtml(node, live, { engine: state.deduce.engine, esc, text })
 }
 
 /** 在场小头像（立绘有图用图，没有用首字色块）——缩进待决的场景行，不再立右栏。 */
 function deduceWhoChipsHtml(who) {
-  if (!who.length) return '<span class="fl-who-none">这一拍无人在场</span>'
-  const assets = state.deduce.engine.assets || { characters: [] }
-  return who.map((name) => {
-    const asset = assets.characters.find((item) => item.name === name)
-    const hue = [...name].reduce((sum, char) => sum + char.codePointAt(0), 0) % 360
-    return `<span class="fl-who" title="${esc(name)}">
-      ${asset
-        ? `<img src="${dedAssetUrl(asset)}" alt="${esc(name)}">`
-        : `<i style="background:hsl(${hue} 42% 84%);color:hsl(${hue} 45% 30%)">${esc(name.slice(0, 1))}</i>`}
-      ${esc(name)}
-    </span>`
-  }).join('')
+  return deduceViews.deduceWhoChipsHtml(who, { assets: state.deduce.engine.assets, dedAssetUrl, esc })
 }
 
 /**
@@ -9414,98 +9119,13 @@ function deduceWhoChipsHtml(who) {
  * 候选「人物化」沿用 OS-79：标题＝你打算做什么，副标＝后果预期，骰点收进 roll 小字。
  */
 function deducePendingHtml(data) {
-  const engine = state.deduce.engine
-  const card = data.sceneCard ?? {}
-  // OS-91：命运是世界的暗手（骰点体现在世界的回应里），不进玩家的选项——
-  // 玩家面前只有基于眼前情境的分支（戏剧＝模型提的分支，必然＝世界规矩推的分支）
-  let candidates = (Array.isArray(data.candidates) ? data.candidates : []).filter((candidate) => candidate.source !== '命运')
-  // OS-101：候选为空也要给选项（作者实测「写完这段怎么没有下一步」）——
-  // 从局面本身推三条确定性分支，不依赖引擎/模型。
-  if (candidates.length === 0) {
-    const others = who.filter((name) => text(name) && text(name) !== text(data.pov))
-    const place = where !== '地点未标' ? where : ''
-    candidates = [
-      ...(others.length ? [{ id: 'fallback-talk', source: '眼前', text: `我开口对${others[0]}说点什么，先探探他/她的反应`, refs: [others[0]] }] : []),
-      { id: 'fallback-look', source: '眼前', text: place ? `我在${place}里再仔细看一圈，找刚才漏掉的细节` : '我把眼前的东西一件件看过去，找刚才漏掉的细节', refs: [] },
-      { id: 'fallback-wait', source: '眼前', text: '我停在原地不动，等对方先开口或先动', refs: [] }
-    ].slice(0, 3)
-  }
-  const who = Array.isArray(card.who) ? card.who.filter(Boolean) : []
-  const where = card.where && card.where !== '未标记地点' ? text(card.where) : '地点未标'
-  // OS-92：hook（上一拍的世界提示）对「你」说话——存量 sceneCard 是第三人称，显示层转人称
-  const hook = card.hook && card.hook !== '……' ? text(card.hook).split(text(data.pov)).join('你') : ''
-  const sourceNote = { 必然: '世界规矩', 戏剧: '另一种可能', 眼前: '从这个局面直接走' }
-  const describeCandidate = (candidate) => {
-    if (candidate.source === '必然') {
-      const fact = text(candidate.text).replace(/^剧情检定[^：]*：/u, '').trim()
-      return { title: fact || '按世界的规矩来', sub: '从世界事实推出来的——不这么做也会发生', roll: '' }
-    }
-    return { title: text(candidate.text) || '（空候选）', sub: hook ? `牵动：${hook}` : '', roll: '' }
-  }
-  const optRows = candidates.map((candidate) => {
-    const kind = { 必然: 'certain', 命运: 'fate', 戏剧: 'drama', 眼前: 'scene' }[candidate.source] || 'other'
-    const info = describeCandidate(candidate)
-    return `<div class="ded-opt-row src-${kind}">
-      <button class="ded-opt" data-action="deduce-engine-choose" data-candidate-id="${esc(candidate.id)}"${engine.turnBusy ? ' disabled' : ''}>
-        <span class="ded-opt-head"><span class="ded-badge">${esc(candidate.source || '候选')}</span><span class="ded-cand-note">${esc(sourceNote[candidate.source] || '')}</span></span>
-        <span class="ded-opt-title">${esc(info.title)}</span>
-        ${info.sub ? `<span class="ded-opt-sub">${esc(info.sub)}</span>` : ''}
-      </button>
-      <button class="ded-opt-veto" data-action="deduce-engine-veto" data-candidate-id="${esc(candidate.id)}" title="只记账，不落库">否决</button>
-    </div>`
-  }).join('')
-  const busyNote = engine.busy
-    ? '<div class="fl-typing">推演中——正在摆局面…</div>'
-    : (engine.turnBusy ? '<div class="fl-typing">成文中——这一拍正在落字…</div>' : '')
-  return `<section class="fl-pending">
-    <div class="fl-pending-scene">
-      <span class="fl-pending-rn">第 ${Number(data.round) || 0} 拍</span>
-      <span class="fl-pending-where">${esc(where)}</span>
-      ${deduceWhoChipsHtml(who.filter((name) => name !== data.pov))}
-    </div>
-    <p class="fl-prompt">轮到你了——选一条走向，或在下面说你自己的动作</p>
-    ${busyNote}
-    ${optRows || (engine.busy || engine.turnBusy ? '' : '<p class="fl-no-cand">这一拍没有候选——事实包不够（世界观／角色／剧情条目太少）或预算用尽。点下方自己写一拍，或去设置里重掷。</p>')}
-  </section>`
+  return deduceViews.deducePendingHtml(data, { engine: state.deduce.engine, esc, text, whoChipsHtml: (list) => deduceWhoChipsHtml(list) })
 }
 
 /** 已知信息牌（OS-91）：剧本杀式的左栏——你扮演谁／谁在你面前／这里是什么地方／
  *  你经历过了什么／世界的暗流。全部来自 present 的叙事上下文，第二人称，不摆 fact 术语。 */
 function deduceSideHtml(data) {
-  const n = data?.narrative
-  if (!n) return ''
-  const id = n.identity || null
-  const sc = n.scene || { others: [], where: '', text: '', tension: '' }
-  const rc = n.recap || {}
-  const sec = (title, body) => body ? `<section class="ds-sec"><h4>${title}</h4>${body}</section>` : ''
-  const whoYouAre = !id
-    ? '<p class="ds-empty">还没选定视角——⚙ 设置里选「以谁的眼睛看」</p>'
-    : `<p class="ds-name">${esc(id.name)}${id.archetype ? `<i>${esc(id.archetype)}</i>` : ''}<button class="ds-edit" data-action="roleplay-edit-card" data-name="${esc(id.name)}" title="编辑这个角色的档案（写回库内世界书）">✎</button></p>
-      ${id.identity ? `<p class="ds-line">${esc(id.identity)}</p>` : ''}
-      ${id.goal ? `<p class="ds-goal">你要 ${esc(id.goal)}</p>` : ''}
-      ${id.personality && id.personality.length ? `<p class="ds-tags">${id.personality.map((p) => `<span>${esc(p)}</span>`).join('')}</p>` : ''}`
-  const others = Array.isArray(sc.others) ? sc.others : []
-  const beforeYou = others.length
-    ? others.map((o) => `<div class="ds-person"><b>${esc(o.name)}</b>${o.identity ? `<span>${esc(o.identity)}</span>` : ''}${o.archetype ? `<i>${esc(o.archetype)}</i>` : ''}</div>`).join('')
-    : '<p class="ds-empty">眼前没有别人——只有你和这个地方</p>'
-  const whereSec = `<p class="ds-line">${sc.text ? esc(sc.text) : (sc.where ? `你在${esc(sc.where)}。` : '还没人知道这里是什么地方——去世界书补一条地点条目。')}</p>
-      ${sc.tension ? `<p class="ds-tension">气氛：${esc(sc.tension)}</p>` : ''}`
-  const past = (Array.isArray(rc.recent) ? rc.recent : []).map((r) => `<div class="ds-mem"><span>第${r.round}拍</span>${esc(r.excerpt)}…</div>`).join('')
-  const pastSec = `${rc.story ? `<p class="ds-line ds-story">${esc(rc.story)}</p>` : ''}${past}`
-  const fronts = Array.isArray(data?.fronts) ? data.fronts : []
-  const frontsSec = fronts.map((f) => {
-    const filled = Number(f.filled) || 0
-    const max = Number(f.max) || 0
-    const pct = max ? Math.round((filled / max) * 100) : 0
-    return `<div class="ds-front"><div class="ds-front-row"><span>${esc(f.name || f.id || '前线')}</span><span>${filled}/${max}</span></div><div class="ds-front-bar"><i style="width:${pct}%"></i></div></div>`
-  }).join('')
-  return [
-    sec('你扮演', whoYouAre),
-    sec('在你面前', beforeYou),
-    sec('这里', whereSec),
-    sec('你经历过的', pastSec),
-    sec('世界的暗流', frontsSec)
-  ].join('')
+  return deduceViews.deduceSideHtml(data, { esc })
 }
 
 /** 推演主面（OS-84 统一壳）：工具栏常驻，内容区三形态（叙事流/剧情树/Agent）就地切换。 */
@@ -9872,34 +9492,13 @@ function engineSetError(message) {
 
 /** Agent 模式（原三栏表单，保留）。 */
 function deduceAgentHtml() {
-  const deduce = state.deduce
-  return `${flowError(deduce.error)}
-    <div class="deduce-grid">
-      <div class="step">
-        <h3><span class="no">1</span>前提（设定为真）</h3>
-        <textarea class="deduce-input" id="deduce-premise" placeholder="目前故事走到哪、哪些设定是铁的…">${esc(deduce.premise)}</textarea>
-        <h3><span class="no">2</span>变量（每行一个可能拨动的开关）</h3>
-        <textarea class="deduce-input" id="deduce-variables" placeholder="林砚知道真相&#10;大雾提前散了">${esc(deduce.variables)}</textarea>
-        <h3><span class="no">3</span>要推演的问题</h3>
-        <input id="deduce-question" placeholder="如果林砚选择沉默，第 3 章会走向哪里？" value="${esc(deduce.question)}">
-        <div class="row">
-          <button class="btn-primary" data-action="deduce-start"${deduce.streaming || !agent.configured ? ' disabled' : ''}>${deduce.streaming ? '推演中…' : '开始推演'}</button>
-          <button class="btn-ghost" data-action="deduce-stop"${deduce.streaming ? '' : ' hidden'}>停止</button>
-          ${!agent.configured ? '<span class="count">先在右上角设置里配好模型端点。</span>' : '<span class="count">Agent 分支推理；产出经待确认卡落正文。</span>'}
-        </div>
-      </div>
-      <div class="step">
-        <h3><span class="no">→</span>推演回答</h3>
-        <div class="deduce-reply">${deduce.reply ? esc(deduce.reply) : (deduce.streaming ? '推演中…' : '填好左边三段，点「开始推演」。回答可整段转成待确认卡，采纳后写进正文。')}</div>
-        ${deduce.reply && !deduce.streaming ? '<div class="repair-actions"><button class="btn-primary" data-action="deduce-card">转为待确认卡（写正文）</button></div>' : ''}
-      </div>
-    </div>`
+  return deduceViews.deduceAgentHtml({ deduce: state.deduce, configured: agent.configured, esc, flowError })
 }
 
 /* ---------- 数据加载 ---------- */
 
 async function boot() {
-  await Promise.all([registryReady, runtimeShelfReady, workbenchViewsReady, scriptViewsReady]) // OS-143/149/161/163：注册表、运行时货架、工作面/剧本视图先就位（首帧起页签全部由注册表驱动）
+  await Promise.all([registryReady, runtimeShelfReady, workbenchViewsReady, scriptViewsReady, referenceViewsReady, deduceViewsReady]) // OS-143/149/161/163/164：注册表、运行时货架、各工作面纯视图先就位（首帧起页签全部由注册表驱动）
   applyTypography()   // OS-91：无库时也先套默认字号档，避免首帧跳变
   applyAgentCollapse() // OS-103
   // 运行时清单与 config 一起拉：chip 要能显示「DSH 原生」这类具体名字，不能等进设置页才加载

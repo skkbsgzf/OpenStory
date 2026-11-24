@@ -74,7 +74,8 @@ export const NAMING_TABLE = Object.freeze([
     note: '章节正文；写盘走 /api/chapter（chapters 域）' },
   // OS-44：参考目录承载世界书——目录叫「参考」、页签叫「世界书」、「＋」面板里还叫「参考」。
   { id: 'reference', dir: '参考', tab: '世界书', panelLabel: '参考', dirLabel: null, logModule: '参考', contract: 'reference', mcpPrefix: 'openstory_reference_',
-    note: '目录归属另案（G8b）：磁盘目录名是「参考」，页签名是「世界书」' },
+    graphLabel: '世界书图谱', summaryLabel: '世界书摘要',
+    note: 'G8b 已定案：磁盘目录名「参考」冻结，页签名「世界书」；左/右栏图谱与摘要一律取 graphLabel/summaryLabel' },
   { id: 'worldbook', dir: '世界书', tab: null, dirTab: false, dirLabel: '世界书', contract: null,
     note: '磁盘骨架目录；页签由 reference 承载（OS-44），自身不是页签条目' },
   { id: 'script', dir: '剧本', tab: '剧本', logModule: '剧本', contract: 'chapters',
@@ -230,7 +231,8 @@ export const TAB_REGISTRY = Object.freeze([
     visibleWhen: (ctx) => !ctx.brief || ctx.hasDir(namingEntry('chapters').dir) },
   // 目录型组插入点：从这里到下一个非 dirScan 条目之间，全部按「磁盘目录 × 词表」扫描物化。
   // OS-44：参考目录走专门的笔记系统页，页签名「世界书」；「＋」面板里仍叫「参考」。
-  { id: 'reference', kind: 'fixed', core: true, view: 'reference', ...tabNaming('reference'), dirScan: true, icon: '世', render: 'referencePageHtml', closable: true, scope: 'library' },
+  // OS-164：世界书归核心模块 worldbook（moduleCore＝模块级不可停用，与页签级 core 是两回事）。
+  { id: 'reference', kind: 'fixed', core: true, module: 'worldbook', moduleCore: true, view: 'reference', ...tabNaming('reference'), dirScan: true, icon: '世', render: 'referencePageHtml', closable: true, scope: 'library' },
   // OS-75：剧本页 fork 正文页（dir:剧本 视图，剧本版式渲染）。
   { id: 'script', kind: 'fixed', core: true, module: 'script', moduleCore: true, view: 'dir:剧本', ...tabNaming('script'), dirScan: true, icon: '剧', render: 'dirViewHtml', closable: true, scope: 'library' },
   // OS-48：拆解目录承载故事源（fact 链可视化）——目录名不动，页签改叫故事源。
@@ -248,7 +250,8 @@ export const TAB_REGISTRY = Object.freeze([
   { id: 'retired-material', kind: 'dir', view: 'dir:资料', dir: '资料', dirScan: true, label: '资料', retired: true },
   { id: 'retired-constraint', kind: 'dir', view: 'dir:约束', dir: '约束', dirScan: true, label: '约束', retired: true },
   // OS-86/100：扮演——推演全形态（叙事流/剧情树/Agent）同一壳，页签名「扮演」。
-  { id: 'deduce', kind: 'fixed', core: true, view: 'deduce', ...tabNaming('roleplay'), icon: '扮', render: 'deduceHtml', panel: true, closable: true, scope: 'library' },
+  // OS-164：扮演归核心模块 roleplay；moduleCore 恒可见，显式启用集合再窄也不裁。
+  { id: 'deduce', kind: 'fixed', core: true, module: 'roleplay', moduleCore: true, view: 'deduce', ...tabNaming('roleplay'), icon: '扮', render: 'deduceHtml', panel: true, closable: true, scope: 'library' },
   // OS-32：设置是可关闭页签——跟正文/产物同级，打开才出现，× 关掉回到原页。
   { id: 'settings', kind: 'fixed', view: 'settings', ...tabNaming('settings'), icon: '设', render: 'settingsHtml', closable: true, scope: 'global',
     visibleWhen: (ctx) => Boolean(ctx.settingsOpen) },
