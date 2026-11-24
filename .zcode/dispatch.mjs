@@ -34,22 +34,33 @@ try { ticket = readFileSync(ticketFile, 'utf-8') } catch (error) {
 const logPath = resolve(dirname(outFile), `cb-${Date.now()}.log`)
 mkdirSync(dirname(logPath), { recursive: true })
 
-const prompt = [
-  '你是 OpenStory 的实现工程师，在 D:/OpenStory 仓库工作。',
-  '',
-  '项目硬约束（违反即返工）：',
+// 可选第 5 参数（argv[5]，前三个是 model / ticket / out）：规则文件。给了就用它的内容替换下面的「项目硬约束」（段 B 内核自有化那类
+// 需要放行 core/ 迁出的工单用）；没给走默认。交付纪律一段不受影响。
+const rulesFile = process.argv[5]
+const DEFAULT_RULES = [
   '1. core/pinax/** 是逐字 vendor 的内核，一个字都不能改。',
   '2. 零 npm 依赖：不许加 package.json 依赖，不许 import 第三方库（前端 ECharts 走本地 vendor 单文件，见工单说明）。',
   '3. daemon 只监听 127.0.0.1；凭据只存本机且响应只回掩码。',
   '4. 功能模块间禁止直接 import——只经 src/api/contracts.mjs / src/protocol/chapters.mjs 协议层与 vendor 内核（OS-140 布局归一后自持模块在 src/ 六目录）。',
   '5. 前端颜色必须走 CSS 令牌（public/index.html 的 :root）；令牌区外禁止裸色值。',
-  '6. 侧栏是绝对定位浮层，禁止挤压正文（OS-48 宪法）。',
+  '6. 侧栏是绝对定位浮层，禁止挤压正文（OS-48 宪法）。'
+]
+const hardRules = rulesFile
+  ? readFileSync(rulesFile, 'utf-8').split(/\r?\n/).filter((line, index, all) => line.trim() !== '' || (index > 0 && index < all.length - 1))
+  : DEFAULT_RULES
+
+const prompt = [
+  '你是 OpenStory 的实现工程师，在 D:/OpenStory 仓库工作。',
+  '',
+  '项目硬约束（违反即返工）：',
+  ...hardRules,
   '',
   '交付纪律：',
-  '- 只改工单允许的文件。',
+  '- 只改工单允许的文件；改动必须落在工单「允许改动」范围内，范围外的文件一个都不要动。',
+  '- 临时探针、调试脚本用完必须删，不许留在仓里。',
   '- 不执行任何 git 命令（不 add/commit/push）。',
   '- 不启动、不杀 daemon 进程。',
-  '- 改完自己跑门禁：node tools/acceptance/acceptance.mjs（16 检查必须全过）。',
+  '- 改完自己跑门禁：node tools/acceptance/acceptance.mjs（检查项必须全过）。',
   '- 做不到的、有疑问的，写进结果最后一节「limitations」，不要假装完成。',
   '',
   '=== 工单开始 ===',
