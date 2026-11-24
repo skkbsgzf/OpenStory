@@ -100,7 +100,7 @@
 CLI 模式的设计意图：跑动记录与 CLI 自己的历史一致，不产生两套账。
 
 ## 十、MCP（对外输出）
-20 个工具覆盖五模块（小说/世界书/习惯/拆解/推演/分析，详见 `mcp/skills/OVERVIEW.md`）。
+20 个工具覆盖五模块（小说/世界书/习惯/拆解/推演/分析，详见 `docs/mcp/OVERVIEW.md`）。
 读写分级：读自由；写有 .history 备份；absorb 不开；习惯表有 `openstory_habits_read`。
 
 ## 已知边界

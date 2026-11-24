@@ -24,7 +24,7 @@
  *   · 正文写入不做 revision 闸（v1 边界）：OpenStory 与 Electron 同时写同一库时，只有写前
  *     `.history/<file>.bak-<时间戳>` 这层粗保护。真正的冲突保护归后续写协议接入。
  *
- * 启动：`node daemon.mjs [--port=8807] [--root=<库路径>]`（实现 src/host/daemon.mjs，OS-140）
+ * 启动：`node src/host/daemon.mjs [--port=8807] [--root=<库路径>]`（OS-159 起仓根零垫片）
  */
 import { createReadStream, existsSync, mkdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:http'
@@ -569,12 +569,12 @@ export function parseArgs(argv = []) {
   return options
 }
 
-/* OS-140 布局归一：CLI 启动序列收成可导出的 main(argv)——仓根垫片 daemon.mjs 与本文件
- * 的直跑判定（下方 isMain）都会走到这里；被纯 import 时只装载、不起服务（测试/工具面）。 */
+/* OS-140 布局归一：CLI 启动序列收成可导出的 main(argv)——本文件即启动入口（OS-159 起
+ * 仓根零垫片），直跑判定（下方 isMain）走到这里；被纯 import 时只装载、不起服务。 */
 export function main(argv = []) {
   const options = parseArgs(argv)
   if (options.help) {
-    console.log('用法：node daemon.mjs [--port=8807] [--root=<库路径>] [--preferences=<next-preferences.json>]')
+    console.log('用法：node src/host/daemon.mjs [--port=8807] [--root=<库路径>] [--preferences=<next-preferences.json>]')
     process.exit(0)
   }
   /* OS-127 单实例闸（启动序列最前面，对标 @open-design/sidecar 最小集）：
@@ -622,8 +622,8 @@ export function main(argv = []) {
   })
 }
 
-/* 直跑判定（同款口径，OS-140 迁移前就在）：node 直接执行本文件时也走 main。
- * 仓根垫片（daemon.mjs）被直跑时，走的是垫片自己的判定，不重复进这里。 */
+/* 直跑判定（同款口径，OS-140 迁移前就在）：node 直接执行本文件时走 main（OS-159 起
+ * 这是唯一入口，npm start 也指这里）。 */
 const isMain = process.argv[1]
   ? pathToFileURL(resolve(process.argv[1])).href === import.meta.url
   : false

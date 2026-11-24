@@ -5,13 +5,13 @@
 
 ## 这里是什么
 
-零 npm 构建依赖的中文小说工作台：入口 `daemon.mjs`（仓根垫片，实现在 `src/host/daemon.mjs`：
+零 npm 构建依赖的中文小说工作台：入口 `src/host/daemon.mjs`（实现文件直跑，OS-159 起仓根零垫片）：
 node:http 手写路由，127.0.0.1:8807；
 OS-127 进程治理：单实例锁＋stamp＋generation＋`/api/health`）
 + `public/` 原生 JS 前端。模块：**小说**（纯净写作面）/ **世界书**（参考笔记＋拆解词条只读层）/
 **习惯**（写作规矩表）/ **故事源**（fact 链可视化）/ **扮演**（主持人＋多角色，默认）/ **确定性推演**（可选）/ **剧本** / **分析**（本地引擎）。
 全部经契约层（`src/api/contracts.mjs` 聚合 `src/api/contracts/` 七域分片，101 端点）分派；
-MCP 对外 24 工具（`src/host/mcp.mjs`，仓根 `mcp.mjs` 只是垫片；stdio 独立进程，数据操作走 daemon HTTP 薄适配）。
+MCP 对外 24 工具（`src/host/mcp.mjs` 直跑；stdio 独立进程，数据操作走 daemon HTTP 薄适配）。
 分层见 [ARCHITECTURE.md](./ARCHITECTURE.md)（L7 前端→L6 契约→L5 daemon→
 L4 自持层→L2 自有内核 `src/kernel/`→L1 磁盘库；OS-157 起 L2/L3 合并）。
 
@@ -205,7 +205,7 @@ L4 自持层→L2 自有内核 `src/kernel/`→L1 磁盘库；OS-157 起 L2/L3 �
 
 ## 发布规范（推送前必读）
 
-推 GitHub 前必过 [PUBLISHING.md](./PUBLISHING.md) 的检查单（协议干净/demo 干净/人机双读）；
+推 GitHub 前必过 [PUBLISHING.md](docs/PUBLISHING.md) 的检查单（协议干净/demo 干净/人机双读）；
 自动检查器：`node ~/.zcode/skills/repo-publish/scripts/publish-scan.mjs .`，全绿才推。
 
 ## 改完必跑（验收线，详见 `docs/ACCEPTANCE.md`）
@@ -217,15 +217,15 @@ node tools/acceptance/acceptance.mjs        # ② 交付标准 S0–S4 门禁（
 # ④ 前端批次给作者截图讲场景（对照 design-system/DESIGN.md + docs/UX-STRUCTURE.md）
 ```
 
-①② 全绿才合入。MCP 工具增删必须同步：`mcp/skills/*.md`、`test/mcp.test.mjs` 的工具数、
+①② 全绿才合入。MCP 工具增删必须同步：`docs/mcp/*.md`、`test/mcp.test.mjs` 的工具数、
 `DEMO.md`、`tools/acceptance/acceptance.mjs` 的 S1.1 覆盖面。
 
-改了文件结构或行数之后跑 `npm run arch:stats` 回写文档，门禁会比对（`node scripts/arch-stats.mjs --check` 只查不写）——
+改了文件结构或行数之后跑 `npm run arch:stats` 回写文档，门禁会比对（`node tools/arch-stats.mjs --check` 只查不写）——
 `ARCHITECTURE.md` 的分层数字只在生成段里，人不再手填。
 
 ## 仓内地图
 
-- 入口垫片：仓根 `daemon.mjs` / `mcp.mjs`（只转发，OS-140）→ 实现 `src/host/`
+- 启动入口：`src/host/daemon.mjs` / `src/host/mcp.mjs`（OS-159 直跑，仓根零垫片）
 - 契约层：`src/api/contracts.mjs` 聚合器 ＋ `src/api/contracts/` 七域分片（library/chapters/fact/reference/
   agent/plugins/system，101 端点）→ `src/api/handlers/` 七域 handler ＋ `src/api/registry.mjs` 注册表（OS-141，键＝endpointId）
   → `src/host/daemon.mjs` 路由分派（endpointFor → validateRequest → 取 handler → 调用）＋ 共享管线 `src/host/{http,authorize,sse}.mjs`
@@ -245,7 +245,7 @@ node tools/acceptance/acceptance.mjs        # ② 交付标准 S0–S4 门禁（
 - `src/modules/worldbook/referenceStore.mjs`（参考索引/图谱）· `src/services/enrichEngine.mjs`（语义富化 6 窗）· `src/protocol/factGuard.mjs`
 - 外围服务（`src/services/`）：kb*（知识库三件套）＋ embedding-server ＋ cli-bridge/dsh-cli/dsh-bridge/runtimes（模型驱动）
   ＋ stylePacks/style-check/suites/skills/genres（货架）＋ jobCenter/nativePicker/comfyEngine/syncCheck
-- `skills/` 创作知识库 31 包＋套件捆绑 2（SKILL.md 制）· `mcp/skills/` 对外分发材料 · `design-system/` 设计令牌包
+- `skills/` 创作知识库 31 包＋套件捆绑 2（SKILL.md 制）· `docs/mcp/` 对外分发材料 · `design-system/` 设计令牌包
 - `tools/acceptance/` 验收门禁 · `.ua/` UA 知识图谱（intermediate/ 与 tmp/ 是运行产物不入库）
 - `test/` node --test 全覆盖；跑法统一走 `.zcode/run-gate.mjs`（它会 chdir 到仓根）
 - 遗留事项与「明确不做」清单：`docs/LEGACY-ITEMS.md`（OS-133 起收官判定的唯一台账）

@@ -5,7 +5,7 @@ OpenStory 是跑在本机的小说工作台：**小说**（正文读写＋事实
 ## 连接
 
 ```json
-{ "command": "node", "args": ["D:\\OpenStory\\mcp.mjs"] }
+{ "command": "node", "args": ["D:\\OpenStory\\src\\host\\mcp.mjs"] }
 ```
 
 - 前置：OpenStory daemon 必须在本机跑着（`npm start`，默认 `127.0.0.1:8807`；用环境变量 `OPENSTORY_PORT` 改端口）。

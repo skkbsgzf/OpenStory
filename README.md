@@ -27,7 +27,7 @@
 
 ```bash
 npm install        # 装依赖（transformers；sharp 只作其传递依赖，内核已自持，无 tgz 依赖）
-npm start          # node daemon.mjs → http://127.0.0.1:8807（单实例锁＋/api/health）
+npm start          # node src/host/daemon.mjs → http://127.0.0.1:8807（单实例锁＋/api/health）
 npm run mcp        # 全模块 MCP server（24 工具，stdio）
 npm test           # node --test（零外部依赖）
 ```
@@ -43,7 +43,7 @@ npm test           # node --test（零外部依赖）
 
 ## 架构一图
 
-分层与实测（文件数/行数由 `scripts/arch-stats.mjs` 扫描生成、验收 S0.2 逐字比对；逐层职责与边界、
+分层与实测（文件数/行数由 `tools/arch-stats.mjs` 扫描生成、验收 S0.2 逐字比对；逐层职责与边界、
 生成表都在 [ARCHITECTURE.md](./ARCHITECTURE.md)，本文不再抄数字）：
 
 ```
@@ -55,15 +55,15 @@ L2  src/kernel/                自有内核（openstory-kernel@1：管道件/fac
 L1  磁盘库                     文件即真相（.pinax 兼容，与 Pinax 桌面端双向兼容）
 ```
 
-仓根只有 `daemon.mjs`/`mcp.mjs` 两个入口垫片（OS-140 布局宪法：实现都在 `src/` 六目录）。
+仓根零 `.mjs`（OS-159 布局宪法）：入口直跑 `src/host/daemon.mjs` / `src/host/mcp.mjs`，实现都在 `src/` 六目录。
 
-数据优先级（fact-first）：**事实链 ① ＞ 正文 ② ＞ 派生物 ③**——读数据先问事实链，喂模型先问能不能只喂事实链。详见 [FACT-FIRST.md](./FACT-FIRST.md)。
+数据优先级（fact-first）：**事实链 ① ＞ 正文 ② ＞ 派生物 ③**——读数据先问事实链，喂模型先问能不能只喂事实链。详见 [FACT-FIRST.md](docs/FACT-FIRST.md)。
 
 ## 仓库地图
 
 | 路径 | 内容 |
 |---|---|
-| `daemon.mjs` / `mcp.mjs` | 仓根入口垫片（OS-140：`export * from` ＋仅 node 直跑才调 main）→ 实现 `src/host/` |
+| `src/host/daemon.mjs` / `src/host/mcp.mjs` | 启动入口（OS-159：实现文件自带直跑判定，仓根不再放垫片） |
 | `src/host/` | daemon（端点契约分派＋进程治理）＋ MCP server（24 工具，零依赖 stdio；`npm run mcp`） |
 | `src/api/` | 契约层 `contracts.mjs` ＋ `contracts/` 七域分片（OS-130 起分域，纯数据，两端共享） |
 | `src/protocol/` | 文件与协议层：chapters / changelog / versionGate / plugins / agentEvents / factGuard / dependencyGraph / hostWrite / libState |
@@ -71,7 +71,7 @@ L1  磁盘库                     文件即真相（.pinax 兼容，与 Pinax �
 | `src/modules/` | 域模块：library/（建库/导入自持，OS-123/124 fork 点，`.pinax/project.json` 与 Pinax 桌面端双向兼容）、deduce/（推演）、roleplay/（扮演调度＋四层提示词）、worldbook/（参考索引）、agentbar/（Agent 存储） |
 | `src/services/` | 外围服务：kb*（知识库）、embedding-server、cli-bridge/dsh-*/runtimes（模型驱动）、suites/stylePacks/style-check/skills/genres（货架装载）、jobCenter / nativePicker / comfyEngine / syncCheck / enrichEngine |
 | `public/` | 工作台单页（app.js＋reference/graph/md/analysis/charts/ui-kit/storySource 等零依赖模块；echarts 本地 vendor） |
-| `suites/` `styles/` `runtimes/` `genres/` `skills/`（31＋套件捆绑 2） | 插件货架数据目录（内置样例）＋ [PROTOCOL.md](./PROTOCOL.md)（套件注册协议） |
+| `suites/` `styles/` `runtimes/` `genres/` `skills/`（31＋套件捆绑 2） | 插件货架数据目录（内置样例）＋ [PROTOCOL.md](suites/PROTOCOL.md)（套件注册协议） |
 | `workflows/` | ComfyUI 文生图工作流 |
 | `tools/dsh-openstory-studio/` | DSH 插件 bundle：宿主侧 daemon 生命周期＋客户端右侧栏工作台（`sidebar.footer.action`／`sidebarRightTabs`） |
 | `samples/水浒传/` | 公版演示库（导入即体验） |
@@ -88,7 +88,7 @@ OpenStory 自 [Pinax-next](https://github.com/skkbsgzf/Pinax-StoryHarness) 的 o
 
 ## 发布规范
 
-推送前必过「协议干净 / demo 干净 / 人机双读」检查单——见 [PUBLISHING.md](./PUBLISHING.md)（高优先级规范，优先级仅次于 AGENTS.md 硬规则）。
+推送前必过「协议干净 / demo 干净 / 人机双读」检查单——见 [PUBLISHING.md](docs/PUBLISHING.md)（高优先级规范，优先级仅次于 AGENTS.md 硬规则）。
 
 ## 版本
 

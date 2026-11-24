@@ -52,7 +52,7 @@ async function writeUiState(root, state) {
 
 /** 起 MCP 子进程，收 newline-delimited JSON-RPC 回包。 */
 function startMcp(env = process.env) {
-  const child = spawn(process.execPath, [join(ROOT, 'mcp.mjs')], { stdio: ['pipe', 'pipe', 'pipe'], env })
+  const child = spawn(process.execPath, [join(ROOT, 'src', 'host', 'mcp.mjs')], { stdio: ['pipe', 'pipe', 'pipe'], env })
   const pending = new Map()
   let buf = ''
   let nextId = 1

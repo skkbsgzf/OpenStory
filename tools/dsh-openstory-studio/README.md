@@ -10,7 +10,7 @@ DSH 会话里的 Agent 因此能直接读章节、写回正文（走 daemon 的 
 OpenStory 的工作面不是静态页面，而是 **daemon + 单页应用**：
 
 ```text
-node daemon.mjs --port=8807  →  http://127.0.0.1:8807（只监听回环）
+node src/host/daemon.mjs --port=8807  →  http://127.0.0.1:8807（只监听回环）
         └─ public/ 单页工作台（正文/世界书/扮演/故事源/剧本/设置…）
 ```
 

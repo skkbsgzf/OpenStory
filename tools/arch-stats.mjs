@@ -17,9 +17,9 @@
  *   测试文件＝test/*.test.mjs 个数。
  *
  * 用法：
- *   node scripts/arch-stats.mjs            打印生成段并回写 ARCHITECTURE.md 标记段（stdout 只有表）
+ *   node tools/arch-stats.mjs            打印生成段并回写 ARCHITECTURE.md 标记段（stdout 只有表）
  *   npm run arch:stats                     同上
- *   node scripts/arch-stats.mjs --check    只比对：生成段 ≠ 实测 → 打印差异并 exit 1
+ *   node tools/arch-stats.mjs --check    只比对：生成段 ≠ 实测 → 打印差异并 exit 1
  *
  * 退出码：0＝一致/已回写；1＝--check 发现不一致；2＝用法错误或文档缺标记。
  * 零依赖：node:fs / node:path / node:url。输出不含时间戳，同仓同状态两次运行逐字相同。
@@ -159,7 +159,7 @@ function extractBlock(doc) {
 function printDiff(expected, actual) {
   const want = expected.trimEnd().split('\n')
   const got = actual.trimEnd().split('\n')
-  console.log('✗ 架构文档数字与实测不一致（scripts/arch-stats.mjs --check）')
+  console.log('✗ 架构文档数字与实测不一致（tools/arch-stats.mjs --check）')
   console.log(`  ARCHITECTURE.md 生成段 ${got.length} 行 / 实测 ${want.length} 行，逐字比对不通过`)
   let shown = 0
   const max = Math.max(want.length, got.length)

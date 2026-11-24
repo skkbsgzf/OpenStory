@@ -13,7 +13,7 @@
         transport: stdio
         command: !!js process.env.OPENSTORY_NODE || 'node'
         args:
-          - 'mcp.mjs'
+          - 'src/host/mcp.mjs'
         cwd: !!js process.env.OPENSTORY_PROJECT_DIR || 'D:/OpenStory'
         env:
           OPENSTORY_PORT: '8807'

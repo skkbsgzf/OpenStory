@@ -60,5 +60,5 @@
 - [ ] 卡片用 surface-card + rm-toggle/rm-x，关闭按钮不做旁路实现
 - [ ] 颜色全部走令牌；新令牌已进 `:root` 与 `design-system/tokens.css`
 - [ ] 浮层不挤压正文；正文恒居中
-- [ ] 功能有 MCP 工具面（S1 标准）且 `mcp/skills/*.md` 已同步
+- [ ] 功能有 MCP 工具面（S1 标准）且 `docs/mcp/*.md` 已同步
 - [ ] `node tools/acceptance/acceptance.mjs` 全绿

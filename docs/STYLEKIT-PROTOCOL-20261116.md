@@ -166,7 +166,7 @@ WeKnora 不可达＝`KB_UNAVAILABLE` 如实报，不做假检索。
 
 ## 五、本批实施边界
 
-**做**：本协议文档 ＋ `stylekits/PROTOCOL.md`（同内容精简版＋JSON Schema 要点）＋
+**做**：本协议文档 ＋ `stylekits/PROTOCOL.md`（同内容精简版＋JSON Schema 要点；OS-159 后该文件迁至 `docs/STYLEKIT-REGISTRY-PROTOCOL.md`，两份不是同一份——本文件是设计稿 v1＋KB 桥，那份是注册协议精简版）＋
 `docs/plan/proto-os20-stylekit-20261116.md`（工单）＋ KB 适配层设计（不接真 WeKnora，等它跑起来）。
 
 **不做（下一批）**：stylekit 装载器与货架、三层选择器 UI（题材→文风→剧情）、KB 适配器实装、

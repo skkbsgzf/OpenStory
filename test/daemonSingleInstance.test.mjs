@@ -179,7 +179,7 @@ test('CLI 全链：双开友好退出 0＋「已在运行」；杀掉后锁陈�
   }
   try {
     // 第一个 daemon：随机高位端口，等 /api/health 可探
-    const first = spawn(process.execPath, [join(HERE, 'daemon.mjs'), `--port=${port}`], { env })
+    const first = spawn(process.execPath, [join(HERE, 'src', 'host', 'daemon.mjs'), `--port=${port}`], { env })
     children.push(first)
     const health1 = await waitHealthy(port, first.pid)
     assert.equal(validateResponse('healthGet', health1).ok, true, 'health 响应符合契约')
@@ -194,7 +194,7 @@ test('CLI 全链：双开友好退出 0＋「已在运行」；杀掉后锁陈�
     assert.equal(lock1.boundPort, port)
 
     // 第二个 daemon（spawnSync）：同 pid 活着 → 友好退出，exit 0，喊「已在运行」
-    const second = spawnSync(process.execPath, [join(HERE, 'daemon.mjs'), `--port=${port}`], { env, encoding: 'utf-8' })
+    const second = spawnSync(process.execPath, [join(HERE, 'src', 'host', 'daemon.mjs'), `--port=${port}`], { env, encoding: 'utf-8' })
     assert.equal(second.status, 0, `第二个实例应 exit 0，实际 stderr：${second.stderr}`)
     assert.ok(String(second.stdout).includes('已在运行'), `输出缺「已在运行」：${second.stdout}`)
     assert.ok(String(second.stdout).includes(`pid ${first.pid}`), `输出应带在跑实例的 pid：${second.stdout}`)
@@ -214,7 +214,7 @@ test('CLI 全链：双开友好退出 0＋「已在运行」；杀掉后锁陈�
     for (let i = 0; i < 50; i += 1) {
       try { await fetch(`http://127.0.0.1:${port}/api/health`); await wait(100) } catch { break }
     }
-    const third = spawn(process.execPath, [join(HERE, 'daemon.mjs'), `--port=${port}`], { env })
+    const third = spawn(process.execPath, [join(HERE, 'src', 'host', 'daemon.mjs'), `--port=${port}`], { env })
     children.push(third)
     const health3 = await waitHealthy(port, third.pid)
     assert.equal(health3.generation, 2, '新代际 = 旧锁代际 1 + 1')

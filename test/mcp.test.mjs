@@ -16,7 +16,7 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 
 /** 起一个 MCP 子进程，收发 newline-delimited JSON-RPC。 */
 function startMcp() {
-  const child = spawn(process.execPath, [join(ROOT, 'mcp.mjs')], { stdio: ['pipe', 'pipe', 'pipe'] })
+  const child = spawn(process.execPath, [join(ROOT, 'src', 'host', 'mcp.mjs')], { stdio: ['pipe', 'pipe', 'pipe'] })
   const pending = new Map()
   let buf = ''
   let nextId = 1

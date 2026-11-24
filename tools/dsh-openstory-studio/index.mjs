@@ -27,7 +27,7 @@ const DSH_HOME = process.env.DSH_HOME || join(homedir(), '.dsh')
 const DEFAULTS = {
   // bundle 放在 <OpenStory 仓库>/tools/dsh-openstory-studio，所以仓库根就是上两级。
   projectDir: resolve(HERE, '..', '..'),
-  daemonFile: 'daemon.mjs',
+  daemonFile: 'src/host/daemon.mjs',
   port: 8807,
   root: '',
   nodeBin: '',

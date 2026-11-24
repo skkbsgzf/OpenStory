@@ -1,16 +1,16 @@
 # OpenStory 架构
 
 > 分层与实测（OS-133 归档，OS-150 起数字由脚本生成；OS-157 起 L2/L3 合并为「自有内核」一层）。本文所有「N 文件 / N 行」只出现在
-> 下方**生成表**里——它由 `scripts/arch-stats.mjs` 按约定目录扫描实测生成，标记
+> 下方**生成表**里——它由 `tools/arch-stats.mjs` 按约定目录扫描实测生成，标记
 > `arch-stats:start` 与 `arch-stats:end` 圈定范围，叙述部分不再手写会漂的数字。
-> 改了文件结构或行数：跑 `npm run arch:stats` 回写生成表；`node scripts/arch-stats.mjs --check`
+> 改了文件结构或行数：跑 `npm run arch:stats` 回写生成表；`node tools/arch-stats.mjs --check`
 > 与验收门禁 S0.2 逐字比对，手改一个数字就红。
 > OS-140 布局归一后自持模块收进 `src/` 六目录，仓根只留 `daemon.mjs`/`mcp.mjs` 两个入口垫片
 > （布局宪法见 AGENTS.md 硬规则 7；分层是逻辑职责，物理布局见路径表）。
 
 ## 数据优先级（一级公民声明）
 
-**见 [FACT-FIRST.md](./FACT-FIRST.md)。** 一句话：
+**见 [FACT-FIRST.md](docs/FACT-FIRST.md)。** 一句话：
 
 ```
 ① 事实链 fact entries（事件/人物/设定/关系/因果图/需求层级/台账）
@@ -26,7 +26,7 @@
 
 ## 分层（自上而下，依赖只许向下）
 
-下面这张表是**生成段**：文件数与行数由 `scripts/arch-stats.mjs` 实测，不要手改（改目录结构后跑
+下面这张表是**生成段**：文件数与行数由 `tools/arch-stats.mjs` 实测，不要手改（改目录结构后跑
 `npm run arch:stats` 回写）。L7–L2 各节的规模数字一律以本表为准，正文只写职责与边界。
 
 <!-- arch-stats:start -->
@@ -34,7 +34,7 @@
 |---|---|---:|---:|
 | L7 前端 | `public/`（含 `views/`） | 19 | 20,838 |
 | L6 契约层 | `src/api/contracts/` | 8 | 1,410 |
-| L5 宿主层 | `src/host/` | 5 | 1,682 |
+| L5 宿主层 | `src/host/` | 5 | 1,681 |
 | L4 自持层 | `src/{modules,services,protocol}/` | 70 | 15,489 |
 | L2 自有内核 | `src/kernel/` | 11 | 1,871 |
 | L1 磁盘库 | 库＝文件夹（无代码） | — | — |
@@ -96,12 +96,12 @@ L7 前端 → L6 契约层 → L5 宿主层 → L4 自持层 → L2 自有内核
 ### L5 宿主层 `src/host/`
 
 - **职责**：node:http 手写路由，只监听 127.0.0.1:8807（`DEFAULT_PORT` src/host/http.mjs:16，daemon 第 76 行再出口）。
-  仓根 `daemon.mjs`/`mcp.mjs` 是入口垫片（`export * from` ＋仅 node 直跑才调 main，OS-140）。
+  仓根零 `.mjs`（OS-159）：入口直跑 `src/host/daemon.mjs` / `src/host/mcp.mjs`（实现文件自带 isMain 判定）。
   endpointFor 契约分派＋validateResponse 响应校验；**唯一磁盘写入面**（原子写＋.history
   备份）；SSE 通道；**OS-136 来源防护四层闸**——①Host 闸全局生效（只认
   `127.0.0.1/localhost/[::1]`＋实际绑定端口，防 DNS 重绑定）；②Origin／③Sec-Fetch-Site
   两道闸管全部 `/api`（只放行本机回环源与 same-origin/none；不带 Origin 的本机进程——
-  node fetch/curl/mcp.mjs——不受影响）；④带 body 必须 application/json（跨站
+  node fetch/curl/直接调 src/host/mcp.mjs——不受影响）；④带 body 必须 application/json（跨站
   text/plain 简单请求从此写不进来；`FORBIDDEN_ORIGIN`=403、`UNSUPPORTED_MEDIA_TYPE`=400，
   专项测试 `test/originGuard.test.mjs`）；**OS-127 进程治理**——单实例锁
   （`%LOCALAPPDATA%/PinaxNext/openstory/daemon.lock`）、acquire/stamp/clear 三步闸、
@@ -242,7 +242,7 @@ llmPort 规范/兼容形态见 [docs/deduce-llm-port.md](./docs/deduce-llm-port.
 
 | 层 | 协议 | 管什么 | 注册方式 |
 |---|---|---|---|
-| 业务套件 | [PROTOCOL.md](./PROTOCOL.md)（openstory-suite@2） | 业务域默认规则＋独立设置页＋（未来）业务页/工作流 | 目录＋manifest；capabilities 能力声明；宿主按声明加载 |
+| 业务套件 | [PROTOCOL.md](suites/PROTOCOL.md)（openstory-suite@2） | 业务域默认规则＋独立设置页＋（未来）业务页/工作流 | 目录＋manifest；capabilities 能力声明；宿主按声明加载 |
 | Agent 运行时 kit | openstory-runtime-kit@1（`openstory/runtimes/README.md`） | 模型对话通道（sidecar/endpoint） | 目录＋manifest；chat 面＝OpenAI 兼容 SSE |
 | 风格包 | tokens JSON | 整窗换肤＋栅格密度 | 目录＋tokens |
 

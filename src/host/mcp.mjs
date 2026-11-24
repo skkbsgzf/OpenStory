@@ -650,12 +650,12 @@ const INSTRUCTIONS = [
   '推演（种子化 2d6 拍循环＋enrich 富化）／数据分析（本地引擎，秒回）四模块。',
   '先 openstory_libraries 拿 root；读自由，写有备份；absorb 不开（显式动稿）。',
   '参考只单向链小说：参考可 [[正文/...]]，正文不要回挂参考。',
-  '模块级使用说明见仓 mcp/skills/*.md（novel / reference / deduce / analysis）。'
+  '模块级使用说明见仓 docs/mcp/*.md（novel / reference / deduce / analysis）。'
 ].join('\n')
 
-/* OS-140 布局归一：stdio 通道装配＋就绪 banner 收成可导出的 main(argv)——仓根垫片
- * mcp.mjs 与本文件的直跑判定（文件尾 isMain）都会走到这里；被纯 import 时只装载
- * 工具表，不挂 stdio、不写 banner（测试/工具面不起服务）。 */
+/* OS-140 布局归一：stdio 通道装配＋就绪 banner 收成可导出的 main(argv)——本文件即入口
+ * （OS-159 起仓根零垫片），文件尾 isMain 走到这里；被纯 import 时只装载工具表，
+ * 不挂 stdio、不写 banner（测试/工具面不起服务）。 */
 export function main(_argv = []) {
   let buffer = ''
   process.stdin.setEncoding('utf8')
@@ -736,8 +736,7 @@ function send(message) {
   process.stdout.write(JSON.stringify(message) + '\n')
 }
 
-/* 直跑判定（OS-140）：node 直接执行本文件时也走 main。仓根垫片（mcp.mjs）被直跑时，
- * 走的是垫片自己的判定，不重复进这里。 */
+/* 直跑判定（OS-140）：node 直接执行本文件时走 main（OS-159 起这是唯一 MCP 入口）。 */
 const isMain = process.argv[1]
   ? pathToFileURL(resolve(process.argv[1])).href === import.meta.url
   : false

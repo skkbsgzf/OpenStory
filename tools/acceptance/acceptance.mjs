@@ -13,8 +13,8 @@
  *   S4 UX 跳转层级  —— 插件页面结构遵循全局一致性规范（目前薄弱项，从严检查）
  *
  * OS-140 布局归一：自持模块收进 src/（host/api/protocol/kernel/modules/services），
- * 仓根只留 daemon.mjs/mcp.mjs 两个入口垫片——新增 S0 布局检查钉死这条宪法，
- * S1/S2 的扫描面从「仓根 .mjs」改为「src/ 树全部 .mjs ＋两个垫片」（覆盖面只增不减）。
+ * OS-159 再收紧：仓根零 .mjs，入口直跑 src/host/{daemon,mcp}.mjs——S0.1 用根目录白名单
+ * 钉死这条宪法；S1/S2 的扫描面是「src/ 树全部 .mjs」（实现文件都在里面，覆盖面只增不减）。
  *
  * 用法：node tools/acceptance/acceptance.mjs [--json <outPath>]
  * 退出码：0 = 全过；1 = 有 FAIL（新增检查项默认 WARN 不拦截，见 CHECKS 注释）
@@ -79,28 +79,38 @@ function walkMjs(dir, prefix) {
  * ================================================================ */
 console.log('\n── S0 布局 ──')
 
-// S0.1 仓根 .mjs 恰好两个入口垫片：daemon.mjs / mcp.mjs（实现都在 src/host/）
-const rootMjs = readdirSync(REPO).filter((f) => f.endsWith('.mjs')).sort()
-const rootExtra = rootMjs.filter((f) => f !== 'daemon.mjs' && f !== 'mcp.mjs')
-check('S0.1', 'S0', `布局宪法：仓根只允许两个入口垫片（实测 ${rootMjs.length} 个 .mjs）`,
-  rootMjs.length === 2 && rootMjs.includes('daemon.mjs') && rootMjs.includes('mcp.mjs'),
-  rootMjs.map((f) => `${f} → ${exists(join('src/host', f)) ? `src/host/${f}` : '?'}`),
-  rootExtra.length ? `仓根多出的 .mjs（应迁 src/）：${rootExtra.join(', ')}` : '实现全部在 src/，仓根无散落模块')
+// S0.1 根目录白名单（OS-159 收紧）：根目录下的文件与目录必须落在清单里，多一个都红。
+// 入口不再放仓根垫片——`node src/host/daemon.mjs` / `node src/host/mcp.mjs` 直跑实现文件。
+const ROOT_FILES = new Set(['AGENTS.md', 'ARCHITECTURE.md', 'LICENSE', 'README.md', 'package.json', 'package-lock.json', '.gitignore'])
+const ROOT_DIRS = new Set(['src', 'public', 'test', 'tools', 'docs', 'samples', 'suites', 'runtimes', 'styles', 'genres', 'skills', 'design-system', '.zcode', '.ua', '.cache', 'node_modules'])
+const rootEntries = readdirSync(REPO).sort()
+const rootStrays = rootEntries.filter((name) => {
+  if (ROOT_FILES.has(name) || ROOT_DIRS.has(name)) return false
+  // 隐藏的 git 元数据、工具缓存与运行时日志不算布局条目（由别的门禁/纪律管）；
+  // .daemon-<port>.log / .daemon-<port>.err.log 是 daemon 运行时产物，不起服务就不是布局的一部分。
+  if (['.git', '.cache', '.ua'].includes(name)) return false
+  if (/^\.daemon-\d+(\.err)?\.log$/u.test(name)) return false
+  return true
+})
+check('S0.1', 'S0', `根目录白名单（文件 ${ROOT_FILES.size} 项＋目录 ${ROOT_DIRS.size} 项；实测 ${rootEntries.length} 条目，越界 ${rootStrays.length}）`,
+  rootStrays.length === 0 && !rootEntries.some((f) => f.endsWith('.mjs')),
+  rootStrays.slice(0, 8).map((f) => `根目录多出：${f}${exists(join(REPO, f)) ? '' : ''}`),
+  rootStrays.length ? `多出的条目（要建先登记白名单）：${rootStrays.join(', ')}` : '根目录零散落 .mjs，文档全在 docs/')
 
 // S0.2 架构文档数字与实测一致（OS-150）：ARCHITECTURE.md 的生成段（arch-stats 标记之间）
-// 必须逐字等于 scripts/arch-stats.mjs 的实测输出——文件数/行数从此不再靠人手回填。
+// 必须逐字等于 tools/arch-stats.mjs 的实测输出——文件数/行数从此不再靠人手回填。
 // 走 --check 而不是 import 计算函数：验的就是作者/CI 会跑的那条命令与退出码。
 let archStatsOk = false
 let archStatsEvidence = []
 try {
-  const out = execFileSync(process.execPath, ['scripts/arch-stats.mjs', '--check'], { cwd: REPO, encoding: 'utf-8' })
+  const out = execFileSync(process.execPath, ['tools/arch-stats.mjs', '--check'], { cwd: REPO, encoding: 'utf-8' })
   archStatsOk = true
   archStatsEvidence = [lineOf('tools/acceptance/acceptance.mjs', 'S0.2 架构文档数字与实测一致'), out.trim().split('\n')[0]]
 } catch (error) {
   const detail = String(error.stdout || error.stderr || error.message || '').trim().split('\n').slice(0, 4)
-  archStatsEvidence = [`scripts/arch-stats.mjs --check 退出码 ${error.status ?? '?'}`, ...detail]
+  archStatsEvidence = [`tools/arch-stats.mjs --check 退出码 ${error.status ?? '?'}`, ...detail]
 }
-check('S0.2', 'S0', '架构文档数字与实测一致（scripts/arch-stats.mjs --check 逐字比对生成段）',
+check('S0.2', 'S0', '架构文档数字与实测一致（tools/arch-stats.mjs --check 逐字比对生成段）',
   archStatsOk, archStatsEvidence,
   archStatsOk ? '' : 'ARCHITECTURE.md 生成段与实测不符——跑 npm run arch:stats 回写（手改一个数字就会红）')
 
@@ -130,15 +140,15 @@ check('S1.1', 'S1', `MCP 工具覆盖模块面（共 ${toolNames.length} 个工�
   toolNames.slice(0, 4).map((t) => lineOf('src/host/mcp.mjs', `name: '${t}'`)).filter((s) => !s.endsWith(':?')),
   thinModules.length ? `工具不足 2 个的模块组：${thinModules.join(', ')}` : '各模块组均有读+写工具')
 
-// S1.2 mcp/skills/*.md 对外文档与工具同步
-const mcpSkillDir = join(REPO, 'mcp', 'skills')
+// S1.2 docs/mcp/*.md 对外文档与工具同步（OS-159：对外材料从 mcp/skills/ 归入 docs/mcp/）
+const mcpSkillDir = join(REPO, 'docs', 'mcp')
 let mcpDocs = []
 try { mcpDocs = readdirSync(mcpSkillDir).filter((f) => f.endsWith('.md')) } catch { /* 目录不存在 */ }
-const overview = mcpDocs.includes('OVERVIEW.md') ? readRepo('mcp/skills/OVERVIEW.md') : ''
+const overview = mcpDocs.includes('OVERVIEW.md') ? readRepo('docs/mcp/OVERVIEW.md') : ''
 const overviewNum = [...overview.matchAll(/(\d+)\s*个工具/g)].map((m) => Number(m[1]))
 const docSync = overviewNum.length === 0 || overviewNum.some((n) => Math.abs(n - toolNames.length) <= 2)
-check('S1.2', 'S1', `mcp/skills 对外文档同步（OVERVIEW 声称 ${overviewNum.join('/') || '—'}，实际 ${toolNames.length}）`,
-  docSync && mcpDocs.length >= 5, mcpDocs.map((f) => `mcp/skills/${f}`),
+check('S1.2', 'S1', `docs/mcp 对外文档同步（OVERVIEW 声称 ${overviewNum.join('/') || '—'}，实际 ${toolNames.length}）`,
+  docSync && mcpDocs.length >= 5, mcpDocs.map((f) => `docs/mcp/${f}`),
   docSync ? '' : 'OVERVIEW 工具数与 mcp.mjs 不符——改 MCP 后必须同步对外文档')
 
 // S1.3 skills/ 创作知识库包完整性
@@ -175,10 +185,9 @@ check('S1.5', 'S1', '外部 CLI 派发器就位（Qoder 子 agent 模式）',
  * ================================================================ */
 console.log('\n── S2 可插拔 ──')
 
-// S2.1 扫 src/ 树＋仓根垫片的 import 图（OS-140 起扫描面＝src/**/*.mjs ＋ daemon/mcp 垫片）
+// S2.1 扫 src/ 树的 import 图（OS-159 起仓根零垫片，入口实现文件本就在 src/host/ 内，覆盖面只增不减）
 const srcMjs = walkMjs(join(REPO, 'src'), 'src')
-const shimFiles = ['daemon.mjs', 'mcp.mjs']
-const scanned = [...srcMjs, ...shimFiles.map((f) => ({ rel: f, src: readRepo(f) }))]
+const scanned = srcMjs
 const imports = {}
 const importEvidence = {}
 for (const { rel, src } of scanned) {
