@@ -38,7 +38,7 @@
 | [OS-154](OS-154-kernel-derive.md) | fact 派生与包装转自有：wikiDerive＋factPack＋enrich 2 件（984 行，首次真删 core：24→22 文件、4,332→3,980 行） | 中 | 已验收 `bc24c3b` | 582 例 · 19 项 · vendor 清单除名 2 项 | 门禁绿 |
 | [OS-155](OS-155-kernel-deduce.md) | 推演链归位：deduce 8 件进 `src/modules/deduce/engine/`＋Host API 升 `@2`＋llmPort 显式化（core 22→13 文件、3,980→2,550 行） | 中 | 已验收 `f11743f` | 591 例 · 19 项 · 水浒 10/10 · 新建 13/13 · 确定性 8 例 | 待复核 |
 | [OS-156](OS-156-kernel-factstore.md) | 写协议转自有：`factFileStore`（756 行）＋ core 13 件全删 → **core/pinax 归零** | 高 | 已验收 `ae01987` | 598 例 · 19 项 · 金样 7/7＋9/9 · 写协议直测 7 例 | 待单独复核 |
-| [OS-157](OS-157-kernel-retire.md) | 收尾退役：世界书契约转自有、`core/`＋`vendor/` 退役、vendor 纪律退役、`pinaxAdapter` 解散、Host API `@2` 定稿、**`PINAX_` 前缀一次扫净**、互认金样、出处声明 | 高 | 施工中 | | | 单独复核 |
+| [OS-157](OS-157-kernel-retire.md) | 收尾退役：世界书契约转自有、`core/`＋`vendor/` 退役、vendor 纪律退役、`pinaxAdapter` 解散、Host API `@2` 定稿、**`PINAX_` 前缀一次扫净**、互认金样、出处声明 | 高 | **停线**：CodeBuddy 429 限流（2026-11-25 01:36 重置），首轮空产出已回退 | — | 单独复核 |
 
 ## 段 C · 工作面插件化收尾
 
