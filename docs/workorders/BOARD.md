@@ -53,7 +53,7 @@
 
 | 工单 | 内容 | 风险 | 状态 | 提交 | 门禁 | 复核 |
 |---|---|---|---|---|---|---|
-| [OS-161](OS-161-modules-habits-source-artifacts.md) | G5b 习惯／故事源／产物中心模块插件 | 中  待派 | | | |
+| [OS-161](OS-161-modules-habits-source-artifacts.md) | G5b 习惯／故事源／产物中心模块插件 | 中 ✅ 已验收（3 提交 `510366b`/`46f220e`/`569d6f7`；618 例·门禁 22·app.js 12,466→12,256 净降 210） | | | |
 | [OS-162](OS-162-exchange-module.md) | G5b 导入导出模块＋NovelPedia 适配器（G7 落地） | 中  待派 | | | |
 | [OS-163](OS-163-core-chapters-script.md) | G5c 正文／剧本核心模块（不可停用） | 中  待派 | | | |
 | [OS-164](OS-164-core-worldbook-roleplay.md) | G5c 世界书／扮演核心模块＋G8b 世界书目录归属 | 中  待派 | | | |
