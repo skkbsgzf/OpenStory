@@ -25,6 +25,7 @@ node .zcode/os-batch-runner.mjs --plan <plan.json> --status <status.json> --mode
 7. `public/app.js` 只许减不许增；渲染函数一律进 `public/views/`。
 8. **收尾必做**：`npm run arch:stats` 回写文档（否则验收门禁 S0.2 红）。
 9. 遇到门禁不可能通过、或规格互相矛盾——停下来如实上报，不要绕过去。
+10. **三名一致**（作者裁定）：每个插件的前端显示名称、插件本体的命名、本地文件的命名完全统一。新增或改名任何面向用户的东西，先改命名表（`public/views/registry.mjs`）；显示名 ＝ 库内目录名 ＝ 修改日志模块名，一个正名只许一个 slug，**不许另起名**。
 
 ## 3. 门禁（全绿才算过）
 
