@@ -88,3 +88,8 @@ LIMITATIONS:
 ```
 
 ## 验收记录（主 agent 填）
+
+- 2026-11-24 编排器五道门禁全绿（529 例、18 项、水浒 10/10、新建 13/13、vendor 未动）；无越界。
+- 亲验：`node scripts/arch-stats.mjs --check` 通过（生成段与实测一致）。
+- 独立复核 17 项全过（抽查 app.js 行数、core/pinax 24 文件 4,332 行、端点 101，均与实测一致；README 发布要件仍在；package.json 只多一条 scripts）。
+- 结论：**已验收**。
