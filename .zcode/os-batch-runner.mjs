@@ -216,9 +216,35 @@ function testSummary(out) {
   return match ? `tests ${match[1]} · pass ${match[2]} · fail ${match[3]} · skip ${match[4]}` : '(没读到测试汇总)'
 }
 
-/** 五道门禁：全量测试 / 验收 / 水浒 / 新建 / vendor 漂移。 */
-function gates() {
-  const daemonNote = ensureDaemon()
+/** 五道门禁：全量测试 / 验收 / 水浒 / 新建 / vendor 漂移。
+ *  坑（2026-11-24 实录，第二条）：daemon 常驻，改了 src/ 不重启，两条 e2e 门禁会对着**旧进程**跑出假绿
+ *  （OS-150a 踩过：新脚本期望 FACT_EMPTY、旧进程回 INVALID_ENTRY，编排器却报「新建绿」）。
+ *  所以本批改动碰到后端时先重启 daemon 再跑门禁，并把「重启过」写进门禁汇总。 */
+function restartDaemon(reason) {
+  const probe = run(process.execPath, ['-e', "fetch('http://127.0.0.1:8807/api/health',{signal:AbortSignal.timeout(3000)}).then(r=>r.json()).then(d=>{console.log(String(d.pid||''))}).catch(function(){console.log('')})"], 20_000)
+  const pid = probe.out.trim()
+  if (pid) spawnSync('taskkill', ['/PID', pid, '/F'], { encoding: 'utf8', timeout: 20_000 })
+  spawnSync(process.execPath, ['-e', 'setTimeout(function(){},1200)'], { timeout: 8000 })
+  try {
+    const child = spawn(process.execPath, ['daemon.mjs', '--port=8807'], { cwd: REPO, detached: true, stdio: 'ignore' })
+    child.unref()
+  } catch (error) {
+    return 'daemon 重启失败：' + String(error?.message || error)
+  }
+  for (let i = 0; i < 30; i += 1) {
+    spawnSync(process.execPath, ['-e', 'setTimeout(function(){},300)'], { timeout: 5000 })
+    if (daemonHealthy()) return 'daemon 已重启（' + reason + '）'
+  }
+  return 'daemon 重启后仍不健康（' + reason + '）'
+}
+
+/** 本批改动碰没碰后端（碰了就必须重启 daemon 再跑 e2e 门禁）。 */
+function needsDaemonRestart() {
+  return changedPaths().some((path) => path.startsWith('src/') || path.startsWith('contracts/') || path === 'daemon.mjs' || path === 'mcp.mjs')
+}
+
+function gates(options = {}) {
+  const daemonNote = options.restartDaemon ? restartDaemon(options.reason || '本批改了后端') : ensureDaemon()
   const tests = run(process.execPath, ['--test', ...testFiles()], 420_000)
   const acceptance = run(process.execPath, [join('tools', 'acceptance', 'acceptance.mjs')], 420_000)
   const shuihu = run(process.execPath, [join('scripts', 'verify-shuihu.mjs')], 900_000)
@@ -371,7 +397,7 @@ for (const batch of plan.batches) {
     outcome = dispatch(batch, ticket, round)
     note(batch.id, { state: '检查中', lastReport: String(outcome.result || '').slice(0, 2500) })
     problems = scopeProblems(batch, packageBefore)
-    gate = problems.length ? { ok: false, summary: '范围检查未过，门禁未跑', failTail: '' } : gates()
+    gate = problems.length ? { ok: false, summary: '范围检查未过，门禁未跑', failTail: '' } : gates({ restartDaemon: needsDaemonRestart(), reason: batch.id + ' 改了后端' })
     note(batch.id, { gates: gate.summary, outOfScope: problems, redLines: problems.length ? [] : redLines(batch.mustPass) })
     if (gate.ok) break
     if (round < ROUNDS) {
