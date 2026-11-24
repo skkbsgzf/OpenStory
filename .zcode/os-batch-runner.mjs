@@ -304,7 +304,15 @@ function dispatch(batch, ticketPath, round) {
   } catch {
     parsed = { ok: result.status === 0, result: (result.stdout || '').slice(0, 4000), note: '结果文件读不到，取 stdout' }
   }
-  return { ...parsed, durationMs: parsed.durationMs ?? Date.now() - started, exitCode: result.status }
+  const outcome = { ...parsed, durationMs: parsed.durationMs ?? Date.now() - started, exitCode: result.status }
+  // 坑（2026-11-24 实录）：CodeBuddy 撞上 provider 限流时**退出码仍是 0、result 是空串**，
+  // stderr 里才有「429 … 频率限制」。不识别就会把空批次当成功（OS-157 首轮踩过：提交了一个只改工单的空提交）。
+  const stderrText = String(outcome.stderr || '')
+  const resultText = String(outcome.result || '').trim()
+  const rateLimited = /429|rate limit|frequency|使用量已超出频率限制|超出频率/i.test(stderrText + ' ' + resultText)
+  outcome.failedByProvider = rateLimited || (outcome.ok === true && resultText === '')
+  outcome.providerNote = rateLimited ? 'provider 限流（429）：' + stderrText.slice(0, 300) : (resultText === '' ? '施工方返回空结果' : '')
+  return outcome
 }
 
 function makeFixTicket(originalPath, id, round, gate, problems) {
@@ -395,6 +403,11 @@ for (const batch of plan.batches) {
   for (let round = 1; round <= ROUNDS; round += 1) {
     note(batch.id, { state: '施工中', round })
     outcome = dispatch(batch, ticket, round)
+    // provider 限流／空结果：直接停线，不返工、不提交（返工也是白烧）
+    if (outcome.failedByProvider) {
+      note(batch.id, { state: '停线', note: (outcome.providerNote || '施工方没有产出') + '（provider 问题，不是代码问题；如需继续请换模型或等额度）' })
+      finish(false, batch.id + ' 施工方没有产出：' + (outcome.providerNote || '空结果'))
+    }
     note(batch.id, { state: '检查中', lastReport: String(outcome.result || '').slice(0, 2500) })
     problems = scopeProblems(batch, packageBefore)
     gate = problems.length ? { ok: false, summary: '范围检查未过，门禁未跑', failTail: '' } : gates({ restartDaemon: needsDaemonRestart(), reason: batch.id + ' 改了后端' })
@@ -413,6 +426,12 @@ for (const batch of plan.batches) {
   }
 
   appendReport(batch, state.batches.find((item) => item.id === batch.id).round, gate, outcome)
+  // 只改了工单本身（归档回报）＝施工方什么都没做，不许当成功提交
+  const substantive = changedPaths().filter((path) => path !== (batch.ticket ? relative(REPO, batch.ticket).split('\\').join('/') : ''))
+  if (substantive.length === 0) {
+    note(batch.id, { state: '停线', note: '施工方除了工单归档没有任何改动' })
+    finish(false, batch.id + ' 没有任何实质改动')
+  }
   git(['add', '-A', '--', '.', ...SELF.map((file) => ':(exclude)' + file)])
   if (git(['diff', '--cached', '--quiet']).status === 0) {
     note(batch.id, { state: '失败', note: '施工方没有任何改动' })
