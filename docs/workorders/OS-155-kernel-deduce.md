@@ -78,4 +78,56 @@
 
 ## 施工回报（编排器自动归档）
 
+> 模型 deepseek-v4.1-flash · 第 2 轮（**编排器因范围检查停线，未自动归档**）· 主 agent 复核后判定允许清单漏项、工作合格并亲自提交 `f11743f`
+
+```text
+CHANGED:
+- `src/modules/deduce/engine/opening.mjs`（新，64 行）
+- `src/modules/deduce/engine/turn.mjs`（新，117 行）
+- `src/modules/deduce/engine/settle.mjs`（新，114 行）
+- `src/modules/deduce/engine/candidates.mjs`（新，164 行）
+- `src/modules/deduce/engine/fronts.mjs`（新，282 行）
+- `src/modules/deduce/engine/patchChannel.mjs`（新，239 行）
+- `src/modules/deduce/engine/sceneContext.mjs`（新，202 行）
+- `src/modules/deduce/engine/sessionState.mjs`（新，50 行）→ 8 件合计 **1,232 行**
+- `src/modules/deduce/engine/index.mjs`（新，16 行；四端子名与旧 adapter `deduce` 组逐名对齐）
+- `src/modules/deduce/deduceEngine.mjs`（改引 `./engine/index.mjs`；新增 `normalizeLlmPort` 显式形状校验＋`llmPortNote`）
+- `src/protocol/factDomain.mjs`（新；只 re-export `src/kernel/fact/domain/index.mjs`＋`aliases.js`＋`factPack.mjs`，零实现）
+- `src/protocol/index.mjs`（`HOST_API_VERSION` → `host-api@2`；`fact.deduce` 删除；JSDoc/版本史）
+- `src/protocol/README.md`（版本 `@2`、能力清单、`factDomain.mjs` 台账）
+- `src/kernel/pinaxAdapter.mjs`（去掉三条 core 推演 import 与 `deduce` 出口；五组→四组）
+- `src/services/enrichEngine.mjs`（仅一处注释「五组→出口组」，去引用失效成员）
+- `test/deduceDeterminism.test.mjs`（新，8 例：种子确定性 2＋换种子 1＋patchChannel 幂等 1＋fronts 只进不退 1＋llmPort 三形态 3）
+- `test/hostApi.test.mjs`（SNAPSHOT 去 `fact.deduce`、字面量 `@2`、新增「adapter 无 deduce」断言）
+- `test/decoupleStep3.test.mjs`（形状锁移到 `engine/index.mjs`，adapter 组改四组，等价加强）
+- `test/kernelEnrich.test.mjs`（core `factPack.js` 已删 → 等价对拍改摘要金样，8 组查询 sha256 逐组锁）
+- `docs/deduce-llm-port.md`（新；规范 `propose`／兼容 `complete`／坏形状降级表）
+- `docs/ACCEPTANCE.md`（S2.1 白名单台账补边、S2.4 五组→四组）
+- `ARCHITECTURE.md`（L2 core 13 文件、模块层画入 `engine/`、host-api@2、llmPort 指路）
+- `AGENTS.md`（13 文件、四组出口、`engine/` 归位、删 9 件记账）
+- `core/VENDORED.md`（22→13 口径、OS-155 节、OS-29 表标注已迁出）
+- `core/.vendored-manifest.json`（除名 9 项）
+- 删除：`core/pinax/next/fact/usecases/deduce/{opening,turn,settle,candidates,fronts,patchChannel,sceneContext,sessionState}.js`、`core/pinax/next/fact/usecases/factPack.js`
+- `tools/acceptance/acceptance.mjs`（＋1 条 `KERNEL_ALLOW` 名点边，理由见 LIMITATIONS）
+
+VERIFIED:
+- `node .zcode/run-gate.mjs` → tests 591／pass 589／fail 0／skipped 2（2 条为既有平台/夹具条件跳过，非本次新增）
+- `node tools/acceptance/acceptance.mjs` → **19 过 / 0 挂 / 0 警**（含 S2.1、S2.4）
+- `node scripts/vendor-drift.mjs check` → 退出码 0，pinaxNext 一致 13／缺项 0；**core 现存 13 文件**（`find core -type f` 15＝13 代码＋manifest＋VENDORED.md）
+- `node scripts/arch-stats.mjs --check` → 生成段与实测一致（L2=13 文件/2,550 行，L4=66 文件，测试文件 69）
+- 全部新建/改动 `.mjs` 逐个 `node --check` 通过
+- **行为等价实测**（临时探针，已删）：用 `git show HEAD:` 还原旧 core 8 件到临时目录，与 `engine/` 对拍 4 组种子（1／424242／99／1234567）各跑「开局＋第一拍＋结算＋
+```
+
 ## 验收记录（主 agent 填）
+
+- **停线原因**：范围检查报「越界：`tools/acceptance/acceptance.mjs`」。核查结论——**是我工单的允许清单漏了 `tools/acceptance/**`**，不是施工方越界：那处改动是给 S2.1 的 `KERNEL_ALLOW` 加一条「同一模块目录内的引擎出口」（`deduceEngine → engine/index.mjs`），推演链归位必需，且**只放行模块内部组合**、门禁没有变松。
+- 主 agent 亲自在本树上跑全量门禁后裁定通过并提交（`f11743f`）：
+  ① 全量测试 **591 例**（589 过 / 0 挂 / 2 条件跳过，基线 582 → 591）。
+  ② 验收门禁 **19 过 / 0 挂 / 0 警**；水浒 **10/10**；新建 **13/13**；`vendor:check` 退出 0；`arch-stats --check` 一致。
+  ③ 五条红线测试逐个绿：deduceEngine 7／hostApi 7／storyTree 7／script-fact 9／**deduceDeterminism 8**。
+  ④ **core 从 22 文件 / 3,980 行降到 13 文件 / 2,550 行**（删掉的 1,430 行＝deduce 八件 1,236＋factPack 194）。
+  ⑤ `HOST_API_VERSION = 'host-api@2'`，`fact.deduce` 已退出；引擎在 `src/modules/deduce/engine/`（8 件＋`index.mjs` 出口）。
+  ⑥ 确定性测试真的在锁行为：「同种子＋同事实包＝同一拍」8 例。
+- 体系教训（已写进体系文档 §4）：**迁移类工单的允许清单必须带上 `tools/acceptance/**` 与 `core/.vendored-manifest.json`**——门禁会随分层变化需要同步改，否则会被自己的范围检查误杀。
+- 结论：**已验收**。

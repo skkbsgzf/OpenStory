@@ -36,8 +36,8 @@
 | [OS-152](OS-152-kernel-plumber.md) | 管道件转自有：errors／atomicWrite／fsDurability（123 行，影子复制） | 低 | 已验收 | `5c3a887` | 560 例 · 19 项 · 水浒 10/10 · 新建 13/13 · vendor 未动 | 码值 25 条逐字未变、core 仍 24 文件 |
 | [OS-153](OS-153-kernel-fact-domain.md) | fact 词表与校验转自有：`fact/domain` 8 件（1,233 行）＋S2.4 允许清单收紧 | 中 | 已验收 `e9835e8` | 573 例 · 19 项 · 等价性 13 例 | 门禁绿 |
 | [OS-154](OS-154-kernel-derive.md) | fact 派生与包装转自有：wikiDerive＋factPack＋enrich 2 件（984 行，首次真删 core：24→22 文件、4,332→3,980 行） | 中 | 已验收 `bc24c3b` | 582 例 · 19 项 · vendor 清单除名 2 项 | 门禁绿 |
-| [OS-155](OS-155-kernel-deduce.md) | 推演链归位：deduce 8 件（1,236 行）进 `src/modules/deduce/engine/`＋Host API 升 `@2`（删 `deduce` 命名空间）＋llmPort 接口整理 | 中 | 施工中 | | |
-| OS-156 | 写协议转自有：factFileStore（756 行，最后摘） | 高 | 待派 | | | 单独复核 |
+| [OS-155](OS-155-kernel-deduce.md) | 推演链归位：deduce 8 件进 `src/modules/deduce/engine/`＋Host API 升 `@2`＋llmPort 显式化（core 22→13 文件、3,980→2,550 行） | 中 | 已验收 `f11743f` | 591 例 · 19 项 · 水浒 10/10 · 新建 13/13 · 确定性 8 例 | 待复核 |
+| [OS-156](OS-156-kernel-factstore.md) | 写协议转自有：`factFileStore`（756 行，最后摘，core 清空） | 高 | 施工中 | | |
 | OS-157 | 收尾退役：世界书契约转自有、`core/` 与 `vendor/` 消失、vendor 纪律退役、`pinaxAdapter` 解散、门禁 S2.4 演变、互认金样、出处声明保留 | 高 | 待派 | | | 单独复核 |
 
 ## 段 C · 工作面插件化收尾
