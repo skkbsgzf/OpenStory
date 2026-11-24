@@ -62,13 +62,13 @@ function entry(kind, raw) {
  * @param {string[]} [opts.runtimesDirs]
  * @returns {Promise<{ok:true, plugins:object[], byKind:object, warnings:object[], stats:object}>}
  */
-export async function listAllPlugins({ suitesDirs = [], suiteStatePath = '', skillsDirs = [], runtimesDirs = [] } = {}) {
+export async function listAllPlugins({ suitesDirs = [], suiteStatePath = '', skillsDirs = [], runtimesDirs = [], root = '' } = {}) {
   const warnings = []
   const plugins = []
 
   // 套件：listSuitesPublic 内部已经做了 state 合并（enabled/values），直接复用
   try {
-    const shelf = await listSuitesPublic(suitesDirs, suiteStatePath)
+    const shelf = await listSuitesPublic(suitesDirs, suiteStatePath, root)
     for (const suite of shelf.suites || []) plugins.push(entry('suite', suite))
     for (const warning of shelf.warnings || []) warnings.push({ kind: 'suite', ...warning })
   } catch (error) {

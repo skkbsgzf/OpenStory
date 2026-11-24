@@ -83,7 +83,7 @@ test('daemon 端到端：/api/kb/status 无 KB 环境降级 200，close 不悬�
     const daemon = await startDaemon({
       port: 0,
       preferencesPath,
-      env: { ...process.env, LOCALAPPDATA: base, PINAX_KB_WATCH: '0' },
+      env: { ...process.env, LOCALAPPDATA: base },
       logger: { log() {} }
     })
     const origin = `http://127.0.0.1:${daemon.port}`

@@ -4556,7 +4556,7 @@ async function selectRuntime(id) {
 
 async function loadSuites() {
   try {
-    const payload = await api('/api/suites')
+    const payload = await api(`/api/suites?root=${encodeURIComponent(state.current?.path || '')}`)
     state.suites = Array.isArray(payload.suites) ? payload.suites : []
     state.settings.suitesUserDir = text(payload.userDir)
   } catch {
@@ -4901,7 +4901,7 @@ async function saveSuiteValues(id) {
     }
   }
   try {
-    const payload = await api('/api/suite/settings', { method: 'PUT', body: JSON.stringify({ id, values }) })
+    const payload = await api('/api/suite/settings', { method: 'PUT', body: JSON.stringify({ id, values, root: state.current?.path || '' }) })
     const suite2 = suiteById(id)
     if (suite2) suite2.values = payload.values
     if (errEl) errEl.textContent = ''
@@ -4914,7 +4914,7 @@ async function saveSuiteValues(id) {
 async function toggleSuite(id) {
   const suite = suiteById(id)
   try {
-    await api('/api/suite/state', { method: 'PUT', body: JSON.stringify({ id, enabled: !(suite?.enabled !== false) }) })
+    await api('/api/suite/state', { method: 'PUT', body: JSON.stringify({ id, enabled: !(suite?.enabled !== false), root: state.current?.path || '' }) })
     await loadSuites()
     render()
   } catch (error) {

@@ -9,7 +9,11 @@
 > | **戏院三部曲**（`D:\Projects\戏院三部曲`） | screenplay | 9 条目 / 3 幕 / 7 伏笔 | 剧本：剧本页签、幕结构 |
 >
 > 启动：`cd D:\OpenStory && npm start`（daemon 127.0.0.1:8807），浏览器打开 `http://127.0.0.1:8807`。
-> MCP：`node D:\OpenStory\mcp.mjs`（前置同 daemon）。
+> MCP：`node D:\OpenStory\src\host\mcp.mjs`（前置同 daemon）。
+>
+> 仓库自带的 `samples/水浒传/` 是免登记的体验库：它带 `.pinax/ui-state.json` 与
+> `.openstory/plugins/suite-state.json`（由 `tools/samples/generate-sample-config.mjs`
+> 按真实路径生成），拷贝或导入后打开即复现一份配置好的工作台，不必重设页签与套件。
 >
 > 说明：两个演示库的拆解数据是手写的（结构与 enrich 产出完全一致，都过内核 schema 校验），
 > 因为 enrich 需要 LLM 端点。配好模型后重跑 enrich 即可得到真实抽取结果。

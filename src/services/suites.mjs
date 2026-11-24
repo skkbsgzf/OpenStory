@@ -264,13 +264,30 @@ export function loadSuites(dirs = []) {
   return { suites: [...byId.values()], warnings }
 }
 
-/* ---------- 套件状态（enabled＋values，本机单文件原子写）---------- */
+/* ---------- 套件状态（enabled＋values，库级优先＋机器级缺省）---------- */
 
 function emptyState() {
   return { suites: {} }
 }
 
-export async function loadSuiteState(statePath) {
+/**
+ * OS-160 单一路径入口：套件状态随库走，机器级文件降为缺省值。
+ *   · 开着库（root 非空）且库内有 `<root>/.openstory/plugins/suite-state.json` → 用库内；
+ *   · 否则（没开库 / 库内还没该文件）→ 回落机器级 suite-state.json（旧库不迁移，原样当缺省）。
+ * root 由 handler 授权后传入（已规范化、确认在 allowlist 内），这里不再做授权。
+ */
+export function resolveSuiteStatePath({ root = '', machinePath = '', mode = 'read' } = {}) {
+  const libPath = text(root).trim()
+    ? join(text(root).trim(), '.openstory', 'plugins', 'suite-state.json')
+    : ''
+  // 写：开着库就写库内（没有也建），让库自带配置；读：库内有才用，否则回落机器级缺省。
+  if (libPath && (mode === 'write' || existsSync(libPath))) return { path: libPath, scope: 'library' }
+  return { path: text(machinePath).trim(), scope: 'machine' }
+}
+
+export async function loadSuiteState(statePath, root = '') {
+  const resolved = resolveSuiteStatePath({ root, machinePath: statePath, mode: 'read' })
+  statePath = resolved.path
   if (!text(statePath).trim()) return { state: emptyState(), warnings: [] }
   try {
     const raw = await readFile(statePath, 'utf-8')
@@ -285,7 +302,11 @@ export async function loadSuiteState(statePath) {
   }
 }
 
-async function saveSuiteState(statePath, state) {
+async function saveSuiteState(statePath, state, root = '') {
+  // OS-160：开着库就写库内（即使库内原本没有该文件——创建即库级化）；没开库写机器级缺省。
+  const resolved = resolveSuiteStatePath({ root, machinePath: statePath, mode: 'write' })
+  statePath = resolved.path
+  if (!text(statePath).trim()) return
   // 原实现（OS-138 收敛前）先 mkdir 再写——目录创建留在调用点的口径不变
   await mkdir(dirname(statePath), { recursive: true })
   await atomicWriteFile(statePath, JSON.stringify(state, null, 2))
@@ -343,9 +364,9 @@ export function suitePublic(suite, suiteState) {
 }
 
 /** 全货架公开清单（按 state 合并 enabled/values；依赖闸把缺失/成环的标 blocked）。 */
-export async function listSuitesPublic(dirs, statePath) {
+export async function listSuitesPublic(dirs, statePath, root = '') {
   const { suites, warnings } = loadSuites(dirs)
-  const { state } = await loadSuiteState(statePath)
+  const { state } = await loadSuiteState(statePath, root)
   // 依赖闸（OS-122）：只有「启用中」的套件算可用依赖；缺失或成环的标 blocked，
   // 货架照常返回（不抛错、不隐藏）——作者要能看见「它为什么没生效」。
   const enabledOf = (suite) => state?.suites?.[suite.id]?.enabled !== false
@@ -374,7 +395,7 @@ export async function listSuitesPublic(dirs, statePath) {
 }
 
 /** 按 schema 校验并保存一套件的 values；未知键丢弃，坏值 400 语义返回。page 模式套件不走这里。 */
-export async function saveSuiteSettings(dirs, statePath, id, values) {
+export async function saveSuiteSettings(dirs, statePath, id, values, root = '') {
   const { suites } = loadSuites(dirs)
   const suite = suites.find((item) => item.id === id)
   if (!suite) return { ok: false, code: 'INVALID_ENTRY', message: `货架上没有这个套件：${id}` }
@@ -388,34 +409,34 @@ export async function saveSuiteSettings(dirs, statePath, id, values) {
     if (!result.ok) return { ok: false, code: 'INVALID_ENTRY', message: result.reason }
     if (result.value !== undefined) clean[setting.key] = result.value
   }
-  const { state } = await loadSuiteState(statePath)
+  const { state } = await loadSuiteState(statePath, root)
   const entry = state.suites[id] ?? {}
   state.suites[id] = { ...entry, enabled: entry.enabled !== false, values: clean, updatedAt: new Date().toISOString() }
-  await saveSuiteState(statePath, state)
+  await saveSuiteState(statePath, state, root)
   return { ok: true, values: suitePublic(suite, state).values }
 }
 
 /** 启停（非常驻的开关）；停用不清值。 */
-export async function setSuiteEnabled(dirs, statePath, id, enabled) {
+export async function setSuiteEnabled(dirs, statePath, id, enabled, root = '') {
   const { suites } = loadSuites(dirs)
   if (!suites.some((item) => item.id === id)) {
     return { ok: false, code: 'INVALID_ENTRY', message: `货架上没有这个套件：${id}` }
   }
-  const { state } = await loadSuiteState(statePath)
+  const { state } = await loadSuiteState(statePath, root)
   const entry = state.suites[id] ?? {}
   state.suites[id] = { ...entry, enabled: enabled === true, values: entry.values ?? {}, updatedAt: new Date().toISOString() }
-  await saveSuiteState(statePath, state)
+  await saveSuiteState(statePath, state, root)
   return { ok: true, enabled: enabled === true }
 }
 
 /** 工作台接线读值：套件启用才给值，否则回内置默认（调用方自定 fallback）。schema 模式限定。 */
-export async function suiteValue(dirs, statePath, id, key, fallback) {
+export async function suiteValue(dirs, statePath, id, key, fallback, root = '') {
   const { suites } = loadSuites(dirs)
   const suite = suites.find((item) => item.id === id)
   if (!suite) return fallback
   const capsSettings = suite.capabilities.settings
   if (capsSettings.mode !== 'schema') return fallback
-  const { state } = await loadSuiteState(statePath)
+  const { state } = await loadSuiteState(statePath, root)
   const entry = state.suites[id] ?? {}
   if (entry.enabled === false) return fallback
   const setting = capsSettings.schema.find((item) => item.key === key)
@@ -428,19 +449,19 @@ export async function suiteValue(dirs, statePath, id, key, fallback) {
 }
 
 /** page 模式套件的原始配置读取（值＝任意 JSON 对象，宿主不校验形状）。 */
-export async function getSuiteStateData(dirs, statePath, id) {
+export async function getSuiteStateData(dirs, statePath, id, root = '') {
   const { suites } = loadSuites(dirs)
   if (!suites.some((item) => item.id === id)) {
     return { ok: false, code: 'INVALID_ENTRY', message: `货架上没有这个套件：${id}` }
   }
-  const { state } = await loadSuiteState(statePath)
+  const { state } = await loadSuiteState(statePath, root)
   const entry = state.suites[id] ?? {}
   const values = entry.values && typeof entry.values === 'object' && !Array.isArray(entry.values) ? entry.values : {}
   return { ok: true, id, values }
 }
 
 /** page 模式套件的原始配置保存（整对象替换；宿主不校验形状）。 */
-export async function saveSuiteStateData(dirs, statePath, id, values) {
+export async function saveSuiteStateData(dirs, statePath, id, values, root = '') {
   const { suites } = loadSuites(dirs)
   if (!suites.some((item) => item.id === id)) {
     return { ok: false, code: 'INVALID_ENTRY', message: `货架上没有这个套件：${id}` }
@@ -448,9 +469,9 @@ export async function saveSuiteStateData(dirs, statePath, id, values) {
   if (!values || typeof values !== 'object' || Array.isArray(values)) {
     return { ok: false, code: 'INVALID_ENTRY', message: 'values 必须是 JSON 对象（page 模式套件自管形状）' }
   }
-  const { state } = await loadSuiteState(statePath)
+  const { state } = await loadSuiteState(statePath, root)
   const entry = state.suites[id] ?? {}
   state.suites[id] = { ...entry, enabled: entry.enabled !== false, values, updatedAt: new Date().toISOString() }
-  await saveSuiteState(statePath, state)
+  await saveSuiteState(statePath, state, root)
   return { ok: true, values }
 }

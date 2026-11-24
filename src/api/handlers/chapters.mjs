@@ -72,7 +72,7 @@ export async function chaptersCreate(ctx) {
   if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
   // title 缺省＝用写作套件的「新建章节默认标题」（套件停用＝无默认，createChapter 自行拒绝）
   const defaultTitle = text(request.title).trim()
-    || text(await suiteValue(context.suitesDirs, context.suiteStatePath, 'writing', 'newChapterTitle', ''))
+    || text(await suiteValue(context.suitesDirs, context.suiteStatePath, 'writing', 'newChapterTitle', '', authorized.root))
   const created = await createChapter(authorized.root, request.dir, defaultTitle)
   if (!created.ok) return sendError(res, created.code ?? API_ERROR_CODES.INVALID_ENTRY, created.message, created.details)
   return sendJson(res, 200, { ok: true, chapter: created.chapter })

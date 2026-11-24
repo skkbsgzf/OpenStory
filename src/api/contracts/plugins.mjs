@@ -62,8 +62,8 @@ export const pluginsEndpoints = {
     method: 'GET',
     path: '/api/suites',
     // 业务套件（插件）货架：版本/归属/域/启停/按 schema 归一的当前值。套件不常驻——停用＝规则退回默认。
-    // userDir＝本机套件目录（设置页展示）。
-    request: { query: {} },
+    // userDir＝本机套件目录（设置页展示）。OS-160：root 可选——带库就读写库内 suite-state，不带读写机器级缺省。
+    request: { query: { root: 'string?' } },
     response: { ok: 'true', suites: 'array', userDir: 'string?', warnings: 'array?' },
     errors: []
   },
@@ -72,35 +72,35 @@ export const pluginsEndpoints = {
     method: 'PUT',
     path: '/api/suite/settings',
     // 保存某套件的设置值：按 manifest settings schema 校验（未知键丢弃，坏值 400）。
-    request: { body: { id: 'string', values: 'object' } },
+    request: { body: { id: 'string', values: 'object', root: 'string?' } },
     response: { ok: 'true', values: 'object' },
-    errors: ['INVALID_ENTRY']
+    errors: ['INVALID_ENTRY', 'NO_LIBRARY']
   },
 
   suiteStatePut: {
     method: 'PUT',
     path: '/api/suite/state',
     // 启停（非常驻开关）：停用不清值——套件的规则退回内置默认，值保留。
-    request: { body: { id: 'string', enabled: 'boolean' } },
+    request: { body: { id: 'string', enabled: 'boolean', root: 'string?' } },
     response: { ok: 'true', enabled: 'boolean' },
-    errors: ['INVALID_ENTRY']
+    errors: ['INVALID_ENTRY', 'NO_LIBRARY']
   },
 
   suiteStateDataGet: {
     method: 'GET',
     path: '/api/suite/state-data',
     // page 模式套件的原始配置读取（值＝任意 JSON 对象，宿主不校验形状——形状归套件自己的设置页）。
-    request: { query: { id: 'string' } },
+    request: { query: { id: 'string', root: 'string?' } },
     response: { ok: 'true', id: 'string', values: 'object' },
-    errors: ['INVALID_ENTRY']
+    errors: ['INVALID_ENTRY', 'NO_LIBRARY']
   },
 
   suiteStateDataPut: {
     method: 'PUT',
     path: '/api/suite/state-data',
     // page 模式套件的原始配置保存（整对象替换）。宿主只存；形状归套件。
-    request: { body: { id: 'string', values: 'object' } },
+    request: { body: { id: 'string', values: 'object', root: 'string?' } },
     response: { ok: 'true', values: 'object' },
-    errors: ['INVALID_ENTRY']
+    errors: ['INVALID_ENTRY', 'NO_LIBRARY']
   },
 }

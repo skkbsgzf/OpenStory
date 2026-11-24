@@ -32,6 +32,7 @@ import { dirname, extname, join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import {
   API_ERROR_CODES,
+  ENDPOINTS,
   endpointFor,
   isPlainObject,
   validateRequest
@@ -307,7 +308,9 @@ async function serveStatic(req, res, url, publicDir) {
 
 /** 这些端点从 HTTP query 取参（其余读 JSON body）。与契约 request.query 不完全重合
  *  （jobsGet 一类 GET 端点契约写了 query、实现仍读 body——拆分前即如此，原样保留）。 */
-const ENDPOINT_HAS_QUERY = new Set(['referenceAssetGet', 'habitsGet', 'chapterGet', 'agentSessions', 'agentSessionGet', 'agentSessionDelete', 'libraryDiagnose', 'filesGet', 'chaptersGet', 'chapterDelete', 'artifactsGet', 'suiteStateDataGet', 'agentPicksGet', 'briefGet', 'skillsGet', 'skillGet', 'enrichStatus', 'enrichGraph', 'kbStatusGet', 'kbConfigGet', 'agentDshModelsGet', 'factCurveGet', 'factEntriesGet', 'factBooksGet', 'referenceGet', 'referenceGraphGet', 'referenceNoteGet', 'deduceSessionGet', 'deduceSessionsGet', 'deduceOpeningGet', 'deduceAssets', 'deduceAssetFile', 'changeLogGet', 'changeLogEntry', 'changeLogSummary', 'uiStateGet', 'draftGet'])
+// query 端点从契约自动推导（OS-160）：任何端点声明 request.query 就走 URL query 解析，
+// 不再手抄一份集合——OS-160 给 suitesGet 加 root 时曾漏登记，读不到库级套件状态。
+const ENDPOINT_HAS_QUERY = new Set(Object.entries(ENDPOINTS).filter(([, e]) => e.request && e.request.query).map(([id]) => id))
 
 async function handleApi(req, res, url, context) {
   const endpointId = endpointFor(req.method, url.pathname)

@@ -34,8 +34,8 @@
 |---|---|---:|---:|
 | L7 前端 | `public/`（含 `views/`） | 19 | 20,838 |
 | L6 契约层 | `src/api/contracts/` | 8 | 1,410 |
-| L5 宿主层 | `src/host/` | 5 | 1,681 |
-| L4 自持层 | `src/{modules,services,protocol}/` | 70 | 15,489 |
+| L5 宿主层 | `src/host/` | 5 | 1,684 |
+| L4 自持层 | `src/{modules,services,protocol}/` | 70 | 15,510 |
 | L2 自有内核 | `src/kernel/` | 11 | 1,871 |
 | L1 磁盘库 | 库＝文件夹（无代码） | — | — |
 
@@ -43,7 +43,7 @@
 |---|---:|
 | `public/app.js` 行数 | 12,466 |
 | 契约端点数（`method:` 计数） | 103 |
-| 测试文件数（`test/*.test.mjs`） | 71 |
+| 测试文件数（`test/*.test.mjs`） | 72 |
 <!-- arch-stats:end -->
 
 ```

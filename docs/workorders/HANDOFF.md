@@ -1,5 +1,12 @@
 # 工单交接说明（给 workbuddy / 后续执行者）
 
+> **接手进度更新（2026-11-24，接手 agent 回填）**：HANDOFF 写就时的待办已推进——
+> **OS-157 验收补齐**（独立复核 8/8 确认，`PINAX_KB_WATCH` 遗留收口）；
+> **段 B⁺ 三张全部施工＋验收完成**：OS-158（`7aabd9d`）、OS-159（`bc8122f`）、OS-160（见看板，待提交）。
+> 当前测试 597 例（595 过 / 2 跳）、门禁 22 过 / 0 挂 / 0 警、app.js 12,466 行不增、端点 103。
+> **段 B⁺ 做完，已到作者原定的 push 时点**——push 由作者下令；段 C–E（OS-161~168）可在 push 后继续。
+> 下文是当初的交接原文（派单方式、踩坑预告、搁置项明细），仍供后续接手者参考。
+>
 > 主 agent（本会话）额度吃紧，验收工作暂时搁置。本文件是**接手所需的全部信息**：
 > 剩下的工单在哪、怎么派、每张单要注意什么、还有哪些不走工单的遗留。
 > 体系全貌见 [`docs/plan/workorder-system-20261124.md`](../plan/workorder-system-20261124.md)，实时状态见 [`BOARD.md`](BOARD.md)。
@@ -67,7 +74,7 @@ node .zcode/os-batch-runner.mjs \
 - **OS-166 / OS-167（动真实数据）**：所有验证必须用**临时 `LOCALAPPDATA` 注入**，绝不碰真实的 `%LOCALAPPDATA%\PinaxNext\`、`%LOCALAPPDATA%\OpenStory\` 与 `D:/Projects/**`；OS-166 只拷贝不删旧院。
 - **所有单**：收尾必须跑 `npm run arch:stats`（否则 S0.2 红）；`core/**`、`vendor/**` 已不存在，任何单都不该再出现它们。
 
-## 5. 主 agent 搁置的验收（接手者第一件事）
+## 5. 主 agent 搁置的验收（接手者第一件事）—— **已完成，见 OS-157 工单验收记录**
 
 1. **OS-157 验收**（提交 `ce14075`）：已亲验通过的部分——`core/`、`vendor/`、`pinaxAdapter` 三个路径都已消失；Host API 五键（`enrich/factStore/fail/ok/writeFileAtomic`）；码值无前缀、对照表 27 行；两条金样测试照绿（`decoupleStep2` 7/7、`decoupleStep3` 9/9）；门禁 S2.4 已改口径为「`src/**` 无 core 路径说明符」。
    **还差**：独立复核（建议 `deepseek-v4-pro` 或 `glm-5.3`，探针已确认可用）＋ 浏览器冒烟（进库／正文／世界书／扮演）＋ 把验收记录写进 `OS-157-kernel-retire.md` 与看板。

@@ -39,7 +39,7 @@ npm test           # node --test（零外部依赖）
 
 浏览器打开 `http://127.0.0.1:8807`，右上角库切换器新建/导入库（建库骨架自动补齐）。模型对话在左列 Pi-Agent 设置里配端点（OpenAI 兼容 / DSH 原生 / CLI kit），生图在设置里配 ComfyUI。
 
-> **演示库**：[`samples/水浒传/`](./samples/水浒传/)——公版示例（参考图谱/双链/事实包/扮演会话/素材），导入即可体验全部功能。
+> **演示库**：[`samples/水浒传/`](./samples/水浒传/)——公版示例（参考图谱/双链/事实包/扮演会话/素材），导入即可体验全部功能。库自带 `.pinax/ui-state.json` 与 `.openstory/plugins/suite-state.json`（真实路径生成，见 `tools/samples/generate-sample-config.mjs`），打开即复现一份配置好的工作台，不需要重新点一遍设置。
 
 ## 架构一图
 

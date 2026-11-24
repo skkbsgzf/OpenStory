@@ -123,3 +123,19 @@ LIMITATIONS:
 ```
 
 ## 验收记录（主 agent 填）
+
+**结论：通过（补记于 2026-11-24，接手 agent）。提交 `ce14075`。** 主 agent 当时额度吃紧搁置验收，HANDOFF §5 交接；现按清单逐项补齐。
+
+**主 agent 亲验部分（HANDOFF 已记，接手复核照绿）**：
+- `core/`、`vendor/`、`src/kernel/pinaxAdapter.mjs`、`scripts/vendor-*.mjs`、`test/vendorDrift.test.mjs` 全部不存在；`grep -rn "core/pinax" src` 空；`src/**` 无 `core/` 路径导入。
+- Host API 五键（`src/kernel/index.mjs`）：`factStore` / `enrich` / `ok` / `fail` / `writeFileAtomic`；`KERNEL_ID = 'openstory-kernel@1'`（`src/kernel/identity.mjs:8`）。
+- 错误码 `src/kernel/errors.mjs` 25 条码值全裸（无 `PINAX_`）；`docs/error-code-rename.md` 对照表完整（#1–#25）。
+- 金样 `decoupleStep2` 7/7、`decoupleStep3` 9/9 照绿。
+
+**接手补齐部分**：
+- **独立复核**（Explore agent，只读、换视角、不复用施工方结论）：8 项逐条取证，全 ✓——路径退役 ✓ / 无残留说明符 ✓ / 五键＋KERNEL_ID ✓ / 25 码无前缀 ✓ / 金样 7/7＋9/9 ✓ / 全量测试 ✓ / 门禁 ✓ / 遗留确认 ✓。**总判定：OS-157 退役与定稿可以被独立复核确认。**
+- 全量测试（复核时点）：597 例（595 过 / 0 挂 / 2 跳）；门禁 22 过 / 0 挂 / 0 警（均含后续 OS-158~160 新增项）。
+- **遗留收口**：`test/kb-health.test.mjs:86` 原传已无消费者的 `PINAX_KB_WATCH: '0'`——产品代码已无人读该变量（grep 空），本次删除该死参数（测试语义不变）。
+- **浏览器冒烟**：HANDOFF §5 原列此项未做。环境无浏览器自动化，代之以服务端 HTTP 冒烟——OS-158 的皮肤偏好跨源验证（服务端磁盘唯一真源，换端口/清缓存不影响）、OS-160 的样例库「打开即复现」（临时 daemon 带 `--root` 起样例副本，API 读值与样例文件逐项相等）。两条均由测试钉住（`test/uiPreferences.test.mjs`、`test/sampleConfig.test.mjs`），等价于进库/正文/世界书/扮演四页的后端可达性；逐帧目视未做，如实标注。
+
+**LIMITATIONS**：无浏览器逐帧目视冒烟（环境所限，已有等价 HTTP/测试覆盖）。

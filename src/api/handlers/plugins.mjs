@@ -8,6 +8,7 @@
  */
 import { API_ERROR_CODES } from '../contracts.mjs'
 import { sendError, sendJson, text } from '../../host/http.mjs'
+import { authorizeRoot } from '../../host/authorize.mjs'
 import { loadStylePacks } from '../../services/stylePacks.mjs'
 import { loadSkills, skillSummary, skillsForGenre } from '../../services/skills.mjs'
 import { effectiveSkillsDirs } from '../../services/systemPrompt.mjs'
@@ -58,11 +59,15 @@ export async function genresGet(ctx) {
 }
 
 export async function pluginsGet(ctx) {
-  const { res, context } = ctx
+  const { res, request, context, allowlist } = ctx
+  // OS-160：root 可选——带库（开着库）才授权并写库内；不带＝设置页全局入口，回落机器级缺省。
+  const auth = text(request.root).trim() ? authorizeRoot(allowlist, request.root) : { ok: true, root: '' }
+  if (!auth.ok) return sendError(res, auth.code, auth.message, auth.details)
   // OS-120：三套 spec 的统一视图（只读聚合）。一套读崩不拖垮其余两套——聚合层内部已隔离。
   const listed = await listAllPlugins({
     suitesDirs: context.suitesDirs,
     suiteStatePath: context.suiteStatePath,
+    root: auth.root,
     skillsDirs: context.skillsDirs,
     runtimesDirs: context.runtimesDirs
   })
@@ -87,36 +92,51 @@ export async function pluginsGet(ctx) {
 }
 
 export async function suitesGet(ctx) {
-  const { res, context } = ctx
-  const listed = await listSuitesPublic(context.suitesDirs, context.suiteStatePath)
+  const { res, request, context, allowlist } = ctx
+  // OS-160：root 可选——带库（开着库）才授权并写库内；不带＝设置页全局入口，回落机器级缺省。
+  const auth = text(request.root).trim() ? authorizeRoot(allowlist, request.root) : { ok: true, root: '' }
+  if (!auth.ok) return sendError(res, auth.code, auth.message, auth.details)
+  const listed = await listSuitesPublic(context.suitesDirs, context.suiteStatePath, auth.root)
   const suitesUserDir = Array.isArray(context.suitesDirs) && context.suitesDirs[1] ? context.suitesDirs[1] : ''
   return sendJson(res, 200, { ok: true, suites: listed.suites, ...(suitesUserDir ? { userDir: suitesUserDir } : {}), ...(listed.warnings?.length ? { warnings: listed.warnings } : {}) })
 }
 
 export async function suiteSettingsPut(ctx) {
-  const { res, request, context } = ctx
-  const saved = await saveSuiteSettings(context.suitesDirs, context.suiteStatePath, request.id, request.values)
+  const { res, request, context, allowlist } = ctx
+  // OS-160：root 可选——带库（开着库）才授权并写库内；不带＝设置页全局入口，回落机器级缺省。
+  const auth = text(request.root).trim() ? authorizeRoot(allowlist, request.root) : { ok: true, root: '' }
+  if (!auth.ok) return sendError(res, auth.code, auth.message, auth.details)
+  const saved = await saveSuiteSettings(context.suitesDirs, context.suiteStatePath, request.id, request.values, auth.root)
   if (!saved.ok) return sendError(res, saved.code ?? API_ERROR_CODES.INVALID_ENTRY, saved.message)
   return sendJson(res, 200, { ok: true, values: saved.values })
 }
 
 export async function suiteStatePut(ctx) {
-  const { res, request, context } = ctx
-  const set = await setSuiteEnabled(context.suitesDirs, context.suiteStatePath, request.id, request.enabled)
+  const { res, request, context, allowlist } = ctx
+  // OS-160：root 可选——带库（开着库）才授权并写库内；不带＝设置页全局入口，回落机器级缺省。
+  const auth = text(request.root).trim() ? authorizeRoot(allowlist, request.root) : { ok: true, root: '' }
+  if (!auth.ok) return sendError(res, auth.code, auth.message, auth.details)
+  const set = await setSuiteEnabled(context.suitesDirs, context.suiteStatePath, request.id, request.enabled, auth.root)
   if (!set.ok) return sendError(res, set.code ?? API_ERROR_CODES.INVALID_ENTRY, set.message)
   return sendJson(res, 200, { ok: true, enabled: set.enabled })
 }
 
 export async function suiteStateDataGet(ctx) {
-  const { res, request, context } = ctx
-  const loaded = await getSuiteStateData(context.suitesDirs, context.suiteStatePath, request.id)
+  const { res, request, context, allowlist } = ctx
+  // OS-160：root 可选——带库（开着库）才授权并写库内；不带＝设置页全局入口，回落机器级缺省。
+  const auth = text(request.root).trim() ? authorizeRoot(allowlist, request.root) : { ok: true, root: '' }
+  if (!auth.ok) return sendError(res, auth.code, auth.message, auth.details)
+  const loaded = await getSuiteStateData(context.suitesDirs, context.suiteStatePath, request.id, auth.root)
   if (!loaded.ok) return sendError(res, loaded.code ?? API_ERROR_CODES.INVALID_ENTRY, loaded.message)
   return sendJson(res, 200, { ok: true, id: loaded.id, values: loaded.values })
 }
 
 export async function suiteStateDataPut(ctx) {
-  const { res, request, context } = ctx
-  const saved = await saveSuiteStateData(context.suitesDirs, context.suiteStatePath, request.id, request.values)
+  const { res, request, context, allowlist } = ctx
+  // OS-160：root 可选——带库（开着库）才授权并写库内；不带＝设置页全局入口，回落机器级缺省。
+  const auth = text(request.root).trim() ? authorizeRoot(allowlist, request.root) : { ok: true, root: '' }
+  if (!auth.ok) return sendError(res, auth.code, auth.message, auth.details)
+  const saved = await saveSuiteStateData(context.suitesDirs, context.suiteStatePath, request.id, request.values, auth.root)
   if (!saved.ok) return sendError(res, saved.code ?? API_ERROR_CODES.INVALID_ENTRY, saved.message)
   return sendJson(res, 200, { ok: true, values: saved.values })
 }

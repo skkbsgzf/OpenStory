@@ -455,6 +455,23 @@ check('S3.5', 'S3', '静态资源 no-store 断言（html/js/css/mjs 走 no-store
   [noStoreLine, grepLine('src/host/http.mjs', /'no-store'/u)].filter(Boolean),
   '')
 
+// S3.6 OS-160 样例库洁净：git ls-files samples/ 里的文件不许是日志/历史/临时/凭据/本机路径。
+// 样例库是作者给外部看到的门面，带噪声或绝对路径＝泄露＋不可移植。
+let sampleFiles = []
+try {
+  // core.quotepath=false：中文路径默认被 git 转成 "\346\260\264…" 带引号的转义串，
+  // 会让 debug.log$ 这类尾部匹配失效（反证实测踩过）——要拿真实路径原文。
+  sampleFiles = execFileSync('git', ['-c', 'core.quotepath=false', 'ls-files', 'samples/'], { cwd: REPO, encoding: 'utf-8' })
+    .split('\n').map((line) => line.trim()).filter(Boolean)
+} catch { /* git 不可用就按空清单，下面会红 */ }
+const DIRTY_SAMPLE = /(?:^|\/)(\.history|\.pinax\/log)\/|(?:^|[\\/])(?:debug|error|access)\.log$|\.tmp-[^/]+$|sk-[A-Za-z0-9_-]{8,}|Bearer\s+\S+|token=[^&\s]+|[A-Za-z]:\\Users\\|D:\\Projects\\/u
+const dirtySamples = sampleFiles.filter((rel) => DIRTY_SAMPLE.test(rel) || (() => {
+  try { return DIRTY_SAMPLE.test(readRepo(rel)) } catch { return false }
+})())
+check('S3.6', 'S3', `样例库洁净（git ls-files samples/ 共 ${sampleFiles.length} 文件；日志/历史/临时/凭据/本机路径 0 容忍）`,
+  sampleFiles.length > 0 && dirtySamples.length === 0, dirtySamples.slice(0, 8),
+  dirtySamples.length ? `脏文件：${dirtySamples.join(', ')}` : '样例库只带稿件与运行态配置，无噪声')
+
 /* ================================================================
  * S4 UX 跳转层级 —— 全局一致性规范（从严）
  * ================================================================ */

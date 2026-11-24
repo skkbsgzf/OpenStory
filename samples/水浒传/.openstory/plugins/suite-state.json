@@ -1,0 +1,12 @@
+{
+  "suites": {
+    "writing": {
+      "enabled": true,
+      "values": {
+        "newChapterTitle": "第{N}章",
+        "deduceBranches": 2
+      },
+      "updatedAt": "2026-11-24T07:45:36.444Z"
+    }
+  }
+}

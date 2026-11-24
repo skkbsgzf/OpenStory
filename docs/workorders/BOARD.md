@@ -39,7 +39,7 @@
 | [OS-154](OS-154-kernel-derive.md) | fact 派生与包装转自有：wikiDerive＋factPack＋enrich 2 件（984 行，首次真删 core：24→22 文件、4,332→3,980 行） | 中 | 已验收 `bc24c3b` | 582 例 · 19 项 · vendor 清单除名 2 项 | 门禁绿 |
 | [OS-155](OS-155-kernel-deduce.md) | 推演链归位：deduce 8 件进 `src/modules/deduce/engine/`＋Host API 升 `@2`＋llmPort 显式化（core 22→13 文件、3,980→2,550 行） | 中 | 已验收 `f11743f` | 591 例 · 19 项 · 水浒 10/10 · 新建 13/13 · 确定性 8 例 | 待复核 |
 | [OS-156](OS-156-kernel-factstore.md) | 写协议转自有：`factFileStore`（756 行）＋ core 13 件全删 → **core/pinax 归零** | 高 | 已验收 `ae01987` | 598 例 · 19 项 · 金样 7/7＋9/9 · 写协议直测 7 例 | 待单独复核 |
-| [OS-157](OS-157-kernel-retire.md) | 收尾退役：世界书契约转自有、`core/`＋`vendor/` 退役、vendor 纪律退役、`pinaxAdapter` 解散、Host API `@2` 定稿、**`PINAX_` 前缀一次扫净**、出处声明 | 高 | **已提交，验收搁置**（主 agent 额度）`ce14075` · 586 例 · 19 项 · 金样 7/7＋9/9 | 待独立复核 |
+| [OS-157](OS-157-kernel-retire.md) | 收尾退役：世界书契约转自有、`core/`＋`vendor/` 退役、vendor 纪律退役、`pinaxAdapter` 解散、Host API `@2` 定稿、**`PINAX_` 前缀一次扫净**、出处声明 | 高 | **已验收**（`ce14075`，补记 2026-11-24）· 8/8 独立复核 · 金样 7/7＋9/9 · `PINAX_KB_WATCH` 遗留已收口 | 独立复核 ✓ |
 
 ## 段 B⁺ · 推送前整备（作者 2026-11-24 裁定：git push 之前做完）
 
@@ -47,7 +47,7 @@
 |---|---|---|---|---|---|---|
 | [OS-158](OS-158-no-browser-storage.md) | 浏览器端存储清零：皮肤进服务端；门禁「前端零浏览器存储」——任何端口打开都是同一份设置 | 低 | **已验收** | 见工单 | 21/0/0 · 592 例 | 反证✓ 冒烟✓ |
 | [OS-159](OS-159-root-layout.md) | 仓根结构精简：根目录零 .mjs、根级文档与零散小目录归位、`scripts/` 并入 `tools/`；门禁 S0.1 收紧为根目录白名单 | 中 | **已验收** | 见工单 | 21/0/0 · 592 例 | 双入口冒烟✓ |
-| [OS-160](OS-160-sample-hidden-data.md) | 样例库带隐藏数据与插件配置：套件状态随库走、样例库提交 `.pinax`／`.openstory` 配置、样例库洁净门禁 | 中 | 待派 | | | |
+| [OS-160](OS-160-sample-hidden-data.md) | 样例库带隐藏数据与插件配置：套件状态随库走、样例库提交 `.pinax`／`.openstory` 配置、样例库洁净门禁 | 中 | **已验收** | 见工单 | 22/0/0 · 597 例 | 反证✓ 复现✓ |
 
 ## 段 C · 工作面插件化收尾
 

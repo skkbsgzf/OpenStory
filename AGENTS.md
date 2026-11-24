@@ -98,6 +98,7 @@ L4 自持层→L2 自有内核 `src/kernel/`→L1 磁盘库；OS-157 起 L2/L3 �
    | 推演中未被采纳的拍/会话 | `<库>/.openstory/deduce/<bookId>.json` |
    | 推演/ 容器（扮演页的会话／归档／导出／素材） | `<库>/推演/<bookId>/session.json`（主线）＋`sessions/<sid>.json`（多局）＋`active.json`（激活指针）／`归档/第N章.md`／`导出/会话-<bookId>-<sid>-<ts>.md`／`素材/{角色,场景,bgm}/*`；引擎态另在 `<库>/.openstory/deduce/<bookId>.json`（多局 `<bookId>@<sid>.json`） |
    | 界面状态（页签、模块开关、选中项） | `<库>/.pinax/ui-state.json` |
+   | 套件（业务插件）启停与设置值 | `<库>/.openstory/plugins/suite-state.json`（OS-160 起随库走；机器级同名文件降为「没开库时的缺省」，旧库不迁移） |
    | 每一版修改的 diff 与日志 | `<库>/.pinax/log/<模块>/<yyyy-mm>.jsonl` |
    | 旧版原文备份（二进制快照） | 同目录 `.history/<file>.bak-<stamp>`（现有机制，保留；OS-137 起滚动保留：每文件配额 50 份＋日锚，绝不删最新，删除留痕 `.pinax/log/history-prune/`） |
    | 本机凭据/模型端点 | `%LOCALAPPDATA%/PinaxNext/openstory/agent-config.json`（含密钥，不入库） |

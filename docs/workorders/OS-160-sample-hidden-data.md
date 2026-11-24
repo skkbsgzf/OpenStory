@@ -63,3 +63,25 @@
 ## 施工回报（编排器自动归档）
 
 ## 验收记录（主 agent 填）
+
+**结论：通过。2026-11-24 由接手 agent 施工＋验收。提交号见看板。**
+
+- 测试 597 例（595 过 / 0 挂 / 2 跳，较基线 586 增 11）；门禁 22 过 / 0 挂 / 0 警（新增 S3.6 样例库洁净）；架构统计已回写；app.js 仍 12,466 行。
+
+**套件状态库级化**（行为变化，按工单）：
+- `src/services/suites.mjs` 新增**唯一路径入口** `resolveSuiteStatePath({ root, machinePath, mode })`：读时库内有 `<库>/.openstory/plugins/suite-state.json` 才用，否则回落机器级（机器级从「唯一真源」降为「没开库时的缺省」）；写时开着库就写库内（没有也建）。`loadSuiteState`/`saveSuiteState` 是唯二读写点，全部经它解析；上层 `listSuitesPublic`/`saveSuiteSettings`/`setSuiteEnabled`/`suiteValue`/`getSuiteStateData`/`saveSuiteStateData` 与 protocol 层 `listAllPlugins` 新增可选 root 一路透传。
+- 契约给 5 个套件端点加可选 `root`（query/body），`plugins.mjs` handler 对非空 root 做 `authorizeRoot`（防路径逃逸），空 root（设置页全局入口）回落机器级；前端 3 处调用带 `state.current?.path`；`chapters.mjs` 的 `suiteValue` 透传授权后的 root。
+- **顺带修一处隐患**：`src/host/daemon.mjs` 的 `ENDPOINT_HAS_QUERY` 原来是手抄集合，给 `suitesGet` 加 root query 时漏登记→读不到库级状态（实测踩到）。改为从契约 `ENDPOINTS` 自动推导（声明了 `request.query` 就走 URL query），与 `validateRequest` 口径一致，杜绝此类漏改。
+
+**样例库充实**（真实路径产出，非手写）：
+- 新增 `tools/samples/generate-sample-config.mjs`（可重跑）：空临时库根上调真实 `writeUiState` / `saveSuiteSettings` / `setSuiteEnabled`（原子写＋schema 校验＋changelog 全走产品代码），把产出的两个文件复制回样例库并回读自检。不在样例库留下日志/历史/临时文件。
+- `samples/水浒传/.pinax/ui-state.json`（页签/模块/折叠缺省）与 `.openstory/plugins/suite-state.json`（writing 启用，`newChapterTitle=第{N}章`、`deduceBranches=2`）已入库；`.gitignore` 加反向规则只放行点名文件，`.pinax/log/`、`.history/`、临时文件继续挡。
+- 门禁 S3.6 样例洁净：扫 `git ls-files samples/`（用 `core.quotepath=false` 拿中文路径原文——默认转义会让尾部匹配失效，反证实测踩过），日志/历史/临时/凭据/本机绝对路径 0 容忍。
+
+**测试**（`test/sampleConfig.test.mjs`，5 例）：样例配置在库且形状对；路径单一入口读写分流；两库套件启停互不影响＋没开库写机器级不污染库；库内坏档如实报 warning 回落；**打开即复现**——临时 daemon 带 `--root` 起样例副本，API 读到的套件状态/界面状态与样例文件逐项相等。
+
+**反证**：临时把 `debug.log` 加进样例库跟踪，S3.6 命中并挂（21/1/0）；删掉后 22/0/0。已贴输出并还原。
+
+**文档**：AGENTS.md 落盘表补 `.openstory/plugins/` 一行；README/DEMO 写明样例库自带配置与生成脚本；DEMO 的 MCP 启动路径顺手改成 `src/host/mcp.mjs`（OS-159 遗留的绝对路径旧写法）。
+
+**LIMITATIONS**：`updatedAt` 是生成时的真实运行时间戳（产品代码写入），重跑会更新——这是「真跑过」的证据，不是伪造的固定值；不含凭据/本机绝对路径，已过洁净门禁。未迁移任何既有库或机器级状态（工单红线，机器级文件原样当缺省）。
