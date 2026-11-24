@@ -66,4 +66,38 @@
 
 ## 施工回报（编排器自动归档）
 
+> 模型 deepseek-v4.1-flash · 第 1 轮 · 测试 绿（tests 573 · pass 571 · fail 0 · skip 2） · 门禁 绿 · 水浒 绿 · 新建 绿 · vendor 未动 · daemon 已重启（OS-153 改了后端）
+
+```text
+CHANGED:
+- `src/kernel/fact/domain/aliases.js`（新建，逐字复制自 core）
+- `src/kernel/fact/domain/perspective.js`（同上）
+- `src/kernel/fact/domain/schema.js`（同上）
+- `src/kernel/fact/domain/stableId.js`（同上）
+- `src/kernel/fact/domain/status.js`（同上）
+- `src/kernel/fact/domain/validity.js`（同上）
+- `src/kernel/fact/domain/vocabulary.js`（同上）
+- `src/kernel/fact/domain/index.mjs`（新建；= core `pediaSchema.js` 改名，re-export 列表逐字未动，仅文件头两句注释改写成影子迁移口径）
+- `test/kernelFactDomain.test.mjs`（新建，13 例：三层样本逐字段、缺必填/坏类型/未知枚举/id 漂移、S2-1 author vs analyze、stableEntryId、双时间轴边界、状态机、与 core 原件 errors/warnings 逐条等价、桶导出面 41 键同值）
+- `tools/acceptance/acceptance.mjs`（`KERNEL_GATEWAY_ALLOW` 删 `kernelPlumber.mjs`／`hostWrite.mjs`，5→3）
+- `src/protocol/README.md`（叶子表与「内核转供面」两处改为直取 `src/kernel/`；清单只剩 3 件）
+- `ARCHITECTURE.md`（L3 段补 OS-153 领域件自持说明；arch-stats 生成段回写）
+- `AGENTS.md`（硬规则 1 与 `src/kernel/` 目录行补 fact/domain 8 件）
+
+VERIFIED:
+- 8 件行数：`wc -l src/kernel/fact/domain/*` ＝ 170+13+132+464+72+54+97+231 = **1,233**
+- 逐字性：7 件 `.js` 与 core 原件 `cmp` 全 identical；`index.mjs` 与 `pediaSchema.js` 仅 diff 两行注释；`Object.keys` 导出 41 个与 core 桶一致（测试内 `deepEqual` 断言导出名与常量值/枚举顺序）
+- `node --check` 全部 10 个改动/新建 JS 文件通过
+- `node --test test/*.test.mjs`：**573 例 / 571 pass / 0 fail / 2 skipped**（原 560，只增不减；2 skip 为既有）
+- `node tools/acceptance/acceptance.mjs`：**19 过 / 0 挂 / 0 警**；S2.4 证据行现为「kernel 转供面（豁免清单内）：src/protocol/chapters.mjs src/protocol/factGuard.mjs src/protocol/index.mjs」，84 个 src/ 模块仅 `src/kernel/pinaxAdapter.mjs:37` 引 `core/**`
+- `node scripts/vendor-drift.mjs check` → 退出码 0（pinaxNext 一致 22／本仓被改 0；pinaxCore 一致 1／本仓被改 0）
+- `node scripts/arch-stats.mjs --check` → 通过；L2 仍 **24 文件 4,332 行**
+- `node .zcode/run-gate.mjs` → 571 pass / 0 fail
+
+LIMITATIONS:
+- 影子迁移状态：自有 8 件目前**无生产消费方**（`factFileStore` 仍指 core，按工单搬到 OS-156），只被新测试引用——本批不接线的行为符合工单，但「成为底座」要到 OS-156 改 import 才落地。
+- `scripts/arch-stats.mjs` 的 L3 口径只统计 `src/kernel/**` 的 `*.mjs`，本批 7 件 `.js` 不进分层表文件数/行数（L3 显示 5 文件 208 行，仅含 index.mjs）；脚本不在本单允许改动范围，故未改口径，已在 `ARCHITECTURE.md` L3 段如实注明。
+- `index.mjs` 文件头两句注释与 core `pediaSchema.js` 不同（说明改名与影子迁移），导出面零差异；若要绝对逐字，需连注释也保留 core 原句（其中含已不成立的「wikihub 旧入口」说法）。
+```
+
 ## 验收记录（主 agent 填）

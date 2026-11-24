@@ -28,8 +28,8 @@
 
 | 文件 | 转出什么 | 给谁用 |
 |---|---|---|
-| `hostWrite.mjs` | 宿主写协议唯一入口 `atomicWriteFile`（OS-138：tmp＋fsync＋rename＋目录 fsync；二进制分支） | 全仓落盘一律经它（写通道红线） |
-| `kernelPlumber.mjs` | `ok`/`fail`/`writeFileAtomic` 原名转供 | **仅 projectDoc/importAdapter 两个 OS-123 fork 点**（函数体逐字不动，import 重指向）；新代码一律走 `fact` 命名空间 |
+| `hostWrite.mjs` | 宿主写协议唯一入口 `atomicWriteFile`（OS-138：tmp＋fsync＋rename＋目录 fsync；二进制分支）。实现**直取 `src/kernel/atomicWrite.mjs`／`src/kernel/fsDurability.mjs`**（OS-152 起不再经 pinaxAdapter 绕道） | 全仓落盘一律经它（写通道红线） |
+| `kernelPlumber.mjs` | `ok`/`fail`/`writeFileAtomic` 原名转供。实现**直取 `src/kernel/errors.mjs`／`src/kernel/atomicWrite.mjs`**（OS-152 起同上） | **仅 projectDoc/importAdapter 两个 OS-123 fork 点**（函数体逐字不动，import 重指向）；新代码一律走 `fact` 命名空间 |
 | `authorize.mjs` | 宿主路径授权：canonicalRoot/pathFail/text/METADATA_DIR/resolveInsideRoot | 模块层（inventory、turnProse…） |
 | `apiErrors.mjs` | `API_ERROR_CODES` 错误码词表 | 模块层构建响应失败对象 |
 | `upstream.mjs` | 上游模型通道：chatCompleteViaUpstream/resolveUpstreamSafe/resolveChatUpstream | 模块层（turnProse） |
@@ -59,6 +59,10 @@
 
 `src/protocol/**` 里允许 import `src/kernel/pinaxAdapter.mjs` 的文件，以门禁
 `KERNEL_GATEWAY_ALLOW` 点名为准：`index.mjs`（fact 命名空间正式转出）、
-`kernelPlumber.mjs`（fork 点 plumber）、`hostWrite.mjs`（OS-138 写通道）、
 `chapters.mjs`（projectImport 转出）、`factGuard.mjs`（factStore 只读通道）。
 新增转供文件必须先补这个清单，否则门禁红。
+
+`kernelPlumber.mjs`、`hostWrite.mjs` **不在**这份清单里：它们要的是内核管道件
+（`errors`/`atomicWrite`/`fsDurability`），OS-152 起这些已影子复制进 `src/kernel/` 自持，
+两件直接 `import` 自持件、不经 `pinaxAdapter` 转供；OS-153 把它们的名字从清单删除
+（留名＝门禁比实际松）。清单只管 `core/**` 的接触面，自持件之间的 import 不受限。

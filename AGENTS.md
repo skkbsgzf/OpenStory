@@ -26,6 +26,9 @@ L4 自持层→L3 pinaxAdapter→L2 core/pinax 24 文件→L1 磁盘库）。
    内核**管道件**（errors/atomicWrite/fsDurability）自 OS-152 起影子复制到 `src/kernel/` 自持，
    core 原件保留（仍供 `core/.../factFileStore.mjs` 用）；宿主写通道与 fork 点直取
    `src/kernel/` 那三件，不再经 adapter 绕道。
+   内核**领域件**（fact/domain 8 件：aliases/perspective/schema/stableId/status/validity/vocabulary
+   ＋桶 `index.mjs`）自 OS-153 起同样影子复制到 `src/kernel/fact/domain/`；core 原件与本批
+   消费方（`factFileStore`）均未动，搬家是 OS-156。
 2. **daemon 只监听 127.0.0.1**；凭据只存本机（agent-config.json），响应只回掩码。
 3. **参考单向性**：正文不反向进参考上下文；参考不能全量丢进 Agent 上下文。
 4. **absorb 不开 MCP**：旧目录迁入参考是显式动稿操作，只走界面按钮。
@@ -62,7 +65,7 @@ L4 自持层→L3 pinaxAdapter→L2 core/pinax 24 文件→L1 磁盘库）。
    | `src/host/` | daemon/mcp 实现（组合根：路由、进程治理、路径解析） |
    | `src/api/` | 契约层 `contracts.mjs` ＋ `contracts/` 七域分片（API 形状唯一真源） |
    | `src/protocol/` | 文件与协议层：chapters/changelog/versionGate/plugins/agentEvents/factGuard/dependencyGraph/hostWrite/libState |
-   | `src/kernel/` | `pinaxAdapter.mjs`（core/** 唯一进口）＋自持管道件 `errors.mjs`/`atomicWrite.mjs`/`fsDurability.mjs`（OS-152 影子复制；core 原件保留） |
+   | `src/kernel/` | `pinaxAdapter.mjs`（core/** 唯一进口）＋自持管道件 `errors.mjs`/`atomicWrite.mjs`/`fsDurability.mjs`（OS-152 影子复制；core 原件保留）＋自持领域件 `fact/domain/`（OS-153 影子复制，桶＝`index.mjs`） |
    | `src/modules/` | 域模块：library/（建库导入）、deduce/（推演）、roleplay/（扮演）、worldbook/（参考）、agentbar/（Agent 存储）、analysis/comfyui/kb（模块插件，各带 `module.manifest.json`） |
    | `src/services/` | 外围服务：embedding-server/embeddingPaths、cli-bridge/dsh-*/runtimes（模型驱动）、stylePacks/style-check/suites/skills/genres（货架）、jobCenter/nativePicker/syncCheck/enrichEngine |
 

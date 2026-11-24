@@ -316,10 +316,10 @@ const adapterCoreUse = grepLine('src/kernel/pinaxAdapter.mjs', /from\s+'(?:\.{1,
 // OS-142：protocol/** 对 kernel/pinaxAdapter 的转出＝显式豁免（点名清单；实际转供面必须是
 // 清单的子集）。协议层是内核能力的唯一转供面——src/modules/** 只许经 protocol/** 取内核
 // 能力（S2.1 新口径），不许直引 pinaxAdapter；新增转供文件必须先给这个清单补名字，否则门禁红。
+// OS-153 收紧：kernelPlumber.mjs／hostWrite.mjs 自 OS-152 起直取 src/kernel/ 管道件、不再
+// import pinaxAdapter，已从清单删除（留在清单里＝门禁比实际松）。
 const KERNEL_GATEWAY_ALLOW = new Set([
   'src/protocol/index.mjs',        // Host API fact 命名空间：五组能力出口＋plumber 的正式转出
-  'src/protocol/kernelPlumber.mjs', // projectDoc/importAdapter 两个 fork 点的 plumber 转供
-  'src/protocol/hostWrite.mjs',    // OS-138 宿主写通道（writeFileAtomic/TMP_PREFIX/syncDirectory）
   'src/protocol/chapters.mjs',     // 章节协议的 projectImport 转出
   'src/protocol/factGuard.mjs'     // fact 只读通道的 factStore 转出
 ])

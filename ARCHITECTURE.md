@@ -36,7 +36,7 @@
 | L6 契约层 | `src/api/contracts/` | 8 | 1,391 |
 | L5 宿主层 | `src/host/` | 5 | 1,663 |
 | L4 自持层 | `src/{modules,services,protocol}/` | 56 | 13,145 |
-| L3 内核进口 | `src/kernel/` | 4 | 195 |
+| L3 内核进口 | `src/kernel/` | 5 | 208 |
 | L2 内核 | `core/pinax/` | 24 | 4,332 |
 | L1 磁盘库 | 库＝文件夹（无代码） | — | — |
 
@@ -44,7 +44,7 @@
 |---|---:|
 | `public/app.js` 行数 | 12,466 |
 | 契约端点数（`method:` 计数） | 101 |
-| 测试文件数（`test/*.test.mjs`） | 66 |
+| 测试文件数（`test/*.test.mjs`） | 67 |
 <!-- arch-stats:end -->
 
 ```
@@ -174,6 +174,12 @@ OS-123/124 解耦后，建库/导入/章节号解析全部自持，不再 vendor
   `atomicWrite.mjs`、`fsDurability.mjs` 已影子复制进 `src/kernel/`，adapter 与
   hostWrite/kernelPlumber 均取这一份；core 三件原件保留（仍供 `core/.../factFileStore.mjs`），
   等最后一个 core 侧消费者搬家时再删（设计稿 §0.3-1、§6.7）。
+  **OS-153 领域件自持**：`fact/domain/` 8 件（`aliases`/`perspective`/`schema`/`stableId`/`status`/
+  `validity`/`vocabulary` ＋ re-export 桶 `index.mjs`，即 core 的 `pediaSchema.js`）逐字复制进
+  `src/kernel/fact/domain/`，合计 1,233 行——**自有副本**是后续事实链的表达层底座；core 原件保留、
+  `factFileStore` 仍指 core（搬家是 OS-156），故本批不动任何消费方 import。
+  扩展名依 vendor 现状保留 `.js`（仅桶改名 `.mjs`）；arch-stats 的 L3 口径只计 `.mjs`，
+  本批 7 件 `.js` 不进分层表文件数/行数（口径脚本不在 OS-153 改动范围，见该单 limitations）。
 - **消费方**（OS-142 后 import 本文件的）：API/宿主层 api/handlers/fact、
   api/handlers/reference、services/systemPrompt（OS-142 未约束的面，直引保留）＋协议层转供面
   protocol/index、protocol/chapters、protocol/factGuard（S2.4 的 KERNEL_GATEWAY_ALLOW 显式豁免清单；
