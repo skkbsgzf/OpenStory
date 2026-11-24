@@ -174,6 +174,38 @@ test('fact/entries：库里还没有拆解条目＝FACT_EMPTY（专用空态码�
   }
 })
 
+test('fact/entries：有档但全部读不出来＝FACT_UNREADABLE（坏档不是空态，细节可诊断）', async () => {
+  const base = await mkdtemp(join(tmpdir(), 'os-fact-unreadable-'))
+  try {
+    const root = join(base, '坏档库')
+    await mkdir(join(root, '正文'), { recursive: true })
+    await mkdir(join(root, '拆解'), { recursive: true })
+    // 两种坏法：JSON 坏、形状坏——都要在 details 里逐本报出来
+    await writeFile(join(root, '拆解', '碎档.json'), '{ not json', 'utf-8')
+    await writeFile(join(root, '拆解', '形状档.json'), JSON.stringify({ book: { id: 'x' }, entries: 'nope' }), 'utf-8')
+    const preferencesPath = join(base, 'next-preferences.json')
+    await writeFile(preferencesPath, JSON.stringify({ recentProjects: [{ path: root, name: '坏档库' }] }), 'utf-8')
+    const daemon = await startDaemon({ port: 0, preferencesPath, env: { ...process.env, LOCALAPPDATA: base }, logger: { log() {} } })
+    try {
+      const res = await fetch(`http://127.0.0.1:${daemon.port}/api/fact/entries?root=${encodeURIComponent(root)}`)
+      const payload = await res.json()
+      assert.equal(res.status, 500)
+      assert.equal(payload.ok, false)
+      assert.equal(payload.error.code, 'FACT_UNREADABLE')
+      assert.notEqual(payload.error.code, 'FACT_EMPTY', '坏档不许冒充空库')
+      assert.match(payload.error.message, /拆解档读不出来/u)
+      const books = payload.error.details?.books
+      assert.equal(Array.isArray(books), true)
+      assert.deepEqual(books.map((book) => book.bookId).sort(), ['形状档', '碎档'])
+      assert.equal(books.every((book) => typeof book.file === 'string' && String(book.error).length > 0), true)
+    } finally {
+      await daemon.close()
+    }
+  } finally {
+    await rm(base, { recursive: true, force: true })
+  }
+})
+
 test('fact/books：列出两本，好档带 revision/条目数/wiki 有无，坏档标 error', async () => {
   await withDaemon(async ({ get }) => {
     const { status, payload } = await get('/api/fact/books')

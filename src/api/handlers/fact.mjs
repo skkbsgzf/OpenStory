@@ -150,9 +150,18 @@ export async function factEntriesGet(ctx) {
     // 缺省书＝mtime 最新的可读一本（坏档不参与兜底，免得兜底到一本永远读不出条目的书）。
     book = books.filter((item) => !item.error).sort((left, right) => right.mtime - left.mtime)[0] ?? null
   }
-  // OS-150a：库里还没有可读的拆解书＝合法空态（前端故事源页据此摆引导空态）。
-  // 不能落下去拼一个 bookId:'' 的响应——契约要求 bookId 非空，那会把内部校验错误甩给页面。
-  if (!book) return sendError(res, API_ERROR_CODES.FACT_EMPTY, '这个库还没有拆解条目')
+  // OS-150a：库里还没有拆解书＝合法空态（前端故事源页据此摆引导空态）。
+  // OS-150b：有档但一本都读不出来＝坏档，必须与空态分开报（前端显示告警，不摆「还没有故事源」）。
+  // 两种判定都只认 error.code，页面不认文案。不能落下去拼 bookId:'' 的响应——契约要求非空。
+  if (!book) {
+    const unreadable = books.filter((item) => item.error)
+    if (unreadable.length) {
+      return sendError(res, API_ERROR_CODES.FACT_UNREADABLE, '拆解档读不出来', {
+        books: unreadable.map((item) => ({ bookId: item.bookId, file: item.file, error: item.error }))
+      })
+    }
+    return sendError(res, API_ERROR_CODES.FACT_EMPTY, '这个库还没有拆解条目')
+  }
   const listed = factStore.createFactFileStore({ root: authorized.root }).list({})
   if (!listed.ok) {
     return sendError(res, API_ERROR_CODES.INVALID_ENTRY, listed?.error?.message ?? '拆解数据读不了', listed?.error?.details)

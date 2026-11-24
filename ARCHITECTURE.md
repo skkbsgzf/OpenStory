@@ -32,19 +32,19 @@
 <!-- arch-stats:start -->
 | 层 | 目录 | 文件数 | 行数 |
 |---|---|---:|---:|
-| L7 前端 | `public/`（含 `views/`） | 19 | 20,790 |
-| L6 契约层 | `src/api/contracts/` | 8 | 1,384 |
-| L5 宿主层 | `src/host/` | 5 | 1,659 |
-| L4 自持层 | `src/{modules,services,protocol}/` | 56 | 13,138 |
+| L7 前端 | `public/`（含 `views/`） | 19 | 20,838 |
+| L6 契约层 | `src/api/contracts/` | 8 | 1,391 |
+| L5 宿主层 | `src/host/` | 5 | 1,663 |
+| L4 自持层 | `src/{modules,services,protocol}/` | 56 | 13,139 |
 | L3 内核进口 | `src/kernel/` | 1 | 68 |
 | L2 内核 | `core/pinax/` | 24 | 4,332 |
 | L1 磁盘库 | 库＝文件夹（无代码） | — | — |
 
 | 附加指标 | 实测 |
 |---|---:|
-| `public/app.js` 行数 | 12,471 |
+| `public/app.js` 行数 | 12,466 |
 | 契约端点数（`method:` 计数） | 101 |
-| 测试文件数（`test/*.test.mjs`） | 63 |
+| 测试文件数（`test/*.test.mjs`） | 65 |
 <!-- arch-stats:end -->
 
 ```

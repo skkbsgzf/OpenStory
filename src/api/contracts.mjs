@@ -47,7 +47,11 @@ export const API_ERROR_CODES = Object.freeze({
   // 模块插件（OS-144）：独占端点所属模块被作者停用——数据与值保留，重新启用即恢复
   MODULE_DISABLED: 'MODULE_DISABLED',
   // 故事源（OS-150a）：库里还没有任何拆解条目——合法空态，不是坏档
-  FACT_EMPTY: 'FACT_EMPTY'
+  FACT_EMPTY: 'FACT_EMPTY',
+  // 故事源（OS-150b）：拆解/ 下有档，但一本都读不出来——坏档不是空态，别让页面摆「还没有」
+  FACT_UNREADABLE: 'FACT_UNREADABLE',
+  // 运行时套件（OS-150b）：fixture 套件是测试夹具/骨架模板，不许被设为激活运行时
+  AGENT_RUNTIME_FIXTURE: 'AGENT_RUNTIME_FIXTURE'
 })
 
 /** 101 个端点的形状合同（OS-130 起按域分片，这里聚合；`path` 不含 query，query 字段在 request.query 里单列）。 */

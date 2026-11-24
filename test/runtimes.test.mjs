@@ -141,6 +141,16 @@ test('契约：agentRuntimesGet/agentRuntimePut 形状', () => {
 test('daemon 端到端：选 echo-kit→sidecar 拉起→chat 回声落档；切回 Pi；坏 kit→兜底 notice', async () => {
   const fixture = await makeFixture()
   const upstream = await startFakeUpstream()
+  // OS-150b：内置 echo-kit 是 fixture 套件，PUT 已拒收（AGENT_RUNTIME_FIXTURE）。
+  // 这里用同一份 sidecar 实现的非夹具克隆（fixture 缺省 false）跑端到端——
+  // 验的还是 sidecar 生命周期/回声/落档，不验「夹具可以被激活」。
+  await mkdir(join(fixture.userRuntimes, 'echo-live'), { recursive: true })
+  await writeFile(join(fixture.userRuntimes, 'echo-live', 'manifest.json'), JSON.stringify({
+    ...GOOD_SIDECAR,
+    id: 'echo-live',
+    name: '回声（测试用非夹具）',
+    command: { cmd: 'node', args: [join(builtinRuntimesDir(), 'echo-kit', 'server.mjs')], cwd: '.' }
+  }), 'utf-8')
   const daemon = await startDaemon({
     port: 0,
     preferencesPath: fixture.preferencesPath,
@@ -161,11 +171,11 @@ test('daemon 端到端：选 echo-kit→sidecar 拉起→chat 回声落档；切
     assert.equal(shelves.runtimes[0].kind, 'pi')
     assert.ok(shelves.runtimes.some((runtime) => runtime.id === 'echo-kit' && runtime.source === '内置'))
 
-    // 选 echo-kit → 不配 Pi 端点也能聊（sidecar 自动拉起）
-    const selected = await put('/api/agent/runtime', { id: 'echo-kit' })
-    assert.equal((await selected.json()).active, 'echo-kit')
+    // 选非夹具 sidecar 克隆 → 不配 Pi 端点也能聊（sidecar 自动拉起）
+    const selected = await put('/api/agent/runtime', { id: 'echo-live' })
+    assert.equal((await selected.json()).active, 'echo-live')
     const cfg = await (await fetch(`${origin}/api/agent/config`)).json()
-    assert.equal(cfg.runtime, 'echo-kit')
+    assert.equal(cfg.runtime, 'echo-live')
     assert.equal(cfg.configured, true, '有活动 kit 即 configured')
 
     const chat = await post('/api/agent/chat', { root: fixture.root, content: '第一章怎么开头？' })
@@ -175,7 +185,7 @@ test('daemon 端到端：选 echo-kit→sidecar 拉起→chat 回声落档；切
     const sessionId = frames[0].sessionId
     const deltas = frames.filter((frame) => frame.type === 'delta').map((frame) => frame.text).join('')
     assert.ok(deltas.includes('回声（echo-kit）：第一章怎么开头'), `echo-kit 接管：${deltas.slice(0, 80)}`)
-    assert.equal(sidecarRunning('echo-kit'), true, 'sidecar 已被 daemon 拉起并存活')
+    assert.equal(sidecarRunning('echo-live'), true, 'sidecar 已被 daemon 拉起并存活')
     const thread = await (await fetch(`${origin}/api/agent/session?root=${encodeURIComponent(fixture.root)}&id=${sessionId}`)).json()
     assert.equal(thread.items.filter((item) => item.kind === 'msg').length, 2, '会话照常落档')
 

@@ -2061,20 +2061,12 @@ function updateAgentChip() {
   const chip = document.getElementById('agent-model-chip')
   if (!chip) return
   const kit = agent.runtimeList.find((item) => item.id && item.id === agent.runtime)
-  const detail = kit ? kit.name : (agent.model || agent.endpoint || '')
-  if (!detail) {
-    chip.hidden = true
-    chip.textContent = ''
-    chip.className = 'agent-model'
-    chip.title = ''
-    return
-  }
-  chip.hidden = false
-  chip.textContent = detail
-  chip.classList.toggle('on', Boolean(kit) || agent.configured)
-  chip.title = kit
-    ? `运行时套件：${kit.name}（${kit.source}）${agent.model ? `\n模型：${agent.model}` : ''}`
-    : `端点：${agent.endpoint}${agent.apiKeyMasked ? `\nkey：${agent.apiKeyMasked}（完整 key 不回显）` : ''}`
+  // OS-150b：chip 取值走纯函数——fixture 套件降级显示「内置默认」，绝不把夹具名摆给作者
+  const view = runtimeShelf?.agentChipView(kit, agent) ?? { hidden: true, text: '', on: false, title: '' }
+  chip.hidden = view.hidden
+  chip.textContent = view.text
+  chip.classList.toggle('on', view.on)
+  chip.title = view.title
 }
 
 async function loadAgentRuntimes() {
@@ -8113,6 +8105,9 @@ function factViewHtml() {
   }
   if (fv.error && !fv.loaded) {
     return `<div class="doc-head">${headKick}<h1>故事源</h1></div>${flowError(fv.error)}`
+  }
+  if (fv.entriesError && ssModule.isFactUnreadableError(fv.entriesError)) {
+    return `<div class="doc-head">${headKick}<h1>故事源</h1><div class="doc-meta"><span class="b">Fact 链</span><span>拆解档读不出来</span></div></div><div class="warn-box">${esc(ssModule.factUnreadableText(fv.entriesError))}——这不是「还没有故事源」：拆解/ 下有档但读不出来，修好档或删掉坏档再回来。</div>`
   }
   if (fv.entriesError && !ssModule.isFactEmptyError(fv.entriesError)) {
     return `<div class="doc-head">${headKick}<h1>故事源</h1><div class="doc-meta"><span class="b">Fact 链</span><span>条目读不了</span></div></div>${flowError(`条目读不了：${text(fv.entriesError?.message || fv.entriesError)}`)}`

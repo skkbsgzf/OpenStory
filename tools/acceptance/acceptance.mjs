@@ -24,6 +24,9 @@ import { execFileSync } from 'node:child_process'
 import { join, dirname, relative, resolve as pathResolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { NAMING_TABLE, TAB_REGISTRY, LOG_MODULES, computeTabDefs, viewScope } from '../../public/views/registry.mjs'
+// OS-150b：S2.1/S2.2 共用同一份说明符扫描器（静态 from／动态 import()／副作用 import／单双引号）。
+// 两份正则必分叉——分叉面就是漏检面（analysisModules.mjs 的惰性 import 曾被整段放过）。
+import { scanImportSpecs, resolveSpec, auditPublicEdges } from './importScan.mjs'
 
 const REPO = pathResolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
 
@@ -69,15 +72,7 @@ function walkMjs(dir, prefix) {
   }
   return out
 }
-function resolveSpec(fileRel, spec) {
-  const parts = fileRel.includes('/') ? fileRel.slice(0, fileRel.lastIndexOf('/')).split('/') : []
-  for (const seg of spec.split('/')) {
-    if (seg === '.') continue
-    else if (seg === '..') parts.pop()
-    else parts.push(seg)
-  }
-  return parts.join('/')
-}
+/* resolveSpec 随扫描器迁到 ./importScan.mjs（OS-150b），仓内只有一份。 */
 
 /* ================================================================
  * S0 布局宪法（OS-140）——仓根只允许入口、包描述、文档
@@ -189,13 +184,11 @@ const importEvidence = {}
 for (const { rel, src } of scanned) {
   imports[rel] = []
   importEvidence[rel] = []
-  const lines = src.split('\n')
-  for (let i = 0; i < lines.length; i++) {
-    for (const m of lines[i].matchAll(/from\s+'((?:\.{1,2}\/)+[\w./-]+\.mjs)'/g)) {
-      const dep = resolveSpec(rel, m[1])
-      imports[rel].push(dep)
-      importEvidence[rel].push(`${rel}:${i + 1} '${m[1]}'`)
-    }
+  for (const { spec, line } of scanImportSpecs(src)) {
+    if (!/^\.{1,2}\//u.test(spec) || !spec.endsWith('.mjs')) continue
+    const dep = resolveSpec(rel, spec)
+    imports[rel].push(dep)
+    importEvidence[rel].push(`${rel}:${line} '${spec}'`)
   }
 }
 // 模块纪律两套口径合取（OS-142 Host API 升格；都过才算过，只紧不松）：
@@ -214,10 +207,7 @@ const MODULE_RULE_EXEMPT = new Set([
 const moduleRuleViolations = []
 for (const { rel, src } of srcMjs.filter((f) => f.rel.startsWith('src/modules/'))) {
   const modDir = `${rel.slice(0, rel.lastIndexOf('/'))}/`
-  const specs = [...src.matchAll(/from\s+'([^']+)'/g), ...src.matchAll(/import\(\s*'([^']+)'\s*\)/g)]
-  for (const m of specs) {
-    const spec = m[1]
-    const line = src.slice(0, m.index).split('\n').length
+  for (const { spec, line } of scanImportSpecs(src)) {
     if (spec.startsWith('node:')) continue // ① node 内置模块
     if (spec.startsWith('./') || spec.startsWith('../')) {
       const dep = resolveSpec(rel, spec)
@@ -270,27 +260,32 @@ check('S2.1', 'S2', `模块纪律：src/modules/** 只引 node 内置/protocol/*
 // OS-143：页签注册表 views/registry.mjs 纳入扫描面——它是纯数据＋纯函数（零 import），
 // app.js 经动态 import 消费它；依赖方向永远是壳→表，注册表绝不反向依赖 app.js。
 // OS-150a：扫描面改为自动枚举 public/*.mjs 与 public/views/*.mjs（只增不减），
-// 新增模块不用回来改清单；md.mjs（正文渲染协议）与 script.mjs（剧本解析/渲染协议）
-// 是共享协议，其余模块互不 import。
-const PUBLIC_SHARED_PROTOCOL = new Set(['md.mjs', 'script.mjs'])
+// 新增模块不用回来改清单。
+// OS-150b：① 改用与 S2.1 同一份扫描器（./importScan.mjs）——静态 from、动态 import()、
+// 副作用 import、单双引号全在面内；② 豁免从「按目标文件全局放行」改为**按边登记**
+// （PUBLIC_EDGE_ALLOW，每条带理由）——script.mjs 只放行 scriptFact.mjs 那一条真实合法边。
 const publicMjs = [
   ...readdirSync(join(REPO, 'public')).filter((f) => f.endsWith('.mjs')).map((f) => f),
   ...readdirSync(join(REPO, 'public/views')).filter((f) => f.endsWith('.mjs')).map((f) => `views/${f}`)
 ].sort()
-const pubCross = []
-for (const f of publicMjs) {
-  if (!exists(`public/${f}`)) continue
-  const src = readRepo(`public/${f}`)
-  for (const m of src.matchAll(/from\s+'\.\/([\w-]+\.mjs)'/g)) {
-    const dep = m[1]
-    if (dep === f) continue
-    if (PUBLIC_SHARED_PROTOCOL.has(dep)) continue
-    pubCross.push(`${f} -> ${dep}`)
-  }
-}
-check('S2.2', 'S2', `前端模块互不 import（自动扫描 public/*.mjs＋views/*.mjs 共 ${publicMjs.length} 个；md.mjs/script.mjs 渲染协议除外）`,
-  pubCross.length === 0, pubCross.map((e) => `public/${e}`),
-  pubCross.length ? `违规：${pubCross.join('; ')}` : '')
+const publicFiles = publicMjs
+  .map((f) => `public/${f}`)
+  .filter((rel) => exists(rel))
+  .map((rel) => ({ rel, src: readRepo(rel) }))
+const publicEdgeAudit = auditPublicEdges(publicFiles)
+const pubCross = publicEdgeAudit.violations
+check('S2.2', 'S2', `前端模块互不 import（自动扫描 public/*.mjs＋views/*.mjs 共 ${publicMjs.length} 个；合法边按条登记）`,
+  pubCross.length === 0,
+  pubCross.map((edge) => `public/${edge.from.replace(/^public\//u, '')}:${edge.line} '${edge.spec}'`),
+  pubCross.length ? `违规：${pubCross.map((edge) => edge.tag).join('; ')}` : '')
+
+// S2.6 豁免表只许反映真实合法边（OS-150b）：登记了却不存在＝腐化，没写理由＝不透明。
+// 两条都红——豁免不是橡皮图章，删掉边忘了删登记同样要人看一眼。
+const publicEdgeCount = new Set(publicEdgeAudit.edges.map((edge) => edge.tag)).size
+check('S2.6', 'S2', `前端豁免按边登记且真实存在（${publicEdgeCount} 条实边；登记 ${publicEdgeAudit.stale.length ? `${publicEdgeAudit.stale.length} 条失效/无理由` : '全部有效'}）`,
+  publicEdgeAudit.stale.length === 0,
+  publicEdgeAudit.stale.map((row) => `PUBLIC_EDGE_ALLOW: ${row.edge}${row.reason ? '（仓里无此边）' : '（缺理由）'}`),
+  publicEdgeAudit.stale.length ? `豁免表失效：${publicEdgeAudit.stale.map((row) => row.edge).join('; ')}` : '每条豁免都有边有理由')
 
 // S2.3 契约驱动架构：daemon 经 endpointFor() 契约分派 + validateResponse() 契约校验
 // OS-130 契约分域后，端点形状按域切片在 contracts/<域>.mjs——计数＝contracts.mjs＋contracts/*.mjs 合计

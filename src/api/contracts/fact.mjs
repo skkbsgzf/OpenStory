@@ -73,10 +73,12 @@ export const factEndpoints = {
     // 条目级读（故事源的数据底座）：条目本体＋溯源，按 bookId/layer/q 过滤，服务端分页。
     // bookId 缺省＝mtime 最新的可读书（与 factCurveGet 同向）；offset 默认 0，limit 默认 100／上限 500。
     // layers＝过滤前的层计数表（前端做层筛选器）；坏档在 warnings[] 记一条，不整体失败。
-    // FACT_EMPTY（OS-150a）＝库里还没有任何可读拆解条目——合法空态，故事源页据此摆引导空态。
+    // FACT_EMPTY（OS-150a）＝拆解/ 下一本书都没有——合法空态，故事源页据此摆引导空态。
+    // FACT_UNREADABLE（OS-150b）＝有档但全部读不出来（坏档），details.books 逐本给 bookId/file/error——
+    // 这是「档坏了」不是「还没有」，前端必须显示告警而不是引导空态。
     request: { query: { root: 'string', bookId: 'string?', layer: 'string?', q: 'string?', offset: 'string?', limit: 'string?' } },
     response: { ok: 'true', bookId: 'string', book: 'object?', revision: 'number', total: 'number', entries: 'array', layers: 'object', warnings: 'array?' },
-    errors: ['INVALID_ENTRY', 'NOT_FOUND', 'FACT_EMPTY']
+    errors: ['INVALID_ENTRY', 'NOT_FOUND', 'FACT_EMPTY', 'FACT_UNREADABLE']
   },
 
   factBooksGet: {

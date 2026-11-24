@@ -37,7 +37,11 @@ const STATUS_BY_CODE = Object.freeze({
   // 模块插件停用（OS-144）：请求本身合法，但所属工作面被作者关掉——冲突而非客户端错误
   MODULE_DISABLED: 409,
   // 故事源空库（OS-150a）：还没有拆解条目＝可预期的空态（不是坏档），404 让调用方走空态分支
-  FACT_EMPTY: 404
+  FACT_EMPTY: 404,
+  // 故事源坏档（OS-150b）：有档但全部读不出来＝数据面故障，不是客户端的错
+  FACT_UNREADABLE: 500,
+  // 运行时套件（OS-150b）：请求的套件是测试夹具，不是可选产品运行时
+  AGENT_RUNTIME_FIXTURE: 400
 })
 
 function statusFor(code) {

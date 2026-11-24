@@ -60,3 +60,34 @@ export function pluginOverviewStats(byKind) {
     blocked: items.filter((item) => item.blocked === true).length
   }
 }
+
+/** 夹具套件被（手改配置）设成激活时，Agent 栏 chip 的降级文案（绝不显示夹具名）。 */
+export const AGENT_CHIP_FALLBACK = '内置默认'
+
+/**
+ * Agent 栏模型 chip 的取值（OS-150b）：把壳里的取值逻辑收成纯函数，Node 可直接测。
+ * 规则（对齐 OS-31）：能说出具体东西才显示，否则整个 chip 收起——绝不摆空药丸。
+ * fixture 套件一律降级成 AGENT_CHIP_FALLBACK：它是测试夹具/骨架模板，不配当作者的选择。
+ */
+export function agentChipView(kit, agent = {}) {
+  const model = agent?.model ? `\n模型：${agent.model}` : ''
+  if (isFixtureRuntime(kit)) {
+    return {
+      hidden: false,
+      text: AGENT_CHIP_FALLBACK,
+      on: true,
+      title: '运行时：内置默认（夹具套件仅供测试，不作为可选运行时）'
+    }
+  }
+  if (kit) {
+    return { hidden: false, text: kit.name, on: true, title: `运行时套件：${kit.name}（${kit.source}）${model}` }
+  }
+  const detail = agent?.model || agent?.endpoint || ''
+  if (!detail) return { hidden: true, text: '', on: false, title: '' }
+  return {
+    hidden: false,
+    text: detail,
+    on: Boolean(agent?.configured),
+    title: `端点：${agent?.endpoint ?? ''}${agent?.apiKeyMasked ? `\nkey：${agent.apiKeyMasked}（完整 key 不回显）` : ''}`
+  }
+}

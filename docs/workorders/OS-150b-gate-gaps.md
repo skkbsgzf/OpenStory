@@ -81,4 +81,34 @@
 
 ## 施工回报（编排器自动归档）
 
+> 模型 deepseek-v4.1-flash · 第 1 轮 · 测试 绿（tests 547 · pass 545 · fail 0 · skip 2） · 门禁 绿 · 水浒 绿 · 新建 绿 · vendor 未动 · daemon 已重启（OS-150b 改了后端）
+
+```text
+CHANGED:
+- 新建 `tools/acceptance/importScan.mjs`（S2.1/S2.2 共用扫描器＋按边豁免表＋审计函数）
+- 新建 `test/importScan.test.mjs`、`test/agentFixtureGuard.test.mjs`
+- `tools/acceptance/acceptance.mjs`（S2.1 改用共用扫描器；S2.2 改为按边登记；新增 S2.6 豁免表防腐化）
+- `src/api/contracts.mjs`、`src/api/contracts/fact.mjs`、`src/api/contracts/agent.mjs`（新码登记）
+- `src/host/http.mjs`（状态码映射）、`src/protocol/apiErrors.mjs`（词表说明）
+- `src/api/handlers/fact.mjs`（FACT_EMPTY / FACT_UNREADABLE 分流）
+- `src/api/handlers/agent.mjs`（拒收夹具套件）
+- `public/storySource.mjs`、`public/views/runtimeShelf.mjs`、`public/app.js`（坏档告警 + chip 降级）
+- `test/fact-entries.test.mjs`、`test/storySourceStates.test.mjs`、`test/runtimeShelf.test.mjs`、`test/runtimes.test.mjs`
+- `docs/ACCEPTANCE.md`、`AGENTS.md`、`ARCHITECTURE.md`（`npm run arch:stats` 回写）
+
+VERIFIED:
+- `node .zcode/run-gate.mjs` 与 `node --test test/*.test.mjs` → 547 例，545 过 / 2 skip / 0 挂（原 537，只增）。
+- `node tools/acceptance/acceptance.mjs` → **19 过 / 0 挂 / 0 警**（原 18；新增 S2.6）。`node scripts/arch-stats.mjs --check` → 一致。
+- 反证（均已跑通）：`test/importScan.test.mjs` 抓到 `public/views/bad.mjs` 里 `await import('./app.js')` 与 `await import('../app.js')`；未登记的 `foo.mjs -> script.mjs` 判红；真实仓面 0 违规、豁免表 0 腐化。
+- 判定：`analysisModules.mjs -> analysis.mjs` **合法**（`analysis.mjs` 是零依赖、零 DOM 的纯函数引擎，导出 `analyzeChapter/splitSentences`，后端 `roleplayEngine.mjs` 也引同一份；analysisModules 只在无 `context.analyze` 注入时惰性 import），已按边登记并写明理由；`script.mjs` 只剩 `scriptFact.mjs > script.mjs` 一条合法边。
+- 坏档库消费方确认：故事源页走告警（先于「还没有故事源」空态）；世界书拆解词条组 `.catch` → 空组不炸、不告警；MCP 无 fact entries 工具（`fact_curve` 走 curve，坏档仍降级为 chapters=[]）；剧本互转 B 向显示「转失败：拆解档读不出来（…）」、A 向 `resolveLibraryBookId` 回退库名行为不变；`scripts/verify-newproj.mjs` A5（真空库）仍走 FACT_EMPTY。
+- `public/app.js` 行数 12,466（原 12,471，未增）。
+
+LIMITATIONS:
+- 既有 `test/runtimes.test.mjs` 的端到端原先靠激活内置 `echo-kit` 跑 sidecar；新规则下该激活已非法，故改为同实现的**非夹具克隆**（`echo-live`）驱动。sidecar 拉起/回声/落档/兜底通知断言全部保留、未放宽，但「内置 echo-kit 可被激活」这条隐含覆盖随新规则消失（属预期）。
+- 世界书「拆解词条组」在坏档库上仍只是空组（不显示告警）——本次工单只要求故事源页分流，未扩面。
+- S2.2 扫描器不剥注释：注释里写一行 `import('./x.mjs')` 也会计入边（宁严不漏），需登记豁免；当前仓内 2 条豁免覆盖。
+- 新码取值：`FACT_UNREADABLE` 映射 500（数据面故障）、`AGENT_RUNTIME_FIXTURE` 映射 400；若上游有既定口径需要改，只动 `src/host/http.mjs` 一处。
+```
+
 ## 验收记录（主 agent 填）

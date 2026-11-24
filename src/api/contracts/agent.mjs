@@ -71,9 +71,10 @@ export const agentEndpoints = {
     method: 'PUT',
     path: '/api/agent/runtime',
     // 选活动运行时：id 空串/缺省＝回到 Pi 兜底；未知 id 拒收。
+    // AGENT_RUNTIME_FIXTURE（OS-150b）＝fixture 套件（如 echo-kit）是测试夹具/骨架模板，不许激活。
     request: { body: { id: 'string?' } },
     response: { ok: 'true', active: 'string?' },
-    errors: ['INVALID_ENTRY']
+    errors: ['INVALID_ENTRY', 'AGENT_RUNTIME_FIXTURE']
   },
 
   agentSessions: {

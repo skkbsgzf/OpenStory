@@ -13,7 +13,9 @@ import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { builtinRuntimesDir, loadRuntimeKits, normalizeRuntimeKit } from '../src/services/runtimes.mjs'
 import {
+  AGENT_CHIP_FALLBACK,
   RUNTIME_SHELF_GROUPS,
+  agentChipView,
   isFixtureRuntime,
   pluginOverviewItems,
   pluginOverviewStats,
@@ -118,4 +120,26 @@ test('OS-150a：插件总览的运行时分组不含夹具套件，套件/技能
   // 顶部汇总也按过滤后的三组重数（服务端 stats 含夹具，页面不直接用）
   assert.deepEqual(pluginOverviewStats(byKind), { total: 3, enabled: 3, blocked: 0 })
   assert.deepEqual(pluginOverviewStats(null), { total: 0, enabled: 0, blocked: 0 })
+})
+
+test('OS-150b：Agent 栏 chip 遇到夹具套件降级为默认文案，不显示夹具名', () => {
+  const echo = { id: 'echo-kit', name: '回声参考套件', source: '内置', fixture: true }
+  const view = agentChipView(echo, { runtime: 'echo-kit' })
+  assert.equal(view.hidden, false)
+  assert.equal(view.text, AGENT_CHIP_FALLBACK)
+  assert.equal(view.text.includes('回声'), false, '夹具名不许露给作者')
+  assert.equal(view.title.includes('回声'), false)
+  assert.equal(AGENT_CHIP_FALLBACK, '内置默认')
+
+  // 正常套件照旧显示套件名（夹具判定只认严格 true）
+  const real = agentChipView({ id: 'cli-a', name: 'CLI A', source: '内置' }, { runtime: 'cli-a', model: 'm1' })
+  assert.equal(real.text, 'CLI A')
+  assert.match(real.title, /模型：m1/u)
+  assert.equal(real.on, true)
+
+  // 没有套件也没有端点/模型＝收起 chip（不摆空药丸）
+  assert.deepEqual(agentChipView(null, {}), { hidden: true, text: '', on: false, title: '' })
+  // 直连端点：显示模型或端点
+  assert.equal(agentChipView(null, { model: 'gpt-x', configured: true }).text, 'gpt-x')
+  assert.equal(agentChipView(null, { endpoint: 'http://127.0.0.1:1/v1', configured: true }).text, 'http://127.0.0.1:1/v1')
 })

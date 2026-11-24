@@ -125,8 +125,14 @@ export async function agentRuntimePut(ctx) {
   const id = text(request.id).trim()
   if (id) {
     const { kits } = loadRuntimeKits(context.runtimesDirs)
-    if (!kits.some((kit) => kit.id === id)) {
+    const kit = kits.find((item) => item.id === id)
+    if (!kit) {
       return sendError(res, API_ERROR_CODES.INVALID_ENTRY, `货架上没有这个运行时套件：${id}`)
+    }
+    // OS-150b：fixture 套件（echo-kit 一类）是测试夹具/骨架模板，不是可选产品运行时。
+    // 手改 agent-config.json 指到夹具的，由 Agent 栏 chip 降级显示兜底（见 views/runtimeShelf.mjs）。
+    if (kit.fixture === true) {
+      return sendError(res, API_ERROR_CODES.AGENT_RUNTIME_FIXTURE, `夹具套件不能设为激活运行时：${kit.name || id}`, { id })
     }
   }
   const config = await saveConfigV2(context.agentConfigPath, { text: { runtime: id } })

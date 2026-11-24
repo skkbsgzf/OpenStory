@@ -24,14 +24,36 @@ export const STORY_LAYER_LABELS = Object.freeze({
 })
 
 /**
- * 空库专用码（OS-150a）：/api/fact/entries 在库里还没有拆解条目时回这个码，
+ * 空库专用码（OS-150a）：/api/fact/entries 在拆解/ 下一本书都没有时回这个码，
  * 故事源页据此走引导性空态而不是错误条。码与文案的唯一出口在契约层
  * （API_ERROR_CODES.FACT_EMPTY）；这里只做判定，页面不认字符串。
  */
 export const FACT_EMPTY_CODE = 'FACT_EMPTY'
 
+/**
+ * 坏档专用码（OS-150b）：拆解/ 下有档但一本都读不出来。与 FACT_EMPTY 是两回事——
+ * 「档坏了」要告警，不能摆「还没有故事源」的引导空态把问题盖住。
+ * details.books[] 逐本给 bookId/file/error，前端原样带给作者。
+ */
+export const FACT_UNREADABLE_CODE = 'FACT_UNREADABLE'
+
 export function isFactEmptyError(error) {
   return error?.code === FACT_EMPTY_CODE
+}
+
+export function isFactUnreadableError(error) {
+  return error?.code === FACT_UNREADABLE_CODE
+}
+
+/** 坏档错误的人话（含逐本细节）：页面不自己拼字符串，判定与文案都从码/细节派生。 */
+export function factUnreadableText(error) {
+  const base = text(error?.message) || '拆解档读不出来'
+  const books = Array.isArray(error?.details?.books) ? error.details.books : []
+  const detail = books
+    .map((book) => `${text(book?.bookId) || text(book?.file) || '未命名'}：${text(book?.error) || '读不了'}`)
+    .filter(Boolean)
+    .join('；')
+  return detail ? `${base}（${detail}）` : base
 }
 
 /** 章功能 → 张力基线（与 enrichEngine CHAPTER_FUNCTIONS 同表）。 */
