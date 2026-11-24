@@ -91,4 +91,23 @@
 
 ## 施工回报（编排器自动归档）
 
+> 模型 deepseek-v4.1-flash · 第 1 轮 · 测试 绿（tests 537 · pass 535 · fail 0 · skip 2） · 门禁 绿 · 水浒 绿 · 新建 绿 · vendor 未动 · daemon 在跑
+
+```text
+CHANGED: `docs/plan/kernel-own-design.md`（新建，九节齐全）
+
+VERIFIED:
+- `find core/pinax -type f | wc -l` → 24；`… | xargs wc -l | tail -1` → 4332（与设计稿 §1.1 逐行表一致）
+- `grep -rn "from '.*core/" src/` → 仅 `src/kernel/pinaxAdapter.mjs`；`grep -rn pinaxAdapter src/ tools/` → 10 个消费方（§1.3）
+- `grep -rli "pinax\|pedia"`（排除 node_modules/.git/docs/plan/.ua/.zcode/tmp）→ 155 文件、src 41 个
+- `node tools/acceptance/acceptance.mjs` → **18 过 / 0 挂 / 0 警**（改动只有一份 markdown，门禁不受影响）
+
+LIMITATIONS:
+1. 工单 OS-152 的验收口径写「vendor 清单除名 2 项」，在设计里被**顺延到 OS-156**：`core/factFileStore.mjs:6` 与 `core/fs/atomicWrite.mjs:4` 让「core 内文件不许 import src」与「src 除 adapter 外不许 import core」两条硬规则对撞，只能走「影子复制→重指向→最后一个 core 消费者搬走时删除」。已在 §0.3-1、§6.7、§9-12 写明，请主 agent 确认修改口径。
+2. 工单「内核错误码 `PINAX_` 前缀换成自己的（对外字符串不变）」字面自相矛盾——该前缀就是 `/api` 响应里的 `code`（`handlers/fact.mjs:737`），且被 3 处测试＋2 处 `^PINAX_` 解析钉死。设计取「只改表名/注释、值不动」，列入 §9-1 待作者拍板。
+3. 推演链归模块会导致 `fact.deduce` 退出 Host API（`host-api@1→@2`）。这是按默认归属推出来的必然代价，属设计判断而非实测，§9-3 给了「留内核」的备选。
+4. 互认夹具（Pinax 桌面端真实产库）我没有、也不该伪造；§7 只定形状、位置、`PROVENANCE.json` 与断言清单，实际抓取需主 agent/作者提供。
+5. 未运行全量 `node .zcode/run-gate.mjs`（本单只动文档，按工单要求跑的是验收门禁）；未执行任何 git 命令，未启停 daemon。
+```
+
 ## 验收记录（主 agent 填）
