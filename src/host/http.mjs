@@ -35,7 +35,9 @@ const STATUS_BY_CODE = Object.freeze({
   FORBIDDEN_ORIGIN: 403,
   UNSUPPORTED_MEDIA_TYPE: 400,
   // 模块插件停用（OS-144）：请求本身合法，但所属工作面被作者关掉——冲突而非客户端错误
-  MODULE_DISABLED: 409
+  MODULE_DISABLED: 409,
+  // 故事源空库（OS-150a）：还没有拆解条目＝可预期的空态（不是坏档），404 让调用方走空态分支
+  FACT_EMPTY: 404
 })
 
 function statusFor(code) {

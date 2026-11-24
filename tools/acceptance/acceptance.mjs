@@ -266,11 +266,17 @@ check('S2.1', 'S2', `模块纪律：src/modules/** 只引 node 内置/protocol/*
     ? `违规：${[...moduleRuleViolations, ...crossEdges].join('; ')}`
     : '三类来源＋一条显式豁免（roleplayEngine→public/analysis.mjs）；内核能力只经协议层 fact 命名空间取')
 
-// S2.2 前端模块隔离（public/*.mjs 只共享 md.mjs 渲染协议）
+// S2.2 前端模块隔离（public/*.mjs 只共享渲染协议）
 // OS-143：页签注册表 views/registry.mjs 纳入扫描面——它是纯数据＋纯函数（零 import），
 // app.js 经动态 import 消费它；依赖方向永远是壳→表，注册表绝不反向依赖 app.js。
-const publicMjs = ['analysis.mjs', 'charts.mjs', 'graph.mjs', 'reference.mjs', 'storyTree.mjs', 'views/registry.mjs']
-const SHARED_PROTOCOL = new Set(['md.mjs'])
+// OS-150a：扫描面改为自动枚举 public/*.mjs 与 public/views/*.mjs（只增不减），
+// 新增模块不用回来改清单；md.mjs（正文渲染协议）与 script.mjs（剧本解析/渲染协议）
+// 是共享协议，其余模块互不 import。
+const PUBLIC_SHARED_PROTOCOL = new Set(['md.mjs', 'script.mjs'])
+const publicMjs = [
+  ...readdirSync(join(REPO, 'public')).filter((f) => f.endsWith('.mjs')).map((f) => f),
+  ...readdirSync(join(REPO, 'public/views')).filter((f) => f.endsWith('.mjs')).map((f) => `views/${f}`)
+].sort()
 const pubCross = []
 for (const f of publicMjs) {
   if (!exists(`public/${f}`)) continue
@@ -278,11 +284,11 @@ for (const f of publicMjs) {
   for (const m of src.matchAll(/from\s+'\.\/([\w-]+\.mjs)'/g)) {
     const dep = m[1]
     if (dep === f) continue
-    if (SHARED_PROTOCOL.has(dep)) continue
+    if (PUBLIC_SHARED_PROTOCOL.has(dep)) continue
     pubCross.push(`${f} -> ${dep}`)
   }
 }
-check('S2.2', 'S2', '前端分析/图谱/参考/树/页签注册表模块互不 import（md.mjs 渲染协议除外）',
+check('S2.2', 'S2', `前端模块互不 import（自动扫描 public/*.mjs＋views/*.mjs 共 ${publicMjs.length} 个；md.mjs/script.mjs 渲染协议除外）`,
   pubCross.length === 0, pubCross.map((e) => `public/${e}`),
   pubCross.length ? `违规：${pubCross.join('; ')}` : '')
 
@@ -432,12 +438,14 @@ const appJs = readRepo('public/app.js')
 //   a) label 真的出现在 computeTabDefs 的推导结果里（注册表即页签名真源，不读源码文本）；
 //   b) render 注册名在 app.js 的 VIEW_RENDERERS 有键（装配缺口＝views 里有名字、壳里没函数）；
 //   c) viewScope(view) 有作用域（go() 不会把它判成非法视图）。
+// OS-150a：分词前先剥注释——块里写一行 `// writeHtmlGone` 不许冒充已注册。
+const stripJsComments = (src) => src.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/\/\/[^\n]*/g, ' ')
 const coreEntries = TAB_REGISTRY.filter((entry) => entry.core === true && !entry.retired)
 const coreLabels = coreEntries.map((entry) => entry.label)
 const tabBarCtx = { current: { path: '验收锚点' }, libDirs: ['正文', '参考', '世界书', '剧本', '拆解', '日志'], brief: null, briefGenre: null, settingsOpen: true }
 const tabBarLabels = new Set(computeTabDefs(tabBarCtx).map((def) => def.label))
 // app.js 的 VIEW_RENDERERS 是速记对象（键＝值）；只认块内的裸标识符 token
-const rendererBlock = (appJs.match(/const VIEW_RENDERERS = \{([\s\S]*?)\}/) || [])[1] || ''
+const rendererBlock = stripJsComments((appJs.match(/const VIEW_RENDERERS = \{([\s\S]*?)\}/) || [])[1] || '')
 const rendererKeys = new Set(rendererBlock.split(/[,\s]+/).map((token) => token.trim())
   .filter((token) => /^[A-Za-z_$][\w$]*$/u.test(token)))
 const s41Gaps = coreEntries.map((entry) => {

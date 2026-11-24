@@ -150,6 +150,9 @@ export async function factEntriesGet(ctx) {
     // 缺省书＝mtime 最新的可读一本（坏档不参与兜底，免得兜底到一本永远读不出条目的书）。
     book = books.filter((item) => !item.error).sort((left, right) => right.mtime - left.mtime)[0] ?? null
   }
+  // OS-150a：库里还没有可读的拆解书＝合法空态（前端故事源页据此摆引导空态）。
+  // 不能落下去拼一个 bookId:'' 的响应——契约要求 bookId 非空，那会把内部校验错误甩给页面。
+  if (!book) return sendError(res, API_ERROR_CODES.FACT_EMPTY, '这个库还没有拆解条目')
   const listed = factStore.createFactFileStore({ root: authorized.root }).list({})
   if (!listed.ok) {
     return sendError(res, API_ERROR_CODES.INVALID_ENTRY, listed?.error?.message ?? '拆解数据读不了', listed?.error?.details)
@@ -633,7 +636,7 @@ export async function roleplayTurn(ctx) {
 
 export async function deduceExport(ctx) {
   // OS-94：推演导出——整个会话（每拍的决定＋正文＋归档清单）出 markdown，
-  // 落 推演/<bookId>/导出/会话-<sid>-<ts>.md。读侧动作，不改会话。
+  // 落 推演/<bookId>/导出/会话-<bookId>-<sid>-<ts>.md。读侧动作，不改会话。
   const { res, request, allowlist } = ctx
   const authorized = authorizeRoot(allowlist, request.root)
   if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)

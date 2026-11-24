@@ -98,4 +98,50 @@
 
 ## 施工回报（编排器自动归档）
 
+> 模型 deepseek-v4.1-flash · 第 1 轮 · 测试 绿（tests 537 · pass 535 · fail 0 · skip 2） · 门禁 绿 · 水浒 绿 · 新建 绿 · vendor 未动 · daemon 在跑
+
+```text
+CHANGED:
+- `src/protocol/plugins.mjs` — ① 运行时条目透传 `fixture`（只对 runtime 加字段，套件/技能形状不变）
+- `public/views/runtimeShelf.mjs` — ① 新增 `pluginOverviewItems` / `pluginOverviewStats`，复用既有 `visibleRuntimeKits`（无第二份过滤）
+- `public/app.js` — ① 插件总览三组条目与顶部汇总走上述纯函数（夹具不再出条目、不再计数）；⑤ `moduleLogHtml` 改取 `logModuleForView('deduce')`；⑥ `entriesError` 存错误对象并接 `isFactEmptyError` 分流到既有引导空态。行数 12,471 未增
+- `public/storySource.mjs` — ⑥ 新增 `FACT_EMPTY_CODE` / `isFactEmptyError`
+- `src/api/contracts.mjs` — ⑥ 错误码 `FACT_EMPTY` 登记
+- `src/api/contracts/fact.mjs` — ⑥ `factEntriesGet.errors` 增 `FACT_EMPTY` 与口径注释
+- `src/api/handlers/fact.mjs` — ⑥ 无可读拆解书时早退 `FACT_EMPTY`（人话「这个库还没有拆解条目」）；④ 导出落盘注释补 `<bookId>`
+- `src/host/http.mjs` — ⑥ `FACT_EMPTY → 404`
+- `src/protocol/naming.mjs` — ② 增 re-export `PAGE_TO_DIR_LOCAL`
+- `src/services/genres.mjs` — ② `excludedDirNames` 改取表；残留键收进显式 `PAGE_TO_DIR_RETIRED` 台账
+- `src/protocol/README.md` / `src/protocol/apiErrors.mjs` — ②/⑥ 取表口与码表注释同步
+- `tools/acceptance/acceptance.mjs` — ③ `rendererBlock` 分词前剥 `//` 与 `/* */`；⑦ S2.2 改自动枚举 `public/*.mjs`＋`public/views/*.mjs`
+- `scripts/verify-newproj.mjs` — ⑥ A5 改断言 `FACT_EMPTY`（原断言只查 `ok !== undefined`，非旧码）
+- `test/plugins.test.mjs` — ① 聚合层透传 fixture ＋ `/api/plugins` 端点级两条
+- `test/runtimeShelf.test.mjs` — ① 总览渲染数据/汇总去夹具 ＋ app.js 接线断言
+- `test/naming.test.mjs` — ② `src/` 页签名→目录名只从表派生（残留键显式台账）；⑤ 扮演页查「推演」模块
+- `test/fact-entries.test.mjs` — ⑥ 空库返回 `FACT_EMPTY`（404、人话、不含「契约」字样）
+- `test/storySourceStates.test.mjs` — ⑥ 新建：前后端码同值、判定只认码、app.js 分流接线
+- `AGENTS.md` — ④ 落盘表导出文件名补 `<bookId>`；验收单测数 537
+- `docs/ACCEPTANCE.md` — 单测数 537、S2/S4 口径（自动枚举、剥注释）
+- `ARCHITECTURE.md` — `npm run arch:stats` 回写生成段
+
+VERIFIED:
+- `node --check` 全部改动 js/mjs 文件通过
+- `node --test test/*.test.mjs` → tests 537 / pass 535 / fail 0 / skip 2（既有 2 例 skip）
+- `node .zcode/run-gate.mjs` → 同上全绿
+- `node tools/acceptance/acceptance.mjs` → **18 过 / 0 挂 / 0 警**
+- `node scripts/arch-stats.mjs --check` → 生成段一致；`npm run vendor:check` → 退出 0
+- `wc -l public/app.js` → 12,471（未增）
+- ③ 反证：注册表 `write` 的 render 临时改 `writeHtmlGone` 并在 `VIEW_RENDERERS` 加 `// writeHtmlGone` → S4.1 仍红：
+  `✗ [S4.1] … — 未接通：正文[render未注册(writeHtmlGone)]`，已改回（grep 无残留）
+- ① 其它运行时列表逐个确认：设置→引擎与存储货架（`runtimeKitsByCategory`）、设置→模型下拉（`selectableRuntimeKits`）均已过滤；插件总览现已过滤；Agent 栏模型 chip 只显示当前激活套件（echo-kit 不可被选中，非列表）；DSH 修复流程无运行时列表
+- ⑥ 其它消费方逐个确认：世界书拆解词条组 `.catch(() => ref.factEntries = [])` 行为不变；MCP 只用 `/api/fact/curve` 不读 entries，无影响；剧本互转仍走错误路径但文案变人话；`verify-newproj` A5 已同步
+
+LIMITATIONS:
+- ⑦ 自动枚举暴露既有合法边 `public/scriptFact.mjs → public/script.mjs`（剧本解析协议）。为不拆业务逻辑，把 `script.mjs` 与 `md.mjs` 并列为共享渲染协议豁免；若要求豁免面严格只有 `md.mjs`，需另立单做 `scriptFact` 依赖注入重构。
+- ② 残留 11 键保留在 `PAGE_TO_DIR_RETIRED` 台账（`outline→大纲`、`notes→构思`、`material/dossier→资料`、`constraint→约束` 为退场目录；`comic/video/experience/online` 为无页面形制；`wiki/wikiHtml→世界书` 为旧别名）。入表会让 `DIR_LABELS`/`DIR_ORDER` 多出无效行，故按工单「逐个说明去留」保留。
+- 本机 8807 上的 daemon 是改动前启动的（generation 7），按纪律未重启/未杀，故 `scripts/verify-newproj.mjs` 未对旧进程实跑；其 A5 行为已由 `test/fact-entries.test.mjs` 的临时 daemon 覆盖。
+- 无浏览器可用：插件总览隐身、故事源空态只做了纯函数/源码接线断言与端点直测，未做真浏览器点验。
+- 若 `views/runtimeShelf.mjs` 装载失败（文件缺失等异常），插件总览会退回原始清单（夹具可见）；boot 已 `await` 该模块，正常路径不会发生。
+```
+
 ## 验收记录（主 agent 填）

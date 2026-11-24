@@ -9,14 +9,14 @@
 |---|---|---|
 | S0 布局 | S0.1–S0.2 | 布局宪法（OS-140）：仓根 `.mjs` 恰好两个入口垫片 daemon.mjs/mcp.mjs，自持模块全部在 `src/` 六目录（host/api/protocol/kernel/modules/services）· 架构文档数字与实测一致（OS-150：ARCHITECTURE.md 生成段逐字比对 `scripts/arch-stats.mjs`，改了文件结构就跑 `npm run arch:stats` 回写，人不再手填） |
 | S1 Agentic | S1.1–S1.5 | MCP 工具覆盖五模块（读+写）· mcp/skills 文档同步 · skills/ 30 包完整 · dsh-cli 运行时 · 多 CLI 派发器 |
-| S2 可插拔 | S2.1–S2.5 | 模块间零 import（协议层 contracts/changelog/versionGate/plugins/pinaxAdapter 除外）· 前端模块隔离（md.mjs 渲染协议除外）· 契约驱动（endpointFor + validateResponse）· 内核唯一进口（src/ 模块＋垫片中仅 src/kernel/pinaxAdapter.mjs 可引 core/**，OS-125）· 来源防护闸常绿（OS-136：`test/originGuard.test.mjs` 钉死 Host/Origin/Sec-Fetch-Site 三道闸＋强制 JSON content-type，daemon 只服务本机回环，任意网页写不进）· 命名真源表一致（OS-148：页签层与 changelog 模块名都只从 `public/views/registry.mjs` 的 `NAMING_TABLE` 取） |
+| S2 可插拔 | S2.1–S2.5 | 模块间零 import（协议层 contracts/changelog/versionGate/plugins/pinaxAdapter 除外）· 前端模块隔离（自动扫描 `public/*.mjs`＋`public/views/*.mjs`，md.mjs/script.mjs 渲染协议除外；OS-150a）· 契约驱动（endpointFor + validateResponse）· 内核唯一进口（src/ 模块＋垫片中仅 src/kernel/pinaxAdapter.mjs 可引 core/**，OS-125）· 来源防护闸常绿（OS-136：`test/originGuard.test.mjs` 钉死 Host/Origin/Sec-Fetch-Site 三道闸＋强制 JSON content-type，daemon 只服务本机回环，任意网页写不进）· 命名真源表一致（OS-148：页签层与 changelog 模块名都只从 `public/views/registry.mjs` 的 `NAMING_TABLE` 取） |
 | S3 前端一致性 | S3.1–S3.3 | 裸色值零容忍（:root 令牌单一真源）· 浮层宪法（OS-48 不挤压正文）· 组件约定类齐备 |
-| S4 UX 跳转层级 | S4.1–S4.3 | 核心页签顶栏可达 · 关闭按钮两级约定（rm-x/page-close）· docs/UX-STRUCTURE.md 清单在 |
+| S4 UX 跳转层级 | S4.1–S4.3 | 核心页签顶栏可达（注册表 core:true 条目逐条验 label/render 注册名/scope；渲染块先剥注释，注释不许冒充已注册，OS-150a）· 关闭按钮两级约定（rm-x/page-close）· docs/UX-STRUCTURE.md 清单在 |
 
 ## 落地前四步
 
 ```bash
-# ① 单测门禁（529 例，OS-148 起含 test/naming.test.mjs 命名单一真源 5 例）
+# ① 单测门禁（537 例，OS-148 起含 test/naming.test.mjs 命名单一真源 7 例）
 node .zcode/run-gate.mjs
 
 # ② 交付标准门禁（S0–S4，Rea 式证据落盘）

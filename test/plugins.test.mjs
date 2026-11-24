@@ -15,6 +15,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { after, before, describe, it } from 'node:test'
 import { KIND_LABELS, PLUGIN_KINDS, listAllPlugins, listBlockedPlugins, pluginDetail, pluginHealth, suiteAssetPath } from '../src/protocol/plugins.mjs'
+import { startDaemon } from '../src/host/daemon.mjs'
 
 let base = ''
 
@@ -55,10 +56,10 @@ async function makeSkill(dir, name, extra = {}) {
 }
 
 /** 造一个最小 runtime kit 目录。 */
-async function makeKit(dir, id) {
+async function makeKit(dir, id, extra = {}) {
   const kitDir = join(dir, id)
   await mkdir(kitDir, { recursive: true })
-  const manifest = { schemaVersion: 'openstory-runtime-kit@1', id, name: id, version: '0.1.0', kind: 'endpoint', url: 'http://127.0.0.1:1' }
+  const manifest = { schemaVersion: 'openstory-runtime-kit@1', id, name: id, version: '0.1.0', kind: 'endpoint', url: 'http://127.0.0.1:1', ...extra }
   await writeFile(join(kitDir, 'manifest.json'), JSON.stringify(manifest, null, 2), 'utf-8')
   return kitDir
 }
@@ -123,6 +124,47 @@ describe('三套聚合', () => {
     assert.equal(suite.blocked, false)
     assert.equal(suite.blockedReason, '')
     assert.deepEqual(suite.missingDependencies, [])
+  })
+
+  it('运行时条目透传 fixture 标记（OS-150a：聚合层不许把夹具套件洗成产品套件）', async () => {
+    const root = join(base, 'fixture-flag')
+    const kits = join(root, 'kits')
+    await makeKit(kits, 'echo-kit', { fixture: true })
+    await makeKit(kits, 'cli-a')
+    const { byKind, plugins } = await listAllPlugins({ runtimesDirs: [kits] })
+    const echo = byKind.runtime.find((item) => item.id === 'echo-kit')
+    const normal = byKind.runtime.find((item) => item.id === 'cli-a')
+    assert.equal(echo.fixture, true, '夹具标记必须照实回传（渲染层据此隐身）')
+    assert.equal(normal.fixture, false, '缺省 fixture=false')
+    // 夹具套件在聚合层不删：测试与设置页之外的调用方仍看得见它
+    assert.equal(plugins.some((item) => item.kind === 'runtime' && item.id === 'echo-kit'), true)
+  })
+
+  it('/api/plugins 的运行时条目保留 fixture 标记（端点不洗字段，隐身只在渲染层做）', async () => {
+    const root = join(base, 'endpoint')
+    const kits = join(root, 'kits')
+    await makeKit(kits, 'echo-kit', { fixture: true })
+    await makeKit(kits, 'cli-a')
+    const daemon = await startDaemon({
+      port: 0,
+      runtimesDirs: [kits],
+      suitesDirs: [],
+      skillsDirs: [],
+      preferencesPath: join(root, 'next-preferences.json'),
+      env: { ...process.env, LOCALAPPDATA: root },
+      logger: { log() {} }
+    })
+    try {
+      const res = await fetch(`http://127.0.0.1:${daemon.port}/api/plugins`)
+      const payload = await res.json()
+      assert.equal(res.status, 200)
+      assert.equal(payload.ok, true)
+      const runtimes = payload.byKind.runtime
+      assert.equal(runtimes.find((item) => item.id === 'echo-kit')?.fixture, true)
+      assert.equal(runtimes.find((item) => item.id === 'cli-a')?.fixture, false)
+    } finally {
+      await daemon.close()
+    }
   })
 })
 

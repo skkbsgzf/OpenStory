@@ -23,6 +23,17 @@ export const STORY_LAYER_LABELS = Object.freeze({
   other: '其他'
 })
 
+/**
+ * 空库专用码（OS-150a）：/api/fact/entries 在库里还没有拆解条目时回这个码，
+ * 故事源页据此走引导性空态而不是错误条。码与文案的唯一出口在契约层
+ * （API_ERROR_CODES.FACT_EMPTY）；这里只做判定，页面不认字符串。
+ */
+export const FACT_EMPTY_CODE = 'FACT_EMPTY'
+
+export function isFactEmptyError(error) {
+  return error?.code === FACT_EMPTY_CODE
+}
+
 /** 章功能 → 张力基线（与 enrichEngine CHAPTER_FUNCTIONS 同表）。 */
 const FUNCTION_TENSION = Object.freeze({
   建立: 32, 铺垫: 40, 叠加: 62, 误导: 66, 打击: 82,

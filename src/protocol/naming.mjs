@@ -20,5 +20,6 @@ export {
   namingEntry,
   namingEntryForDir,
   logModuleForDir,
-  logModuleForView
+  logModuleForView,
+  PAGE_TO_DIR_LOCAL
 } from '../../public/views/registry.mjs'

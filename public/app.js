@@ -4649,7 +4649,7 @@ function pluginsOverviewHtml() {
       <p class="sub">清单读不了：${esc(bag.error)}</p>
       <p class="sub">套件、技能、Agent 运行时可以分别去各自那一节看——聚合失败不影响它们。</p></div>`
   }
-  const stats = bag.stats ?? { total: 0, enabled: 0, blocked: 0, byKind: {} }
+  const stats = runtimeShelf ? runtimeShelf.pluginOverviewStats(bag.byKind) : (bag.stats ?? { total: 0, enabled: 0, blocked: 0, byKind: {} })
   const kinds = ['suite', 'skill', 'runtime']
   const labels = { suite: '套件', skill: '技能', runtime: 'Agent 运行时' }
   const hints = {
@@ -4660,7 +4660,7 @@ function pluginsOverviewHtml() {
 
   // 每一类一块：标题 + 计数 + 条目行
   const blocks = kinds.map((kind) => {
-    const items = Array.isArray(bag.byKind?.[kind]) ? bag.byKind[kind] : []
+    const items = runtimeShelf ? runtimeShelf.pluginOverviewItems(bag.byKind, kind) : (Array.isArray(bag.byKind?.[kind]) ? bag.byKind[kind] : [])
     if (!items.length) {
       return `<div class="plug-block">
         <div class="plug-head"><b>${labels[kind]}</b><span>0</span></div>
@@ -7686,7 +7686,7 @@ async function loadFactViewData(force = false, nextBookId) {
       fv.total = 0
       fv.layers = {}
       fv.warnings = []
-      fv.entriesError = text(entriesPayload.__error?.message || entriesPayload.__error)
+      fv.entriesError = entriesPayload.__error
     } else {
       fv.entries = Array.isArray(entriesPayload?.entries) ? entriesPayload.entries : []
       fv.total = Number(entriesPayload?.total) || fv.entries.length
@@ -8114,8 +8114,8 @@ function factViewHtml() {
   if (fv.error && !fv.loaded) {
     return `<div class="doc-head">${headKick}<h1>故事源</h1></div>${flowError(fv.error)}`
   }
-  if (fv.entriesError) {
-    return `<div class="doc-head">${headKick}<h1>故事源</h1><div class="doc-meta"><span class="b">Fact 链</span><span>条目读不了</span></div></div>${flowError(`条目读不了：${fv.entriesError}`)}`
+  if (fv.entriesError && !ssModule.isFactEmptyError(fv.entriesError)) {
+    return `<div class="doc-head">${headKick}<h1>故事源</h1><div class="doc-meta"><span class="b">Fact 链</span><span>条目读不了</span></div></div>${flowError(`条目读不了：${text(fv.entriesError?.message || fv.entriesError)}`)}`
   }
   if (!fv.loaded) return `<div class="doc-head">${headKick}<h1>故事源</h1></div><div class="loading">…</div>`
   if (!fv.entries.length) {
@@ -9825,7 +9825,7 @@ function deduceEngineHtml() {
       ${sessHtml}
       <div class="ded-set-head">推演设置<span class="sub">POV / 种子 / 推进</span></div>
       ${controls}
-      ${moduleLogHtml('扮演', { title: '扮演修改记录', limit: 6 })}
+      ${moduleLogHtml(registryModule?.logModuleForView('deduce') ?? '', { title: '扮演修改记录', limit: 6 })}
     </div>`
 
   /* —— OS-84：非叙事流形态（Agent 表单／剧情树）——同一壳同一工具栏，只换内容区 —— */

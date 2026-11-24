@@ -12,6 +12,7 @@ import { mkdir, readFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { atomicWriteFile } from '../protocol/hostWrite.mjs'
+import { PAGE_TO_DIR_LOCAL } from '../protocol/naming.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 /** OS-140 布局归一：本模块迁到 src/services/——货架数据目录（genres/）仍在仓根。 */
@@ -266,17 +267,26 @@ export function deliverableLabel(deliverable) {
   return deliverable === 'novel' ? '小说' : deliverable === 'script' ? '剧本' : deliverable === 'comic' ? '漫画' : '游戏'
 }
 
-/** 页签裁剪：体裁 excludedPages ∩ 实际目录 → 允许出的目录清单。 */
-const PAGE_TO_DIR = Object.freeze({
-  write: '正文', entries: '世界书', worldbook: '世界书', outline: '大纲', notes: '构思',
-  material: '资料', dossier: '资料', constraint: '约束', script: '剧本', comic: '漫画',
-  video: '视频', experience: '体验', online: '联机', wiki: '世界书', wikiHtml: '世界书'
+/**
+ * 页签裁剪：体裁 excludedPages ∩ 实际目录 → 允许出的目录清单。
+ *
+ * OS-150a：表内四键（write/entries/worldbook/script）由命名表派生，不再抄第二份字面量。
+ * 下面这份残留只收「命名表里没有的概念」——退场目录（大纲/构思/资料/约束）与
+ * 非页签的体裁人话别名（漫画/视频/体验/联机/wiki）：
+ *   · 退场概念不入表：表驱动页签词表（DIR_LABELS/DIR_ORDER），退场条目一律在
+ *     TAB_REGISTRY 里留档并过滤，再加进 NAMING_TABLE 只会让词表多出无效行；
+ *   · wiki/wikiHtml 是「世界书」的两个旧键，属人话别名而非独立概念。
+ * 移除它们会改变既有体裁声明的裁剪结果（行为变更），按工单「去留逐个说明」保留。
+ */
+const PAGE_TO_DIR_RETIRED = Object.freeze({
+  outline: '大纲', notes: '构思', material: '资料', dossier: '资料', constraint: '约束',
+  comic: '漫画', video: '视频', experience: '体验', online: '联机', wiki: '世界书', wikiHtml: '世界书'
 })
 
 /** excludedPages（页签/人话名）→ 实际目录名集合 */
 export function excludedDirNames(genre) {
   const names = new Set()
-  for (const page of genre?.excludedPages ?? []) names.add(PAGE_TO_DIR[page] ?? page)
+  for (const page of genre?.excludedPages ?? []) names.add(PAGE_TO_DIR_LOCAL[page] ?? PAGE_TO_DIR_RETIRED[page] ?? page)
   return names
 }
 

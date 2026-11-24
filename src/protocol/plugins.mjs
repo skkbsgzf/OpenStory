@@ -42,6 +42,9 @@ function entry(kind, raw) {
     // sourceDetail 逐套件不同（只有 suite 有物理目录），缺了就是空对象——
     // 上层按 kind 判断要不要用，不要假设它一定完整
     sourceDetail: raw.sourceDetail && typeof raw.sourceDetail === 'object' ? raw.sourceDetail : {},
+    // OS-150a：运行时套件的夹具标记要照实透传（聚合层丢了它，设置页总览就会把
+    // echo-kit 这类测试夹具当产品套件摆出来）。其它种类的条目没有这个概念，不加字段。
+    ...(kind === 'runtime' ? { fixture: raw.fixture === true } : {}),
     // 这三项是可选的：workbuddy 那半（版本闸/依赖闸）落地后才会出现
     blocked: raw.blocked === true,
     blockedReason: text(raw.blockedReason),

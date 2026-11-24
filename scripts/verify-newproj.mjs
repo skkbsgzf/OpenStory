@@ -53,7 +53,7 @@ try {
   check('A4 世界书笔记可读', refA.data?.ok && (refA.data.notes || []).length === 1, `${refA.data?.notes?.length ?? 0} 篇 · fc=${refA.data?.notes?.[0]?.firstChapter}`)
 
   const entriesA = await get('/api/fact/entries?root=' + enc(rootA))
-  check('A5 无拆解时事实条目有明确响应', entriesA.data?.ok !== undefined, entriesA.data?.ok ? '空清单' : `明确报 ${entriesA.data?.error?.code}`)
+  check('A5 无拆解时事实条目有明确响应', entriesA.data?.ok === false && entriesA.data?.error?.code === 'FACT_EMPTY', entriesA.data?.ok ? '空清单' : `明确报 ${entriesA.data?.error?.code}`)
   const curveA = await get('/api/fact/curve?root=' + enc(rootA))
   check('A6 无拆解时曲线优雅', curveA.data?.ok !== undefined, curveA.data?.ok ? 'ok' : curveA.data?.error?.code)
   const graphA = await get('/api/reference/graph?root=' + enc(rootA))

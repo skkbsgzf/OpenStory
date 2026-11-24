@@ -149,6 +149,31 @@ test('fact/entries：显式指向坏档＝空条目＋warnings，不整体报错
   })
 })
 
+test('fact/entries：库里还没有拆解条目＝FACT_EMPTY（专用空态码，不是内部校验错误）', async () => {
+  const base = await mkdtemp(join(tmpdir(), 'os-fact-empty-'))
+  try {
+    const root = join(base, '空库')
+    await mkdir(join(root, '正文'), { recursive: true })
+    const preferencesPath = join(base, 'next-preferences.json')
+    await writeFile(preferencesPath, JSON.stringify({ recentProjects: [{ path: root, name: '空库' }] }), 'utf-8')
+    const daemon = await startDaemon({ port: 0, preferencesPath, env: { ...process.env, LOCALAPPDATA: base }, logger: { log() {} } })
+    try {
+      const res = await fetch(`http://127.0.0.1:${daemon.port}/api/fact/entries?root=${encodeURIComponent(root)}`)
+      const payload = await res.json()
+      assert.equal(res.status, 404)
+      assert.equal(payload.ok, false)
+      assert.equal(payload.error.code, 'FACT_EMPTY')
+      assert.equal(payload.error.message, '这个库还没有拆解条目')
+      // 不许再把「响应形状不符合契约」这类内部校验信息甩给页面
+      assert.equal(String(payload.error.message).includes('契约'), false)
+    } finally {
+      await daemon.close()
+    }
+  } finally {
+    await rm(base, { recursive: true, force: true })
+  }
+})
+
 test('fact/books：列出两本，好档带 revision/条目数/wiki 有无，坏档标 error', async () => {
   await withDaemon(async ({ get }) => {
     const { status, payload } = await get('/api/fact/books')

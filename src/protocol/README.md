@@ -35,7 +35,7 @@
 | `upstream.mjs` | 上游模型通道：chatCompleteViaUpstream/resolveUpstreamSafe/resolveChatUpstream | 模块层（turnProse） |
 | `worldbookContract.mjs` | 世界书文件契约 v2 `parseWorldbookEntryFile`（vendor 件本体不直引） | textUtil；护栏测试仍直引 vendor 本体 |
 | `modules.mjs` | 模块插件（OS-144）：manifest 装载/形状校验、端点归属 `MODULE_ENDPOINT_OWNERS`、启停唯一入口 `isModuleEnabled` / `isModuleDisabledFor`（ui-state `modules.enabled.<id>`） | daemon 路由停用闸、MCP 分析工具、API handler（扮演 AI 味闸） |
-| `naming.mjs` | 五层命名单一真源（OS-148）：`NAMING_TABLE` / `LOG_MODULES` / `namingEntry` / `logModuleForDir`（目录→日志模块名）等，**从 `public/views/registry.mjs` 原样 re-export** | 写通道（chapterWrite 的 moduleOfPath）、各模块写日志取 `LOG_MODULES`、推演会话目录名 |
+| `naming.mjs` | 五层命名单一真源（OS-148）：`NAMING_TABLE` / `LOG_MODULES` / `namingEntry` / `logModuleForDir`（目录→日志模块名）/ `PAGE_TO_DIR_LOCAL`（页签名→目录名，OS-150a 起 genres 也走这里），**从 `public/views/registry.mjs` 原样 re-export** | 写通道（chapterWrite 的 moduleOfPath）、各模块写日志取 `LOG_MODULES`、推演会话目录名、体裁裁剪（genres.excludedDirNames） |
 | `chapters.mjs` 等 | 各协议件本体（index.mjs 聚合它们的导出） | 协议层内部与 API/宿主层 |
 
 ## 版本约定

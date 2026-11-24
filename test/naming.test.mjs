@@ -182,3 +182,41 @@ test('单一来源：后端只 re-export（不复制表），app.js 的视图→
     assert.ok(!fnBody.includes(`'${name}'`), `moduleOfCurrentView 里不该再有 '${name}' 字面量`)
   }
 })
+
+/* ---------- ⑤ 页签名→目录名：src/ 只许从表派生（OS-150a） ---------- */
+
+test('OS-150a：src/ 里页签名→目录名只从命名表派生（genres 不再抄第二份；残留键是显式台账）', () => {
+  const genres = readFileSync(join(REPO, 'src/services/genres.mjs'), 'utf-8')
+  assert.match(genres, /import \{ PAGE_TO_DIR_LOCAL \} from '\.\.\/protocol\/naming\.mjs'/u,
+    'genres.mjs 必须经 protocol/naming.mjs 取表')
+  assert.match(genres, /PAGE_TO_DIR_LOCAL\[page\]/u, 'excludedPages 的目录解析必须走表')
+  // 表内四键的字面量对不许在 src/ 里凑成第二份「页签名→目录名」映射：
+  //   · 一张映射至少命中两对，或变量名就叫 *PAGE_TO_DIR*（命中一对也算）；
+  //   · 单点命中不算——如 projectDoc.mjs 的 dataDirs:{script:'剧本'} 是 pinax 载体清单的
+  //     数据目录键，不是页签名映射（值与 vendor 清单逐字一致，不归命名表管）。
+  const tablePairs = Object.entries(PAGE_TO_DIR_LOCAL).map(([page, dir]) => `${page}: '${dir}'`)
+  const offenders = []
+  for (const { rel, src } of walkMjs('src')) {
+    const hits = tablePairs.filter((pair) => src.includes(pair))
+    if (hits.length >= 2 || (hits.length >= 1 && /(?:const|let|var)\s+\w*PAGE_TO_DIR\w*\s*=/u.test(src))) {
+      offenders.push(`${rel} → ${hits.join(' / ')}`)
+    }
+  }
+  assert.deepEqual(offenders, [], '页签名→目录名只许从命名表派生，不许另抄一份')
+  // 表里没有的概念（退场目录/人话别名）只许待在这份显式台账里；新增键＝改这里并说明去留
+  const residual = (genres.match(/const PAGE_TO_DIR_RETIRED = Object\.freeze\(\{([\s\S]*?)\}\)/u) || [])[1] || ''
+  const residualKeys = [...residual.matchAll(/([A-Za-z]\w*):\s*'([^']+)'/gu)].map((match) => match[1]).sort()
+  assert.deepEqual(residualKeys, [
+    'comic', 'constraint', 'dossier', 'experience', 'material', 'notes', 'online', 'outline', 'video', 'wiki', 'wikiHtml'
+  ], '残留映射是显式台账——新增「页签名→目录名」键要在这里登记并在交付说明写去留')
+})
+
+/* ---------- ⑥ 扮演页读自己的日志（OS-150a） ---------- */
+
+test('OS-150a：扮演页的「本模块修改」查的是推演模块（取表，不写死）', () => {
+  assert.equal(logModuleForView('deduce'), '推演')
+  const appSrc = readFileSync(join(REPO, 'public/app.js'), 'utf-8')
+  assert.doesNotMatch(appSrc, /moduleLogHtml\('扮演'/u, '扮演页不许写死一个不存在的日志模块名')
+  assert.match(appSrc, /moduleLogHtml\(registryModule\?\.logModuleForView\('deduce'\)/u,
+    '扮演页的日志模块名必须经注册表 logModuleForView 取')
+})

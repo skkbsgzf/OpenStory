@@ -15,6 +15,8 @@ import { builtinRuntimesDir, loadRuntimeKits, normalizeRuntimeKit } from '../src
 import {
   RUNTIME_SHELF_GROUPS,
   isFixtureRuntime,
+  pluginOverviewItems,
+  pluginOverviewStats,
   runtimeKitsByCategory,
   selectableRuntimeKits,
   visibleRuntimeKits
@@ -99,4 +101,21 @@ test('接线：app.js 的货架与下拉都走 views/runtimeShelf.mjs（不内�
   assert.match(src, /import\('\.\/views\/runtimeShelf\.mjs'\)/u)
   assert.match(src, /runtimeShelf\?\.runtimeKitsByCategory\(/u, '设置页货架走纯函数')
   assert.match(src, /runtimeShelf\?\.selectableRuntimeKits\(/u, 'Agent 运行时下拉走纯函数')
+  assert.match(src, /runtimeShelf \? runtimeShelf\.pluginOverviewItems\(bag\.byKind, kind\)/u, '插件总览的渲染数据走同一个过滤纯函数')
+})
+
+test('OS-150a：插件总览的运行时分组不含夹具套件，套件/技能原样', () => {
+  const suite = { kind: 'suite', id: 'novel' }
+  const skill = { kind: 'skill', id: 'craft' }
+  const echo = { kind: 'runtime', id: 'echo-kit', name: '回声参考套件', fixture: true }
+  const cli = { kind: 'runtime', id: 'cli-a', name: 'CLI', fixture: false }
+  const byKind = { suite: [suite], skill: [skill], runtime: [echo, cli] }
+  assert.deepEqual(pluginOverviewItems(byKind, 'runtime').map((item) => item.id), ['cli-a'])
+  assert.deepEqual(pluginOverviewItems(byKind, 'suite'), [suite], '套件不过滤')
+  assert.deepEqual(pluginOverviewItems(byKind, 'skill'), [skill], '技能不过滤')
+  assert.deepEqual(pluginOverviewItems(null, 'runtime'), [], 'byKind 缺失＝空清单，不抛')
+  assert.deepEqual(pluginOverviewItems({ runtime: 'nope' }, 'runtime'), [], '非数组＝空清单')
+  // 顶部汇总也按过滤后的三组重数（服务端 stats 含夹具，页面不直接用）
+  assert.deepEqual(pluginOverviewStats(byKind), { total: 3, enabled: 3, blocked: 0 })
+  assert.deepEqual(pluginOverviewStats(null), { total: 0, enabled: 0, blocked: 0 })
 })

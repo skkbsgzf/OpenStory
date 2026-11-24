@@ -45,7 +45,9 @@ export const API_ERROR_CODES = Object.freeze({
   // 来源防护（OS-136）：带 body 的请求必须 content-type: application/json（允许 charset 后缀），否则 400
   UNSUPPORTED_MEDIA_TYPE: 'UNSUPPORTED_MEDIA_TYPE',
   // 模块插件（OS-144）：独占端点所属模块被作者停用——数据与值保留，重新启用即恢复
-  MODULE_DISABLED: 'MODULE_DISABLED'
+  MODULE_DISABLED: 'MODULE_DISABLED',
+  // 故事源（OS-150a）：库里还没有任何拆解条目——合法空态，不是坏档
+  FACT_EMPTY: 'FACT_EMPTY'
 })
 
 /** 101 个端点的形状合同（OS-130 起按域分片，这里聚合；`path` 不含 query，query 字段在 request.query 里单列）。 */

@@ -40,3 +40,23 @@ export function runtimeKitsByCategory(list, category) {
 export function selectableRuntimeKits(list) {
   return visibleRuntimeKits(list).filter((kit) => Boolean(kit?.id))
 }
+
+/**
+ * 插件总览（OS-120）的一组条目（OS-150a）：运行时那一组先剔夹具套件，
+ * 套件/技能原样返回（非数组＝空清单）。判定只有一个来源——上面的 visibleRuntimeKits，
+ * 不许在渲染处另写一份过滤。
+ */
+export function pluginOverviewItems(byKind, kind) {
+  const list = byKind?.[kind]
+  return kind === 'runtime' ? visibleRuntimeKits(list) : (Array.isArray(list) ? list : [])
+}
+
+/** 插件总览顶部的汇总（OS-150a）：从过滤后的三组重新数，服务端 stats 仍含夹具套件，页面不直接用。 */
+export function pluginOverviewStats(byKind) {
+  const items = ['suite', 'skill', 'runtime'].flatMap((kind) => pluginOverviewItems(byKind, kind))
+  return {
+    total: items.length,
+    enabled: items.filter((item) => item.enabled !== false).length,
+    blocked: items.filter((item) => item.blocked === true).length
+  }
+}
