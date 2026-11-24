@@ -70,4 +70,37 @@
 
 ## 施工回报（编排器自动归档）
 
+> 模型 deepseek-v4.1-flash · 第 1 轮 · 测试 绿（tests 529 · pass 527 · fail 0 · skip 2） · 门禁 绿 · 水浒 绿 · 新建 绿 · vendor 未动 · daemon 在跑
+
+```text
+CHANGED:
+- `runtimes/echo-kit/manifest.json`（加 `"fixture": true`；未改名/未移动/未删除）
+- `src/services/runtimes.mjs`（`normalizeRuntimeKit` 识别可选 `fixture`：只收布尔，缺省 false，输出 `fixture` 字段）
+- `src/api/handlers/agent.mjs`（`/api/agent/runtimes` 的每条 kit 照实回传 `fixture`）
+- `public/views/runtimeShelf.mjs`（新增：`RUNTIME_SHELF_GROUPS`／`isFixtureRuntime`／`visibleRuntimeKits`／`runtimeKitsByCategory`／`selectableRuntimeKits`，零 import 纯函数）
+- `public/app.js`（只接线：动态 import 货架模块；设置页货架走 `runtimeKitsByCategory`、运行时下拉走 `selectableRuntimeKits`；boot 里 `Promise.all([registryReady, runtimeShelfReady])`。12472 → 12471 行，净减 1）
+- `tools/acceptance/acceptance.mjs`（S4.1 改为注册表真实检查：`core:true` 且未退场条目逐条验 label 出在 `computeTabDefs` 推导结果、render 名在 `VIEW_RENDERERS` 有键、`viewScope(view) !== null`；检查文字列出真实页签名）
+- `test/runtimeShelf.test.mjs`（新增 6 例：fixture 形状闸／内置 echo-kit 仍装载且标 fixture／可见清单过滤／分组过滤／三组声明／app.js 接线）
+- `AGENTS.md`（第 10 条落盘表补「推演/ 容器」一行：session.json／sessions/<sid>.json／active.json／归档/第N章.md／导出/会话-<sid>-<ts>.md／素材/{角色,场景,bgm}/*，并注明引擎态在 `.openstory/deduce/`）
+
+VERIFIED:
+- `node --check`：`public/app.js`、`public/views/runtimeShelf.mjs`、`src/services/runtimes.mjs`、`src/api/handlers/agent.mjs`、`tools/acceptance/acceptance.mjs` 均通过
+- `node --test test/runtimeShelf.test.mjs` → 6/6 通过
+- `node --test test/*.test.mjs` → 529 例，527 通过 / 0 失败 / 2 跳过（既有跳过项）
+- `node tools/acceptance/acceptance.mjs` → 17 过 / 0 挂 / 0 警；S4.1 现输出：`核心模块页签顶栏可达（产物/正文/世界书/剧本/故事源/扮演；注册表 core:true 共 6 条） — 页签名/渲染注册名/作用域三项均由注册表实测`
+- 反证（已改回）：把 `write` 条目的 `render` 临时改成 `'writeHtmlGone'`，门禁变红：
+  '''
+  ✗ [S4.1] 核心模块页签顶栏可达（产物/正文/世界书/剧本/故事源/扮演；注册表 core:true 共 6 条） — 未接通：正文[render未注册(writeHtmlGone)]
+      · public/views/registry.mjs「正文」→ render:writeHtmlGone（未注册）
+  '''
+  改回后 `grep -c "render: 'writeHtml'"` 为 1，门禁恢复全绿
+- 行数：`wc -l public/app.js` → 12471（工单写 12,477，实到仓时基线为 12472）
+
+LIMITATIONS:
+- 「习惯」页签未加入 `core:true` 可达面（注册表里它是 `kind:'dir'` 的目录型页签，走 dirScan 物化）。按工单要求未自行改注册表 `core` 标记，仅在此说明：若作者要它进顶栏可达面，需单独改注册表并同步 S4.1 的合成库目录清单。
+- 「浏览器里设置 → 引擎与存储 不再出现回声参考套件」这条只做了纯函数覆盖＋app.js 接线断言，未做真浏览器验证（本环境无浏览器），留给主 agent 验收。
+- `app.js` 的货架分组在 `runtimeShelf` 模块尚未装载时会退化为空分组（boot 已 `await` 该模块，正常路径不会发生；模块加载失败时只打 console.error，不抛出）。
+- 未改 `public/index.html` 的 `app.js?v=98` 版本号（不在工单要求内）；若浏览器缓存旧 `app.js`，验收时请硬刷新。
+```
+
 ## 验收记录（主 agent 填）

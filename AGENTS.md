@@ -88,6 +88,7 @@ L4 自持层→L3 pinaxAdapter→L2 core/pinax 24 文件→L1 磁盘库）。
    | 正文/剧本/参考/世界书等稿件 | `<库>/<业务目录>/*.md` |
    | 未保存的编辑草稿（作者正在写、还没提交） | `<库>/.pinax/drafts/<模块>/<id>.json` |
    | 推演中未被采纳的拍/会话 | `<库>/.openstory/deduce/<bookId>.json` |
+   | 推演/ 容器（扮演页的会话／归档／导出／素材） | `<库>/推演/<bookId>/session.json`（主线）＋`sessions/<sid>.json`（多局）＋`active.json`（激活指针）／`归档/第N章.md`／`导出/会话-<sid>-<ts>.md`／`素材/{角色,场景,bgm}/*`；引擎态另在 `<库>/.openstory/deduce/<bookId>.json`（多局 `<bookId>@<sid>.json`） |
    | 界面状态（页签、模块开关、选中项） | `<库>/.pinax/ui-state.json` |
    | 每一版修改的 diff 与日志 | `<库>/.pinax/log/<模块>/<yyyy-mm>.jsonl` |
    | 旧版原文备份（二进制快照） | 同目录 `.history/<file>.bak-<stamp>`（现有机制，保留；OS-137 起滚动保留：每文件配额 50 份＋日锚，绝不删最新，删除留痕 `.pinax/log/history-prune/`） |

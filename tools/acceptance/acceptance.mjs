@@ -22,7 +22,7 @@
 import { readFileSync, readdirSync, statSync, writeFileSync, mkdirSync } from 'node:fs'
 import { join, dirname, relative, resolve as pathResolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { NAMING_TABLE, TAB_REGISTRY, LOG_MODULES } from '../../public/views/registry.mjs'
+import { NAMING_TABLE, TAB_REGISTRY, LOG_MODULES, computeTabDefs, viewScope } from '../../public/views/registry.mjs'
 
 const REPO = pathResolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
 
@@ -410,11 +410,31 @@ check('S3.3', 'S3', '统一组件约定类在样式表有定义（surface-card/r
 console.log('\n── S4 UX 跳转层级 ──')
 
 const appJs = readRepo('public/app.js')
-// S4.1 顶部页签可达性：核心模块页签常驻顶栏
-const CORE_TABS = ['正文', '世界书', '习惯', '拆解', '推演', '参考']
-const tabMiss = CORE_TABS.filter((t) => !appJs.includes(t) && !html.includes(t))
-check('S4.1', 'S4', `核心模块页签顶栏可达（${CORE_TABS.join('/')}）`,
-  tabMiss.length === 0, [], tabMiss.length ? `缺页签：${tabMiss.join(', ')}` : '')
+// S4.1 顶部页签可达性（OS-149 改强）：注册表 core:true 且未退场的条目必须三项全通——
+//   a) label 真的出现在 computeTabDefs 的推导结果里（注册表即页签名真源，不读源码文本）；
+//   b) render 注册名在 app.js 的 VIEW_RENDERERS 有键（装配缺口＝views 里有名字、壳里没函数）；
+//   c) viewScope(view) 有作用域（go() 不会把它判成非法视图）。
+const coreEntries = TAB_REGISTRY.filter((entry) => entry.core === true && !entry.retired)
+const coreLabels = coreEntries.map((entry) => entry.label)
+const tabBarCtx = { current: { path: '验收锚点' }, libDirs: ['正文', '参考', '世界书', '剧本', '拆解', '日志'], brief: null, briefGenre: null, settingsOpen: true }
+const tabBarLabels = new Set(computeTabDefs(tabBarCtx).map((def) => def.label))
+// app.js 的 VIEW_RENDERERS 是速记对象（键＝值）；只认块内的裸标识符 token
+const rendererBlock = (appJs.match(/const VIEW_RENDERERS = \{([\s\S]*?)\}/) || [])[1] || ''
+const rendererKeys = new Set(rendererBlock.split(/[,\s]+/).map((token) => token.trim())
+  .filter((token) => /^[A-Za-z_$][\w$]*$/u.test(token)))
+const s41Gaps = coreEntries.map((entry) => {
+  const miss = []
+  if (!entry.label) miss.push('无label')
+  else if (!tabBarLabels.has(entry.label)) miss.push('不在页签栏')
+  if (!rendererKeys.has(entry.render)) miss.push(`render未注册(${entry.render})`)
+  if (viewScope(entry.view) === null) miss.push('scope为null')
+  return { label: entry.label ?? entry.id, miss }
+})
+const s41Bad = s41Gaps.filter((gap) => gap.miss.length > 0)
+check('S4.1', 'S4', `核心模块页签顶栏可达（${coreLabels.join('/')}；注册表 core:true 共 ${coreEntries.length} 条）`,
+  coreEntries.length >= 4 && s41Bad.length === 0,
+  coreEntries.map((entry) => `public/views/registry.mjs「${entry.label}」→ render:${entry.render}${rendererKeys.has(entry.render) ? '' : '（未注册）'}`),
+  s41Bad.length ? `未接通：${s41Bad.map((gap) => `${gap.label}[${gap.miss.join('+')}]`).join(', ')}` : '页签名/渲染注册名/作用域三项均由注册表实测')
 
 // S4.2 关闭按钮统一：模块卡关闭走 rm-x；整页关闭 page-close 是合法家族（docs/UX-STRUCTURE.md §三）
 const rmXUses = (appJs.match(/rm-x/g) || []).length

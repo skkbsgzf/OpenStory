@@ -152,6 +152,10 @@ const settingsAggregationReady = import('./views/settingsAggregation.mjs').then(
   return mod
 }).catch((error) => { console.error('[settings] 设置聚合模块加载失败', error); return null })
 
+/* OS-149：运行时货架过滤（views/runtimeShelf.mjs）——fixture 套件不进作者可见列表；纯函数在 views/，这里只接线 */
+let runtimeShelf = null
+const runtimeShelfReady = import('./views/runtimeShelf.mjs').then((mod) => { runtimeShelf = mod; return mod }).catch((error) => { console.error('[runtimes] 运行时货架模块加载失败', error); return null })
+
 /* OS-147：正文章节清单加载状态机（纯函数在 views/chapterLoad.mjs）——首帧占位必须由本次加载自己收口 */
 const chapterLoadReady = import('./views/chapterLoad.mjs').catch((error) => { console.error('[chapters] 章节加载状态机没装上', error); return null })
 
@@ -3641,13 +3645,8 @@ function runtimeCard(runtime) {
 }
 
 function settingsRuntimeSectionHtml() {
-  const groups = [
-    { key: 'native', label: '原生 / 套件' },
-    { key: 'dsh', label: 'DSH 原生' },
-    { key: 'cli', label: 'CLI 服务（嫁接）' }
-  ]
-  const runtimeCards = groups.map((group) => {
-    const items = (agent.runtimeList || []).filter((runtime) => (runtime.category ?? 'native') === group.key)
+  const runtimeCards = (runtimeShelf?.RUNTIME_SHELF_GROUPS ?? []).map((group) => {
+    const items = runtimeShelf?.runtimeKitsByCategory(agent.runtimeList, group.key) ?? []
     if (items.length === 0) return ''
     return `<div class="runtime-group"><div class="runtime-group-head">${esc(group.label)}</div><div class="big-opts">${items.map(runtimeCard).join('')}</div></div>`
   }).join('')
@@ -3801,7 +3800,7 @@ function settingsModelsSectionHtml() {
 
   const runtimeOptions = [
     `<option value=""${runtime ? '' : ' selected'}>Pi（默认兜底）</option>`,
-    ...(agent.runtimeList || []).filter((item) => item.id).map((item) => `<option value="${esc(item.id)}"${item.id === runtime ? ' selected' : ''}>${esc(item.name)}${item.source ? `（${esc(item.source)}）` : ''}</option>`)
+    ...(runtimeShelf?.selectableRuntimeKits(agent.runtimeList) ?? []).map((item) => `<option value="${esc(item.id)}"${item.id === runtime ? ' selected' : ''}>${esc(item.name)}${item.source ? `（${esc(item.source)}）` : ''}</option>`)
   ].join('')
 
   const runtimeKind = settingRuntimeKind(runtime)
@@ -10132,7 +10131,7 @@ function deduceAgentHtml() {
 /* ---------- 数据加载 ---------- */
 
 async function boot() {
-  await registryReady // OS-143：注册表先就位——首帧起 renderTabs/go/openTabAdd 全由它驱动
+  await Promise.all([registryReady, runtimeShelfReady]) // OS-143/149：注册表与运行时货架先就位（首帧起页签全部由注册表驱动）
   applyTypography()   // OS-91：无库时也先套默认字号档，避免首帧跳变
   applyAgentCollapse() // OS-103
   // 运行时清单与 config 一起拉：chip 要能显示「DSH 原生」这类具体名字，不能等进设置页才加载

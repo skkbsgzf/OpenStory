@@ -96,6 +96,8 @@ export async function agentRuntimesGet(ctx) {
           ? (probeResult.installed ? 'ready' : 'missing')
           : 'ready',
       description: kit.description,
+      // OS-149（G8e）：夹具标记照实回传——货架清单不隐瞒，前端各自决定要不要露给作者
+      fixture: kit.fixture === true,
       // OS-74：CLI kit 的模型清单透传给设置页（下拉选项来源）
       ...(Array.isArray(kit.models) && kit.models.length ? { models: kit.models } : {}),
       ...(kit.defaultModel ? { defaultModel: kit.defaultModel } : {}),

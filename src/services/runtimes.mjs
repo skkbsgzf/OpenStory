@@ -57,6 +57,8 @@ export function normalizeRuntimeKit(raw, { source, dir, appVersion } = {}) {
   if (!['sidecar', 'endpoint', 'cli', 'dsh'].includes(kind)) return bad('RUNTIME_KIT_KIND', 'kind 只许 sidecar/endpoint/cli/dsh')
   const category = text(raw.category).trim() || (kind === 'cli' ? 'cli' : 'native')
   if (category !== 'native' && category !== 'cli' && category !== 'dsh') return bad('RUNTIME_KIT_CATEGORY', 'category 只许 native/cli/dsh')
+  // OS-149（G8e）：fixture＝测试夹具/参考骨架，不是产品功能——缺省 false，只收布尔
+  if (raw.fixture !== undefined && typeof raw.fixture !== 'boolean') return bad('RUNTIME_KIT_FIXTURE', 'fixture 只许布尔')
   const chatPath = raw.chatPath ? text(raw.chatPath).trim() : DEFAULT_CHAT_PATH
   if (!validChatPath(chatPath)) return bad('RUNTIME_KIT_CHAT_PATH', 'chatPath 必须是站内绝对路径（无查询串/逃逸）')
   const healthPath = raw.healthPath ? text(raw.healthPath).trim() : DEFAULT_HEALTH_PATH
@@ -73,7 +75,8 @@ export function normalizeRuntimeKit(raw, { source, dir, appVersion } = {}) {
     healthPath,
     model: text(raw.model).trim(),
     apiKey: text(raw.apiKey).trim(),
-    category
+    category,
+    fixture: raw.fixture === true
   }
   if (kind === 'sidecar') {
     const command = raw.command && typeof raw.command === 'object' ? raw.command : null
