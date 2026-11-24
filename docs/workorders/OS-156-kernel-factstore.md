@@ -71,4 +71,20 @@
 
 ## 施工回报（编排器自动归档）
 
+> 模型 deepseek-v4.1-flash · 第 2 轮（**编排器报「门禁 2 轮后仍红，未提交」**：唯一红项是 S0.2——施工方没跑 `npm run arch:stats` 回写文档；主 agent 回写后门禁转绿并亲自提交 `ae01987`）
+
+```text
+
+```
+
 ## 验收记录（主 agent 填）
+
+- **停线原因**：门禁 2 轮后红，唯一失败项 **S0.2「架构文档数字与实测一致」**——施工方按工单应跑 `npm run arch:stats` 回写却没跑（不是代码问题）。主 agent 回写后门禁 **19 过 / 0 挂**，亲自提交 `ae01987`。
+- 主 agent 亲验（本步是**最后一块**，逐条核）：
+  ① **`core/pinax` 已归零**：`find core/pinax -type f` = 0；`core/` 顶层只剩 `VENDORED.md` 与 `.vendored-manifest.json`（它们的退役在 OS-157）。
+  ② 全仓 `grep -rn "core/pinax" src test tools` 只剩注释与历史说明（无 import）。
+  ③ **金样照绿**：`decoupleStep2` 7/7（建库逐字段冻结）、`decoupleStep3` 9/9（五组出口）；写协议直测 `factWriteProtocol` 7/7；`hostWrite` 6/6；`libraryManage` 7/7。
+  ④ 全量测试 **598 例**（596 过 / 2 条件跳过，基线 591 → 598）；验收 19/19；水浒 10/10；新建 13/13；`vendor:check` 退出 0。
+  ⑤ `src/kernel/fact/factFileStore.mjs` 已就位（756 行平移，逻辑未改）。
+- 教训（可复用）：**施工方最容易漏的就是「改完跑 arch:stats 回写文档」**——后续工单在验收段里把它写成硬性最后一步，并在门禁说明里点明「S0.2 红了就是这个」。
+- 结论：**已验收**。
