@@ -388,7 +388,7 @@ src/protocol/factDomain.mjs    ← 新建：domain 原语＋factPack 的协议�
 | 项 | 处置 | 证据 |
 |---|---|---|
 | 表名 `NEXT_ERROR_CODES` | **改** `KERNEL_ERROR_CODES` | 纯内部（§4.2） |
-| 值 `'PINAX_INVALID_INPUT'` 等 26 个字符串 | **要改**（作者 2026-11-24 裁定；两步走见 §4.5） | 它们是 `/api` 响应的 `code`（`handlers/fact.mjs:737`）；被 `chapterWrite.mjs:165`、`libraryManage.mjs:116` 用 `^PINAX_` 解析；被 `test/decoupleStep3.test.mjs:112,119,136`、`factEntriesImport.test.mjs:183`、`contracts.test.mjs:263` 逐字锁死 |
+| 值 `'PINAX_INVALID_INPUT'` 等 25 个字符串 | **要改**（作者 2026-11-24 裁定；两步走见 §4.5） | 它们是 `/api` 响应的 `code`（`handlers/fact.mjs:737`）；被 `chapterWrite.mjs:165`、`libraryManage.mjs:116` 用 `^PINAX_` 解析；被 `test/decoupleStep3.test.mjs:112,119,136`、`factEntriesImport.test.mjs:183`、`contracts.test.mjs:263` 逐字锁死 |
 | 端口码 `OPERATION_ID_REQUIRED`／`VALIDATION_FAILED`／`REVISION_MISMATCH`／`NOT_FOUND` | 不改 | 本来就不是谱系名 |
 
 > 与工单原文的冲突已登记 §9-1。若作者坚持「品牌要干净」，唯一安全路径是**另立工单**：
@@ -512,8 +512,8 @@ OS-156 写协议 ─────→ OS-157（core 清空）
 |---|---|
 | 迁 | `errors.mjs`→`src/kernel/errors.mjs`；`atomicWrite.mjs`→`src/kernel/atomicWrite.mjs`；`fsDurability.mjs`→`src/kernel/fsDurability.mjs`（**复制**，core 原件保留） |
 | 改 import | `atomicWrite` 的 `../../electron/projects/fsDurability.mjs`→`./fsDurability.mjs`；adapter `:41-44` 改指新位置 |
-| 不改 | `core/factFileStore.mjs:5` 仍引 core 的 errors；`hostWrite`／`kernelPlumber` 仍经 adapter（它们不知道实现换了） |
-| 新增测试 | `test/kernelPlumber.test.mjs`：① 码表 26 个**值**逐字锁定（防改名顺手改值）；② 未知码回落 `PINAX_INVALID_INPUT`；③ `writeFileAtomic` 失败清场＋`recoverInterruptedWrites` 回收 `.pinax-tmp-*`；④ `syncDirectory` 对 `EINVAL/ENOTSUP/EISDIR/win32 EPERM` 免疫、真错照抛 |
+| 不改 | `core/factFileStore.mjs:5` 仍引 core 的 errors；**`hostWrite`／`kernelPlumber` 改为直取 `src/kernel/`（OS-152 施工时采纳的直接指向；原设计写「仍经 adapter」，实际做成了直取，更干净）** |
+| 新增测试 | `test/kernelPlumber.test.mjs`：① 码表 25 个**值**逐字锁定（防改名顺手改值）；② 未知码回落 `PINAX_INVALID_INPUT`；③ `writeFileAtomic` 失败清场＋`recoverInterruptedWrites` 回收 `.pinax-tmp-*`；④ `syncDirectory` 对 `EINVAL/ENOTSUP/EISDIR/win32 EPERM` 免疫、真错照抛 |
 | 红线测试 | `test/hostWrite.test.mjs`（原子性＋二进制分支）、`test/changelog.test.mjs`、`test/historyRetention.test.mjs`、`test/decoupleStep3.test.mjs:112-137` |
 | vendor 清单 | 0 项除名（工单原文写 2 项——影子迁移下做不到，见 §0.3-1；core 原件仍在供 `factFileStore` 用） |
 | 回滚 | 一个提交，`git revert` 即回到 adapter 直引 core |

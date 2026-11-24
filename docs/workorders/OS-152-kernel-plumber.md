@@ -106,3 +106,13 @@ LIMITATIONS:
 ```
 
 ## 验收记录（主 agent 填）
+
+- 2026-11-24 编排器五道门禁全绿（560 例、19 项、水浒 10/10、新建 13/13、vendor 未动、daemon 重启闸生效）；四条红线测试逐个绿（hostWrite 7／decoupleStep3 8／changelog 19／historyRetention 7）；无越界。
+- 主 agent 亲验：
+  ① **码值逐字未变**——脚本对 `core/pinax/next/kernel/errors.mjs` 与 `src/kernel/errors.mjs` 的键值做字典对比，25 条全部相同；表名已改 `KERNEL_ERROR_CODES`。
+  ② `core/pinax` 仍是 **24 文件 / 4,332 行**（影子迁移，本步不删 core）。
+  ③ S2.4「内核唯一进口」仍绿（`src/kernel/pinaxAdapter.mjs` 仍是唯一 import `core/**` 的文件）。
+  ④ 三件行数核对：errors 55 ＋ atomicWrite 48 ＋ fsDurability 20 ＝ 123 行，与设计稿一致。
+- 设计稿据实勘误了两处（已提交）：码值是 **25** 个不是 26 个；`hostWrite`／`kernelPlumber` 实际改为直取 `src/kernel/`（比原设计「仍经 adapter」更干净）。
+- 发现两处**待后续收紧**（已并入 OS-153 的任务）：S2.4 的 `KERNEL_GATEWAY_ALLOW` 仍登记着 `hostWrite`／`kernelPlumber` 两条——它们已不再直引 core，允许清单该删（门禁只许更严）；`src/protocol/README.md` 仍写「经 adapter 转供」的旧口径。
+- 结论：**已验收**。
