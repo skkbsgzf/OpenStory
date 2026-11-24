@@ -111,3 +111,11 @@ LIMITATIONS:
 ```
 
 ## 验收记录（主 agent 填）
+
+- 2026-11-24 编排器五道门禁全绿（582 例、19 项、水浒 10/10、新建 13/13、vendor 未动、daemon 重启闸生效）；四条红线测试全绿（fact-curve 2／kernelFactDomain 13／kernelPlumber 13／decoupleStep3 8）；无越界。
+- 主 agent 亲验（本步是第一次真删 core 文件，逐条核）：
+  ① `core/pinax` 已从 **24 文件 / 4,332 行** 降到 **22 文件 / 3,980 行**（删掉的 74＋278＝352 行正是两个 enrich 原件）；`core/pinax/next/fact/usecases/enrich/` 目录已不存在。
+  ② 自有副本已就位：`src/kernel/enrich/{pseudoChapters,metrics}.mjs`、`src/kernel/fact/{wikiDerive,factPack}.mjs`。
+  ③ `core/.vendored-manifest.json` 已不含任何 enrich 条目（清单登记路径 23 条），`node scripts/vendor-drift.mjs check` 退出 0。
+  ④ 伪章公式合并按工单顺序执行：先有「`wikiDerive` 与 `enrich/pseudoChapters` 同值」的断言（`test/kernelEnrich.test.mjs` ②），再删重复；边界覆盖 0／1／恰好 2200／4-12 两端／超大。
+- 结论：**已验收**。
