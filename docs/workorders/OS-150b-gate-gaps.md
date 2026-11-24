@@ -112,3 +112,11 @@ LIMITATIONS:
 ```
 
 ## 验收记录（主 agent 填）
+
+- 2026-11-24 编排器五道门禁全绿（547 例、19 项、水浒 10/10、新建 13/13、vendor 未动）；**门禁汇总里出现「daemon 已重启（OS-150b 改了后端）」——本轮新加的 daemon 重启闸首次生效**；红线测试 naming 7/7、tabRegistry 12/12、storySourceStates 3/3；无越界。
+- 亲验四条：
+  ① `tools/acceptance/acceptance.mjs` 已改用与 S2.1 同一份扫描器（`./importScan.mjs`），静态 from／动态 `import()`／副作用 import／单双引号全覆盖；门禁 18 → 19 项。
+  ② `FACT_UNREADABLE`（拆解档读不出来）与 `FACT_EMPTY`（还没有条目）已分开登记进契约与 errors 表；`test/storySourceStates.test.mjs` 3 例钉住「两种码互不串分支」「细节逐本带上」。
+  ③ `agentRuntimePut` 拒收 `fixture: true` 的套件（新码 `AGENT_RUNTIME_FIXTURE`），Agent 栏 chip 对夹具降级显示。
+  ④ 豁免改为按边登记（`scriptFact → script.mjs` 一条），未登记的边会红。
+- 结论：**已验收**。段 A 至此全部收口。
