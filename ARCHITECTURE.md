@@ -32,7 +32,7 @@
 <!-- arch-stats:start -->
 | 层 | 目录 | 文件数 | 行数 |
 |---|---|---:|---:|
-| L7 前端 | `public/`（含 `views/`） | 20 | 20,895 |
+| L7 前端 | `public/`（含 `views/`） | 20 | 20,945 |
 | L6 契约层 | `src/api/contracts/` | 8 | 1,410 |
 | L5 宿主层 | `src/host/` | 6 | 1,713 |
 | L4 自持层 | `src/{modules,services,protocol}/` | 70 | 15,513 |
@@ -41,9 +41,9 @@
 
 | 附加指标 | 实测 |
 |---|---:|
-| `public/app.js` 行数 | 12,449 |
+| `public/app.js` 行数 | 12,304 |
 | 契约端点数（`method:` 计数） | 103 |
-| 测试文件数（`test/*.test.mjs`） | 74 |
+| 测试文件数（`test/*.test.mjs`） | 75 |
 <!-- arch-stats:end -->
 
 ```

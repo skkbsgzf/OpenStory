@@ -89,4 +89,11 @@
 - **测试**：专项 13/13（habitsModule＋modulePlugins），全量 605 例；门禁 22/0/0；架构统计已回写。
 - **等价加强的既有测试**：`modulePlugins.test.mjs` 两处写死的 3 模块集合、`settingsAggregation.test.mjs` 一处，改为「与 manifest 动态一致＋已知模块必须在」——断言强度不减，旧模块仍在校验面内。
 
-（子件二、三待续）
+### 子件二：故事源（storysource）
+
+- **manifest 形状**：`src/modules/storysource/module.manifest.json`，`core:false`、**零独占端点**，`description` 如实登记共享的 `factCurveGet`／`factEntriesGet`／`factBooksGet`。
+- **共享端点证据**：`test/storysourceModule.test.mjs` 停用故事源后三个 fact 读端点 `moduleOfEndpoint===null`、`isModuleDisabledFor===null`（照常 200）；页签 `dir:拆解` 消失而正文不受影响。
+- **视图迁出**：`ssTableHtml`／`ssOutlineSideHtml`／`ssTraceHtml`／`ssChartFallbackHtml` 四个纯函数 → `views/workbenchViews.mjs`（`ssEntryLabel`／`ssFilteredRows`／`ssCardShell` 作内部纯助手随迁，`graph` 由宿主显式注入）；`ssModuleBodyHtml` 因调 `analyzeModulesFor`/`mod.run`（装载副作用）按工单留 app.js。app.js 12,449 → 12,304（累计净降 162）；golden＋薄壳纯度测试 13/13。
+- **测试**：全量 614 例（612 过/2 跳）；门禁 22/0/0；架构统计已回写。
+
+（子件三待续）

@@ -1,0 +1,14 @@
+{
+  "spec": "openstory-module@1",
+  "id": "storysource",
+  "name": "故事源",
+  "version": "0.1.0",
+  "core": false,
+  "description": "故事源工作面（拆解目录承载的 Fact 链可视化：章→段→条目、表格、溯源、图表）。没有独占端点——它读的都是宿主共享的 fact 读端点（factCurveGet／factEntriesGet／factBooksGet 等），停用后这些端点照常 200（世界书侧仍在用）；停用时故事源页签消失、右栏分析入口里的故事源形态不再露出，数据与条目不删。",
+  "endpoints": [],
+  "pages": [
+    { "id": "storySource", "label": "故事源", "slot": "tab" }
+  ],
+  "settings": [],
+  "settingsHint": "故事源没有可调参数：它是拆解条目与 fact 链的可视化读面；条目从推演/拆解产生，分析卡片在正文右栏里勾。"
+}
