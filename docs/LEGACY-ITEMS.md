@@ -1,25 +1,30 @@
-# 遗留台账（OS-133 收官判定）
+# 遗留台账（截至 OS-165 · 段 C 收口现状）
 
-> OS-123→133 解耦与治理批次收官（2026-11-23）。这份文档是「没做完/不做」事项的**唯一台账**：
-> 凡不在三档之内的事，等于「已做完且有测试与门禁护栏」。新事项先入档再动工。
+> OS-123→133 解耦与治理批次建立本台账（2026-11-23），OS-165 按现状重审（2026-11-24）。
+> 这份文档是「没做完/不做」事项的**唯一台账**：凡不在三档之内的事，等于「已做完且有测试与门禁护栏」。
+> 新事项先入档再动工；做完就删行。本轮收口：段 B⁺／C（OS-157～165）全部有测试与门禁护栏，不入档。
 
 ## 【已裁定】——作者裁定固化，细节以 ADR 为准（裁定本身不是待办）
 
 | 裁定 | 日期 | 去向 |
 |---|---|---|
-| **G7 数据源归一：统一成 fact（合并路线）**——fact.data（v3/legacy v2）是唯一事实 schema；pedia/v1（NovelPedia）视为同源同质；OpenStory↔NovelPedia 导入导出一律走 fact.data/v3。 | 【已裁定 2026-11-23：统一成 fact】 | `docs/adr/0001-fact-schema-unification.md`（含四方消费方核查＋附录 A 字段映射实测表〔2026-11-24 按规范补齐〕；仍开放＝NovelPedia 写入器落地后的真实数据复验） |
+| **G7 数据源归一：统一成 fact（合并路线）**——fact.data（v3/legacy v2）是唯一事实 schema；pedia/v1（NovelPedia）视为同源同质；OpenStory↔NovelPedia 导入导出一律走 fact.data/v3。 | 【已裁定 2026-11-23：统一成 fact】 | `docs/adr/0001-fact-schema-unification.md`。OS-162 已落地薄适配器＋导入/导出端点（共用 fact 写通道，非第二套写逻辑）；唯一仍开放项＝**拿 NovelPedia 真实数据跑一次导出→导入回环复验**，见【作者动作】 |
+| **模块闸库路径（OS-144 遗留，OS-165 审结）**——曾担心停用时拿不到库根、退回 daemon 默认库或清单第一条。 | 【已审结 2026-11-24：无残留】 | 41 个模块独占端点的契约 `request` **全部带 root**（脚本审计＋`test/moduleCoverage.test.mjs` 钉死），daemon 的模块闸优先取已授权的请求 root；MCP 分析工具不显式给 root 就完全不判定，绝不回落清单；`moduleHooks` 均由调用方传 root。`daemon.moduleGateRoot` 的「默认库＞第一条」只是无库上下文的老调用兜底，对独占端点不可达。无待办，不入档 |
 
 ## 【作者动作】——需要作者在真实环境验证一次
 
 | 事项 | 现状与依据 | 风险 |
 |---|---|---|
 | **用 Pinax 桌面端打开 OpenStory 新建库，确认能认** | `.pinax/project.json` 落盘格式是与 Pinax 桌面端的双向兼容契约（spec `pinax-project@3`、schemaVersion 3、字段名与顺序、carriers{primary,enabled,revision}，见 `projectDoc.mjs`）。OS-124 建库自持时已用**金样护栏** `test/decoupleStep2.test.mjs` 把删除前内核建库输出冻结为逐字段相等的断言；但金样只证明「格式逐字段相等」，没证明「桌面端真读了一次」。 | 低——金样已证逐字段相等；缺的只是作者拿真桌面端开一次库的人肉确认。 |
+| **NovelPedia 真实数据复验（OS-162 写入器落地后新开放）** | `src/modules/exchange/pediaAdapter.mjs` 与 `/api/exchange/import|export` 已落地，字段映射按 ADR 0001 附录 A 钉死（三层样本、id 不变、style 单列、丢失字段清单），测试用合成夹具。真实 NovelPedia 书库里可能还有附录没覆盖的边缘字段/编码，需要作者拿一本真书跑一次「导出→再导入」回环。 | 中——合成样本过不代表真实数据过；回环只读一次，不阻塞日常写作。 |
 
 ## 【后续可选】——有真实价值、无明确排期；动工前先在此登记
 
 | 事项 | 现状 | 依据 |
 |---|---|---|
 | **AG-UI 对接第三方消费者** | AG-UI 协议出口已接入：`agentEvents.mjs` 内部事件模型是 canonical（唯一真源），daemon SSE 帧已是它的投影（OS-128/131）。但至今**没有任何第三方客户端**消费 AG-UI 帧——协议出口在等一个真实消费者，在此之前不扩面。 | `agentEvents.mjs:1-20`（定位注释「未来第三方客户端…」） |
+| **RAG 导出端点（OS-165 新开放）** | ADR 0001 §五已落地 `/api/exchange/export`（pedia/v1 与 JSONL 两个出向格式），但面向 RAG 的专用导出仍标「规划」——它的目标消费者、切块粒度与检索契约都还没定，先不做空壳端点。 | `docs/adr/0001-fact-schema-unification.md` §五；`src/api/contracts/exchange.mjs` |
+| **自动化 UI 测试（OS-165 新开放）** | 当前护栏是 Node 测试（660 例）＋验收门禁（23 项）＋纯视图金样；浏览器侧只有人工冒烟（OS-157 按能力记录）。没有 Playwright 一类的端到端点击测试——引入它要带浏览器依赖与构建链，与「零构建依赖」宪法冲突，等真实回归痛点出现再评估。 | `test/*.test.mjs`；`tools/acceptance/acceptance.mjs`；OS-157 验收记录 |
 | ~~漂移「上游已移位」的长期处置~~（OS-157 已结案） | vendor 漂移检测随 `core/`、`vendor/` 与 `npm run vendor:check` 整体退役；`enrich/{metrics,pseudoChapters}.mjs` 等本仓入库件已是有据可查的自有内核，出处见 `docs/kernel-provenance.md`。互认锚改由落盘格式金样承担。 | `docs/kernel-provenance.md`；`docs/error-code-rename.md` |
 | **fs.watch 常驻监听** | 外部编辑（VSCode 改文件）不感知：参考索引只有本页编辑后 1.6s 防抖重扫。常驻 fs.watch 是候选修法，但会带来监听器生命周期与跨平台噪声问题，未做——现状「手动刷新可用」。 | `docs/AUDIT-SYNC.md` 缺口 3「外部编辑参考笔记不感知」 |
 | **MCP 写工具扩面** | MCP 24 工具读写分级：读自由、写有 .history 备份语义、absorb/agent 对话不开。写面保持最小（正文/参考回写），更多写操作（如批量回填、条目删除）走界面——外部 agent 的写越少，稿子越安全。扩面前先想清楚备份语义是否覆盖。 | `mcp.mjs:1-25`（读写分级红线）；`docs/ACCEPTANCE.md` |

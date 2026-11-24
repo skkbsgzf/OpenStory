@@ -43,7 +43,7 @@
 |---|---:|
 | `public/app.js` 行数 | 11,841 |
 | 契约端点数（`method:` 计数） | 105 |
-| 测试文件数（`test/*.test.mjs`） | 83 |
+| 测试文件数（`test/*.test.mjs`） | 84 |
 <!-- arch-stats:end -->
 
 ```
@@ -129,6 +129,27 @@ OS-123/124 解耦后，建库/导入/章节号解析全部自持，不再 vendor
 | 插件货架（src/services/，数据目录仍在仓根 suites//styles//runtimes//genres//skills/） | suites / skills / runtimes / genres / stylePacks |
 | 模块插件（OS-144，`src/modules/<id>/module.manifest.json`＝`openstory-module@1`） | analysis（manifest 声明；引擎仍是 public/analysis.mjs 零依赖纯函数，前端与 Node 共用，无 daemon 端点）/ comfyui（comfyEngine 生图；独占端点 deduceImage / referenceImageGenerate / visionDescribe）/ kb（kbRouter / kbAdapter / kbHealth；独占端点 kbStatusGet / kbConfigGet / kbConfigPut / kbTest）/ OS-161 三个普通模块：habits（习惯实现已移入模块目录，独占 habitsGet / habitsPut；lint 与提示词注入经宿主钩子 `src/host/moduleHooks.mjs`）/ storysource（零独占端点——读宿主共享 fact 端点，停用不影响它们）/ artifacts（独占 artifactsGet）/ exchange（pedia/v1↔fact.data/v3 薄适配，独占 exchangeImport / exchangeExport；写复用 factEntriesImport 抽出的共用函数）。/ OS-163~164 四个核心模块：chapters（独占 chapterGet/chapterPut/chaptersGet/chaptersCreate/chaptersRename/chapterDelete/draftGet，changeLog* 归宿主）/ script（零独占端点，借 chapters 写通道）/ worldbook（独占五个 reference* 端点；referenceImageGenerate 归 comfyui；世界书/ 是载体兼容输入，导入后 absorb 进 参考/）/ roleplay（独占 deduce*/roleplay* 端点，deduceImage 归 comfyui）——`core:true` 恒启用，ui-state 写 false 不生效，写停用回 MODULE_CORE（409），页签恒在。启停判定单一入口 `src/protocol/modules.mjs` 的 isModuleEnabled（ui-state `modules.enabled.<id>`，缺省 true）；普通模块独占端点停用回 MODULE_DISABLED，共用端点不受影响，值与数据保留。设置见下方「模块自报设置」表 |
 | 引擎与周边（src/services/） | libState（src/protocol/） / jobCenter（任务中心） / nativePicker / dsh-bridge / dsh-cli / embedding-server / embeddingPaths / cli-bridge / style-check |
+
+**模块插件清单（OS-165/G5d，实测自各 `module.manifest.json`；覆盖面门禁 S2.7 与 `test/moduleCoverage.test.mjs` 共用口径）**
+
+| id | 核心 | 独占端点数 | 页签/入口 | manifest `settings` 项数 |
+|---|---|---:|---|---:|
+| agentbar | 普通 | 0 | — | 0 |
+| analysis | 普通 | 0 | analysis-panel | 0 |
+| artifacts | 普通 | 1 | artifacts | 0 |
+| chapters | 核心 | 7 | write | 0 |
+| comfyui | 普通 | 3 | image-settings | 0 |
+| deduce | 普通 | 0 | — | 0 |
+| exchange | 普通 | 2 | exchange-actions | 0 |
+| habits | 普通 | 2 | habits | 0 |
+| kb | 普通 | 4 | kb-settings | 0 |
+| library | 普通 | 0 | — | 0 |
+| roleplay | 核心 | 17 | deduce | 0 |
+| script | 核心 | 0 | script | 0 |
+| storysource | 普通 | 0 | storySource | 0 |
+| worldbook | 核心 | 5 | reference | 0 |
+
+合计 14 份 manifest（4 核心 + 10 普通）；41 个模块独占端点，64 个宿主自有端点，端点覆盖 105/105（100%），页签无归属 0。`agentbar` / `deduce` / `library` 是宿主域实现目录（零端点零页签），只为清单透明而登记，没有可停用的工作面。所有模块的 `settings` 项都是 0——真配置在别处，manifest 只用 `settingsHint` / `settingsJump` 指路（OS-146）。
 
 **模块自报设置（OS-145 立、OS-146 收紧口径）**：`openstory-module@1` 的 `settings` 是渲染声明，
 字段口径对齐业务套件（`openstory-suite@2`）：`{ key, label, type: string|number|boolean|select, default, options? }`。

@@ -1,0 +1,12 @@
+{
+  "spec": "openstory-module@1",
+  "id": "deduce",
+  "name": "推演引擎",
+  "version": "0.1.0",
+  "core": false,
+  "description": "宿主域实现（OS-165 清单收口）：确定性 2d6、局面卡与候选生成是扮演核心模块 roleplay 背后的引擎实现，不单独占端点或页签。零独占端点、零页签。",
+  "endpoints": [],
+  "pages": [],
+  "settings": [],
+  "settingsHint": "宿主域实现：推演引擎由「扮演」核心模块驱动，没有独立开关；这里只作为 src/modules/ 清单登记。"
+}

@@ -27,6 +27,8 @@ import { NAMING_TABLE, TAB_REGISTRY, LOG_MODULES, computeTabDefs, viewScope } fr
 // OS-150b：S2.1/S2.2 共用同一份说明符扫描器（静态 from／动态 import()／副作用 import／单双引号）。
 // 两份正则必分叉——分叉面就是漏检面（analysisModules.mjs 的惰性 import 曾被整段放过）。
 import { scanImportSpecs, resolveSpec, auditPublicEdges } from './importScan.mjs'
+// OS-165/G5d：模块覆盖面与 test/moduleCoverage.test.mjs 共用一份口径（端点/页签归属与宿主白名单理由）。
+import { coverageReport } from './moduleCoverage.mjs'
 
 const REPO = pathResolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
 
@@ -298,6 +300,22 @@ check('S2.6', 'S2', `前端豁免按边登记且真实存在（${publicEdgeCount
   publicEdgeAudit.stale.length === 0,
   publicEdgeAudit.stale.map((row) => `PUBLIC_EDGE_ALLOW: ${row.edge}${row.reason ? '（仓里无此边）' : '（缺理由）'}`),
   publicEdgeAudit.stale.length ? `豁免表失效：${publicEdgeAudit.stale.map((row) => row.edge).join('; ')}` : '每条豁免都有边有理由')
+
+// S2.7 OS-165/G5d 模块覆盖面：清单全合法、core 恰好四枚、端点/页签 100% 有归属或宿主白名单理由。
+// 与 test/moduleCoverage.test.mjs 共用 coverageReport()，门禁与测试不会口径分叉。
+const moduleCov = coverageReport()
+check('S2.7', 'S2', `模块覆盖面（${moduleCov.manifestIds.length} 模块／core ${moduleCov.coreIds.length}／端点 ${moduleCov.endpointCount} ＝ 独占 ${moduleCov.claimedEndpointCount}＋宿主 ${moduleCov.hostEndpointCount}／无归属 ${moduleCov.uncoveredEndpoints.length + moduleCov.uncoveredTabs.length}）`,
+  moduleCov.noManifest.length === 0 && moduleCov.manifestIssues.length === 0
+    && moduleCov.coreIds.length === 4 && moduleCov.manifestIds.length === moduleCov.moduleDirs.length
+    && moduleCov.uncoveredEndpoints.length === 0 && moduleCov.uncoveredTabs.length === 0,
+  [
+    `src/modules 目录 ${moduleCov.moduleDirs.length} 个，manifest ${moduleCov.manifestIds.length} 份`,
+    `core: ${moduleCov.coreIds.join(' / ')}`,
+    `端点 ${moduleCov.endpointCount}：模块独占 ${moduleCov.claimedEndpointCount}＋宿主白名单 ${moduleCov.hostEndpointCount}`,
+    ...moduleCov.uncoveredEndpoints.slice(0, 4).map((id) => `无归属端点：${id}`),
+    ...moduleCov.uncoveredTabs.map((id) => `无归属页签：${id}`)
+  ],
+  '四项口径与 moduleCoverage.test.mjs 共用；白名单每组带理由，新增端点无归属即红')
 
 // S2.3 契约驱动架构：daemon 经 endpointFor() 契约分派 + validateResponse() 契约校验
 // OS-130 契约分域后，端点形状按域切片在 contracts/<域>.mjs——计数＝contracts.mjs＋contracts/*.mjs 合计

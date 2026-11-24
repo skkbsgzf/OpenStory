@@ -1,0 +1,12 @@
+{
+  "spec": "openstory-module@1",
+  "id": "agentbar",
+  "name": "Agent 栏",
+  "version": "0.1.0",
+  "core": false,
+  "description": "宿主域实现（OS-165 清单收口）：Agent 存储与会话落地在宿主，端点由 system/agent 域提供，不属于任何可停用的工作面。零独占端点、零页签。",
+  "endpoints": [],
+  "pages": [],
+  "settings": [],
+  "settingsHint": "宿主域实现：Agent 栏是宿主自带对话面，模型与运行时在「设置 · 引擎与存储」里配；这里只作为 src/modules/ 清单登记。"
+}

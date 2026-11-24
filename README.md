@@ -68,7 +68,7 @@ L1  磁盘库                     文件即真相（.pinax 兼容，与 Pinax �
 | `src/api/` | 契约层 `contracts.mjs` ＋ `contracts/` 七域分片（OS-130 起分域，纯数据，两端共享） |
 | `src/protocol/` | 文件与协议层：chapters / changelog / versionGate / plugins / agentEvents / factGuard / dependencyGraph / hostWrite / libState |
 | `src/kernel/` | 自有内核（`openstory-kernel@1`：管道件＋fact 链＋enrich，公开面 `index.mjs`；出处与文件对应见 [docs/kernel-provenance.md](./docs/kernel-provenance.md)） |
-| `src/modules/` | 域模块：library/（建库/导入自持，OS-123/124 fork 点，`.pinax/project.json` 与 Pinax 桌面端双向兼容）、deduce/（推演）、roleplay/（扮演调度＋四层提示词）、worldbook/（参考索引）、agentbar/（Agent 存储） |
+| `src/modules/` | 域模块与工作面插件：14 份 `module.manifest.json`（`openstory-module@1`）——核心四个 chapters / worldbook / script / roleplay（`core:true` 恒启用、不可停用），普通插件 analysis / comfyui / kb / habits / storysource / artifacts / exchange，宿主域登记 agentbar / deduce / library（零端点零页签）；另外 library/（建库/导入自持，OS-123/124 fork 点，`.pinax/project.json` 与 Pinax 桌面端双向兼容）、deduce/（推演）、roleplay/（扮演调度＋四层提示词）、worldbook/（参考索引）、agentbar/（Agent 存储）。端点归属 105/105 有主，见 `ARCHITECTURE.md`「模块插件清单」 |
 | `src/services/` | 外围服务：kb*（知识库）、embedding-server、cli-bridge/dsh-*/runtimes（模型驱动）、suites/stylePacks/style-check/skills/genres（货架装载）、jobCenter / nativePicker / comfyEngine / syncCheck / enrichEngine |
 | `public/` | 工作台单页（app.js＋reference/graph/md/analysis/charts/ui-kit/storySource 等零依赖模块；echarts 本地 vendor） |
 | `suites/` `styles/` `runtimes/` `genres/` `skills/`（31＋套件捆绑 2） | 插件货架数据目录（内置样例）＋ [PROTOCOL.md](suites/PROTOCOL.md)（套件注册协议） |

@@ -1,0 +1,117 @@
+/**
+ * 模块覆盖面口径（OS-165 / G5d）——测试与验收门禁共用的一份真源。
+ *
+ * 「内核收缩到协议＋宿主＋fact 链，其余皆插件」不是口号：
+ *   · src/modules/ 下每个目录必须有合法 manifest；
+ *   · core:true 恰好四枚（chapters / worldbook / script / roleplay）；
+ *   · 每个 handler 端点要么被某模块独占，要么在下面的宿主白名单里（逐组写明理由）；
+ *   · 每个未退场页签要么归属某模块，要么是宿主保留页。
+ *
+ * 白名单只增不减是有意的：新增端点若既无模块归属、又没在这里写下理由，门禁与测试同时红。
+ */
+import { readdirSync, existsSync, readFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { HANDLERS, ENDPOINT_MODULES } from '../../src/api/registry.mjs'
+import { TAB_REGISTRY } from '../../public/views/registry.mjs'
+import {
+  MODULE_MANIFESTS, MODULE_SPEC, CORE_MODULE_IDS,
+  validateModuleManifest
+} from '../../src/protocol/modules.mjs'
+
+const REPO = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
+const MODULES_DIR = join(REPO, 'src', 'modules')
+
+/** 宿主自己拥有的端点：分组列出，每组一行理由（逐条可追溯到理由）。 */
+export const HOST_OWNED_ENDPOINTS = Object.freeze({
+  '库管理与通用文件通道（库目录是数据而非工作面；文件/目录浏览是宿主能力）': [
+    'libraries', 'libraryDiagnose', 'libraryCreate', 'libraryScan', 'libraryImport', 'libraryPrimary',
+    'dirCreate', 'filesGet', 'fsBrowse'
+  ],
+  '修改痕迹（OS-89 立宪：跨模块统一 diff/.history，不属于任何单一工作面）': [
+    'changeLogGet', 'changeLogEntry', 'changeLogRestore', 'changeLogSummary', 'draftPut'
+  ],
+  'fact 共享读与拆解链（多方共用，停用任一模块都不该让事实链消失）': [
+    'factCurveGet', 'factEntriesGet', 'factBooksGet', 'factEntriesImport',
+    'enrichRun', 'enrichStatus', 'enrichGraph', 'syncCheck'
+  ],
+  '本机原生选择器（弹系统对话框/资源管理器，无库上下文）': ['nativePick', 'nativeReveal'],
+  'Agent 栏与会话（宿主自带对话面，Agent 模块未插件化）': [
+    'agentConfigGet', 'agentConfigPut', 'agentRuntimesGet', 'agentRuntimePut', 'agentRuntimeSetup',
+    'agentDshModelsGet', 'agentPicksGet', 'agentPicksPut', 'agentSessions', 'agentSessionCreate',
+    'agentSessionGet', 'agentSessionRename', 'agentSessionDelete', 'agentChat',
+    'agentCardCreate', 'agentCardAdopt', 'agentCardReject'
+  ],
+  '写作规则资源（风格包/技能/体裁是宿主静态资产，不是工作面）': [
+    'stylesGet', 'skillsGet', 'skillGet', 'genresGet'
+  ],
+  '插件系统自身（插件货架/套件状态不能被插件自己管）': [
+    'pluginsGet', 'suitesGet', 'suiteSettingsPut', 'suiteStatePut', 'suiteStateDataGet', 'suiteStateDataPut'
+  ],
+  '进程、配置与后台任务（daemon 本机设施，与库/插件无关）': [
+    'healthGet', 'configGet', 'configPut', 'configProbe', 'jobsGet', 'jobCancel', 'jobsClear'
+  ],
+  '项目简报与界面状态（跨页签的库内设置，不属于单个模块）': [
+    'briefGet', 'briefPut', 'uiStateGet', 'uiStatePut', 'uiPreferencesGet', 'uiPreferencesPut'
+  ]
+})
+
+/** 宿主保留页签：理由逐条写明。 */
+export const HOST_OWNED_TABS = Object.freeze({
+  log: 'OS-89 修改痕迹自检索——跨模块统一日志，不属于任何单一工作面',
+  settings: '宿主本体设置（主题字号/引擎与存储/插件中心），设置页自己不插件化'
+})
+
+/**
+ * 「仍在 app.js 的渲染函数」宿主保留清单：只收真正的装配壳/通用路由，
+ * 模块本体必须已迁 public/views/（由 test/moduleCoverage.test.mjs 的薄壳断言保证）。
+ */
+export const HOST_KEPT_RENDERERS = Object.freeze({
+  writeHtml: '正文页装配壳：章节加载状态机＋逐块编辑提交留在宿主，纯视图已拆 views/chapterLoad.mjs',
+  dirViewHtml: '通用目录页路由：write/script/storySource/log 四类共用同一入口，按 state.view 分派',
+  deduceHtml: '三行路由壳：引擎/Agent 两分支的状态机留在宿主，纯 HTML 构造在 views/deduceViews.mjs',
+  settingsHtml: '宿主设置页本体（内核设置只读区＋插件中心聚合），不插件化'
+})
+
+export function hostOwnedEndpointIds() {
+  return new Set(Object.values(HOST_OWNED_ENDPOINTS).flat())
+}
+
+/** 生成覆盖面报告（纯数据；门禁与测试共用）。 */
+export function coverageReport() {
+  const manifestIssues = []
+  const dirs = readdirSync(MODULES_DIR, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && !entry.name.startsWith('.'))
+    .map((entry) => entry.name)
+  const noManifest = []
+  for (const dir of dirs) {
+    const file = join(MODULES_DIR, dir, 'module.manifest.json')
+    if (!existsSync(file)) { noManifest.push(dir); continue }
+    let raw
+    try { raw = JSON.parse(readFileSync(file, 'utf-8')) } catch (error) {
+      manifestIssues.push(`${dir}: manifest 读不了（${error?.message || error}）`); continue
+    }
+    const checked = validateModuleManifest(raw, { dirName: dir })
+    if (!checked.ok) manifestIssues.push(`${dir}: ${checked.errors.join('；')}`)
+    else if (checked.manifest.spec !== MODULE_SPEC) manifestIssues.push(`${dir}: spec 非 ${MODULE_SPEC}`)
+  }
+  const hostEndpoints = hostOwnedEndpointIds()
+  const claimed = new Set(MODULE_MANIFESTS.flatMap((manifest) => manifest.endpoints))
+  const uncoveredEndpoints = Object.keys(HANDLERS)
+    .filter((id) => !claimed.has(id) && !hostEndpoints.has(id))
+  const uncoveredTabs = TAB_REGISTRY.filter((entry) => !entry.retired && entry.label)
+    .filter((entry) => !entry.module && !HOST_OWNED_TABS[entry.id])
+    .map((entry) => entry.id)
+  return {
+    moduleDirs: dirs,
+    manifestIds: MODULE_MANIFESTS.map((manifest) => manifest.id),
+    coreIds: [...CORE_MODULE_IDS],
+    noManifest,
+    manifestIssues,
+    endpointCount: Object.keys(HANDLERS).length,
+    claimedEndpointCount: claimed.size,
+    hostEndpointCount: hostEndpoints.size,
+    uncoveredEndpoints,
+    uncoveredTabs
+  }
+}

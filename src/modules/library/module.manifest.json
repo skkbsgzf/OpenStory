@@ -1,0 +1,12 @@
+{
+  "spec": "openstory-module@1",
+  "id": "library",
+  "name": "库管理",
+  "version": "0.1.0",
+  "core": false,
+  "description": "宿主域实现（OS-165 清单收口）：建库骨架、Pinax 载体导入、库清单是本机的宿主设施，不是可停用的工作面。零独占端点、零页签——清单一视同仁地登记它，但不给作者一个没有消费者的开关。",
+  "endpoints": [],
+  "pages": [],
+  "settings": [],
+  "settingsHint": "宿主域实现：库管理与导入属宿主设施，没有可调项；这里只作为 src/modules/ 清单登记，不提供工作面开关。"
+}
