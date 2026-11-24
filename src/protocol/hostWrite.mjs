@@ -3,8 +3,8 @@
  *
  * 全仓 22 处内联「写临时文件再 rename」归一到 atomicWriteFile：
  *   · 文本内容 —— 直通内核 writeFileAtomic（fsync＋rename＋目录 fsync），自 OS-152 起
- *     直接从 `src/kernel/atomicWrite.mjs` 取（管道件已转自有，不再经 pinaxAdapter 绕道；
- *     内核唯一进口纪律针对 core/**，S2.4 不涉）。
+ *     直接从 `src/kernel/atomicWrite.mjs` 取（管道件已转自有，OS-157 起内核公开面为
+ *     src/kernel/index.mjs，S2.4' 只管不作为陈旧 core/ 进口回潮）。
  *   · 二进制内容（Buffer/TypedArray/ArrayBuffer）—— 内核实现是 `String(contents)`＋utf-8
  *     （src/kernel/atomicWrite.mjs:21），直传二进制会损坏字节；这里按同一模式补一条
  *     二进制分支：同前缀 `.pinax-tmp-`（内核 recoverInterruptedWrites 可回收）＋ fsync＋

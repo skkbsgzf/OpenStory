@@ -2,8 +2,9 @@
  * 推演引擎出口（OS-155）——扮演模块自己的确定性推演端子。
  *
  * 八件引擎（opening/turn/settle/candidates/fronts/patchChannel/sceneContext/sessionState）
- * 自 `core/pinax/next/fact/usecases/deduce/` 平移到本目录（扩展名 `.js`→`.mjs`，逻辑逐字未改；
- * import 只改两处：fact 域原语与 factPack 改从协议层 `src/protocol/factDomain.mjs` 取）。
+ * 自上游推演链平移到本目录（OS-155，扩展名 `.js`→`.mjs`，逻辑逐字未改；
+ * 出处见 docs/kernel-provenance.md）。
+ * import 只改两处：fact 域原语与 factPack 改从协议层 `src/protocol/factDomain.mjs` 取。
  * 它们**不再属于内核**：推演是产品引擎（产生会话状态与新条目），不是只读派生。
  *
  * 导出面与解散前 `pinaxAdapter.deduce` 组逐名对齐（四个端子，名字一字不改）：

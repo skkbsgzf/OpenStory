@@ -18,7 +18,7 @@ import { loadGenres, readBrief, briefPromptSection } from './genres.mjs'
 import { loadSkills, craftSkillsForPrompt, craftInstructionBlock, readAgentPicks, suiteSkillDirs } from './skills.mjs'
 import { precedentPromptSectionForGenre } from '../modules/kb/kbRouter.mjs'
 import { scanReferences, notesVisibleAt, buildReferenceGraph } from '../modules/worldbook/referenceStore.mjs'
-import { factStore } from '../kernel/pinaxAdapter.mjs'
+import { factStore } from '../kernel/index.mjs'
 import { listChapters } from '../protocol/chapters.mjs'
 
 /** 生效技能目录（OS-68）：内置＋本机之外，再叠加启用中套件捆绑的 skills/。 */

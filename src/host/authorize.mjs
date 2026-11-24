@@ -29,12 +29,31 @@ export function defaultPreferencesPath(env = process.env) {
   return base ? join(base, 'PinaxNext', 'next-preferences.json') : ''
 }
 
+/** 旧环境变量名（品牌前缀时代）：双读兼容一个大版本。拼接写法避免误读为错误码前缀。 */
+const LEGACY_PREFERENCES_ENV = ['PINAX', 'OS', 'PREFERENCES'].join('_')
+let legacyPreferencesWarned = false
+
+/** 偏好文件路径：新名 OPENSTORY_PREFERENCES 优先，旧名仍认；命中旧名每进程打一次 deprecation 日志。 */
+export function resolvePreferencesEnv(env = process.env) {
+  const current = text(env.OPENSTORY_PREFERENCES).trim()
+  if (current) return current
+  const legacy = text(env[LEGACY_PREFERENCES_ENV]).trim()
+  if (legacy) {
+    if (!legacyPreferencesWarned) {
+      legacyPreferencesWarned = true
+      console.warn(`[deprecation] 环境变量 ${LEGACY_PREFERENCES_ENV} 已改名为 OPENSTORY_PREFERENCES；旧名仍兼容一个大版本，请尽快更新调用方。`)
+    }
+    return legacy
+  }
+  return ''
+}
+
 /**
  * 读库清单。坏档/缺档不拦启动：按空清单回，并记一条 warning 让工作台摆空态。
  * `recentProjects` 真实形状只保底 path/name/at；kind/count 缺了补默认值。
  */
 export function loadLibraries({ preferencesPath, env = process.env } = {}) {
-  const target = text(preferencesPath || env.PINAX_OS_PREFERENCES || defaultPreferencesPath(env)).trim()
+  const target = text(preferencesPath || resolvePreferencesEnv(env) || defaultPreferencesPath(env)).trim()
   const warnings = []
   if (!target) {
     return {

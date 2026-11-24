@@ -8,7 +8,6 @@
     "start": "node daemon.mjs",
     "mcp": "node mcp.mjs",
     "test": "node --test \"test/*.test.mjs\"",
-    "vendor:check": "node scripts/vendor-drift.mjs check",
     "arch:stats": "node scripts/arch-stats.mjs"
   },
   "dependencies": {

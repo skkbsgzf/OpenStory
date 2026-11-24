@@ -20,7 +20,7 @@
 
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { fact } from '../protocol/index.mjs' // OS-142：内核能力经 Host API fact 命名空间转出（与 src/modules 同纪律，不直引 kernel/pinaxAdapter）
+import { fact } from '../protocol/index.mjs' // OS-142：内核能力经 Host API fact 命名空间转出（与 src/modules 同纪律，不直引内核实现）
 import { recordChange } from '../protocol/changelog.mjs'
 import { LOG_MODULES } from '../protocol/naming.mjs' // OS-148：日志模块名只从命名表取
 

@@ -27,31 +27,31 @@ import { syncDirectory } from '../src/kernel/fsDurability.mjs'
  *  条数说明：工单/设计稿写「26 个码」，源文件实测 25 条（core 原件同）——快照按实测锁 25，
  *  不为了让数字对上而复刻一条不存在的码（见交付说明 limitations）。 */
 const CODE_SNAPSHOT = {
-  INVALID_MANIFEST: 'PINAX_INVALID_MANIFEST',
-  DUPLICATE_PLUGIN: 'PINAX_DUPLICATE_PLUGIN',
-  KERNEL_INCOMPATIBLE: 'PINAX_KERNEL_INCOMPATIBLE',
-  RESERVED_SLOT: 'PINAX_RESERVED_SLOT',
-  TOOL_CONFLICT: 'PINAX_TOOL_CONFLICT',
-  UNKNOWN_CAPABILITY: 'PINAX_UNKNOWN_CAPABILITY',
-  DIR_CONFLICT: 'PINAX_DIR_CONFLICT',
-  SCOPE_NOT_GRANTED: 'PINAX_SCOPE_NOT_GRANTED',
-  SCOPE_OUTSIDE_OWNER: 'PINAX_SCOPE_OUTSIDE_OWNER',
-  RESERVED_VIEW_TYPE: 'PINAX_RESERVED_VIEW_TYPE',
-  UNKNOWN_SUBSCRIPTION: 'PINAX_UNKNOWN_SUBSCRIPTION',
-  INVALID_ENTRY: 'PINAX_INVALID_ENTRY',
-  INVALID_SERVICE: 'PINAX_INVALID_SERVICE',
-  INVALID_MCP: 'PINAX_INVALID_MCP',
-  INVALID_EFFECT: 'PINAX_INVALID_EFFECT',
-  EFFECT_ON_DISPOSED: 'PINAX_EFFECT_ON_DISPOSED',
-  PATH_OUTSIDE_PROJECT: 'PINAX_PATH_OUTSIDE_PROJECT',
-  STALE_REVISION: 'PINAX_STALE_REVISION',
-  DEPENDENCY_UNMET: 'PINAX_DEPENDENCY_UNMET',
-  PRIMARY_CARRIER_MISSING: 'PINAX_PRIMARY_CARRIER_MISSING',
-  PRIMARY_CARRIER_NOT_ENABLED: 'PINAX_PRIMARY_CARRIER_NOT_ENABLED',
-  IO_FAILED: 'PINAX_IO_FAILED',
-  INVALID_INPUT: 'PINAX_INVALID_INPUT',
-  FACT_NOT_FOUND: 'PINAX_FACT_NOT_FOUND',
-  WRITE_PROTOCOL_NOT_STARTED: 'PINAX_WRITE_PROTOCOL_NOT_STARTED'
+  INVALID_MANIFEST: 'INVALID_MANIFEST',
+  DUPLICATE_PLUGIN: 'DUPLICATE_PLUGIN',
+  KERNEL_INCOMPATIBLE: 'KERNEL_INCOMPATIBLE',
+  RESERVED_SLOT: 'RESERVED_SLOT',
+  TOOL_CONFLICT: 'TOOL_CONFLICT',
+  UNKNOWN_CAPABILITY: 'UNKNOWN_CAPABILITY',
+  DIR_CONFLICT: 'DIR_CONFLICT',
+  SCOPE_NOT_GRANTED: 'SCOPE_NOT_GRANTED',
+  SCOPE_OUTSIDE_OWNER: 'SCOPE_OUTSIDE_OWNER',
+  RESERVED_VIEW_TYPE: 'RESERVED_VIEW_TYPE',
+  UNKNOWN_SUBSCRIPTION: 'UNKNOWN_SUBSCRIPTION',
+  INVALID_ENTRY: 'INVALID_ENTRY',
+  INVALID_SERVICE: 'INVALID_SERVICE',
+  INVALID_MCP: 'INVALID_MCP',
+  INVALID_EFFECT: 'INVALID_EFFECT',
+  EFFECT_ON_DISPOSED: 'EFFECT_ON_DISPOSED',
+  PATH_OUTSIDE_PROJECT: 'PATH_OUTSIDE_PROJECT',
+  STALE_REVISION: 'STALE_REVISION',
+  DEPENDENCY_UNMET: 'DEPENDENCY_UNMET',
+  PRIMARY_CARRIER_MISSING: 'PRIMARY_CARRIER_MISSING',
+  PRIMARY_CARRIER_NOT_ENABLED: 'PRIMARY_CARRIER_NOT_ENABLED',
+  IO_FAILED: 'IO_FAILED',
+  INVALID_INPUT: 'INVALID_INPUT',
+  FACT_NOT_FOUND: 'FACT_NOT_FOUND',
+  WRITE_PROTOCOL_NOT_STARTED: 'WRITE_PROTOCOL_NOT_STARTED'
 }
 
 async function fixture(prefix = 'os152-plumber-') {
@@ -90,7 +90,7 @@ function stubDeps({ calls = [], rename, unlink } = {}) {
 
 /* ---------- ① 码表逐字锁定 ---------- */
 
-test('码表值逐字锁定（表名 KERNEL_ERROR_CODES；值仍是 PINAX_*，本单不改值）', () => {
+test('码表值逐字锁定（表名 KERNEL_ERROR_CODES；OS-157 起值与键同名，对照见 docs/error-code-rename.md）', () => {
   const keys = Object.keys(KERNEL_ERROR_CODES)
   assert.equal(keys.length, 25, '码表条数＝25（源文件实测；少一条/多一条都是破坏对外 code 词表）')
   assert.equal(keys.length, Object.keys(CODE_SNAPSHOT).length)
@@ -98,15 +98,15 @@ test('码表值逐字锁定（表名 KERNEL_ERROR_CODES；值仍是 PINAX_*，�
   assert.deepEqual({ ...KERNEL_ERROR_CODES }, CODE_SNAPSHOT)
   for (const [key, value] of Object.entries(CODE_SNAPSHOT)) {
     assert.equal(typeof value, 'string', `${key} 的值必须是字符串`)
-    assert.ok(value.startsWith('PINAX_'), `${key} 的值仍带 PINAX_ 前缀：${value}`)
+    assert.equal(value, key, `${key} 的值与键同名——去前缀后命名法收敛（旧→新对照见 docs/error-code-rename.md）`)
   }
   assert.equal(Object.isFrozen(KERNEL_ERROR_CODES), true, '码表冻结，消费方不许改写')
 })
 
-test('未知码回落 INVALID_INPUT（值仍是 PINAX_INVALID_INPUT）', () => {
+test('未知码回落 INVALID_INPUT（值为 INVALID_INPUT）', () => {
   const rejection = fail('不存在的码', '人话')
   assert.equal(rejection.ok, false)
-  assert.equal(rejection.error.code, 'PINAX_INVALID_INPUT')
+  assert.equal(rejection.error.code, 'INVALID_INPUT')
   assert.equal(rejection.error.code, KERNEL_ERROR_CODES.INVALID_INPUT)
   assert.equal(rejection.error.message, '人话')
   assert.equal('details' in rejection.error, false, '空 details 不挂字段')
@@ -117,17 +117,17 @@ test('ok／fail／throwFailure 信封形状逐字保留', () => {
   assert.deepEqual(ok(undefined), { ok: true, value: undefined })
   assert.deepEqual(fail('STALE_REVISION', '过期', { expected: 1, actual: 2 }), {
     ok: false,
-    error: { code: 'PINAX_STALE_REVISION', message: '过期', details: { expected: 1, actual: 2 } }
+    error: { code: 'STALE_REVISION', message: '过期', details: { expected: 1, actual: 2 } }
   })
-  assert.deepEqual(fail('STALE_REVISION', '过期', {}), { ok: false, error: { code: 'PINAX_STALE_REVISION', message: '过期' } })
+  assert.deepEqual(fail('STALE_REVISION', '过期', {}), { ok: false, error: { code: 'STALE_REVISION', message: '过期' } })
   assert.throws(() => throwFailure(fail('IO_FAILED', '写失败', { path: 'x' })), (error) => {
     assert.equal(error.message, '写失败')
-    assert.equal(error.code, 'PINAX_IO_FAILED')
+    assert.equal(error.code, 'IO_FAILED')
     assert.deepEqual(error.details, { path: 'x' })
     return true
   })
   assert.throws(() => throwFailure({ ok: false }), (error) => {
-    assert.equal(error.code, 'PINAX_INVALID_INPUT')
+    assert.equal(error.code, 'INVALID_INPUT')
     assert.equal(error.details, null)
     return true
   })
@@ -243,8 +243,10 @@ test('金样：码表 × fail 输出的全矩阵冻结（键序/值/details 分�
   matrix.push(['IO_FAILED+details', fail('IO_FAILED', 'msg', { a: 1 })])
   matrix.push(['ok', ok({ a: 1 })])
   const digest = createHash('sha256').update(JSON.stringify(matrix)).digest('hex')
-  /* 删除 core 原件前的实测值：当时同一矩阵与 core 原件 fail/ok 输出逐条深等。 */
-  assert.equal(digest, '037fdac7038d546ef3d35c002c6e275ff0d0b04fc755a0d00766d88a42c7c2fe')
+  /* 金样随 OS-157 码值去前缀重取：矩阵与旧值逐条同构，仅 code 字符串按对照表改名。
+     新摘要＝同一矩阵在 KERNEL_ERROR_CODES 去前缀后的实测值（旧摘要
+     037fdac7… 见 docs/error-code-rename.md）。 */
+  assert.equal(digest, 'dd3e8347151a2adba2a9a0d2d0ae03b6cebc24b05c4be2527118a55ee0cfc54e')
 })
 
 test('金样：writeFileAtomic 同一注入桩下调用序与返回值冻结（临时文件→fsync→rename→目录 fsync）', async () => {

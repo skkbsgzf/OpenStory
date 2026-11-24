@@ -17,7 +17,7 @@ import { join, resolve } from 'node:path'
 import { parseChapterNumber, parseWorldbookEntryFile } from '../src/modules/library/textUtil.mjs'
 import { planImport, runImport } from '../src/modules/library/importAdapter.mjs'
 import { createLibrary } from '../src/modules/library/libraryManage.mjs'
-import { serializeWorldbookEntryFile } from '../vendor/contracts/worldbookFileContract.js'
+import { serializeWorldbookEntryFile } from '../src/modules/worldbook/worldbookFileContract.mjs'
 
 /* ---------- 夹具 ---------- */
 
@@ -171,7 +171,7 @@ test('planImport：源目录不存在 / 目标不是项目 / 源含 .pinax 都�
 
     const missing = planImport({ sourcePath: join(base, '不存在'), targetPath: target })
     assert.equal(missing.ok, false)
-    assert.equal(missing.error.code, 'PINAX_INVALID_INPUT', '内核 fail() 统一 PINAX_ 前缀')
+    assert.equal(missing.error.code, 'INVALID_INPUT', '内核 fail() 统一无前缀码')
 
     const notProject = planImport({ sourcePath: source, targetPath: base })
     assert.equal(notProject.ok, false, '目标缺 .pinax/project.json 要拒绝')

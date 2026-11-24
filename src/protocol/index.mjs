@@ -10,10 +10,11 @@
  * 改语义、改错误码）才升版**；纯增量（新命名空间成员）留在当前版本内，但必须同步
  * 改 test/hostApi.test.mjs 的键清单快照与本文件 JSDoc——快照强制每次增删都是显式确认。
  * 版本史：`@1`（OS-142 建档）→ `@2`（OS-155：`fact.deduce` 删除——推演端子归扮演模块
- * `src/modules/deduce/engine/`，协议层不依赖产品模块）。
+ * `src/modules/deduce/engine/`；OS-157 定稿：再删 `fact.projectImport`／`fact.projectMeta`
+ * ——两组能力回归库管理模块内组合，协议层不依赖模块层）。
  *
  * 七个能力命名空间（每个都是冻结对象；落盘只走协议写通道 hostWrite/changelog）：
- *   fact      —— 内核能力通道（经 src/kernel/pinaxAdapter.mjs 四组出口转出＋plumber）
+ *   fact      —— 内核能力通道（`src/kernel/index.mjs` 五键公开面直取）
  *   prose     —— chapters 正文协议（列表/建章/改名/删章＋写备份/.history 保留）
  *   changelog —— 变更日志协议（diff＋月度 jsonl，库内唯一「修改留痕」通道）
  *   jobs      —— 任务中心（进程内任务登记/查询/取消/订阅，重启即清，不落盘）
@@ -27,14 +28,14 @@
  *   dependencyGraph / factGuard / libState——分工见 src/protocol/README.md。
  *
  * 装载序说明：本文件模块求值期只做「取已初始化的绑定＋冻结」，不调用任何能力函数；
- * 依赖子树（pinaxAdapter→library fork 点→kernelPlumber 叶子）不含回环到本文件的边，
- * 任何装载序都安全（test/hostApi.test.mjs 双向冒烟钉死）。
+ * 依赖子树（kernel/** 公开面→自持内核件）只向下、不含回环到本文件的边，任何装载序都安全
+ * （test/hostApi.test.mjs 双向冒烟钉死）。
  */
 
 /** Host API 版本字面量（host-api@2）。破坏性变更才升版，见文件头版本约定。 */
 export const HOST_API_VERSION = 'host-api@2'
 
-import * as pinaxAdapter from '../kernel/pinaxAdapter.mjs'
+import * as kernel from '../kernel/index.mjs'
 import * as chaptersProtocol from './chapters.mjs'
 import * as chapterWriteProtocol from './chapterWrite.mjs'
 import * as changelogProtocol from './changelog.mjs'
@@ -45,37 +46,35 @@ import * as versionGateProtocol from './versionGate.mjs'
 import * as dependencyGraphProtocol from './dependencyGraph.mjs'
 import * as factGuardProtocol from './factGuard.mjs'
 
+/** 内核身份（openstory-kernel@1）：供巡检/健康检查直接读取，不属任何命名空间成员。 */
+export const KERNEL_ID = kernel.KERNEL_ID
+
 /**
- * fact 命名空间——内核能力通道（经 src/kernel/pinaxAdapter.mjs 转出，实现不换）。
+ * fact 命名空间——内核能力通道（OS-157 定稿：host-api@2 五键，直取内核公开面）。
  *
- * 成员（OS-125 四组能力出口＋内核 plumber；OS-155 起 `deduce` 已退出——推演端子归
- * `src/modules/deduce/engine/`，协议层不再依赖产品模块）：
+ * 成员（OS-155 删 `deduce`、OS-157 删 `projectImport`／`projectMeta` 后的五个键）：
+ *   · enrich             —— enrich 度量：derivePseudoChapters/hasRealChapters/causalSummary。
+ *                          纯函数，不落盘。
  *   · factStore          —— fact 存储协议：createFactFileStore/writeFactFile/readFactWiki/
  *                          FACT_DIR_NAME。读只读不落盘；writeFactFile 落盘到
  *                          `<库>/拆解/<id>.json`（operationId 幂等＋expectedRevision 乐观并发），
  *                          错误码 WRITE_PROTOCOL_*（REVISION_MISMATCH/OPERATION_ID_REQUIRED/
  *                          VALIDATION_FAILED/INVALID_INPUT/NOT_FOUND/IO_FAILED）。
- *   · enrich             —— enrich 度量：derivePseudoChapters/hasRealChapters/causalSummary。
- *                          纯函数，不落盘。
- *   · projectMeta        —— `.pinax/project.json` 合同：readProjectDocument（只读）/
- *                          writeProjectDocument（落盘，原子写＋.history）/nextCarriers/
- *                          validateProjectDocument（INVALID_ENTRY/REVISION_MISMATCH）。
- *   · projectImport      —— 整目录导入：planImport（只读规划）/runImport（落盘：拷入正文/
- *                          世界书，只新增不覆盖）/parseChapterNumber（纯函数）。
  *   · ok / fail          —— 内核 plumber 响应封装（纯内存）。仅 fork 点与内部协议件使用，
  *                          新代码优先用各能力自己的返回形状。
  *   · writeFileAtomic    —— 内核原子写原件（fsync＋rename＋目录 fsync）。落盘。**模块层
  *                          请走 hostWrite.atomicWriteFile（写通道收敛红线），此成员仅供
  *                          协议层内部转供链使用。**
+ *
+ * 已退出 `@2` 的三组：`deduce`（推演端子归 src/modules/deduce/engine/）、`projectMeta`／
+ * `projectImport`（库管理模块内组合，见 src/modules/library/index.mjs）。
  */
 export const fact = Object.freeze({
-  factStore: pinaxAdapter.factStore,
-  enrich: pinaxAdapter.enrich,
-  projectMeta: pinaxAdapter.projectMeta,
-  projectImport: pinaxAdapter.projectImport,
-  ok: pinaxAdapter.ok,
-  fail: pinaxAdapter.fail,
-  writeFileAtomic: pinaxAdapter.writeFileAtomic
+  enrich: kernel.enrich,
+  factStore: kernel.factStore,
+  fail: kernel.fail,
+  ok: kernel.ok,
+  writeFileAtomic: kernel.writeFileAtomic
 })
 
 /**

@@ -3,8 +3,9 @@
  *
  * 跑法：
  *   node --test openstory/test/contracts.test.mjs
- *   PINAX_OS_FIXTURE=D:/Pinax-e2e/s4-shots/夹具库 node --test openstory/test/contracts.test.mjs
- *   （设置 PINAX_OS_FIXTURE 时额外验真实夹具库 291 条；不设就跳过，不写死绝对路径）
+ *   OPENSTORY_FIXTURE=D:/Pinax-e2e/s4-shots/夹具库 node --test openstory/test/contracts.test.mjs
+ *   （设置 OPENSTORY_FIXTURE 时额外验真实夹具库 291 条；旧环境变量名仍兼容一个大版本，
+ *     不设就跳过，不写死绝对路径）
  */
 import test from 'node:test'
 import assert from 'node:assert/strict'
@@ -217,6 +218,24 @@ test('库清单读取：真实形状（只有 path/name/at）也能上屏', asyn
   }
 })
 
+test('偏好环境变量双读：新名优先，旧名仍认并打一次 deprecation 日志（OS-157）', async () => {
+  const { base, preferencesPath } = await makeFixture()
+  const legacyName = ['PINAX', 'OS', 'PREFERENCES'].join('_')
+  const originalWarn = console.warn
+  const warnings = []
+  console.warn = (message) => warnings.push(String(message))
+  try {
+    assert.equal(loadLibraries({ env: { OPENSTORY_PREFERENCES: preferencesPath, [legacyName]: base } }).preferencesPath, preferencesPath, '新名优先')
+    assert.equal(loadLibraries({ env: { [legacyName]: preferencesPath } }).preferencesPath, preferencesPath, '旧名兼容')
+    assert.equal(warnings.length, 1, '旧名只打一次 deprecation 日志')
+    assert.match(warnings[0], /deprecation/)
+    assert.equal(loadLibraries({ env: {} }).preferencesPath, '', '两名都没有时按空路径回')
+  } finally {
+    console.warn = originalWarn
+    await rm(base, { recursive: true, force: true })
+  }
+})
+
 test('路径安全：库内相对路径放行，正文目录可读', async () => {
   const { base, root } = await makeFixture()
   try {
@@ -260,8 +279,9 @@ test('root 白名单：库清单与 --root 显式授权都认，未登记 root �
 
 test('写协议错误码：S2 端口码透传成 WRITE_PROTOCOL_*', () => {
   assert.equal(mapWriteErrorCode('OPERATION_ID_REQUIRED'), 'WRITE_PROTOCOL_OPERATION_ID_REQUIRED')
-  assert.equal(mapWriteErrorCode('PINAX_INVALID_INPUT'), 'WRITE_PROTOCOL_INVALID_INPUT')
+  assert.equal(mapWriteErrorCode('INVALID_INPUT'), 'WRITE_PROTOCOL_INVALID_INPUT')
   assert.equal(mapWriteErrorCode('REVISION_MISMATCH'), 'REVISION_MISMATCH')
+  assert.equal(mapWriteErrorCode('STALE_REVISION'), 'REVISION_MISMATCH', '内核 STALE_REVISION 与宿主 REVISION_MISMATCH 同义，显式对应（OS-157）')
   assert.equal(mapWriteErrorCode('NOT_FOUND'), 'WRITE_PROTOCOL_NOT_FOUND')
   assert.equal(mapWriteErrorCode('SOMETHING_ELSE'), 'WRITE_PROTOCOL_IO_FAILED')
 })
@@ -336,8 +356,15 @@ test('daemon 端点：库清单/条目/单条/正文读写/路径拒收/root 白
   }
 })
 
-test('真实夹具库（PINAX_OS_FIXTURE）：/api/fact/curve 出 291 条事件域', { skip: !process.env.PINAX_OS_FIXTURE }, async () => {
-  const root = process.env.PINAX_OS_FIXTURE
+/* 夹具库环境变量：新名优先，旧名兼容一个大版本（命中旧名打一次 deprecation 日志）。 */
+const LEGACY_FIXTURE_ENV = ['PINAX', 'OS', 'FIXTURE'].join('_')
+const FIXTURE_ROOT = process.env.OPENSTORY_FIXTURE || process.env[LEGACY_FIXTURE_ENV]
+if (FIXTURE_ROOT && !process.env.OPENSTORY_FIXTURE) {
+  console.warn(`[deprecation] 环境变量 ${LEGACY_FIXTURE_ENV} 已改名为 OPENSTORY_FIXTURE；旧名仍兼容一个大版本。`)
+}
+
+test('真实夹具库（OPENSTORY_FIXTURE）：/api/fact/curve 出 291 条事件域', { skip: !FIXTURE_ROOT }, async () => {
+  const root = FIXTURE_ROOT
   const daemon = await startDaemon({
     port: 0,
     root,

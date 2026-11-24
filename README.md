@@ -26,7 +26,7 @@
 ## 快速开始
 
 ```bash
-npm install        # 装依赖（transformers；sharp 只作其传递依赖，内核 vendor 自持，无 tgz 依赖）
+npm install        # 装依赖（transformers；sharp 只作其传递依赖，内核已自持，无 tgz 依赖）
 npm start          # node daemon.mjs → http://127.0.0.1:8807（单实例锁＋/api/health）
 npm run mcp        # 全模块 MCP server（24 工具，stdio）
 npm test           # node --test（零外部依赖）
@@ -43,7 +43,7 @@ npm test           # node --test（零外部依赖）
 
 ## 架构一图
 
-七层实测分层（文件数/行数由 `scripts/arch-stats.mjs` 扫描生成、验收 S0.2 逐字比对；逐层职责与边界、
+分层与实测（文件数/行数由 `scripts/arch-stats.mjs` 扫描生成、验收 S0.2 逐字比对；逐层职责与边界、
 生成表都在 [ARCHITECTURE.md](./ARCHITECTURE.md)，本文不再抄数字）：
 
 ```
@@ -51,8 +51,7 @@ L7  前端 public/               无构建单页（ui-kit 统一规范）
 L6  契约层 src/api/contracts/  七域聚合，双端校验
 L5  src/host/                  node:http 手写路由＋MCP stdio（单实例锁/stamp/generation/health）
 L4  本仓自持层                 建库/导入自持（OS-123/124）＋fact 消费＋参考＋Agent＋货架＋协议层（src/ 树）
-L3  src/kernel/pinaxAdapter    内核唯一进口（五能力组，门禁 S2.4）
-L2  core/pinax                 fact 链底座（逐字 vendor，禁改；npm run vendor:check 盯漂移）
+L2  src/kernel/                自有内核（openstory-kernel@1：管道件/fact 链/enrich，门禁 S2.4'）
 L1  磁盘库                     文件即真相（.pinax 兼容，与 Pinax 桌面端双向兼容）
 ```
 
@@ -68,7 +67,7 @@ L1  磁盘库                     文件即真相（.pinax 兼容，与 Pinax �
 | `src/host/` | daemon（端点契约分派＋进程治理）＋ MCP server（24 工具，零依赖 stdio；`npm run mcp`） |
 | `src/api/` | 契约层 `contracts.mjs` ＋ `contracts/` 七域分片（OS-130 起分域，纯数据，两端共享） |
 | `src/protocol/` | 文件与协议层：chapters / changelog / versionGate / plugins / agentEvents / factGuard / dependencyGraph / hostWrite / libState |
-| `src/kernel/` ＋ `core/` ＋ `vendor/contracts/` | `pinaxAdapter.mjs` 内核唯一进口（五能力组）→ fact 链底座（逐字 vendor，[VENDORED.md](./core/VENDORED.md) 记出处边界，禁改；`npm run vendor:check` 盯漂移） |
+| `src/kernel/` | 自有内核（`openstory-kernel@1`：管道件＋fact 链＋enrich，公开面 `index.mjs`；出处与文件对应见 [docs/kernel-provenance.md](./docs/kernel-provenance.md)） |
 | `src/modules/` | 域模块：library/（建库/导入自持，OS-123/124 fork 点，`.pinax/project.json` 与 Pinax 桌面端双向兼容）、deduce/（推演）、roleplay/（扮演调度＋四层提示词）、worldbook/（参考索引）、agentbar/（Agent 存储） |
 | `src/services/` | 外围服务：kb*（知识库）、embedding-server、cli-bridge/dsh-*/runtimes（模型驱动）、suites/stylePacks/style-check/skills/genres（货架装载）、jobCenter / nativePicker / comfyEngine / syncCheck / enrichEngine |
 | `public/` | 工作台单页（app.js＋reference/graph/md/analysis/charts/ui-kit/storySource 等零依赖模块；echarts 本地 vendor） |
@@ -77,11 +76,15 @@ L1  磁盘库                     文件即真相（.pinax 兼容，与 Pinax �
 | `tools/dsh-openstory-studio/` | DSH 插件 bundle：宿主侧 daemon 生命周期＋客户端右侧栏工作台（`sidebar.footer.action`／`sidebarRightTabs`） |
 | `samples/水浒传/` | 公版演示库（导入即体验） |
 | `test/` | 全量 `node --test`（含 daemon 端到端、入口垫片契约与解耦金样护栏） |
-| `docs/` | 架构与规划（[ARCHITECTURE.md](./ARCHITECTURE.md) 七层分层、[遗留台账](./docs/LEGACY-ITEMS.md)、[推演×数据路线](./docs/plan/deduce-data-roadmap-20261118.md) 等） |
+| `docs/` | 架构与规划（[ARCHITECTURE.md](./ARCHITECTURE.md) 分层与实测、[内核出处](./docs/kernel-provenance.md)、[错误码改名](./docs/error-code-rename.md)、[遗留台账](./docs/LEGACY-ITEMS.md) 等） |
 
 ## 出处与致谢
 
-OpenStory 自 [Pinax-next](https://github.com/skkbsgzf/Pinax-StoryHarness) 的 openstory/ 线独立而来（2026-11-14 起，OS-1→OS-133 批次逐批交付）；内核（`core/pinax` 全树＋`vendor/contracts`）逐字 vendor 自同仓与 pinax-core 仓（见 [core/VENDORED.md](./core/VENDORED.md)），建库/导入/章节号已自持，上游漂移由 `npm run vendor:check` 盯防。设计对标 OpenDesign（dsHarness 生态）的插件接入与用户体验口径。
+OpenStory 自 [Pinax-next](https://github.com/skkbsgzf/Pinax-StoryHarness) 的 openstory/ 线独立而来（2026-11-14 起，OS-1→OS-133 批次逐批交付）。
+
+**内核**（`src/kernel/`，身份 `openstory-kernel@1`）自 2026-11-24 起为 OpenStory 自持实现：其管道件、fact 词表与校验、写协议、派生层最初逐字取自 Pinax-next 分支 `feat/pinax-electron-next` 提交 `70a4f44`（2026-11-15），世界书文件格式契约取自 `@pinax/core` 0.16.0（pinax-core 仓 `e56a0bc`）。OS-152→157 分批转自有后，代码在本仓自由演进，**不再与上游同步**；逐文件「来源 → 现位置」对照见 [docs/kernel-provenance.md](./docs/kernel-provenance.md)，对外错误码改名对照见 [docs/error-code-rename.md](./docs/error-code-rename.md)。
+
+兼容的锚不是代码，是**落盘格式**：`.pinax/project.json`＝`pinax-project@3`、`拆解/*.json`＝`fact.data/v3`、`*.wiki.json`＝`pinax-wiki-derived@1`——与 Pinax 桌面端双向可读，由 `test/decoupleStep2.test.mjs` 的建库金样守护（如需互认夹具的抓取清单，见 `docs/kernel-provenance.md` 第三节）。建库/导入/章节号解析自 OS-123/124 起即为本仓自持。设计对标 OpenDesign（dsHarness 生态）的插件接入与用户体验口径。
 
 ## 发布规范
 
@@ -89,6 +92,7 @@ OpenStory 自 [Pinax-next](https://github.com/skkbsgzf/Pinax-StoryHarness) 的 o
 
 ## 版本
 
+- **内核转自有收官**（2026-11-24，OS-157）：`core/`、`vendor/` 与 vendor 漂移检测整体退役，`pinaxAdapter` 解散，Host API `@2` 五键定稿，错误码去旧前缀；出处见 [docs/kernel-provenance.md](./docs/kernel-provenance.md)，改名对照见 [docs/error-code-rename.md](./docs/error-code-rename.md)。
 - **解耦收官**（2026-11-23，OS-120→133）：插件治理三件套＋能力白名单；内核解耦四步（server 层/载体注册体系移除→建库导入自持→pinaxAdapter 唯一进口→vendor 漂移检测）；进程治理（单实例锁/stamp/generation/health）；AG-UI 协议出口；契约分域（contracts/ 七域）；@pinax/core tgz 依赖收编移除。架构归档为[七层实测分层](./ARCHITECTURE.md)，遗留与「明确不做」见[遗留台账](./docs/LEGACY-ITEMS.md)。
 - **v0.2.x**（2026-11-21）：角色时间线泳道图、Windows 原生文件夹选择器/资源管理器唤起、Agent 栏可折叠、剧情密度热力图修复；DSH 插件内嵌模式（OS-113：右侧栏打开工作台，内嵌时收起自带的 Pi-Agent 左列，左侧交给 DSH 会话）＋窄面板适配约束（OS-114：纸面可读下限 320px、≤1000px 浮层不再让位、内边距/页签按断点降档）＋内嵌 Agent 桥（OS-115：「添加到 Agent / 润笔 / 发给 Agent」以引用块写进 DSH 当前会话输入框）＋MCP 工具面（OS-116：OpenStory 24 个 MCP 工具挂进 DSH，引用附库/章/段/root 来源，DSH Agent 可读章节、按备份语义写回）。
 - **v0.2.0**（2026-11-21）：扮演与文游舞台全面成型（多子 agent 同幕/长期记忆/拍转正/多局管理）、世界书纳入拆解词条（词条图谱槽）、剧本线（原生工作面＋外部导入）、生图识图、任务中心/修改日志/ui-state、设置重构（本体＋插件中心）、MCP 24 工具、95→99 端点契约、299 例测试。

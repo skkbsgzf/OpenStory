@@ -18,11 +18,11 @@
 
 ### ③ README 七要件（缺一即红）
 
-①标题下一句话定位 ②边界/声明（不做什么）③快速开始三行命令 ④ASCII 架构图 ⑤仓库地图（目录→内容）⑥出处与致谢（vendor/上游链接）⑦版本注记。端点数/测试数**写死在文中**作为漂移检测锚点——数字变了就是 README 过期了。
+①标题下一句话定位 ②边界/声明（不做什么）③快速开始三行命令 ④ASCII 架构图 ⑤仓库地图（目录→内容）⑥出处与致谢（上游链接，指向 `docs/kernel-provenance.md`）⑦版本注记。端点数/测试数**写死在文中**作为漂移检测锚点——数字变了就是 README 过期了。
 
 ### ④ 协议干净
 
-LICENSE 与 vendor 归属自洽；`core/VENDORED.md` 记逐字 vendor 出处；package.json 带 repository/license/engines；**不写真实私人邮箱**。
+LICENSE 与出处自洽：`README.md` 致谢段记内核谱系（Pinax-next `feat/pinax-electron-next`@`70a4f44`／@pinax/core 0.16.0 `e56a0bc`）与「落盘格式即互认锚」的口径，逐文件「来源 → 现位置」对照见 `docs/kernel-provenance.md`，对外错误码改名见 `docs/error-code-rename.md`；package.json 带 repository/license/engines；**不写真实私人邮箱**。不再有 `core/VENDORED.md` 与 `npm run vendor:check`——互认由落盘格式金样守护。
 
 ### ⑤ demo 干净
 

@@ -12,7 +12,7 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { mkdir } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
-import { fact } from '../../protocol/index.mjs' // OS-142：内核能力经 Host API fact 命名空间转出（模块纪律：modules 不直引 kernel/pinaxAdapter）
+import { fact } from '../../protocol/index.mjs' // OS-142：内核能力经 Host API fact 命名空间转出（模块纪律：modules 不直引内核实现）
 import { openDeduceSession, presentTurn, applyDirectorAction, settleChoice } from './engine/index.mjs'
 import { buildNarrativeContext, firstPersonify, readWikiSafe } from './deduceNarrative.mjs'
 import { atomicWriteFile } from '../../protocol/hostWrite.mjs'

@@ -1,5 +1,5 @@
-// OS-123 解耦① fork 点：本文件自 core/pinax/next/runtime/projectImportAdapter.mjs 整文件拷贝
-// （vendor 提交 70a4f44），自本批起归本仓所有、不再经 scripts/vendor-core.mjs 同步；
+// OS-123 解耦① fork 点：本文件自上游整目录导入实现整文件拷贝（提交 70a4f44），
+// 自本批起归本仓所有、不再与上游同步；出处见 docs/kernel-provenance.md。
 // 除 import 重指向（kernel plumber 改经 protocol/kernelPlumber.mjs 协议层叶子——OS-142
 // Host API 模块纪律；章节号/世界书解析改 ./textUtil.mjs）外逐字未动。
 import fs from 'node:fs'

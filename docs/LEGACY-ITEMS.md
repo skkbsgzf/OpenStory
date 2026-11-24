@@ -20,11 +20,11 @@
 | 事项 | 现状 | 依据 |
 |---|---|---|
 | **AG-UI 对接第三方消费者** | AG-UI 协议出口已接入：`agentEvents.mjs` 内部事件模型是 canonical（唯一真源），daemon SSE 帧已是它的投影（OS-128/131）。但至今**没有任何第三方客户端**消费 AG-UI 帧——协议出口在等一个真实消费者，在此之前不扩面。 | `agentEvents.mjs:1-20`（定位注释「未来第三方客户端…」） |
-| **漂移「上游已移位」的长期处置** | `npm run vendor:check` 会报 `[上游已移位]`（锚里有、本仓还在、上游已无）——如 `enrich/{metrics,pseudoChapters}.mjs`（OS-FACT 批次入库，上游从未有）。该档**仅信息级，不影响 exit code**；若未来此类文件增多，需要决定「转为正式自持（出 core/）」还是「维持 vendor 形态」，目前维持现状。 | `core/VENDORED.md` OS-132 节；`scripts/vendor-drift.mjs` |
+| ~~漂移「上游已移位」的长期处置~~（OS-157 已结案） | vendor 漂移检测随 `core/`、`vendor/` 与 `npm run vendor:check` 整体退役；`enrich/{metrics,pseudoChapters}.mjs` 等本仓入库件已是有据可查的自有内核，出处见 `docs/kernel-provenance.md`。互认锚改由落盘格式金样承担。 | `docs/kernel-provenance.md`；`docs/error-code-rename.md` |
 | **fs.watch 常驻监听** | 外部编辑（VSCode 改文件）不感知：参考索引只有本页编辑后 1.6s 防抖重扫。常驻 fs.watch 是候选修法，但会带来监听器生命周期与跨平台噪声问题，未做——现状「手动刷新可用」。 | `docs/AUDIT-SYNC.md` 缺口 3「外部编辑参考笔记不感知」 |
 | **MCP 写工具扩面** | MCP 24 工具读写分级：读自由、写有 .history 备份语义、absorb/agent 对话不开。写面保持最小（正文/参考回写），更多写操作（如批量回填、条目删除）走界面——外部 agent 的写越少，稿子越安全。扩面前先想清楚备份语义是否覆盖。 | `mcp.mjs:1-25`（读写分级红线）；`docs/ACCEPTANCE.md` |
 | **故事源大纲双向编辑** | 故事源三形态（大纲/表格/图表）是从 fact 条目＋wiki 章纲**只读算出**的投影；「在大纲里改字→写回 fact 条目」未实现，目前只能手动改条目。 | `docs/AUDIT-ARTIFACTS.md` 缺失转换「故事源文本→fact 条目（未实现）」 |
-| **fact 增量 PATCH** | fact 写通道是整文件写（revision 自增＋operationId 幂等＋expectedRevision 乐观并发）。条目数大之后整文件写放大，可选做增量 PATCH——但会动内核写协议（S2 writeFactFile），属跨仓契约变更，须上游一起动。 | `core/pinax/next/kernel/factFileStore.mjs:10-12`；`pinaxAdapter.mjs:44-45` |
+| **fact 增量 PATCH** | fact 写通道是整文件写（revision 自增＋operationId 幂等＋expectedRevision 乐观并发）。条目数大之后整文件写放大，可选做增量 PATCH——但会动自有内核写协议（S2 writeFactFile），属落盘契约变更，须连同互认金样一起评估。 | `src/kernel/fact/factFileStore.mjs`；`docs/kernel-provenance.md` |
 | **多轨并行图** | 关系图谱是「笔记＋拆解词条」同图单视图；角色时间线已有泳道图（storySource 事件面积图＋泳道）。「多轨并行」（多条剧情线并行推进的专用视图）未做，等真实创作需求出现再排。 | `public/storySource.mjs`（泳道）；`public/graph.mjs`（单图） |
 | **世界书人物单页档案** | 人物信息分散在：参考笔记（自由书写）＋拆解词条（fact 条目详情）。「按人物聚合的单页档案」（一处看全某人设定/事件/关系）未做——与「fact 条目→参考笔记」缺失转换同源，都是 fact↔笔记的单向缺口。 | `docs/AUDIT-ARTIFACTS.md` 缺失转换「fact 条目→参考笔记（未实现）」 |
 | **任务中心扩任务类型** | jobCenter 是通用后台任务容器（kind: image/vision/enrich/import/…），前端悬浮球轮询。加新任务类型＝纯增量（submitJob 带新 kind），无架构障碍——只是没有想做的任务，先空着。 | `jobCenter.mjs:9-10,57` |

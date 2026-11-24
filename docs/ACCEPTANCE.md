@@ -9,7 +9,7 @@
 |---|---|---|
 | S0 布局 | S0.1–S0.2 | 布局宪法（OS-140）：仓根 `.mjs` 恰好两个入口垫片 daemon.mjs/mcp.mjs，自持模块全部在 `src/` 六目录（host/api/protocol/kernel/modules/services）· 架构文档数字与实测一致（OS-150：ARCHITECTURE.md 生成段逐字比对 `scripts/arch-stats.mjs`，改了文件结构就跑 `npm run arch:stats` 回写，人不再手填） |
 | S1 Agentic | S1.1–S1.5 | MCP 工具覆盖五模块（读+写）· mcp/skills 文档同步 · skills/ 30 包完整 · dsh-cli 运行时 · 多 CLI 派发器 |
-| S2 可插拔 | S2.1–S2.6 | 模块间零 import（协议层 contracts/changelog/versionGate/plugins/pinaxAdapter 除外）· 前端模块隔离（自动扫描 `public/*.mjs`＋`public/views/*.mjs`，与 S2.1 共用同一份说明符扫描器——静态 from／动态 import()／副作用 import 全在面内；豁免**按边登记**并带理由，OS-150b）· 契约驱动（endpointFor + validateResponse）· 内核唯一进口（src/ 模块＋垫片中仅 src/kernel/pinaxAdapter.mjs 可引 core/**，OS-125）· 来源防护闸常绿（OS-136：`test/originGuard.test.mjs` 钉死 Host/Origin/Sec-Fetch-Site 三道闸＋强制 JSON content-type，daemon 只服务本机回环，任意网页写不进）· 命名真源表一致（OS-148：页签层与 changelog 模块名都只从 `public/views/registry.mjs` 的 `NAMING_TABLE` 取）· 豁免表无腐化（S2.6：登记边必须真实存在且写明理由，OS-150b） |
+| S2 可插拔 | S2.1–S2.6 | 模块间零 import（协议层 contracts/changelog/versionGate/plugins/kernel/index 除外）· 前端模块隔离（自动扫描 `public/*.mjs`＋`public/views/*.mjs`，与 S2.1 共用同一份说明符扫描器——静态 from／动态 import()／副作用 import 全在面内；豁免**按边登记**并带理由，OS-150b）· 契约驱动（endpointFor + validateResponse）· 内核实现唯一（S2.4'：src/** 与垫片不得出现 `core/` 路径说明符，内核实现只在 `src/kernel/`，OS-157）· 来源防护闸常绿（OS-136：`test/originGuard.test.mjs` 钉死 Host/Origin/Sec-Fetch-Site 三道闸＋强制 JSON content-type，daemon 只服务本机回环，任意网页写不进）· 命名真源表一致（OS-148：页签层与 changelog 模块名都只从 `public/views/registry.mjs` 的 `NAMING_TABLE` 取）· 豁免表无腐化（S2.6：登记边必须真实存在且写明理由，OS-150b） |
 | S3 前端一致性 | S3.1–S3.3 | 裸色值零容忍（:root 令牌单一真源）· 浮层宪法（OS-48 不挤压正文）· 组件约定类齐备 |
 | S4 UX 跳转层级 | S4.1–S4.3 | 核心页签顶栏可达（注册表 core:true 条目逐条验 label/render 注册名/scope；渲染块先剥注释，注释不许冒充已注册，OS-150a）· 关闭按钮两级约定（rm-x/page-close）· docs/UX-STRUCTURE.md 清单在 |
 
@@ -43,7 +43,7 @@ node tools/acceptance/acceptance.mjs --json tools/acceptance/out/report-<日期>
   contains/tested_by/documents…，带分层 layers 与导览 tour）。
 - 用法：`/understand`（增量）、`/understand-diff`（改动影响面）、`/understand-explain <file>`、
   `/understand-chat <问题>`、`/understand-onboard`（新人导览）、`/understand-dashboard`（可视化）。
-- 注意：`core/`（vendor 内核）在 `.ua/.understandignore` 排除——它不是 OpenStory 自身架构。
+- 注意：`core/`、`vendor/` 已于 OS-157 整体退役，不再需要 `.ua/.understandignore` 排除；内核实现在 `src/kernel/`。
 
 ### Rea 证据口径
 - 样例：`D:/refs/rea-out/`（pinax/siyuan 的 records/evidence 结构化分析）。
@@ -62,11 +62,12 @@ node tools/acceptance/acceptance.mjs --json tools/acceptance/out/report-<日期>
 - S2.1 白名单（旧口径 `KERNEL_ALLOW` 内部边，新口径③「模块目录内」已直接放行，这里同口径登记）：
   `src/modules/deduce/deduceEngine.mjs → src/modules/deduce/deduceNarrative.mjs`（叙事拼装子模块）、
   `src/modules/deduce/deduceEngine.mjs → src/modules/deduce/engine/index.mjs`（OS-155 推演链出口）；
-  `core/**` vendor 内核不算模块；`src/kernel/pinaxAdapter.mjs` 是内核唯一进口＝能力协议面（OS-125）。
-- S2.4 唯一进口：src/ 模块＋仓根两个垫片中只有 `src/kernel/pinaxAdapter.mjs` 允许 import `core/**`（静态 `from` 与动态
-  `import()` 都算；OS-140 起扫描面＝`src/` 树全部 `.mjs` ＋垫片）；内核能力只经它的四组出口（factStore/enrich/projectMeta/projectImport；
-  OS-155 起 `deduce` 已退出——推演链归 `src/modules/deduce/engine/`，Host API 升 `host-api@2`）。
-  `vendor/contracts`（@pinax/core 收编后的世界书契约，OS-132）与 `test/*.test.mjs` 不在扫描范围。
+  `src/kernel/**` 自有内核不算模块；`src/kernel/index.mjs` 是内核公开面＝能力协议面（OS-157）。
+- S2.4' 内核实现唯一（OS-157 由原 S2.4 退役而来）：`src/**` 与仓根两个垫片中不得出现 `core/`
+  路径说明符（静态 `from` 与动态 `import()` 都算；扫描面＝`src/` 树全部 `.mjs` ＋垫片）；
+  内核实现只在 `src/kernel/`，公开面 `index.mjs` 五键（factStore/enrich/ok/fail/writeFileAtomic）。
+  Host API `host-api@2` 的五键在此定稿（OS-155 删 `deduce`、OS-157 删 `projectMeta`／`projectImport`）。
+  `test/*.test.mjs` 不在扫描范围；出处见 `docs/kernel-provenance.md`。
 - S4.2 关闭家族：模块卡 `rm-x`，整页 `page-close`。
 - S3.1 裸色值豁免：无（画布绘图用 getComputedStyle 现读令牌，见 public/graph.mjs）。
 

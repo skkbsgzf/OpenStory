@@ -7,9 +7,9 @@
  * 改快照这个动作本身就是「显式确认」；破坏性变更（删成员/改签名）还要升 HOST_API_VERSION
  * （现行 host-api@2，OS-155 因删除 fact.deduce 升版；见 src/protocol/README.md 版本约定）。
  *
- * 装载序说明：本文件先 import index.mjs（index→pinaxAdapter→library fork 点方向）；
- * 反方向（fork 点先装）用子进程单独起一趟——node --test 每个文件各起一个进程，同进程内
- * ESM 模块表不能倒序重放，而循环边（fork 点↔adapter↔协议叶子）必须两个方向都真跑过
+ * 装载序说明：本文件先 import index.mjs（index→kernel/** 公开面方向）；
+ * 反方向（库管理 fork 点先装）用子进程单独起一趟——node --test 每个文件各起一个进程，
+ * 同进程内 ESM 模块表不能倒序重放；adapter 解散后环已断，这条冒烟仍钉死装配顺序
  * （与 test/decoupleStep2/Step3 的双向冒烟同一手法）。
  */
 import test from 'node:test'
@@ -46,9 +46,10 @@ test('七个能力命名空间全部导出且为冻结对象', () => {
   }
 })
 
-/* 键清单快照（2026-11-23 OS-142 建档，键序为字母序；OS-155 升 host-api@2 删除 fact.deduce）。增删 index.mjs 的命名空间成员必须同步改这里。 */
+/* 键清单快照（2026-11-23 OS-142 建档，键序为字母序；OS-155 删 fact.deduce、OS-157 删
+   fact.projectImport／fact.projectMeta 后 @2 在此定稿）。增删 index.mjs 的命名空间成员必须同步改这里。 */
 const SNAPSHOT = {
-  fact: ['enrich', 'factStore', 'fail', 'ok', 'projectImport', 'projectMeta', 'writeFileAtomic'],
+  fact: ['enrich', 'factStore', 'fail', 'ok', 'writeFileAtomic'],
   prose: ['HISTORY_KEEP_DEFAULT', 'chapterFileName', 'createChapter', 'deleteChapter', 'historyBackupPath', 'listChapters', 'mapWriteErrorCode', 'moduleOfPath', 'nextChapterNumber', 'parseChapterName', 'pruneHistoryBackups', 'renameChapter', 'resolveHistoryKeepPerFile', 'sanitizeChapterTitle', 'writeChapterWithBackup'],
   changelog: ['LOG_DIR', 'contentHash', 'findRestoreCandidate', 'hasLog', 'logFilePath', 'logSummary', 'readChange', 'readLatestByFile', 'readLog', 'recordChange', 'safeModuleName', 'unifiedDiff'],
   jobs: ['activeCount', 'cancelJob', 'clearSettled', 'getJob', 'listJobs', 'submitJob', 'subscribe'],
@@ -71,18 +72,16 @@ test('快照覆盖全部命名空间（快照本身不许漏命名空间）', ()
   assert.deepEqual(Object.keys(SNAPSHOT).sort(), Object.keys(NAMESPACES).sort())
 })
 
-test('fact 命名空间与 pinaxAdapter 四组出口同源（转出不换实现；OS-155 起推演端子不在其中）', async () => {
-  const adapter = await import('../src/kernel/pinaxAdapter.mjs')
-  assert.equal(fact.factStore, adapter.factStore)
-  assert.equal(fact.enrich, adapter.enrich)
-  assert.equal(fact.projectMeta, adapter.projectMeta)
-  assert.equal(fact.projectImport, adapter.projectImport)
-  assert.equal(fact.ok, adapter.ok)
-  assert.equal(fact.fail, adapter.fail)
-  assert.equal(fact.writeFileAtomic, adapter.writeFileAtomic)
-  // OS-155：推演端子已归扮演模块，Host API 不再转出
-  assert.equal('deduce' in fact, false)
-  assert.equal('deduce' in adapter, false)
+test('fact 命名空间与内核公开面五键同源（转出不换实现；@2 定稿）', async () => {
+  const kernel = await import('../src/kernel/index.mjs')
+  assert.equal(fact.factStore, kernel.factStore)
+  assert.equal(fact.enrich, kernel.enrich)
+  assert.equal(fact.ok, kernel.ok)
+  assert.equal(fact.fail, kernel.fail)
+  assert.equal(fact.writeFileAtomic, kernel.writeFileAtomic)
+  // OS-155/157：三组已退出 Host API，钥匙逐把钉死
+  for (const gone of ['deduce', 'projectImport', 'projectMeta']) assert.equal(gone in fact, false)
+  assert.equal(kernel.KERNEL_ID, 'openstory-kernel@1')
 })
 
 test('冻结是真冻结：改写命名空间成员静默失效（严格模式抛错）', () => {
@@ -100,7 +99,8 @@ assert.equal(mod.HOST_API_VERSION, 'host-api@2')
 for (const name of ['fact', 'prose', 'changelog', 'jobs', 'events', 'plugins', 'guard']) {
   assert.equal(Object.isFrozen(mod[name]), true, name)
 }
-assert.equal(mod.fact.projectMeta.writeProjectDocument, projectDoc.writeProjectDocument, 'fact 转出与 fork 点同源')
+assert.equal(mod.fact.factStore.FACT_DIR_NAME, '拆解', 'fact 转出与内核同源（adapter 解散后环已断）')
+assert.equal(typeof projectDoc.writeProjectDocument, 'function', 'fork 点先装仍可独立工作')
 console.log('reverse-order ok')
 `
   const r = spawnSync(process.execPath, ['--input-type=module', '--eval', loader], { encoding: 'utf-8', cwd: ROOT })

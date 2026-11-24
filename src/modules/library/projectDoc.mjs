@@ -1,10 +1,10 @@
 /**
- * OS-124 解耦②：建库自持（fork 点，不再经 scripts/vendor-core.mjs 同步）。
+ * OS-124 解耦②：建库自持（fork 点，不再与上游同步）。
  * `.pinax/project.json` 落盘格式是与 Pinax 桌面端的双向兼容契约——一个字节不许变
  * （spec 'pinax-project@3'、schemaVersion 3、字段名与顺序、carriers{primary,enabled,revision}）。
  *
  * 逐字拷贝归并自 Pinax-next@70a4f44（分支 feat/pinax-electron-next，拷贝方式＝
- * 脚本按行切片原文件拼接，非手抄；本批删除的 vendor 源文件见 core/VENDORED.md）：
+ * 脚本按行切片原文件拼接，非手抄；上游路径见 docs/kernel-provenance.md）：
  *   · next/kernel/projectSkeleton.mjs → PROJECT_SPEC / LEGACY_PROJECT_SPECS / METADATA_DIR /
  *     PROJECT_KINDS / isKnownKind / skeletonDirs / allSkeletonDirs / ensureSkeleton；
  *   · next/project/projectManifest.mjs → 除 import 外整文件（validateProjectDocument /
@@ -15,9 +15,8 @@
  *     prepareRoot 空目录检查 / makeMetadataDirs 落 .pinax/proposals 与 .pinax/state / makeProjectId）。
  * 载体表 CARRIERS 与 vendor 清单（next/carriers/{novel,script}/manifest.mjs）逐字一致：
  * 两载体 requires 均为 []，resolveClosure 在其上退化为恒等——种子装齐即闭包装齐。
- * 仍从 vendor 只读面引（OS-124 保留不删；OS-125 起改经 pinaxAdapter.mjs 转供——它是全仓
- * 唯一允许 import core/** 的仓根模块，门禁 S2.4）：内核 errors.mjs 的 fail/ok、
- * atomicWrite.mjs 的 writeFileAtomic（其内引 electron/projects/fsDurability.mjs 的 fsync 链）。
+ * plumber（fail/ok/writeFileAtomic）经协议层叶子 protocol/kernelPlumber.mjs 取用（OS-142
+ * 起），实现已全树自持于 src/kernel/（OS-157 起 adapter 解散，出处见 docs/kernel-provenance.md）。
  * 护栏测试：test/decoupleStep2.test.mjs（金样＝删前内核建库输出的冻结值）。
  */
 import { mkdirSync } from 'node:fs'

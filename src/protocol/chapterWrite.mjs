@@ -158,14 +158,15 @@ async function pruneHistoryForFile(root, originalPath, keepPerFile) {
 }
 
 /**
- * S2 的失败码 → OpenStory 契约码。writeFail 会把内核码表里的码解析成 `PINAX_*`，
- * 这里剥前缀后按语义归并；未识别的写失败统一 WRITE_PROTOCOL_IO_FAILED（不假装成功）。
+ * S2 的失败码 → OpenStory 契约码。OS-157 起内核码已去前缀，这里按语义归并；
+ * 未识别的写失败统一 WRITE_PROTOCOL_IO_FAILED（不假装成功）。
+ * 内核 `STALE_REVISION` 与宿主 `REVISION_MISMATCH` 两名同义，在此显式对应。
  */
 export function mapWriteErrorCode(code) {
-  const upper = text(code).trim().replace(/^PINAX_/u, '').toUpperCase()
+  const upper = text(code).trim().toUpperCase()
   if (upper.includes('OPERATION_ID_REQUIRED')) return API_ERROR_CODES.WRITE_PROTOCOL_OPERATION_ID_REQUIRED
   if (upper.includes('VALIDATION_FAILED')) return API_ERROR_CODES.WRITE_PROTOCOL_VALIDATION_FAILED
-  if (upper.includes('REVISION_MISMATCH')) return API_ERROR_CODES.REVISION_MISMATCH
+  if (upper.includes('STALE_REVISION') || upper.includes('REVISION_MISMATCH')) return API_ERROR_CODES.REVISION_MISMATCH
   if (upper.includes('NOT_FOUND')) return API_ERROR_CODES.WRITE_PROTOCOL_NOT_FOUND
   if (upper.includes('INVALID_INPUT')) return API_ERROR_CODES.WRITE_PROTOCOL_INVALID_INPUT
   if (upper.includes('INVALID_ENTRY')) return API_ERROR_CODES.WRITE_PROTOCOL_VALIDATION_FAILED

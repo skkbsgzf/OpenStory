@@ -180,7 +180,7 @@ describe('factEntriesImport 写端点直测（OS-135②）', () => {
     // daemon 读 written.message 落空 → 回兜底文案「写入拆解失败」——如实锁当前行为。
     assert.equal(status, 500)
     assert.equal(body.ok, false)
-    assert.equal(body.error.code, 'PINAX_IO_FAILED', '内核 IO_FAILED 原样透出（daemon 未映射，落 500 桶）')
+    assert.equal(body.error.code, 'IO_FAILED', '内核 IO_FAILED 原样透出（daemon 未映射，落 500 桶）')
     assert.equal(body.error.message, '写入拆解失败')
     assert.equal(statSync(zeroPath).size, 0, '内核拒绝覆盖，0 字节文件不得被改动')
     assert.equal(appliedCount('os135-regression-zero-1'), 0, '失败的写不得留 applied 记录')

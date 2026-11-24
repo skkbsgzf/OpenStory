@@ -1,6 +1,6 @@
 # OpenStory 架构
 
-> 七层实测分层（OS-133 归档，OS-150 起数字由脚本生成）。本文所有「N 文件 / N 行」只出现在
+> 分层与实测（OS-133 归档，OS-150 起数字由脚本生成；OS-157 起 L2/L3 合并为「自有内核」一层）。本文所有「N 文件 / N 行」只出现在
 > 下方**生成表**里——它由 `scripts/arch-stats.mjs` 按约定目录扫描实测生成，标记
 > `arch-stats:start` 与 `arch-stats:end` 圈定范围，叙述部分不再手写会漂的数字。
 > 改了文件结构或行数：跑 `npm run arch:stats` 回写生成表；`node scripts/arch-stats.mjs --check`
@@ -21,10 +21,10 @@
 事实链是正文的**结构化投影**，每条事件都带 `sources[]`（源文件＋段号＋quote_hash）可回指原文。
 所以读数据先问「事实链里有没有」，喂模型先问「能不能只喂事实链」；正文用作出处与兜底。
 
-这一优先级对所有模块有约束力：任何绕过 `factStore`（pinaxAdapter 出口，内核 factFileStore）
+这一优先级对所有模块有约束力：任何绕过 `factStore`（内核公开面出口，factFileStore）
 直接读正文喂模型的做法，都算违约。
 
-## 七层分层（自上而下，依赖只许向下）
+## 分层（自上而下，依赖只许向下）
 
 下面这张表是**生成段**：文件数与行数由 `scripts/arch-stats.mjs` 实测，不要手改（改目录结构后跑
 `npm run arch:stats` 回写）。L7–L2 各节的规模数字一律以本表为准，正文只写职责与边界。
@@ -34,10 +34,9 @@
 |---|---|---:|---:|
 | L7 前端 | `public/`（含 `views/`） | 19 | 20,838 |
 | L6 契约层 | `src/api/contracts/` | 8 | 1,391 |
-| L5 宿主层 | `src/host/` | 5 | 1,663 |
-| L4 自持层 | `src/{modules,services,protocol}/` | 66 | 14,463 |
-| L3 内核进口 | `src/kernel/` | 10 | 1,899 |
-| L2 内核 | `core/pinax/` | 0 | 0 |
+| L5 宿主层 | `src/host/` | 5 | 1,682 |
+| L4 自持层 | `src/{modules,services,protocol}/` | 69 | 15,423 |
+| L2 自有内核 | `src/kernel/` | 11 | 1,871 |
 | L1 磁盘库 | 库＝文件夹（无代码） | — | — |
 
 | 附加指标 | 实测 |
@@ -48,7 +47,7 @@
 <!-- arch-stats:end -->
 
 ```
-L7 前端 → L6 契约层 → L5 宿主层 → L4 自持层 → L3 内核进口 → L2 内核 → L1 磁盘库
+L7 前端 → L6 契约层 → L5 宿主层 → L4 自持层 → L2 自有内核 → L1 磁盘库
 ```
 
 ### L7 前端 `public/`
@@ -156,82 +155,38 @@ OS-123/124 解耦后，建库/导入/章节号解析全部自持，不再 vendor
 - **边界**（OS-142 升格为路径规则）：`src/modules/**` 只准引三类——node 内置模块
   （`node:` 前缀）、`src/protocol/**`（Host API：index.mjs 七命名空间＋叶子件）、自己模块
   目录内文件；模块间禁止直接 import（门禁 S2.1，静态 from 与动态 import() 都扫）。
-  内核能力只从协议层 `fact` 命名空间取（经 L3 四组出口转出，模块层不再直引 pinaxAdapter）；
+  内核能力只从协议层 `fact` 命名空间取（经 L2 公开面五键转出，模块层不直引内核实现）；
   **插件只准 import `src/protocol/index.mjs`**。豁免唯一且显式点名：
   roleplayEngine→public/analysis.mjs（纯函数 AI 味分析，台账见 src/protocol/README.md）。
 
-### L3 src/kernel/pinaxAdapter.mjs（内核唯一进口）
+### L2 src/kernel/（自有内核，openstory-kernel@1）
 
-- **职责**（OS-125 解耦③；OS-156 起 core/** 已退役）：全仓**唯一的内核能力装配点**——从
-  `src/kernel/**` 的自持内核件组装四组出口，消费方一律经它（门禁 S2.4 扫描 `src/` 全部模块＋
-  两个垫片，口径自 OS-156 收紧为「任何文件都不许 import `core/**`」）。**四能力组出口**（OS-155 起；`deduce` 已随推演链归模块退出）：
-  `factStore`（S1 只读 list/get ＋ S2 writeFactFile 写协议）、`enrich`（伪章推导＋因果图三指标）、
-  `projectMeta`（转引本仓 projectDoc）、`projectImport`（转引本仓 importAdapter/textUtil）；
-  后两组是自有能力的统一出口。
-  另有最小补集 plumber（`ok`/`fail`/`writeFileAtomic`）仅限 projectDoc/importAdapter
-  两个既有 fork 点使用；OS-138 写通道收敛起 hostWrite.mjs（全仓唯一写入口）也取
-  `writeFileAtomic`/`TMP_PREFIX`/`syncDirectory`，同属最小补集口径。
-  **OS-152 管道件自持**：`errors.mjs`（表名 `KERNEL_ERROR_CODES`，25 个值仍 `PINAX_*` 未改）、
-  `atomicWrite.mjs`、`fsDurability.mjs` 已影子复制进 `src/kernel/`，adapter 与
-  hostWrite/kernelPlumber 均取这一份；core 三件原件随 OS-156 删除（设计稿 §0.3-1、§6.7）。
-  **OS-153 领域件自持**：`fact/domain/` 8 件（`aliases`/`perspective`/`schema`/`stableId`/`status`/
-  `validity`/`vocabulary` ＋ re-export 桶 `index.mjs`，即 core 的 `pediaSchema.js`）逐字复制进
-  `src/kernel/fact/domain/`，合计 1,233 行——**自有副本**是后续事实链的表达层底座；core 原件保留、
-  `factFileStore` 仍指 core（搬家是 OS-156），故本批不动任何消费方 import。
-  扩展名依 vendor 现状保留 `.js`（仅桶改名 `.mjs`）；arch-stats 的 L3 口径只计 `.mjs`，
-  本批 7 件 `.js` 不进分层表文件数/行数（口径脚本不在 OS-153 改动范围，见该单 limitations）。
-  **OS-154 派生/包装自持**：`fact/wikiDerive.mjs`、`fact/factPack.mjs`（扩展名 `.js`→`.mjs`）
-  与 `enrich/{pseudoChapters,metrics}.mjs` 逐字复制进 `src/kernel/`；adapter `enrich` 组改指
-  `src/kernel/enrich/`，core 两件**当场删除**（core 24 → 22 文件，指纹锚同步除名）。伪章公式按
-  设计稿 §9-6 合并为一份：`fact/wikiDerive.mjs` 改引 `enrich/pseudoChapters.mjs`，原导出名
-  （`plotMinSegment`/`pseudoChapterCount`/`derivePseudoChapters`/`hasRealChapters`）原样再转出。
-  `wikiDerive`/`factPack` 的 core 原件：`wikiDerive` 仍保留（core 侧 `factFileStore` 用），
-  `factPack.js` 随 OS-155 推演链搬家删除（最后一个 core 消费者 `deduce/sceneContext` 已迁）。
-  **OS-155 推演链归位**：8 件 `next/fact/usecases/deduce/*.js` → `src/modules/deduce/engine/*.mjs`
-  （逻辑逐字未改，fact 域原语与 `factPack` 改经协议层 `src/protocol/factDomain.mjs` 取）；
-  `fact.deduce` 退出 Host API（**host-api@2**），`deduceEngine.mjs` 改引模块内 `./engine/index.mjs`。
-  core **22 → 13 文件**（指纹锚同步除名 9 项）。llmPort 的规范/兼容两种形态与坏形状降级口径
-  见 [docs/deduce-llm-port.md](./docs/deduce-llm-port.md)（封装层 `normalizeLlmPort` 做形状校验）。
-  **OS-156 写协议自持（core 清零）**：`factFileStore.mjs`（756 行，全仓 fact 写入唯一通道）逐字迁入
-  `src/kernel/fact/factFileStore.mjs`（除 import 重指向外一行未改；错误表名在自持 `errors.mjs` 里叫
-  `KERNEL_ERROR_CODES`，迁移件内 `as NEXT_ERROR_CODES` 保持逐字），adapter `factStore` 组改指新位置；
-  core 剩余 13 件（store 1 ＋ `wikiDerive` 1 ＋ domain 8 ＋ 管道 3）**全部删除**，`core/pinax/` 归零，
-  `core/.vendored-manifest.json` 的 pinaxNext 段同步移除（只留 pinaxCore 段）。写协议直测见
-  `test/factWriteProtocol.test.mjs`（operationId 幂等／expectedRevision 冲突／revision 自增／
-  多条目 upsert／派生档分离／校验闸失败原样不动）。
-  core **13 → 0 文件**；自持后门禁 S2.4 由「只有 adapter 可引 core/**」收紧为「core/** 进口面为零」。
-- **消费方**（OS-142 后 import 本文件的）：API/宿主层 api/handlers/fact、
-  api/handlers/reference、services/systemPrompt（OS-142 未约束的面，直引保留）＋协议层转供面
-  protocol/index、protocol/chapters、protocol/factGuard（S2.4 的 KERNEL_GATEWAY_ALLOW 显式豁免清单；
-  OS-152 起 protocol/kernelPlumber、protocol/hostWrite 改为直取 `src/kernel/` 管道件，不再进口本文件）。模块层
-  （deduceEngine/libraryManage/projectDoc/importAdapter）与 services/enrichEngine 自 OS-142
-  起改经协议层 `fact` 命名空间取，不再直引本文件。
-- **不在管辖**：worldbook 格式契约（vendor/contracts/worldbookFileContract.js）是格式契约面，
-  OS-142 起模块层经 src/protocol/worldbookContract.mjs 转供取用（护栏测试仍直引 vendor 本体），
-  不经 adapter（解耦规划 §4「不动」）。
-- **边界**：内核换版本/换实现只改这一个文件；新模块一律走协议层 fact 命名空间（即四组出口），
-  不得绕行。推演端子不在本文件——它属扮演模块（`src/modules/deduce/engine/`）。
+内核自 2026-11-24 起为 OpenStory 自持实现；由 Pinax-next `feat/pinax-electron-next`@`70a4f44`
+于 OS-152→OS-157 分批转自有，`core/`、`vendor/` 与 `npm run vendor:check` 已整体退役。
+**无上游同步；互认靠落盘金样**（`test/decoupleStep2.test.mjs` 的建库格式逐字节锁定，
+夹具抓取清单见 `docs/kernel-provenance.md` 第三节）。按能力分三组：
 
-### L2 core/pinax（fact 链底座，逐字 vendor）
+| 组 | 文件 | 职责 |
+|---|---|---|
+| 公开面/身份 | `index.mjs`（五键 factStore/enrich/ok/fail/writeFileAtomic）、`identity.mjs` | 唯一内核出口＋身份串，供协议层与 handler 直取 |
+| 管道件 | `errors.mjs`（`KERNEL_ERROR_CODES` 25 值，OS-157 去前缀）、`atomicWrite.mjs`、`fsDurability.mjs` | 统一失败载荷；原子写（fsync＋rename＋目录 fsync）与失败清场 |
+| fact 链 | `fact/factFileStore.mjs`（写协议唯一入口）、`fact/wikiDerive.mjs`、`fact/factPack.mjs`、`fact/domain/`（8 件＋桶 `index.mjs`） | `<库>/拆解/<id>.json` 的读写与 wiki 派生；词表/稳定 id/状态机/双时间轴/校验 |
+| enrich | `enrich/pseudoChapters.mjs`、`enrich/metrics.mjs` | 纯函数只读度量（伪章推导＋因果图三指标） |
 
-逐字 vendor 自 Pinax-next `feat/pinax-electron-next`@`70a4f44`，**本仓禁改**。按能力分：
+扩展名沿用迁移现状（domain 件为 `.js`，仅桶改名 `.mjs`）；arch-stats 的 L2 口径只计 `.mjs`，
+7 件 `.js` 不进分层表文件数/行数。推演 8 件**不在内核**：OS-155 起归
+`src/modules/deduce/engine/`，它是会产生会话状态与新条目的产品引擎（只读派生才留内核）；
+llmPort 规范/兼容形态见 [docs/deduce-llm-port.md](./docs/deduce-llm-port.md)。
+世界书文件契约亦不在内核：OS-157 起归 `src/modules/worldbook/worldbookFileContract.mjs`。
 
-| 能力 | 文件 |
-|---|---|
-| 存储协议 | `next/kernel/factFileStore.mjs`（真源 `<库>/拆解/<id>.json`，`fact.data/v3`，revision＋operationId 幂等＋expectedRevision 乐观并发）、`next/kernel/errors.mjs`、`next/fs/atomicWrite.mjs`（被引方：`electron/projects/fsDurability.mjs` 的 fsync 耐久化链） |
-| 领域词表 | `next/fact/domain/`（aliases/pediaSchema/perspective/schema/stableId/status/validity/vocabulary）＋ `next/kernel/wikiDerive.mjs` |
-| 推演端子 | **已退出（OS-155）**——8 件迁 `src/modules/deduce/engine/`，`factPack.js` 一并删除；core 不再有推演链 |
-| enrich 度量 | —（OS-154 已转自有 `src/kernel/enrich/`，core 原件删除） |
-
-- **OS-154 自持副本**：`wikiDerive`/`factPack` 已在 `src/kernel/fact/` 有逐字副本
-  （`factPack` 扩展名 `.mjs`）；`factPack` 的 core 原件随 OS-155 删除，`wikiDerive` 仍保留到 OS-156。
-  **现存 vendor 13 件**（OS-155：22 → 13，推演 8 件＋`factPack.js` 除名）。
-- **出处与漂移**：`core/VENDORED.md`（映射＋解耦史）；sha256 指纹锚
-  `core/.vendored-manifest.json`（双段：pinaxNext＋pinaxCore，逐文件），
-  `npm run vendor:check` 逐文件比对。
-- **另有收编件**：`vendor/contracts/worldbookFileContract.js`（OS-132 收编自 @pinax/core
-  0.16.0＝pinax-core 仓 `e56a0bc`，不在 core/pinax 之内，同受「禁改」约束）。
-- **边界**：core 里的文件不 import 本仓任何模块；改动只发生在上游，再同步进本仓。
+- **消费方**：API/宿主层 handlers/fact、handlers/reference、services/systemPrompt 直取
+  `src/kernel/index.mjs`；协议层 protocol/index、protocol/factGuard 同取公开面；
+  kernelPlumber/hostWrite 直取管道件。模块层经协议层 `fact` 命名空间与 `factDomain.mjs` 取，
+  不直引内核实现。
+- **边界**：写协议只经 `factFileStore.writeFactFile`（operationId 幂等＋expectedRevision 乐观并发，
+  直测见 `test/factWriteProtocol.test.mjs`）；磁盘格式名冻结（见跨层红线 2）；
+  门禁 S2.4' 钉死 `src/**` 不出现 `core/` 路径说明符。逐文件出处见
+  `docs/kernel-provenance.md`，错误码改名见 `docs/error-code-rename.md`。
 
 ### L1 磁盘库 ——文件即真相
 
@@ -251,37 +206,33 @@ OS-123/124 解耦后，建库/导入/章节号解析全部自持，不再 vendor
 - **边界**：除本机货架与锁文件外，一切状态落库内固定位置；关掉浏览器/换机器/清缓存，
   重新打开库必须完全复原（OS-89 判据）。
 
-## 升级上游内核的标准动作
+## 内核演进纪律（OS-157 起）
 
-内核（Pinax-next 的 `next/**`、`electron/projects/fsDurability.mjs`；pinax-core 仓的
-`worldbookFileContract.js`）升级时的固定三步：
+内核已自有，**不再有上游同步动作**（旧的三步 vendor 升级流程随 `core/`、`vendor/`、
+`npm run vendor:check` 一并退役）。后续演进按三条：
 
-1. **`npm run vendor:check`**（`scripts/vendor-drift.mjs check`）——先分清现状：
-   `[本仓被改]`＝红线被踩，先回滚本仓改动；`[上游已变]`＝上游在锚 `70a4f44`/`e56a0bc`
-   之后动过，逐文件评估要不要跟；`[上游已移位]`＝信息级（上游没这文件，本仓有意保留）。
-2. **看 pinaxAdapter.mjs**——消费面只有四组出口＋plumber。上游改了什么能力，先落到
-   `factStore/enrich/projectMeta/projectImport` 四组里评估波及面（消费方只有上面点名的那几个），
-   破坏性变更在 adapter 内消化，不让消费方跟着改。推演端子不在其中（OS-155 起属扮演模块）。
-3. **重 vendor**：改上游 → 重收编 `vendor/contracts/` → `node scripts/vendor-drift.mjs snapshot`
-   重建指纹锚 → 全量测试＋门禁。
-   **不要跑 `scripts/vendor-core.mjs`**——其 SEEDS 表已随 OS-123/124 删除面过时，
-   重跑会把已删层拉回仓（VENDORED.md OS-124 节）。
-   **也不要跑 `scripts/vendor-deduce.mjs`**——推演 8 件＋`factPack.js` 已随 OS-155 迁出自持
-   （`src/modules/deduce/engine/`），SEEDS 表同样过时，重跑会把迁移面拉回 core。
+1. **写协议只经 `factFileStore.writeFactFile`**：operationId 幂等、expectedRevision 乐观并发、
+   revision 自增、wiki 旁挂分离——任何新写入通道都要先过这里，不许内联绕过。
+2. **磁盘格式名冻结清单**：`.pinax/project.json`＝`pinax-project@3`、`拆解/*.json`＝`fact.data/v3`、
+   `*.wiki.json`＝`pinax-wiki-derived@1`、`.pinax-tmp-*` 临时前缀（见 §1.4.1 与跨层红线 2）。
+   变更须同时更新金样与 `docs/kernel-provenance.md` 的互认夹具口径。
+3. **公开面变更走 Host API 版本语义**：`src/kernel/index.mjs` 新增出口先改
+   `test/kernelIdentity.test.mjs` 快照；Host API 命名空间删成员/改签名/改语义才升 `host-api@3`，
+   并同步 `test/hostApi.test.mjs` 的 SNAPSHOT 与 `src/protocol/README.md` 能力清单。
 
 ## 跨层红线
 
-1. **`core/**` 与 `vendor/contracts/**` 内容禁改写**——vendor 件的改动发生在上游，
-   本仓只同步（sha256 指纹锚盯着，`npm run vendor:check` 即验）。
+1. **内核实现只在 `src/kernel/**`**——`core/`、`vendor/` 已退役；门禁 S2.4' 钉死 `src/**`
+   与仓根垫片不得出现 `core/` 路径说明符（防陈旧 import 回潮）。
 2. **`project.json` 与 fact schema（`fact.data/v3`）是跨仓契约**——与 Pinax 桌面端
    双向兼容：spec `pinax-project@3`、schemaVersion 3、字段名与顺序、carriers 结构、
    fact 条目形状，一个字节不许变（金样护栏 `test/decoupleStep2.test.mjs`、
    `test/decoupleStep1.test.mjs`）。
-3. **S2.4 唯一进口**：src/ 模块与仓根垫片里只有 `src/kernel/pinaxAdapter.mjs` 可以 import `core/**`
-   （门禁静态扫描钉死）；protocol/** 对 pinaxAdapter 的转出＝显式豁免清单（OS-142，
-   门禁 KERNEL_GATEWAY_ALLOW 点名，新增转供文件先补名单）。`vendor/contracts/` 是格式契约面
-   例外：模块层经 `src/protocol/worldbookContract.mjs` 转供取用，护栏测试直引 vendor 本体。
-4. **依赖只许向下**（L7→L6→L5→L4→L3→L2→L1 单向）；Pinax 从不 import OpenStory。
+3. **S2.4' 内核实现唯一**：`src/**` 与仓根垫片不得出现 `core/` 路径说明符；内核实现只在
+   `src/kernel/`，公开面 `src/kernel/index.mjs` 五键。协议层 `factGuard`/`index` 直取公开面，
+   `kernelPlumber`/`hostWrite` 直取管道件；模块层只经协议层取内核能力。世界书契约属世界书模块，
+   经 `src/protocol/worldbookContract.mjs` 转供取用。
+4. **依赖只许向下**（L7→L6→L5→L4→L2→L1 单向）；Pinax 从不 import OpenStory。
 5. **daemon 来源防护闸不许拆**（OS-136）：Host／Origin／Sec-Fetch-Site 三道闸＋强制 JSON
    content-type 是「作者浏览器里的任意网页写不进本机 daemon」的纵深防线；所有端点（含
    `fsBrowse` 这类本机目录浏览）默认吃闸，不做绕行后门。本地进程本来就能直接读盘，
@@ -301,10 +252,11 @@ OS-123/124 解耦后，建库/导入/章节号解析全部自持，不再 vendor
 ## 与 Pinax 的关系
 
 - 同一份文件资产、两个壳：Pinax（Electron 深度形态）与 OpenStory（浏览器轻形态）。
-- 内核关系（OS-123→132 解耦后）：`core/pinax` 全树＋`vendor/contracts` 逐字 vendor
-  （Pinax-next@`70a4f44`、@pinax/core 0.16.0＝`e56a0bc`），经 pinaxAdapter 单点消费；
-  建库/导入/章节号/载体映射已自持（projectDoc/importAdapter/textUtil，fork 点不再随上游同步）；
-  上游漂移由 `npm run vendor:check` 监控。依赖方向恒为 openstory→core，Pinax 从不 import OpenStory。
+- 内核关系（OS-123→157 解耦收官后）：内核已全树自持于 `src/kernel/`（身份 `openstory-kernel@1`），
+  最初逐字取自 Pinax-next@`70a4f44` 与 @pinax/core 0.16.0（`e56a0bc`），逐文件出处见
+  `docs/kernel-provenance.md`；建库/导入/章节号/载体映射亦为本仓自持（projectDoc/importAdapter/
+  chapterNumber）。**不再与上游同步**；兼容锚是落盘格式金样，不是代码字节。
+  Pinax 从不 import OpenStory。
 - 两侧设置互不干扰：OpenStory 的套件/运行时/风格配置全部只存本机 openstory 目录。
 
 ## 演进约定

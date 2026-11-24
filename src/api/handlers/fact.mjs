@@ -18,7 +18,7 @@ import { API_ERROR_CODES, isPlainObject, validateResponse } from '../contracts.m
 import { sendError, sendJson, text } from '../../host/http.mjs'
 import { authorizeRoot, resolveInsideRoot } from '../../host/authorize.mjs'
 import { listFactBooks, factOffsetOf, factLimitOf, resolveFactBookId } from '../../services/factBooks.mjs'
-import { factStore } from '../../kernel/pinaxAdapter.mjs' // OS-125：内核唯一进口（S2.4），本仓其余模块不许直引 core/**
+import { factStore } from '../../kernel/index.mjs' // OS-157：内核公开面唯一出口（S2.4'），实现已全树自持
 import { deduceOpening as deduceOpeningEngine, deducePresent as deducePresentEngine, deduceSettle as deduceSettleEngine, loadEntries, deduceStatePath } from '../../modules/deduce/deduceEngine.mjs'
 import {
   appendNode,

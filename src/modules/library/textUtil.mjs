@@ -1,35 +1,12 @@
-// OS-123 解耦①：文本解析工具自持层（fork 点，归本仓所有，不再经 vendor 同步）。
-// 函数体逐字拷贝自 vendor（提交 70a4f44，见 core/VENDORED.md）：
-//   · parseChapterNumber ＋ CHINESE_DIGITS ← core/pinax/server/mcp/projectImport.js:39,58-73
-//   · parseWorldbookEntryFile ＋ contractEntryToRuntime ＋ worldbookIsPlainObject ＋
-//     worldbookStringList ＋ WORLDBOOK_DERIVED_SRC ← core/pinax/server/services/localMirrorService.js:228,230-236,304-360
-// 契约判定（contractParseEntryFile）来自世界书文件契约 v2——OS-132 起收编进本仓
-// vendor/contracts/worldbookFileContract.js（逐字自 @pinax/core 0.16.0＝pinax-core e56a0bc，
-// 出处见 vendor/contracts/PROVENANCE.md 与 core/VENDORED.md；漂移走 vendor-drift 的 pinaxCore 段）。
-// （原经 core/pinax/shared/worldbookFileContract.js 两行垫片 re-export，垫片随 server 层一起移除。）
-// OS-142 起：vendor 件本体不再由本文件直引，改经协议层叶子 protocol/worldbookContract.mjs 转供
-// （模块纪律：modules 只许引 node 内置/protocol/**/模块内文件；护栏测试仍直引 vendor 本体）。
+// OS-123 解耦①：文本解析工具自持层（fork 点，归本仓所有）。
+// 谱系：函数体逐字拷贝自 Pinax-next `feat/pinax-electron-next`@`70a4f44` 的
+// 章节号解析与世界书条目投影实现（2026-11-24 转自有，出处见 docs/kernel-provenance.md）。
+// OS-157：parseChapterNumber 上移协议层 chapterNumber.mjs，本文件只转出、不再持函数体。
+// 契约判定（contractParseEntryFile）来自世界书模块自有契约（格式 worldbook-file@2，
+// 原逐字收编自 @pinax/core 0.16.0＝pinax-core e56a0bc）；经协议层叶子转供。
 import { parseWorldbookEntryFile as contractParseEntryFile } from '../../protocol/worldbookContract.mjs'
 
-/** 中文数字表（「两」归一为 2；零到九）。 */
-const CHINESE_DIGITS = { 零: 0, 一: 1, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9, 两: 2 }
-
-/** 中文数字 → 阿拉伯数字（支持到千位；认不出返回 null，不猜）。 */
-export function parseChapterNumber(raw) {
-  const text = String(raw ?? '').trim()
-  if (!text) return null
-  if (/^\d+$/u.test(text)) return Number(text)
-  if (!/^[零一二三四五六七八九十百千两]+$/u.test(text)) return null
-  const unit = { 十: 10, 百: 100, 千: 1000 }
-  let total = 0
-  let current = 0
-  for (const char of text) {
-    if (CHINESE_DIGITS[char] !== undefined) current = CHINESE_DIGITS[char]
-    else if (unit[char]) { total += (current || 1) * unit[char]; current = 0 }
-    else return null
-  }
-  return total + current
-}
+export { parseChapterNumber } from '../../protocol/chapterNumber.mjs'
 
 /** 运行时桶派生边的 src 保留字（读回时据此还原为 relations 对象桶；真富关系不用该值）。 */
 const WORLDBOOK_DERIVED_SRC = 'entry'

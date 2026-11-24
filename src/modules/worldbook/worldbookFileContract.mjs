@@ -1,14 +1,12 @@
 /**
- * VENDORED（OS-132 收编）——本文件逐字拷贝自 @pinax/core（npm 包）0.16.0 的
- * src/domain/worldbookFileContract.js。除本头注释外一个字节未动：
- *   · 上游源：pinax-core 仓 commit e56a0bc133efdb675be17af95f0967cdf2e11e16
- *     （该提交的 src/domain/worldbookFileContract.js 与本文件归一化后逐字节一致）；
- *   · 收编载体：vendor/core/pinax-core-0.16.0.tgz
- *     sha256 db662543eda2094042f65231088a156da91acd9f1e6810345e5d583ee216b077；
- *   · 收编日期：2026-11-23。出处与同步规则详见 core/VENDORED.md（OS-132 一节）；
- *     漂移检测走 scripts/vendor-drift.mjs 的 pinaxCore 段（vendor/contracts ↔ D:/Pinax-core/src/domain，
- *     行尾归一化比对——tgz 是 LF、上游 Windows 检出是 CRLF）。
- *   · 规则与 core/pinax/** 相同：本仓不改；改动发生在上游（D:/Pinax-core）再同步。
+ * OpenStory 世界书模块 · 世界书文件md格式契约（世界书条目 frontmatter/关系读写）。
+ *
+ * 谱系：2026-11-23 由 @pinax/core 0.16.0（pinax-core 仓 `e56a0bc`）的
+ * `src/domain/worldbookFileContract.js` 逐字收编（OS-132），2026-11-24 转本仓自有（OS-157）。
+ * 实现本体逐字未动；仅本头注释按 OpenStory 出处口径改写。此后在本仓演进，上游不再同步；
+ * 出处与转有时的文件对应关系见 docs/kernel-provenance.md。
+ *
+ * 落盘格式不改：`参考/*.md` 的世界书条目契约（worldbook-file@2）。
  */
 
 /**

@@ -1,20 +1,19 @@
 /**
- * OS-125 解耦③ 护栏（node:test，零依赖）——内核唯一进口（pinaxAdapter）。
+ * OS-125 解耦③ 护栏（node:test，零依赖）——内核公开面（OS-157 起 adapter 已解散）。
  *
  *   · 全仓断言：src/ 树（递归）的全部 .mjs ＋仓根两个入口垫片里**没有任何** import `core/`
- *     下模块（静态 from ＋动态 import()）——OS-156 起 core/pinax 全树已转自有，与门禁 S2.4
+ *     下模块（静态 from ＋动态 import()）——OS-156 起内核全树已转自有，与门禁 S2.4'
  *     （tools/acceptance/acceptance.mjs）同口径，这里锁测试侧副本
- *     （OS-140 起扫描范围随布局归一改为 src/ 树；adapter 也在扫描面内）；
+ *     （OS-140 起扫描范围随布局归一改为 src/ 树）；
  *   · 四组能力出口形状锁：factStore/enrich/projectMeta/projectImport 成员一个不差
  *     （OS-155 起 `deduce` 已退出——推演端子归扮演模块，形状锁移到
  *     `src/modules/deduce/engine/index.mjs`，见本文件同名用例）；
- *   · 每组真跑一条行为冒烟（内核端子真实调用，不是只验 typeof）；
- *   · plumber 转供锁：ok/fail/writeFileAtomic 经 adapter 转供 projectDoc/importAdapter，
- *     fail 的错误码映射（PINAX_* 字符串）是与内核共见的契约，锁死。
+ *   · 每组真跑一条行为冒烟（各端子真实调用，不是只验 typeof）；
+ *   · plumber 转供锁：ok/fail/writeFileAtomic 由内核公开面直出，
+ *     fail 的错误码映射（无前缀内核字符串）是与内核共见的契约，锁死。
  *
- * 加载序说明：本文件先 import pinaxAdapter（adapter→projectDoc 方向的循环序）；
- * projectDoc→adapter 方向由 test/decoupleStep2.test.mjs（先 import projectDoc.mjs）在
- * 独立进程里覆盖——node --test 每个文件各起一个进程，两个方向都真跑过。
+ * 加载序说明：OS-157 后依赖面无环；本文件先 import 内核公开面，反向装载序由
+ * test/decoupleStep2.test.mjs（先 import projectDoc.mjs）在独立进程里覆盖。
  *
  * 跑法：node --test openstory/test/decoupleStep3.test.mjs
  */
@@ -25,12 +24,13 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { factStore, enrich, projectMeta, projectImport, ok, fail, writeFileAtomic } from '../src/kernel/pinaxAdapter.mjs'
+import { factStore, enrich, ok, fail, writeFileAtomic } from '../src/kernel/index.mjs'
+import { projectMeta, projectImport } from '../src/modules/library/index.mjs'
 import * as deduceEngine from '../src/modules/deduce/engine/index.mjs'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 
-test('全仓唯一进口：src/ 模块里 import core/** 的只有 src/kernel/pinaxAdapter.mjs（S2.4 同口径）', () => {
+test('core/** 进口面为零：src/ 模块与仓根垫片均无 core/ 说明符（S2.4\' 同口径）', () => {
   // OS-140 布局归一：自持模块全部收进 src/，扫描范围从「仓根 *.mjs」改为「src/**/*.mjs
   // ＋仓根两个入口垫片」（同口径迁移，覆盖面只增不减）。
   const coreImportRe = /(?:from\s+|import\(\s*)['"](?:\.\.?\/)+(core\/[^'"]+)['"]/g
@@ -54,10 +54,10 @@ test('全仓唯一进口：src/ 模块里 import core/** 的只有 src/kernel/pi
     }
   }
   assert.deepEqual(violators, [], `core/** 已退役（OS-156），任何模块都不许再引 core/**，违规：${violators.join('; ')}`)
-  // 反向断言：adapter 仍从自持内核件组装出口（唯一进口是真装配，不是空壳）
-  const adapterSrc = readFileSync(join(ROOT, 'src/kernel/pinaxAdapter.mjs'), 'utf-8')
-  assert.match(adapterSrc, /from '\.\/fact\/factFileStore\.mjs'/, 'factStore 组指 src/kernel/fact/factFileStore.mjs')
-  assert.doesNotMatch(adapterSrc, /(?:from\s+|import\(\s*)['"](?:\.\.?\/)+core\//, 'adapter 已无 core 可引（OS-156）')
+  // 反向断言：内核公开面仍从自持件组装出口（公开面是真装配，不是空壳）
+  const kernelSrc = readFileSync(join(ROOT, 'src/kernel/index.mjs'), 'utf-8')
+  assert.match(kernelSrc, /from '\.\/fact\/factFileStore\.mjs'/, 'factStore 组指 src/kernel/fact/factFileStore.mjs')
+  assert.doesNotMatch(kernelSrc, /(?:from\s+|import\(\s*)['"](?:\.\.?\/)+core\//, '内核已无 core 可引（OS-156）')
 })
 
 test('四组能力出口形状锁（成员与顺序都是接触面契约）', () => {
@@ -119,14 +119,14 @@ test('enrich 冒烟：真章判定＋因果图三指标（闭环率/耦合度/�
 test('projectMeta 冒烟：合同校验拒空对象＋nextCarriers 推进/冲突两路', () => {
   const invalid = projectMeta.validateProjectDocument({})
   assert.equal(invalid.ok, false)
-  assert.equal(invalid.error.code, 'PINAX_INVALID_INPUT', '错误码映射是内核共见契约')
+  assert.equal(invalid.error.code, 'INVALID_INPUT', '错误码映射是内核共见契约')
   const current = { primary: 'pinax.carrier.novel', enabled: ['pinax.carrier.novel'], revision: 1 }
   const advanced = projectMeta.nextCarriers(current, { expectedRevision: 1 })
   assert.equal(advanced.ok, true)
   assert.equal(advanced.value.revision, 2)
   const stale = projectMeta.nextCarriers(current, { expectedRevision: 0 })
   assert.equal(stale.ok, false)
-  assert.equal(stale.error.code, 'PINAX_STALE_REVISION')
+  assert.equal(stale.error.code, 'STALE_REVISION')
 })
 
 test('projectImport 冒烟：中文数字章节号＋入参校验拒空稿源', () => {
@@ -137,12 +137,12 @@ test('projectImport 冒烟：中文数字章节号＋入参校验拒空稿源', 
   assert.equal(noSource.ok, false, '缺 sourcePath 必须在计划阶段就拒')
 })
 
-test('plumber 转供锁：ok/fail/writeFileAtomic 经 adapter 供 projectDoc/importAdapter', () => {
+test('plumber 转供锁：ok/fail/writeFileAtomic 由内核公开面直出供 projectDoc/importAdapter', () => {
   assert.equal(typeof ok, 'function')
   assert.equal(typeof writeFileAtomic, 'function')
   assert.deepEqual(ok(42), { ok: true, value: 42 })
   const rejection = fail('STALE_REVISION', '过期')
   assert.equal(rejection.ok, false)
-  assert.equal(rejection.error.code, 'PINAX_STALE_REVISION', '码值映射经内核 NEXT_ERROR_CODES，不许在本仓复刻一份')
-  assert.equal(fail('不存在的码', 'x').error.code, 'PINAX_INVALID_INPUT', '未知码回落 INVALID_INPUT（vendor 行为）')
+  assert.equal(rejection.error.code, 'STALE_REVISION', '码值映射经内核 KERNEL_ERROR_CODES，不许在本仓复刻一份')
+  assert.equal(fail('不存在的码', 'x').error.code, 'INVALID_INPUT', '未知码回落 INVALID_INPUT')
 })

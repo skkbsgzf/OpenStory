@@ -222,7 +222,7 @@ for (const { rel, src } of srcMjs.filter((f) => f.rel.startsWith('src/modules/')
 }
 // 旧口径：协议层从文件名白名单改为路径规则（src/protocol/** 全量＋两份既有底层件）——
 // 白名单面只增不减：原七个文件全在覆盖内，新增协议件自动入列。
-const isProtocolPath = (rel) => rel.startsWith('src/protocol/') || rel === 'src/api/contracts.mjs' || rel === 'src/kernel/pinaxAdapter.mjs' // 底层接口协议层（src/protocol/**＝OS-142 Host API 全家：index.mjs 七命名空间入口＋chapters 正文协议＋chapterWrite 写备份＋changelog 变更日志＋versionGate 版本闸＋plugins 货架聚合＋dependencyGraph 依赖图＋factGuard fact 守卫＋hostWrite 宿主写协议（OS-138 原子写收敛）＋libState 库内状态＋kernelPlumber/authorize/apiErrors/upstream/worldbookContract 五个转供叶子；api/contracts.mjs＝端点契约；kernel/pinaxAdapter.mjs＝内核唯一进口，OS-125 五组能力出口，见 S2.4）
+const isProtocolPath = (rel) => rel.startsWith('src/protocol/') || rel === 'src/api/contracts.mjs' || rel === 'src/kernel/index.mjs' // 底层接口协议层（src/protocol/**＝OS-142 Host API 全家：index.mjs 七命名空间入口＋chapters 正文协议＋chapterNumber 章节号＋chapterWrite 写备份＋changelog 变更日志＋versionGate 版本闸＋plugins 货架聚合＋dependencyGraph 依赖图＋factGuard fact 守卫＋hostWrite 宿主写协议（OS-138 原子写收敛）＋libState 库内状态＋kernelPlumber/authorize/apiErrors/upstream/worldbookContract 五个转供叶子；api/contracts.mjs＝端点契约；kernel/index.mjs＝OS-157 起内核公开面唯一出口，见 S2.4'）
 const KERNEL_ALLOW = new Set([
   // OS-79：deduceNarrative 是推演引擎的内部子模块（只做叙事上下文拼装，纯函数），
   // 不是平等功能模块——引擎引它属于内部组合，不是跨模块耦合（OS-142 起同属新口径③）。
@@ -240,7 +240,7 @@ for (const mod of MODULES) {
   for (const dep of imports[mod] || []) {
     if (dep === mod) continue
     if (isProtocolPath(dep)) continue
-    if (dep.startsWith('core/')) continue // vendor 内核＝底层，不算模块耦合
+    if (dep.startsWith('src/kernel/')) continue // 自有内核＝底层（S2.4'），不算模块耦合
     const tag = `${mod} -> ${dep}`
     if (!KERNEL_ALLOW.has(tag)) crossEdges.push(tag)
   }
@@ -306,46 +306,23 @@ check('S2.3', 'S2', `契约驱动架构（contracts ${contractCount} 端点；da
   [lineOf(firstSlice, 'method:'), endpointForUse, validateRespUse].filter(Boolean),
   '契约表是模块间调用的唯一底座；新增端点必须先进 contracts（域分片）')
 
-// S2.4 内核唯一进口（OS-125 解耦③；OS-156 收紧为「core/** 进口面为零」）：OS-156 起 core/pinax 全树
-// 已转自有（写协议 store 是最后一件，落 src/kernel/fact/），core/ 只剩 VENDORED.md 与指纹锚——
-// 因此本条从「只有 src/kernel/pinaxAdapter.mjs 可引 core/**」改为「src/ 树＋仓根垫片一律不许 import core/**」，
-// 比原口径更严（adapter 也不再有例外）。静态 from 与动态 import() 都算；
-// worldbook/lexicon 契约（OS-132 起收编进本仓 vendor/contracts，非 core/** 路径）不在此列；
-// test/*.test.mjs 等测试文件不在扫描范围。
+// S2.4' 内核实现唯一（OS-157 退役原 S2.4）：core/ 与 vendor/ 已整体撤除，adapter 已解散——
+// 本条收敛为一行：src/** 与仓根两个垫片不得出现 'core/' 路径说明符（静态 from 与动态 import()
+// 都算），且内核实现只在 src/kernel/（公开面 index.mjs＋身份 identity.mjs＋错误码 errors.mjs）。
+// 这是一条防陈旧 import 回潮的零成本规则；KERNEL_GATEWAY_ALLOW／adapterCoreUse／gatewayRogue
+// 随 adapter 解散一并删除。test/*.test.mjs 等测试文件不在扫描范围。
 const coreImportRe = /(?:from\s+|import\(\s*)['"](?:\.{1,2}\/)+(core\/[^'"]+)['"]/g
 const coreViolators = []
 for (const { rel, src } of scanned) {
   for (const m of src.matchAll(coreImportRe)) coreViolators.push(`${rel} -> ${m[1]}`)
 }
-// 反向证据：adapter 仍在、且确实从自持内核件组装出口（唯一进口是真装配，不是空壳）
-const adapterSrc = readRepo('src/kernel/pinaxAdapter.mjs')
-const adapterFactStoreRef = /from\s+'\.\/fact\/factFileStore\.mjs'/.test(adapterSrc)
-// OS-142：protocol/** 对 kernel/pinaxAdapter 的转出＝显式豁免（点名清单；实际转供面必须是
-// 清单的子集）。协议层是内核能力的唯一转供面——src/modules/** 只许经 protocol/** 取内核
-// 能力（S2.1 新口径），不许直引 pinaxAdapter；新增转供文件必须先给这个清单补名字，否则门禁红。
-// OS-153 收紧：kernelPlumber.mjs／hostWrite.mjs 自 OS-152 起直取 src/kernel/ 管道件、不再
-// import pinaxAdapter，已从清单删除（留在清单里＝门禁比实际松）。
-const KERNEL_GATEWAY_ALLOW = new Set([
-  'src/protocol/index.mjs',        // Host API fact 命名空间：四组能力出口＋plumber 的正式转出
-  'src/protocol/chapters.mjs',     // 章节协议的 projectImport 转出
-  'src/protocol/factGuard.mjs'     // fact 只读通道的 factStore 转出
-])
-const gatewayUse = []
-for (const { rel, src } of scanned) {
-  if (!rel.startsWith('src/protocol/')) continue
-  if (/from\s+'(?:\.{1,2}\/)+kernel\/pinaxAdapter\.mjs'/.test(src)) gatewayUse.push(rel)
-}
-const gatewayRogue = gatewayUse.filter((rel) => !KERNEL_GATEWAY_ALLOW.has(rel))
-check('S2.4', 'S2', `内核唯一进口（${scanned.length} 个 src/ 模块＋垫片，core/** 进口面为零）`,
-  exists('src/kernel/pinaxAdapter.mjs') && adapterFactStoreRef && coreViolators.length === 0 && gatewayRogue.length === 0,
-  [
-    ...coreViolators.slice(0, 4),
-    `adapter→factStore：${adapterFactStoreRef}`,
-    `kernel 转供面（豁免清单内）：${gatewayUse.sort().join(' ')}`
-  ].filter(Boolean),
-  coreViolators.length || gatewayRogue.length || !adapterFactStoreRef
-    ? `违规进口：${[...coreViolators, ...gatewayRogue].join('; ')}——core/** 已退役（OS-156），内核能力只经 pinaxAdapter 四组出口（factStore/enrich/projectMeta/projectImport），protocol 转供面以 KERNEL_GATEWAY_ALLOW 点名为准`
-    : 'core/** 进口面为零（OS-156 全树自持）；内核能力经 pinaxAdapter 单点组装，protocol/** 转出＝显式豁免（OS-142）')
+const kernelSurfaceOk = exists('src/kernel/index.mjs') && exists('src/kernel/identity.mjs') && exists('src/kernel/errors.mjs')
+check('S2.4', 'S2', `S2.4' 内核实现唯一（${scanned.length} 个 src/ 模块＋垫片；src/** 无 core/ 路径说明符）`,
+  kernelSurfaceOk && coreViolators.length === 0,
+  [...coreViolators.slice(0, 4), lineOf('src/kernel/index.mjs', 'export const factStore'), lineOf('src/kernel/errors.mjs', 'export const KERNEL_ERROR_CODES')].filter(Boolean),
+  coreViolators.length || !kernelSurfaceOk
+    ? `违规进口：${coreViolators.join('; ')}——core/、vendor/ 已退役（OS-157），内核实现只在 src/kernel/，公开面 src/kernel/index.mjs`
+    : 'core/ 进口面为零（OS-157 全树自持）；内核实现只在 src/kernel/，公开面 index.mjs 五键（factStore/enrich/ok/fail/writeFileAtomic）')
 
 // S2.5 命名真源表一致（OS-148/G8a·G8d）：五层名字只从 public/views/registry.mjs 的
 // NAMING_TABLE 取。跑两条：① 页签条目逐条回表（dir/label/panelLabel 相等）；

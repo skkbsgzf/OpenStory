@@ -1,8 +1,10 @@
 /**
- * fact.data/v2 domain 桶（OS-153 影子迁移：逐字复制自 core/pinax/next/fact/domain/pediaSchema.js）。
+ * OpenStory 内核 · fact 域桶（openstory-kernel@1）。
+ *
+ * 谱系：2026-11-24 逐字复制并去谱系名（pediaSchema → index）转自有，出处见
+ * docs/kernel-provenance.md；此后在本仓演进，上游不再同步。落盘格式不变。
  *
  * 只做 re-export：词表、稳定 id、状态机、双时间轴、信封校验、视角校验各在自己文件里。
- * 文件名去掉 vendor 谱系名（pediaSchema → index），re-export 面与 core 原件逐字相同（导出名/顺序不变）。
  */
 
 export * from './vocabulary.js'

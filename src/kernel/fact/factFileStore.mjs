@@ -30,7 +30,7 @@ import { deriveWiki } from './wikiDerive.mjs'
  *
  * 失败载荷走内核统一的 `{ ok:false, error:{ code, message, details } }` 形状；写协议的三枚码
  * （OPERATION_ID_REQUIRED／VALIDATION_FAILED／REVISION_MISMATCH）沿用 FactStore 端口
- * （next/fact/ports/pediaStore.js 的 FACT_STORE_WRITE_CODES）——S0 契约钉死，不另造 PINAX_ 码。
+ * （next/fact/ports/pediaStore.js 的 FACT_STORE_WRITE_CODES）——S0 契约钉死，不另造新码。
  * 成功载荷是扁平对象（不套 value），与 S0 冻结的四通道契约一致。
  */
 

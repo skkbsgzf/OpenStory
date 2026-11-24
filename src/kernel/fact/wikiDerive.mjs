@@ -16,7 +16,7 @@
  */
 
 /* 伪章切分（OS-154 合并 §9-6）：公式只在 enrich 一份，本文件按原导出名再转出。
-   原 core/pinax/next/kernel/wikiDerive.mjs:22-74 的重复实现已删除。 */
+   转自有时删掉的重复实现不再保留（出处见 docs/kernel-provenance.md）。 */
 import { derivePseudoChapters, hasRealChapters } from '../enrich/pseudoChapters.mjs'
 
 export { plotMinSegment, pseudoChapterCount, derivePseudoChapters, hasRealChapters } from '../enrich/pseudoChapters.mjs'

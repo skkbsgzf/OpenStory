@@ -4,11 +4,9 @@
  * 复用面（两条壳一个真源）：
  *   · 建库：projectDoc.mjs（OS-124 解耦②收编为本仓自持；骨架／project.json 合同／
  *     createProject/initBareProject／载体表与注册表逐字归并自 vendor next/{kernel,project,shell}/，
- *     金样护栏 test/decoupleStep2.test.mjs）；其中库标记读写走 pinaxAdapter.projectMeta
- *     （OS-125 内核唯一进口的统一出口）；
- *   · 导入：projectImport.planImport/runImport（OS-125 起经 pinaxAdapter 统一出口，
- *     转引本仓 importAdapter.mjs——OS-123 解耦①收编为本仓自持，逐字拷贝自 vendor
- *     next/runtime/projectImportAdapter.mjs；承诺：源目录只读、目标只新增不覆盖、认不出的不猜）；
+ *     金样护栏 test/decoupleStep2.test.mjs）；其中库标记读写走模块内组合的 projectMeta；
+ *   · 导入：projectImport.planImport/runImport（模块内组合，转引本仓 importAdapter.mjs——
+ *     OS-123 解耦①收编为本仓自持；承诺：源目录只读、目标只新增不覆盖、认不出的不猜）；
  *   · 人话：projectDoc.mjs 的 describeOpenFailure/validateLibraryName/folderName
  *     （纯函数无 Vue，A-5 四类失败与 Electron 同一份口径）。
  *
@@ -30,9 +28,7 @@ import {
   validateLibraryName,
   folderName
 } from './projectDoc.mjs'
-import { fact } from '../../protocol/index.mjs' // OS-142：project.json 合同＋导入经 Host API fact 命名空间转出（模块纪律：modules 不直引 kernel/pinaxAdapter）
-
-const { projectMeta, projectImport } = fact // OS-125 统一出口（经协议层转出，实现不换）
+import { projectMeta, projectImport } from './index.mjs' // OS-157：pinaxAdapter 解散后，两组能力由库管理模块内组合（S2.1 ③ 允许）
 
 function text(value) {
   return String(value ?? '')
@@ -110,10 +106,10 @@ export async function registerLibrary(preferencesPath, root, name) {
 
 /* ---------- 内核失败 → OpenStory 契约失败 ---------- */
 
-/** 内核码（NEXT_ERROR_CODES/adapter 码）→ OpenStory 契约码；原文进 message/cause，不吞语义。 */
+/** 内核码（KERNEL_ERROR_CODES）→ OpenStory 契约码；原文进 message/cause，不吞语义。OS-157 起码值已无前缀。 */
 export function mapManageError(error) {
   const rawCode = String(error?.code || '')
-  const code = rawCode.replace(/^PINAX_/u, '')
+  const code = rawCode
   const message = text(error?.message || error)
   if (code === 'STALE_REVISION') return { ok: false, code: 'REVISION_MISMATCH', message }
   if (code === 'PATH_OUTSIDE_PROJECT' || code === 'ERR_SOURCE_PATH' || code === 'ERR_TARGET_PATH') {

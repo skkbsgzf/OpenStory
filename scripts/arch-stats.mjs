@@ -12,8 +12,7 @@
  *   L6  src/api/contracts.mjs ＋ src/api/contracts/*.mjs
  *   L5  src/host/ 全部 *.mjs
  *   L4  src/modules/ ＋ src/services/ ＋ src/protocol/ 全部 *.mjs
- *   L3  src/kernel/ 全部 *.mjs
- *   L2  core/pinax/ 全部 *.mjs|*.js
+ *   L2  src/kernel/ 全部 *.mjs（OS-157 起 L2/L3 合并为「自有内核」一层，core/ 已退役）
  *   行数＝文件实际行数（末尾换行不计一行）；端点＝契约文件里 /method:/ 出现次数；
  *   测试文件＝test/*.test.mjs 个数。
  *
@@ -65,18 +64,11 @@ const LAYERS = [
     match: (rel) => rel.endsWith('.mjs')
   },
   {
-    id: 'L3',
-    name: '内核进口',
+    id: 'L2',
+    name: '自有内核',
     dirs: '`src/kernel/`',
     roots: ['src/kernel'],
     match: (rel) => rel.endsWith('.mjs')
-  },
-  {
-    id: 'L2',
-    name: '内核',
-    dirs: '`core/pinax/`',
-    roots: ['core/pinax'],
-    match: (rel) => rel.endsWith('.mjs') || rel.endsWith('.js')
   }
 ]
 

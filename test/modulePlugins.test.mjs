@@ -248,7 +248,7 @@ test('MCP 分析工具：不带 root ＝没有库上下文，不做模块闸（�
   const { base, root, preferencesPath } = await makeLibrary()
   await writeUiState(root, { modules: { enabled: { analysis: false } } })
   // 只给库清单、不给 root：工具不该去读这份清单——分析吃纯文本，不绑定库（OS-146）
-  const mcp = startMcp({ ...process.env, PINAX_OS_PREFERENCES: preferencesPath })
+  const mcp = startMcp({ ...process.env, OPENSTORY_PREFERENCES: preferencesPath })
   try {
     await mcp.request('initialize', { protocolVersion: '2024-11-05' })
     const allowed = await mcp.request('tools/call', {
@@ -267,7 +267,7 @@ test('MCP 分析工具：不带 root ＝没有库上下文，不做模块闸（�
 test('MCP 分析工具：同一库带 root ＝按该库判定，停用回 MODULE_DISABLED', async () => {
   const { base, root, preferencesPath } = await makeLibrary()
   await writeUiState(root, { modules: { enabled: { analysis: false } } })
-  const mcp = startMcp({ ...process.env, PINAX_OS_PREFERENCES: preferencesPath })
+  const mcp = startMcp({ ...process.env, OPENSTORY_PREFERENCES: preferencesPath })
   try {
     await mcp.request('initialize', { protocolVersion: '2024-11-05' })
     const blocked = await mcp.request('tools/call', {
