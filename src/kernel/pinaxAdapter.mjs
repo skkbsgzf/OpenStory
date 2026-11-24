@@ -21,6 +21,9 @@
  * OS-138 写通道收敛补一条：hostWrite.mjs（全仓唯一写入口）也经本文件取
  * writeFileAtomic／TMP_PREFIX／syncDirectory——原子写归一是 AGENTS.md 写通道红线的落点，
  * 与上面两个 fork 点同属「最小补集」口径，其余新模块仍一律走五组出口。
+ * OS-152：管道三件（errors/atomicWrite/fsDurability）已影子复制进 src/kernel/ 并改由本文件
+ * 从这里取；hostWrite.mjs／kernelPlumber.mjs 同期改指 src/kernel/ 直取（不再经本文件绕道）。
+ * 本文件仍转出同一组函数（同一实现对象），五组出口与 core 侧的 factStore/deduce/enrich 未动。
  *
  * 循环引用说明：projectDoc/importAdapter → 本文件（取 plumber）、本文件 → 这两份（转引
  * 五组成员）。两侧被转引的都是函数声明（模块实例化期即初始化），且任何一侧都只在函数体内
@@ -37,11 +40,12 @@ import { presentTurn, applyDirectorAction } from '../../core/pinax/next/fact/use
 import { settleChoice } from '../../core/pinax/next/fact/usecases/deduce/settle.js'
 import { derivePseudoChapters, hasRealChapters } from '../../core/pinax/next/fact/usecases/enrich/pseudoChapters.mjs'
 import { causalSummary } from '../../core/pinax/next/fact/usecases/enrich/metrics.mjs'
-/* 内核 plumber 转供（见头部偏差注记；核心消费方＝projectDoc.mjs／importAdapter.mjs） */
-import { ok, fail } from '../../core/pinax/next/kernel/errors.mjs'
-import { writeFileAtomic, TMP_PREFIX } from '../../core/pinax/next/fs/atomicWrite.mjs'
+/* 内核 plumber 转供（见头部偏差注记；核心消费方＝projectDoc.mjs／importAdapter.mjs）
+   OS-152：管道三件已影子复制进 src/kernel/（core 原件保留供 factFileStore 用），本处改指自持件。 */
+import { ok, fail } from './errors.mjs'
+import { writeFileAtomic, TMP_PREFIX } from './atomicWrite.mjs'
 /* OS-138：宿主写通道（hostWrite.mjs）的二进制分支要同前缀＋同目录 fsync，一并转出 */
-import { syncDirectory } from '../../core/pinax/electron/projects/fsDurability.mjs'
+import { syncDirectory } from './fsDurability.mjs'
 /* projectMeta／projectImport：自有能力的统一出口（转引，不再包一层） */
 import { readProjectDocument, writeProjectDocument, nextCarriers, validateProjectDocument } from '../modules/library/projectDoc.mjs'
 import { planImport, runImport } from '../modules/library/importAdapter.mjs'
@@ -64,5 +68,5 @@ export const projectImport = Object.freeze({ planImport, runImport, parseChapter
 
 /** 内核 plumber 转供（仅 projectDoc.mjs／importAdapter.mjs 两个既有 fork 点使用；新模块不许用）。 */
 export { ok, fail, writeFileAtomic }
-/** OS-138 写通道收敛：hostWrite.mjs（全仓唯一写入口）经本文件取内核原子写原件（见头部偏差注记）。 */
+/** OS-138 写通道收敛：内核原子写的前缀与目录 fsync（OS-152 起 hostWrite.mjs 直取 src/kernel/，此处保留转出以维持旧接触面）。 */
 export { TMP_PREFIX, syncDirectory }

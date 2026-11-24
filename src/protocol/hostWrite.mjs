@@ -2,12 +2,13 @@
  * OS-138：宿主写通道唯一入口（原子写收敛）。
  *
  * 全仓 22 处内联「写临时文件再 rename」归一到 atomicWriteFile：
- *   · 文本内容 —— 直通内核 writeFileAtomic（fsync＋rename＋目录 fsync），经 pinaxAdapter
- *     转出（内核唯一进口纪律不变，S2.4）。
+ *   · 文本内容 —— 直通内核 writeFileAtomic（fsync＋rename＋目录 fsync），自 OS-152 起
+ *     直接从 `src/kernel/atomicWrite.mjs` 取（管道件已转自有，不再经 pinaxAdapter 绕道；
+ *     内核唯一进口纪律针对 core/**，S2.4 不涉）。
  *   · 二进制内容（Buffer/TypedArray/ArrayBuffer）—— 内核实现是 `String(contents)`＋utf-8
- *     （core/pinax/next/fs/atomicWrite.mjs:18），直传二进制会损坏字节；这里按同一模式补一条
+ *     （src/kernel/atomicWrite.mjs:21），直传二进制会损坏字节；这里按同一模式补一条
  *     二进制分支：同前缀 `.pinax-tmp-`（内核 recoverInterruptedWrites 可回收）＋ fsync＋
- *     rename＋目录 fsync（syncDirectory 亦经 pinaxAdapter 转出）。
+ *     rename＋目录 fsync（syncDirectory 亦从 `src/kernel/fsDurability.mjs` 直取）。
  *
  * 与各调用点原实现的一致性：本函数**不建目录**——目录创建留在调用点（原实现各自
  * mkdir 的时机与目标不同，见 daemon.mjs 拆解 wiki 旁挂等无 mkdir 的调用点）。
@@ -19,7 +20,8 @@
 import { open, rename, unlink } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { randomBytes } from 'node:crypto'
-import { writeFileAtomic, TMP_PREFIX, syncDirectory } from '../kernel/pinaxAdapter.mjs'
+import { writeFileAtomic, TMP_PREFIX } from '../kernel/atomicWrite.mjs'
+import { syncDirectory } from '../kernel/fsDurability.mjs'
 
 function isBinaryContent(contents) {
   return ArrayBuffer.isView(contents) || contents instanceof ArrayBuffer

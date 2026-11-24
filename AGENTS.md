@@ -23,6 +23,9 @@ L4 自持层→L3 pinaxAdapter→L2 core/pinax 24 文件→L1 磁盘库）。
    （sha256 指纹锚 `core/.vendored-manifest.json`）。**src/ 模块只有 `src/kernel/pinaxAdapter.mjs`
    可以 import `core/**`**（仓根两个入口垫片也不许；门禁 S2.4 钉死）——内核能力一律走它的五组出口
    （factStore/deduce/enrich/projectMeta/projectImport）。
+   内核**管道件**（errors/atomicWrite/fsDurability）自 OS-152 起影子复制到 `src/kernel/` 自持，
+   core 原件保留（仍供 `core/.../factFileStore.mjs` 用）；宿主写通道与 fork 点直取
+   `src/kernel/` 那三件，不再经 adapter 绕道。
 2. **daemon 只监听 127.0.0.1**；凭据只存本机（agent-config.json），响应只回掩码。
 3. **参考单向性**：正文不反向进参考上下文；参考不能全量丢进 Agent 上下文。
 4. **absorb 不开 MCP**：旧目录迁入参考是显式动稿操作，只走界面按钮。
@@ -59,7 +62,7 @@ L4 自持层→L3 pinaxAdapter→L2 core/pinax 24 文件→L1 磁盘库）。
    | `src/host/` | daemon/mcp 实现（组合根：路由、进程治理、路径解析） |
    | `src/api/` | 契约层 `contracts.mjs` ＋ `contracts/` 七域分片（API 形状唯一真源） |
    | `src/protocol/` | 文件与协议层：chapters/changelog/versionGate/plugins/agentEvents/factGuard/dependencyGraph/hostWrite/libState |
-   | `src/kernel/` | `pinaxAdapter.mjs`（core/** 唯一进口） |
+   | `src/kernel/` | `pinaxAdapter.mjs`（core/** 唯一进口）＋自持管道件 `errors.mjs`/`atomicWrite.mjs`/`fsDurability.mjs`（OS-152 影子复制；core 原件保留） |
    | `src/modules/` | 域模块：library/（建库导入）、deduce/（推演）、roleplay/（扮演）、worldbook/（参考）、agentbar/（Agent 存储）、analysis/comfyui/kb（模块插件，各带 `module.manifest.json`） |
    | `src/services/` | 外围服务：embedding-server/embeddingPaths、cli-bridge/dsh-*/runtimes（模型驱动）、stylePacks/style-check/suites/skills/genres（货架）、jobCenter/nativePicker/syncCheck/enrichEngine |
 
@@ -222,6 +225,7 @@ node tools/acceptance/acceptance.mjs        # ② 交付标准 S0–S4 门禁（
   → `src/host/daemon.mjs` 路由分派（endpointFor → validateRequest → 取 handler → 调用）＋ 共享管线 `src/host/{http,authorize,sse}.mjs`
 - 内核进口：`src/kernel/pinaxAdapter.mjs`（唯一进口，五组能力出口）→ `core/pinax/` 24 文件 fact 链
   （存储协议 factFileStore ／推演端子 deduce ／enrich 度量）＋ `vendor/contracts/worldbookFileContract.js`；
+  同目录自持管道件 `errors.mjs`／`atomicWrite.mjs`／`fsDurability.mjs`（OS-152 影子复制，core 原件保留）；
   出处与漂移见 `core/VENDORED.md` ＋ `npm run vendor:check`
 - 协议层（`src/protocol/`）：chapters（章节协议）/ changelog（变更日志）/ versionGate（版本闸）/
   plugins（插件聚合）/ agentEvents（AG-UI 事件）/ factGuard（事实守护）/ hostWrite（宿主写协议唯一入口，OS-138）/ libState（库内状态）

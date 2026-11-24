@@ -70,4 +70,39 @@
 
 ## 施工回报（编排器自动归档）
 
+> 模型 deepseek-v4.1-flash · 第 1 轮 · 测试 绿（tests 560 · pass 558 · fail 0 · skip 2） · 门禁 绿 · 水浒 绿 · 新建 绿 · vendor 未动 · daemon 已重启（OS-152 改了后端）
+
+```text
+CHANGED:
+- `src/kernel/errors.mjs`（新建：从 core 逐字复制，`NEXT_ERROR_CODES`→`KERNEL_ERROR_CODES`，值全部不变）
+- `src/kernel/atomicWrite.mjs`（新建：逐字复制，import 改为 `./fsDurability.mjs`）
+- `src/kernel/fsDurability.mjs`（新建：逐字复制）
+- `src/kernel/pinaxAdapter.mjs`（`:45-48` 的 plumber 三件改指 `src/kernel/`；`factStore/deduce/enrich` 仍指 core；补 OS-152 注记）
+- `src/protocol/hostWrite.mjs`（`:23-24` 直取 `../kernel/atomicWrite.mjs`／`../kernel/fsDurability.mjs`）
+- `src/protocol/kernelPlumber.mjs`（改指 `../kernel/errors.mjs`／`../kernel/atomicWrite.mjs`，注释同步「环已断」）
+- `test/kernelPlumber.test.mjs`（新建：码表快照＋未知码回落＋原子写失败清场/前缀/目录 fsync＋与 core 原件行为等价，13 例）
+- `ARCHITECTURE.md`（`arch-stats` 生成段回写：L3 1→4 文件 / 68→195 行、L4 行数、测试文件 65→66；L3 节补 OS-152 说明）
+- `AGENTS.md`（硬规则 1 补「内核管道件自持位置」；目录表 `src/kernel/` 行；仓内地图内核进口行）
+
+VERIFIED:
+- `node --check`：6 个改动/新增 `.mjs` 全部通过
+- 三件行数核对：`errors 55 + atomicWrite 48 + fsDurability 20 = 123`；`diff --strip-trailing-cr` 对比 core，仅 errors 的 3 处标识符不同（其余两个文件零差异）
+- 码值证据：`KERNEL_ERROR_CODES` 与 core `NEXT_ERROR_CODES` 键序＋值 `JSON.stringify` 完全相同；键数实测 **25**（不是工单写的 26，见 limitations）
+- 红线测试逐个跑：`hostWrite` 7 例（6 过 / 1 平台 skip / 0 挂）、`changelog` 19 过、`historyRetention` 7 过、`decoupleStep3` 8 过（含 4 处 `PINAX_*` 字面量断言）
+- `node --test test/*.test.mjs`：**560 例 / 558 过 / 0 挂 / 2 平台 skip**（基线 547＋新增 13）
+- `node tools/acceptance/acceptance.mjs`：**19 过 / 0 挂 / 0 警**（S2.4「内核唯一进口」仍绿，扫描面 80→83）
+- `node scripts/vendor-drift.mjs check`：退出 0（本仓被改 0 / 上游已变 0 / 清单缺项 0）
+- `node scripts/arch-stats.mjs --check`：退出 0
+- `core/pinax` 仍 **24 文件 / 4,332 行**；`core/**` 未做任何修改；未动 vendor 清单
+- 无临时探针/脚本残留；未执行 git 命令；未启停 daemon
+
+LIMITATIONS:
+- 工单与设计稿 §6.1 都写「26 个码值」，源文件实测 **25 条**（core 原件同为 25）。测试按 25 条锁定并在注释注明，没有为凑数复制一条不存在的码；`26` 这个数字需要主 agent 更正。
+- 与设计稿 §6.1 的「不改 `hostWrite`／`kernelPlumber`（仍经 adapter）」一处偏差：按工单任务 2 改为直取 `src/kernel/`。adapter 确实已导出 `ok/fail/writeFileAtomic/TMP_PREFIX/syncDirectory`，但工单明令「不许再经 adapter 绕道」，且直取可断掉 adapter↔fork 点四角环（设计稿 §5.4 的终态）；S2.4 只针对 `core/**`，不受影响，门禁已验绿。
+- `tools/acceptance/acceptance.mjs` 的 `KERNEL_GATEWAY_ALLOW` 仍登记 `src/protocol/hostWrite.mjs`、`src/protocol/kernelPlumber.mjs` 两条已不再 import adapter 的条目（门禁不查腐化，无红）；该文件不在允许改动范围，未动，建议 OS-157 一并清理。
+- `src/protocol/README.md` 的叶子件表与 S2.4 说明仍描述「hostWrite/kernelPlumber 经 adapter 转供」；不在允许改动范围，未改。
+- `docs/plan/kernel-own-design.md` §6.1 未回写（验收稿只读，偏差已在上条说明）。
+- 未执行 git，故无法给出 `git diff`/`git status` 证据，改动清单以上文文件枚举为准。
+```
+
 ## 验收记录（主 agent 填）

@@ -35,8 +35,8 @@
 | L7 前端 | `public/`（含 `views/`） | 19 | 20,838 |
 | L6 契约层 | `src/api/contracts/` | 8 | 1,391 |
 | L5 宿主层 | `src/host/` | 5 | 1,663 |
-| L4 自持层 | `src/{modules,services,protocol}/` | 56 | 13,139 |
-| L3 内核进口 | `src/kernel/` | 1 | 68 |
+| L4 自持层 | `src/{modules,services,protocol}/` | 56 | 13,145 |
+| L3 内核进口 | `src/kernel/` | 4 | 195 |
 | L2 内核 | `core/pinax/` | 24 | 4,332 |
 | L1 磁盘库 | 库＝文件夹（无代码） | — | — |
 
@@ -44,7 +44,7 @@
 |---|---:|
 | `public/app.js` 行数 | 12,466 |
 | 契约端点数（`method:` 计数） | 101 |
-| 测试文件数（`test/*.test.mjs`） | 65 |
+| 测试文件数（`test/*.test.mjs`） | 66 |
 <!-- arch-stats:end -->
 
 ```
@@ -168,12 +168,16 @@ OS-123/124 解耦后，建库/导入/章节号解析全部自持，不再 vendor
   端子）、`enrich`（伪章推导＋因果图三指标）、`projectMeta`（转引本仓 projectDoc）、
   `projectImport`（转引本仓 importAdapter/textUtil）；后两组是自有能力的统一出口。
   另有最小补集 plumber（`ok`/`fail`/`writeFileAtomic`）仅限 projectDoc/importAdapter
-  两个既有 fork 点使用；OS-138 写通道收敛起 hostWrite.mjs（全仓唯一写入口）也经本文件
-  取 `writeFileAtomic`/`TMP_PREFIX`/`syncDirectory`，同属最小补集口径。
+  两个既有 fork 点使用；OS-138 写通道收敛起 hostWrite.mjs（全仓唯一写入口）也取
+  `writeFileAtomic`/`TMP_PREFIX`/`syncDirectory`，同属最小补集口径。
+  **OS-152 管道件自持**：`errors.mjs`（表名 `KERNEL_ERROR_CODES`，25 个值仍 `PINAX_*` 未改）、
+  `atomicWrite.mjs`、`fsDurability.mjs` 已影子复制进 `src/kernel/`，adapter 与
+  hostWrite/kernelPlumber 均取这一份；core 三件原件保留（仍供 `core/.../factFileStore.mjs`），
+  等最后一个 core 侧消费者搬家时再删（设计稿 §0.3-1、§6.7）。
 - **消费方**（OS-142 后 import 本文件的）：API/宿主层 api/handlers/fact、
   api/handlers/reference、services/systemPrompt（OS-142 未约束的面，直引保留）＋协议层转供面
-  protocol/index、protocol/kernelPlumber、protocol/hostWrite、protocol/chapters、
-  protocol/factGuard（S2.4 的 KERNEL_GATEWAY_ALLOW 显式豁免清单）。模块层
+  protocol/index、protocol/chapters、protocol/factGuard（S2.4 的 KERNEL_GATEWAY_ALLOW 显式豁免清单；
+  OS-152 起 protocol/kernelPlumber、protocol/hostWrite 改为直取 `src/kernel/` 管道件，不再进口本文件）。模块层
   （deduceEngine/libraryManage/projectDoc/importAdapter）与 services/enrichEngine 自 OS-142
   起改经协议层 `fact` 命名空间取，不再直引本文件。
 - **不在管辖**：worldbook 格式契约（vendor/contracts/worldbookFileContract.js）是格式契约面，
