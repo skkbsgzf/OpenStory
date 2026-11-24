@@ -162,7 +162,7 @@ export const systemEndpoints = {
     // 只看不写——写归各工作面；恢复版本＝客户端 GET 历史档＋PUT 原文件（chapter 通道）。
     request: { query: { root: 'string' } },
     response: { ok: 'true', groups: 'array', totals: 'object' },
-    errors: ['NO_LIBRARY', 'PATH_ESCAPE', 'INVALID_ENTRY']
+    errors: ['NO_LIBRARY', 'PATH_ESCAPE', 'INVALID_ENTRY', 'MODULE_DISABLED']
   },
 
   kbStatusGet: {

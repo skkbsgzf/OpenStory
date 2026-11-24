@@ -157,7 +157,7 @@ const workbenchViewsReady = import('./views/workbenchViews.mjs').then((mod) => {
   .catch((error) => { console.error('[views] 工作面视图模块加载失败', error); return null })
 /* OS-161：前端模块 id 清单（与各模块目录的 module.manifest.json 对齐；后端 manifest 装载结果在此镜像，
    页签可见性只按这张表 × moduleOn(id) 判定，新增模块须同步这里一行）。 */
-const MODULE_IDS = ['analysis', 'comfyui', 'kb', 'habits', 'storysource']
+const MODULE_IDS = ['analysis', 'comfyui', 'kb', 'habits', 'storysource', 'artifacts']
 
 /* OS-149：运行时货架过滤（views/runtimeShelf.mjs）——fixture 套件不进作者可见列表；纯函数在 views/，这里只接线 */
 let runtimeShelf = null
@@ -6476,59 +6476,11 @@ async function runAbsorbFromModal() {
 }
 
 function artifactsHtml() {
-  const inventory = state.artifacts
-  if (!state.current) return needLibraryHtml()
-  if (inventory.loading) return '<div class="loading">正在盘点全库产物…</div>'
-  const totals = inventory.totals || { files: 0, bytes: 0, histories: 0 }
-  const historyItem = inventory.groups.flatMap((group) => group.history ?? []).find((item) => item.file === inventory.previewFile)
-  const groupCards = inventory.groups.map((group) => {
-    const label = groupLabel(group.dir)
-    const rows = group.files.map((file) => `
-      <button class="artifact-row${file.file === inventory.previewFile ? ' on' : ''}" data-action="artifact-preview" data-file="${esc(file.file)}">
-        <span class="nm">${esc(file.name)}</span>
-        <span class="sz">${formatBytes(file.size)}</span>
-        <span class="tm">${esc(formatAt(file.mtime))}</span>
-      </button>`).join('')
-    const historyRows = (group.history ?? []).map((item) => `
-      <button class="artifact-row hist${item.file === inventory.previewFile ? ' on' : ''}" data-action="artifact-preview" data-file="${esc(item.file)}" title="${esc(item.original)} 的${item.kind === 'deleted' ? '删除档' : '历史版本'}">
-        <span class="nm">${esc(item.name)}</span>
-        <span class="tag">${item.kind === 'deleted' ? '已删除' : '历史'}</span>
-        <span class="sz">${formatBytes(item.size)}</span>
-        <span class="tm">${esc(formatAt(item.mtime))}</span>
-      </button>`).join('')
-    const historyNote = (group.history?.length ?? 0) > 0 ? ` · ${group.history.length} 份历史` : ''
-    return `<div class="step artifact-group">
-      <h3>${esc(label)}<span class="cnt">${group.files.length} 个${historyNote}</span></h3>
-      <div class="artifact-rows">${rows}${historyRows}</div>
-    </div>`
-  }).join('')
-  const preview = inventory.previewFile
-    ? `<div class="step artifact-preview">
-        <h3><span class="no">→</span>${esc(inventory.previewFile.split('/').pop())}${historyItem ? `<span class="src">${historyItem.kind === 'deleted' ? '已删除档' : '历史版本'}</span>` : ''}</h3>
-        ${historyItem ? `<p class="sub">原文件：${esc(historyItem.original)}</p>` : ''}
-        ${inventory.previewLoading ? '<div class="loading">读取中…</div>' : `<textarea class="editor" readonly spellcheck="false">${esc(inventory.previewText)}</textarea>`}
-        <div class="repair-actions">
-          ${historyItem ? `<button class="btn-primary" data-action="artifact-restore" data-file="${esc(inventory.previewFile)}" data-original="${esc(historyItem.original)}">恢复此版本到「${esc(historyItem.originalName)}」</button>` : ''}
-          ${historyItem ? '' : `<button class="btn-primary" data-action="artifact-edit" data-file="${esc(inventory.previewFile)}">去编辑</button>`}
-        </div>
-      </div>`
-    : `<div class="step artifact-preview"><h3><span class="no">→</span>预览</h3><div class="empty-state" style="margin:20px auto"><p>点左侧任意文件预览；历史与已删除档可整版恢复（当前内容会先自动备份）。</p></div></div>`
-  return `<div class="doc-head">
-      <div class="kick">${esc(state.current.name)} / 产物中心</div>
-      <h1>产物中心</h1>
-      <div class="doc-meta">
-        <span class="b">产出物＋版本历史</span>
-        <span>${inventory.groups.length} 组</span>
-        <span>${totals.files} 个文件</span>
-        ${totals.histories ? `<span>${totals.histories} 份历史</span>` : ''}
-        <span>${formatBytes(totals.bytes)}</span>
-      </div>
-    </div>
-    ${flowError(inventory.error)}
-    <div class="artifacts-grid">
-      <div>${groupCards || '<div class="empty-state"><p>库里还没有文本产物——去正文/大纲写点东西。</p></div>'}</div>
-      <div>${preview}</div>
-    </div>`
+  // OS-161：纯构造函数已迁 views/workbenchViews.mjs；这里取数＋注入工具后转交。
+  return workbenchViews.artifactsHtml({
+    current: state.current, inventory: state.artifacts,
+    groupLabel, formatBytes, formatAt, flowError, esc
+  })
 }
 
 /** 恢复历史版本：读历史档 → PUT 回原文件（写前自动 .history 备份＝恢复动作也留档）。 */

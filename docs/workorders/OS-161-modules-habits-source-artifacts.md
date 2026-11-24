@@ -96,4 +96,12 @@
 - **视图迁出**：`ssTableHtml`／`ssOutlineSideHtml`／`ssTraceHtml`／`ssChartFallbackHtml` 四个纯函数 → `views/workbenchViews.mjs`（`ssEntryLabel`／`ssFilteredRows`／`ssCardShell` 作内部纯助手随迁，`graph` 由宿主显式注入）；`ssModuleBodyHtml` 因调 `analyzeModulesFor`/`mod.run`（装载副作用）按工单留 app.js。app.js 12,449 → 12,304（累计净降 162）；golden＋薄壳纯度测试 13/13。
 - **测试**：全量 614 例（612 过/2 跳）；门禁 22/0/0；架构统计已回写。
 
-（子件三待续）
+### 子件三：产物中心（artifacts）＋收口
+
+- **manifest 形状**：`src/modules/artifacts/module.manifest.json`，`core:false`、独占 `artifactsGet`，契约 errors 已补 `MODULE_DISABLED`。
+- **停用证据**：`test/artifactsModule.test.mjs` 实测 daemon 停用后 GET 409 `MODULE_DISABLED`、启用恢复；页签 `artifacts` 消失而正文不受影响。
+- **视图迁出**：`artifactsHtml` → `views/workbenchViews.mjs`（注入 groupLabel/formatBytes/formatAt/flowError/esc），app.js 留薄壳；app.js 12,304 → 12,256（累计 12,466→12,256，**净降 210 行**）。金样测试 4/4。
+- **收口**：六个普通模块 manifest 全部过 `validateModuleManifest`；settingsHint 全覆盖（`test/moduleSettingsConsumers.test.mjs` 绿），无死配置；S2.2 自动枚举 views/ 共 18 个前端模块，新文件零 import 被覆盖。
+- **测试**：专项 4/4；全量 618 例（616 过/2 跳）——开工时 605，只增不减；门禁 22/0/0（原 22 项）；架构统计已回写；缺省页签快照 `test/tabRegistry.test.mjs` 12/12 一个字不改。
+- **文档**：`ARCHITECTURE.md` 模块插件清单补三个普通模块（habits/storysource/artifacts）。
+- **写入路径**：本单未改正文写通道（chapters 的单一写面留 OS-163 处理），产物中心只读盘点，无新增写口。

@@ -259,7 +259,7 @@ test('三个模块 manifest：settings 声明合法；OS-146 起不再有「改�
   const { manifests, warnings } = loadModuleManifests()
   assert.deepEqual(warnings, [])
   // OS-161 起模块清单按批扩大：已知模块必须全在，新增模块也走下面同一套 settings 校验。
-  for (const id of ['analysis', 'comfyui', 'kb', 'habits', 'storysource']) {
+  for (const id of ['analysis', 'comfyui', 'kb', 'habits', 'storysource', 'artifacts']) {
     assert.ok(manifests.some((manifest) => manifest.id === id), `模块 ${id} 必须在清单`)
   }
   for (const manifest of manifests) {
