@@ -1,0 +1,314 @@
+# 第三批规划：微内核·三层半（底座 ＋ 内器件／工作台／创作套件）
+
+> **来源**：作者 2026-11-24 晚贴入的「总形状：三层半」架构方案与「插件协议草案」，并指示——先深度阅读、规划下一批、把遗留事项处理干净，**只立工单，不实际投入开发**。
+> 本文 §1、§2 是对作者方案的结构化照录（贴入时架构图的代码块内容丢失，已按后文表格还原）；如与作者原件有出入，以作者原件为准并回填本文。
+> §3 是主 agent 对着当前仓（`4d8ad95`）核对后的评审意见；§4 是工单索引；工单正文在 [`docs/workorders/`](../workorders/BOARD.md)。
+
+## 0. 一句话
+
+把架构继续压扁：**底座只留五件宪法，其余一切是插件**；插件分三类——**内核件**（供给能力、无 UI）、**工作台**（用户功能面）、**创作套件**（skill／tool／资源）——彼此只经**能力协议**耦合。红利是：换玩法不换引擎、动「内核」＝换一个平级件、货架与模块一套治理、门禁更少更硬。
+
+## 1. 目标架构（三层半）
+
+### 1.1 总形状
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│ 底座（契约＋runtime，唯一非插件层，五件宪法）                        │
+│ 进程与网络 · 装载协议 · 契约壳 · 物理写管道 · 词表                   │
+└──────────────▲──────────────────────────────▲─────────────────┘
+      ↑注册 manifest@2 / ↓能力路由          ↓唯一落盘通道
+┌────────────────────┬──────────────────────┬────────────────────┐
+│ 内器件（紫）         │ 工作台（蓝）           │ 创作套件（橙）        │
+│ 能力供给者，无 UI     │ 用户功能面，有 slot     │ skill/tool/资源供给   │
+│ fact · prose        │ 写作/参考/剧本/扮演     │ skill包·规则包·文风    │
+│ storage · deduce    │ 分析/知识库/习惯/素材   │ 体裁·运行时·业务套装   │
+│ agent.runtime       │ 交换/Agent栏           │                     │
+└────────▲────────────┴──────────▲───────────┴──────────▲─────────┘
+         │ 工作台 requires 内器件   │ 套件参数化内核件            │
+         └──────── 工作台 ←─装载─ 套件（skill/tool/资源）──────────┘
+┌──────────────────────────────────────────────────────────────┐
+│ 磁盘（文件即真相）：库文件夹 · 本机院子 · 仓库货架                   │
+└──────────────────────────────────────────────────────────────┘
+```
+
+分层负担消失：`arch-stats` 的 L2/L4 行、门禁 S2.1 的三层路径规则全部重写为两条——**底座边界 ＋ 能力图**。
+
+### 1.2 底座宪法（绝对挪不走的五件）
+
+| # | 底座件 | 内容 | 为什么不可挪 |
+|---|---|---|---|
+| 1 | 进程与网络 | daemon 生命周期、127.0.0.1 绑定、单实例锁、四道闸、health／stamp／generation | runtime 骨架 |
+| 2 | 装载协议 | manifest 校验、装载循环、能力图检查、覆盖注册表 | 平级化的裁判——没有它只有混战 |
+| 3 | 契约壳 | `endpointFor` 分派表（注册在此、实现归插件）、错误信封、MCP 转发框架 | 所有插件的公共语言 |
+| 4 | 物理写管道 | `atomicWrite`（fsync＋rename＋目录 fsync） | 格式是能力（可魔改），管道是宪法（不可挪） |
+| 5 | 词表 | `NAMING_TABLE`、能力 id 注册表、slots 注册 | 能力总线的心脏 |
+
+### 1.3 三类插件
+
+**内核件**（能力供给者，无 UI）
+
+| 件 | 供给能力 | 说明 |
+|---|---|---|
+| fact | `fact.store@3` `fact.pack@1` `fact.enrich@1` | factFileStore／factPack／wikiDerive／domain／enrich 整链自 L2 降级；金样 `decoupleStep2` 随能力走；改格式＝供给 @4＋迁移器 |
+| prose | `prose.write@1` `changelog@1` | 从 chapters 拆出：写协议＋`.history` 保留＋月度留痕 |
+| storage | `storage.roots@1` `library.list@1` | courtyard／libraryManifest／建库骨架自宿主域升格；路径防逃逸检查留底座 |
+| deduce | `deduce.engine@1` | 确定性执行器（会话／回合／结算／多局）；规则不在此，规则是套件 |
+| agent.runtime | `agent.runtime@1` | Agent 存储＋上游通道（OpenAI 兼容／DSH 原生／CLI kit）＋LLM port＋embedding；自 services 收编 |
+
+**工作台**（用户功能面，全部带 slots 与 requires）
+
+| 台 | slot | requires | 来源 |
+|---|---|---|---|
+| 写作台 | tab | `prose.write` `fact.store` | chapters（页面半） |
+| 参考台 | tab | `fact.store` | worldbook |
+| 剧本台 | tab | `prose.write` `fact.store` | script |
+| 扮演台 | tab | `deduce.engine` `agent.runtime` `fact.store` | roleplay（门面半） |
+| 分析台 | tab | `fact.enrich` | analysis＋charts／graph 合并 |
+| 知识库台 | tab | `agent.runtime` | kb |
+| 习惯台 · 素材台 | tab | `storage.roots` | habits／artifacts |
+| 交换台 | host-actions | `fact.store` | exchange，吸收 storysource（数据进出同职能） |
+| Agent 栏 | sidebar | `agent.runtime` | agentbar 正名 |
+
+**创作套件**（skill／tool／资源，数据为主）
+
+| 套件 | 供给 | 说明 |
+|---|---|---|
+| skill 包 | skill | 提示词技能包 |
+| 推演规则包 | tool | 自引擎析出（新）：2d6／局面卡／候选模板——换玩法不换引擎 |
+| 生图工作流包 | tool | 自 comfyui 析出：工作流＋参数预设；执行器走 agent.runtime |
+| 文风包 · 体裁包 | 资源 | `styles/` · `genres/` |
+| 运行时套件 | tool | `runtimes/`（CLI kit，agent.runtime 适配器） |
+| 业务套装 | 捆绑 | `suites/`：skill＋tool＋资源预设组合＋依赖闭包 |
+
+### 1.4 现有 14 模块与三层货架的重组对照
+
+| 现状 | 新归属 | 动作 |
+|---|---|---|
+| chapters（core） | prose 件＋写作台 | 拆两半，core 退役 |
+| worldbook／script（core） | 参考台／剧本台 | 迁工作台，core 由底座 requires 推导 |
+| roleplay（core） | 扮演台＋deduce 引擎件＋推演规则包 | 三拆（门面／执行器／规则） |
+| analysis＋charts／graph | 分析台 | 合并；`roleplayEngine → public/analysis` 豁免随之消解 |
+| comfyui | 生图台＋生图工作流包 | 拆：执行器走 agent.runtime |
+| kb／habits／artifacts | 知识库台／习惯台／素材台 | 迁工作台 |
+| storysource＋exchange | 交换台 | 合并（数据进出同职能） |
+| 宿主域 agentbar／deduce／library | Agent 栏／deduce 引擎件／storage 件 | 升格正名 |
+| `src/kernel/`（L2 整层） | fact 件＋prose 件＋底座物理写管道 | L2 层消失；errors 词表进契约壳 |
+| 三层货架 | 套件类整体升格 | 数据目录获得 manifest／启停／覆盖／依赖闭包治理 |
+| `services/` | 各内核件＋底座 | jobCenter／events→底座；货架聚合→套件装载；embedding／dsh-bridge→agent.runtime |
+
+### 1.5 能力解析链样板（一次扮演回合）
+
+扮演台发起 → 推演规则包供给规则参数（2d6／局面卡）→ `deduce.engine` 执行确定性推演 → `agent.runtime` 生成 LLM 回合（AG-UI 事件流）→ `fact.store` 装配上下文（factGuard 只读）→ `prose.write` 拍转正（草稿→正文＋`.history`＋changelog）→ 底座物理写管道落盘。**全程经底座路由，代码零直连。**
+写作台接入推演（分支联动）＝声明 `requires: deduce.engine`，零代码耦合。
+
+### 1.6 重组红利
+
+换玩法不换引擎（推演规则／生图工作流／文风皆套件）；动「内核」＝换一个平级件（`fact.store@4`＋迁移器＋金样覆盖旧件，底座一行不动）；货架与模块一套治理（两套 manifest 合一）；豁免台账自然消解；分层负担消失；第三方生态的门打开（套件已是无代码数据包，D 批动态装载后三类全开放）。
+
+## 2. 插件协议草案 v0.1（要点）
+
+### 2.1 术语
+
+底座（base，唯一非插件层）· 能力（capability，带主版本号，如 `fact.store@3`）· 供给者（`capabilities` 里声明某能力）· 消费者（`requires` 里声明依赖某能力，底座自身也可持有）· 覆盖（override，供给者 B 显式替换供给者 A 的同一能力）· 金样（golden，逐字节锁定能力输出格式，随能力走）。
+
+### 2.2 manifest@2 形状
+
+```jsonc
+{
+  "spec": "openstory-module@2",
+  "id": "fact",                       // 全局唯一，小写连字符
+  "name": "事实引擎",
+  "version": "1.0.0",                 // 插件自身 semver
+  "class": "kernel",                  // kernel | workbench | suite
+  "description": "…",
+  "builtin": false,                   // true＝底座随包自带、随版本升级
+  "capabilities": [                   // 供给（kernel 必填；workbench/suite 禁止）
+    { "id": "fact.store", "version": 3, "golden": "decoupleStep2" },
+    { "id": "fact.enrich", "version": 1 }
+  ],
+  "requires": [                       // 消费（workbench 必填；kernel 可选）
+    { "id": "fact.store", "min": 3 },
+    { "id": "prose.write", "min": 1 }
+  ],
+  "overrides": [ { "target": "fact.store", "from": 3 } ],             // 魔改，全类可选
+  "migrations": [ { "capability": "fact.store", "from": 3, "to": 4, "entry": "migrate-v3-to-v4.mjs" } ],
+  "endpoints": ["factEntriesGet"],
+  "pages": [{ "id": "deduce", "label": "扮演", "slot": "tab" }],
+  "settings": [],                     // 必须有消费者（OS-146 沿用）
+  "settingsHint": "…",
+  "slots": ["tab", "host-actions", "sidebar", "panel"],               // workbench 专属
+  "supplies": ["skill", "tool", "resource", "bundle"],                // suite 专属
+  "appliesTo": ["deduce.engine", "agent.runtime"],
+  "deps": ["推演规则包@2", "文风包@1"]
+}
+```
+
+| 字段 | kernel | workbench | suite |
+|---|---|---|---|
+| `capabilities` | 必填≥1 | 禁止 | 禁止 |
+| `requires` | 可选 | 必填≥1 | 禁止（用 `deps`） |
+| `endpoints` | 可选 | 可选 | 禁止 |
+| `slots`／`pages` | 禁止 | 可选 | 禁止 |
+| `supplies`／`appliesTo`／`deps` | 禁止 | 禁止 | 必填≥1 |
+| `overrides`／`migrations` | 可选 | 可选 | 可选（资源覆盖如文风包按 id） |
+| `builtin` | 可选 | 可选 | — |
+
+升版：底座提供一次性迁移工具（读 @1 → 推断 class → 写 @2）；过渡期（B 批）@2 新字段全部选填、@1 继续受理；C 批起必填生效。
+
+### 2.3 能力协议
+
+- **命名与版本**：`<域>.<名>` 小写点号；单主版本整数；major 变＝不兼容（需迁移器），向后兼容加键不升版；消费方声明 `min`，供给低于 `min`＝能力缺失。
+- **金样义务**：凡涉及落盘格式的能力，条目必须带 `golden`；金样随能力走，覆盖者必须提供新格式的金样。
+- **启动三检查**：闭环（`CAPABILITY_MISSING`，列出每条断链）· 冲突（`CAPABILITY_CONFLICT`，点名供给者）· 覆盖合法（`OVERRIDE_REJECTED`）。通过后冻结能力路由表。
+- **停用语义（从 core 标记到推导）**：被依赖的供给者不可停，报错列出全部断链点；无依赖供给者可停，消费方降级或只读；workbench 可停＝独占端点 409、slot 消失、数据保留；suite 可停＝内容下线、不产生断链（`deps` 为软依赖）。
+
+### 2.4 覆盖协议（魔改）
+
+四条守卫，缺一不受理：**显式声明**（`overrides` 点名 target＋from，静默替换直接拒）· **版本对齐**（from 必须等于被覆盖者当前主版本）· **迁移器责任**（改落盘格式必须带 `migrations`，未带而格式实测变化→金样红即拦截）· **回退链**（覆盖者停用→自动回退，路由表更新；旧格式数据在迁移器可逆向前不自动回滚）。
+优先级：本机覆盖内置＞装载顺序；互相覆盖成环→`CAPABILITY_CONFLICT`。
+
+### 2.5 迁移协议
+
+单向 from→to，一次执行，前后都走物理写管道并留 `.history`；覆盖安装／首启时执行一次，幂等；**失败安全阀**：迁移器抛错→保留原格式、禁用覆盖者、报 `MIGRATION_FAILED`，绝不留半迁状态；不删旧数据文件。
+
+### 2.6 底座接口与插件禁改区
+
+底座供给：装载 API（注册端点／页签／slot／能力）· 能力路由 API（`resolve(capabilityId)` → 供给者句柄）· 物理写管道（`atomicWrite`＋`.history` 钩子，全仓唯一落盘通道）· 词表（`NAMING_TABLE`、能力 id 注册表、slots 注册表、错误信封）· 进程服务（jobs、events、health／stamp／generation）· 安全（四道闸、`resolveInsideRoot`、root 来源经 `storage.roots` 供给）。
+
+禁改区（进门禁）：不得 import 其他插件内部实现；不得自带落盘路径；不得注册未在 manifest 声明的端点／页签／能力；suite 类不得携带可执行代码（D 批动态装载前）。
+
+### 2.7 错误信封扩展
+
+| 码 | HTTP | 场景 |
+|---|---|---|
+| `CAPABILITY_MISSING` | 503 | 能力图闭环失败（启动报告随附断链清单） |
+| `CAPABILITY_CONFLICT` | 503 | 同能力多供给且无覆盖关系 |
+| `OVERRIDE_REJECTED` | 400 | 覆盖声明不合法 |
+| `MIGRATION_FAILED` | 500 | 迁移器失败（原数据保留、覆盖者已禁用） |
+| `PLUGIN_DEGRADED` | 503 | 依赖的供给者停用，本插件降级中 |
+| `MODULE_CORE` | — | 随 core 派生化退役（`MODULE_DISABLED` 保留） |
+
+### 2.8 装载源
+
+kernel／workbench：仓库 `src/modules/`（内置）；D 批后开放本机目录。suite：仓库货架目录（内置层）＋院子 `%LOCALAPPDATA%/OpenStory/openstory/`（本机层，按 id 覆盖）。
+
+### 2.9 作者列的开放问题（评审靶子）
+
+storage × genres 边界（倾向：骨架模板属体裁包，storage 件只提供「按模板建骨架」）· jobCenter／events 归属（倾向：不落盘的进程服务＝底座）· 套件声明式逻辑的边界（倾向：数据驱动 DSL 允许、图灵完备脚本禁止）· naming 双端豁免的归宿（词表归底座、前端经接口拉取，还是保留 re-export）· 能力路由的进程内形态（函数引用还是薄代理；倾向一步到位用代理）。
+
+## 3. 主 agent 核对与评审意见
+
+**实测基线（`4d8ad95`）**：14 个模块（四个 `core:true`＝chapters／worldbook／script／roleplay）· 门禁 23 项 · 测试 682 例（本机 0 挂，2 条件跳过）· `app.js` 11,886 行 · `public/views/` 8 个模块 · `src/protocol` 22 个文件、`src/services` 21 个 · 货架：skills 33／suites 4／runtimes 6／styles 3／genres 7 · 无 CI 配置 · `src` 里 `.pinax` 引用 49 处 · `pinaxListGet`／`pinaxListImport` 两个端点仍在。
+
+对草案的评审意见（A2 定稿 ADR 时逐条采纳或驳回，写明理由）：
+
+| # | 问题 | 建议 |
+|---|---|---|
+| R1 | **A1「互认拆除」推翻三条既有口径**：作者红线「旧库不迁移」「金样不动＝Pinax 互认唯一锚」、台账【作者动作】「桌面端开新库确认」。按新方案是有意为之（验收标准已改为内部代码质量），但必须留痕 | ADR 0002 明文记录反转与理由；同步删改 LEGACY-ITEMS 对应行 |
+| R2 | **自举顺序未定义**：底座「自身也持有 requires」，而装载器要读的套件源与库清单在 storage 件／院子里——存在循环依赖 | 规定「零插件状态下底座能做什么」与装载顺序：内置内核件 → 能力图检查 → 工作台 → 套件 |
+| R3 | **分析引擎归属倒挂**：草案把 analysis 并成「分析台（工作台）」，但分析引擎（纯函数）同时被服务端消费（MCP 分析工具、扮演成文的去 AI 味闸、习惯 lint）。内核件依赖工作台＝倒挂 | 拆成「纯引擎（内核件能力）＋分析台（UI）」；立 OS-183a，视 A2 裁定生效 |
+| R4 | 「不可停」一条混了两种语义：拒绝停用（有活跃消费者）与消费者降级（供给者缺席） | 分两个码：停用被拒（列受影响消费者）；启动时缺席→消费者不装载并报 `PLUGIN_DEGRADED` |
+| R5 | 启动失败策略未定：`CAPABILITY_MISSING` 是进程拒启还是降级启动 | 底座永远能起（health 属底座）；缺能力的插件不装载，启动报告列出断链 |
+| R6 | suite「不得携带可执行代码」与「overrides／能力升 major 必带 migrations（入口是 .mjs）」冲突 | 套件覆盖只能是资源覆盖（不改落盘格式、不带迁移器）；带迁移器的覆盖只能来自内核件／工作台 |
+| R7 | 能力 id 注册表若写死在底座词表，第三方无法新增能力，与 D 批「生态的门打开」矛盾 | 底座只固定自有能力 id，其余由供给者声明、启动时登记 |
+| R8 | 「路由表进程周期内静态」与 D1「热更新回退」矛盾 | D1 是有意演进：写明「重建＝重新校验后再切换」；B5 的句柄一步到位用薄代理 |
+| R9 | `pages[].slot` 与顶层 `slots` 重复 | 定一个（建议 pages 只留 id／label，嵌入点统一在 `slots`） |
+| R10 | 推演规则包参数化引擎后，确定性测试（同种子同事实包＝同一拍）失去固定前提 | 默认规则包绑定确定性测试；换规则包＝新金样（C5） |
+| R11 | 生图执行器归 agent.runtime 存疑：生图不是 LLM 运行时通道 | 单列内核件（如 `media.gen@1`）更干净；非阻塞，留 A2 裁定 |
+| R12 | 货架数字与草案不符 | 以实测为准：skills 33、suites 4、runtimes 6、styles 3、genres 7 |
+| R13 | **S1 的 5 红在作者机器上不复现**（本机 682／0 挂），换到干净环境才红 | 修法必须「先在干净环境复现再修」，并加门禁防回潮（`test/**` 不许出现本机绝对路径） |
+| R14 | 「验收报告·六」（A1 影响面六项）不在仓内 | A1 第一步先做影响面盘点，以 `src` 里 49 处 `.pinax` 引用为起点 |
+
+## 4. 工作包与工单索引
+
+**排期原则**（作者）：每批独立可提交、门禁绿、金样随能力走、旧库单向升级、**先定宪法 → 再立语言 → 然后降级 → 最后开魔改**（反向做＝失去裁判机制）。工期为相对量级，非日历承诺。
+
+### 收尾批（出口条件 S5：S1＋S2 验收通过 ⇒ 前两批关闭，准予上 CI）
+
+| 工单 | 对应 | 内容 | 风险 |
+|---|---|---|---|
+| [OS-169](../workorders/OS-169-test-hermetic.md) | S1 | 测试环境健壮性：修 5 红，测试不依赖本机环境 | 低 |
+| [OS-170](../workorders/OS-170-doc-number-anchors.md) | S2／A3 | 数字锚自动化＋三处漂移对齐＋`app.js` 行数上限锚进门禁 | 低 |
+| [OS-171](../workorders/OS-171-ci-pipeline.md) | 基建 | CI 就绪流水线（`npm test` 两轮＋验收门禁） | 低 |
+| — | S3 | 核心插件集合追认 → 已在看板留痕（本文 §4.1） | — |
+| — | S4 | `app.js` 壳目标重定 → 已在看板留痕（本文 §4.1） | — |
+
+### 批次 A · 宪法批（约 3–5 人日）
+
+| 工单 | 工作包 | 内容 |
+|---|---|---|
+| [OS-172](../workorders/OS-172-interop-retire.md) | A1 | 互认拆除：`.pinax/`→`.openstory/` 单态收敛＋一次性升级迁移＋pinax 端点退役 |
+| [OS-173](../workorders/OS-173-base-constitution.md) | A2 | 底座宪法 ADR 0002 定稿＋协议定稿（设计单，闭掉 §3 全部评审意见） |
+
+### 批次 B · 能力批（约 5–8 人日，依赖 A2）
+
+| 工单 | 工作包 | 内容 |
+|---|---|---|
+| [OS-174](../workorders/OS-174-manifest-v2.md) | B1 | manifest@2 落地：schema＋校验器＋@1→@2 迁移工具，14 份 manifest 升版 |
+| [OS-175](../workorders/OS-175-capability-graph.md) | B2 | 能力图检查器：闭环／冲突／覆盖合法三检查，「有依赖不可停」由推导产生 |
+| [OS-176](../workorders/OS-176-core-derived.md) | B3 | core 派生化：`core:true` 四件退役，`MODULE_CORE` 语义消失 |
+| [OS-177](../workorders/OS-177-host-domain-rename.md) | B4 | 宿主域正名：agentbar／deduce／library 归位（`builtin` 字段或清单分区） |
+| [OS-178](../workorders/OS-178-deduce-vertical-slice.md) | B5 | deduce 垂直切片：handlers→引擎直连改能力路由；写作台 `requires: deduce.engine` 跑通 |
+
+### 批次 C · 降级批（约 8–12 人日，依赖 B1–B2）
+
+| 工单 | 工作包 | 内容 |
+|---|---|---|
+| [OS-179](../workorders/OS-179-fact-plugin.md) | C1 | fact 插件化：fact 链出底座，金样随 `fact.store` 走 |
+| [OS-180](../workorders/OS-180-prose-plugin.md) | C2 | prose 插件化：chapters 拆两半（写协议下沉／页面上浮） |
+| [OS-181](../workorders/OS-181-storage-plugin.md) | C3 | storage 插件化：courtyard／libraryManifest／建库骨架降级 |
+| [OS-182](../workorders/OS-182-agent-runtime-plugin.md) | C4 | agent.runtime 件：services 收编，三消费方走同一能力 |
+| [OS-183](../workorders/OS-183-deduce-split.md) | C5 | deduce 三拆：引擎件＋推演规则包＋扮演台门面 |
+| [OS-183a](../workorders/OS-183a-analysis-engine-split.md) | C5b（新增，视 A2） | 分析引擎拆分：纯引擎→内核件能力；分析台→工作台 |
+| [OS-184](../workorders/OS-184-gates-rewrite.md) | C6 | 门禁改写：`arch-stats` 分层表、S2.1→能力路由、S2.4'→底座边界、S2.7→能力归属 |
+
+### 批次 D · 魔改批（可选，约 5–8 人日，依赖 C）
+
+| 工单 | 工作包 | 内容 |
+|---|---|---|
+| [OS-185](../workorders/OS-185-override-routing.md) | D1 | 覆盖路由＋回退链 |
+| [OS-186](../workorders/OS-186-migration-framework.md) | D2 | 迁移器框架（from→to 单向，失败安全阀） |
+| [OS-187](../workorders/OS-187-suite-manifest-unify.md) | D3 | 套件统一 manifest（三层货架升格） |
+| [OS-188](../workorders/OS-188-slots-dynamic-loading.md) | D4 | slots 扩展＋动态装载评估 |
+
+**执行顺序**：OS-169 → OS-170 →（出口 S5）→ OS-171 → OS-172 → OS-173 → OS-174 → OS-175 → OS-178 → OS-176 → OS-177 → OS-179 → OS-180 → OS-181 → OS-182 → OS-183 →（OS-183a，若 A2 采纳）→ OS-184 → OS-185 → OS-186 → OS-187 → OS-188。
+
+**里程碑口径**（作者）：A 完成＝宪法与地基干净（互认包袱清零）；B 完成＝平级的语言就位（manifest@2＋裁判），生态耦合第一条链路（deduce）跑通；C 完成＝微内核成型（L2 消失，三类就位），架构图从讨论稿变实测图；D 完成＝魔改开放，第三方生态的门打开。
+
+### 4.1 裁定留痕（S3、S4）
+
+- **S3 核心插件集合追认**：实际核心集合 **chapters／worldbook／script／roleplay**（验收时发现与工单原裁定 novel／worldbook／storysource／settings 不一致，未追认）。现予追认，理由：**core 语义＝底座自举依赖**——正文／剧本写通道、扮演引擎、世界书消费面。B3「core 派生化」落地后 `core:true` 整体退役，本次追认只是把现行事实记进台账，避免审计断档。
+- **S4 `app.js` 壳目标重定**：原目标「装配壳 ≤2k 行」未达（现 11,886），一次性大爆炸不现实。改为**分阶段可测目标**——`public/views/` 迁出件数递增（现 8 个）＋ `app.js` 行数上限逐批递减，**每批出数字锚**；渲染函数一律进 `views/`。
+
+| 时点 | `app.js` 行数上限 | `public/views/` 模块数下限 |
+|---|---|---|
+| 现状 | 11,886 | 8 |
+| A 批末 | ≤11,800 | ≥8 |
+| B 批末 | ≤11,600 | ≥10 |
+| C 批末（第三批目标） | **≤10,500** | **≥14** |
+| D 批 | 不反弹 | 不减少 |
+
+上限锚由 OS-170 写进验收门禁：只许下调，不许上调。
+
+## 5. 遗留事项处置
+
+| 事项 | 处置 |
+|---|---|
+| 测试环境 5 红（S1） | OS-169 |
+| 文档数字三处漂移（S2） | OS-170 |
+| 核心集合未追认（S3）、`app.js` 目标未达（S4） | 本文 §4.1 留痕 |
+| 前两批关闭条件（S5） | S1＋S2 验收通过即关闭；CI 见 OS-171 |
+| `.pinax` 单态与互认包袱（验收报告·六） | OS-172 |
+| 模块闸库路径、旧院路径冻结、库清单分家、`PINAX_KB_WATCH` | 已审结（见 `docs/LEGACY-ITEMS.md`），无待办 |
+| NovelPedia 真实数据复验、RAG 导出、AG-UI 第三方消费者、fs.watch、MCP 写工具扩面、故事源大纲双向编辑、多轨并行图、世界书人物单页档案、任务中心扩任务类型 | 保持【后续可选】，不入第三批 |
+| fact 增量 PATCH | 与 D2 迁移器框架同批评估（都是落盘契约变更） |
+| 自动化 UI 测试 | 保持【后续可选】；OS-171 的 CI 只跑 Node 测试与门禁 |
+| 用 Pinax 桌面端开新库确认 | **随 OS-172 互认拆除作废**，届时从台账删除 |
+
+## 6. 需要作者拍板
+
+1. **A1 互认拆除**（OS-172）会让 Pinax 桌面端不再认得 OpenStory 的库，且会迁移作者四个真库的 `.pinax/`——这是作者方案里的明示选择，请再确认一次，并决定真库升级由谁触发（默认：作者首次用新版打开库时自动迁移，迁移前留 `.history` 备份）。
+2. **CI 形态**（OS-171）：默认 GitHub Actions（仓库在 GitHub、零依赖零构建）；若另有 CI，改触发器即可。
+3. **R3 分析引擎拆分**（OS-183a）与 **R11 生图执行器归属**：是否按建议改草案。
+4. **git push**：段 B⁺ 已做完，按之前的约定推送已解锁；但建议**先过 OS-169**（让别的机器上 `npm test` 也是绿的）再推。
