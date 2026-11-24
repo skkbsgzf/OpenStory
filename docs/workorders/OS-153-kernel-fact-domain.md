@@ -101,3 +101,11 @@ LIMITATIONS:
 ```
 
 ## 验收记录（主 agent 填）
+
+- 2026-11-24 编排器五道门禁全绿（573 例、19 项、水浒 10/10、新建 13/13、vendor 未动、daemon 重启闸生效）；四条红线测试全绿（contracts 24／factEntriesImport 5／decoupleStep3 8／kernelPlumber 13）；无越界。
+- 主 agent 亲验：
+  ① 8 件已落 `src/kernel/fact/domain/`，`pediaSchema.js` 改名 `index.mjs`；合计 **1,233 行**，与设计稿一致。
+  ② 等价性测试真在比：`test/kernelFactDomain.test.mjs` 直接 import core 原件的 `schema.js` 与 `pediaSchema.js` 做对照组（测试文件不在 S2.4 扫描面），13 例全过，含「同语料下 errors／warnings 逐条相等」。
+  ③ `core/pinax` 仍 **24 文件 / 4,332 行**（影子迁移，本步不删）。
+  ④ S2.4 的 `KERNEL_GATEWAY_ALLOW` 已收紧到 3 条合法出口（`src/protocol/index.mjs`、`chapters.mjs`、`factGuard.mjs`），`hostWrite`／`kernelPlumber` 已移出且门禁仍绿。
+- 结论：**已验收**。

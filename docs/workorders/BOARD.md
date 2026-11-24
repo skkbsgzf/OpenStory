@@ -34,8 +34,8 @@
 |---|---|---|---|---|---|---|
 | [OS-151](OS-151-kernel-own-design.md) | 定名与归属（设计单）：内核身份、每个文件归内核还是归模块、改名对照表、磁盘兼容名清单；不迁代码 | 低 | 已验收（设计稿）`dc72131` | | 537 例 · 18 项 | 主 agent 抽核通过；**三件事等作者一句话** |
 | [OS-152](OS-152-kernel-plumber.md) | 管道件转自有：errors／atomicWrite／fsDurability（123 行，影子复制） | 低 | 已验收 | `5c3a887` | 560 例 · 19 项 · 水浒 10/10 · 新建 13/13 · vendor 未动 | 码值 25 条逐字未变、core 仍 24 文件 |
-| OS-153 | fact 词表与校验转自有：`fact/domain` 8 件（1,233 行） | 中 | 待派 | | | |
-| OS-154 | fact 派生与包装转自有：wikiDerive＋factPack＋enrich 2 件（984 行） | 中 | 待派 | | | |
+| [OS-153](OS-153-kernel-fact-domain.md) | fact 词表与校验转自有：`fact/domain` 8 件（1,233 行）＋S2.4 允许清单收紧 | 中 | 已验收 `e9835e8` | 573 例 · 19 项 · 等价性 13 例 | 门禁绿 |
+| [OS-154](OS-154-kernel-derive.md) | fact 派生与包装转自有：wikiDerive＋factPack＋enrich 2 件（984 行，首次真删 core 文件，24 → 22） | 中 | 施工中 | | |
 | OS-155 | 推演链归位：deduce 8 件（1,236 行）进扮演模块自己的引擎目录＋llmPort 接口整理 | 中 | 待派 | | | |
 | OS-156 | 写协议转自有：factFileStore（756 行，最后摘） | 高 | 待派 | | | 单独复核 |
 | OS-157 | 收尾退役：世界书契约转自有、`core/` 与 `vendor/` 消失、vendor 纪律退役、`pinaxAdapter` 解散、门禁 S2.4 演变、互认金样、出处声明保留 | 高 | 待派 | | | 单独复核 |
