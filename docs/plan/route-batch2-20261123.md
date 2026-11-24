@@ -5,6 +5,28 @@
 > 主 agent 对本清单的事实核对与工单化，见 [`workorder-system-20261124.md`](workorder-system-20261124.md)；
 > 各单状态见 [`docs/workorders/BOARD.md`](../workorders/BOARD.md)。
 
+## 执行结果（OS-168 收口回填，2026-11-24）
+
+> 逐条按原文编号核；「提交」列取该事项落地/收口的主提交，前置同类提交见工单验收记录。
+> 全部条目已做，无「部分/未做」残留；原文照录部分不改，结果集中在这里。
+
+| 编号 | 原文事项 | 结果 | 工单 | 提交 |
+|---|---|---|---|---|
+| G8a | 五层命名单一真源表 | 已做：`NAMING_TABLE` 为唯一真源，页签/日志层回表 | OS-148 | `b2a296c` |
+| G8b | 「世界书」目录归属＋参考补建＋白名单 | 已做：目录名冻结、`世界书/` 为载体兼容输入、absorb 进 `参考/`、新库骨架建 `参考/` | OS-164 | `79ec0f9` |
+| G8c | acceptance 锚点＋落盘表补推演容器 | 已做：CORE_TABS 强检查、AGENTS 第 10 条补 `推演/` | OS-149 | `d6bc106` |
+| G8d | 拆解→故事源改名并入命名表 | 已做：ad-hoc 改名收敛到注册表 | OS-148 | `b2a296c` |
+| G8e | echo-kit 标 fixture 不再进作者可见列表 | 已做：货架保留、测试不变、UI 过滤 | OS-149 | `d6bc106` |
+| G9a | errors/atomicWrite 自有＋F6 原子写收敛 | 已做：F6 先于本批（OS-138），管道件影子迁移 OS-152，收尾 OS-157 | OS-152／157 | `5c3a887`／`ce14075` |
+| G9b | enrich 两件自有 | 已做：wikiDerive/factPack/enrich 进 `src/kernel/` | OS-154 | `bc24c3b` |
+| G9c | deduce 链三件自有＋llmPort | 已做：8 件归扮演模块引擎目录，Host API 降 @2 | OS-155 | `f11743f` |
+| G9d | factFileStore 自有 | 已做：写协议进 `src/kernel/fact`，金样+直测照绿 | OS-156 | `ae01987` |
+| G9e | 传递依赖清点、core 退役 | 已做：`core/` 13→0 文件全删 | OS-156 | `ae01987` |
+| G9f | vendor 纪律整体退役 | 已做：manifest/漂移检测/vendor 脚本/文档段全退，`core/`、`vendor/` 消失 | OS-157 | `ce14075` |
+| G10a | 本机院子改名＋首启只拷贝迁移 | 已做：新院 `OpenStory`，旧院冻结保留，跳 `*.tmp-*`/`daemon.lock` | OS-166 | `cf24bfe` |
+| G10b | 库清单分家＋设置页导入 Pinax 清单 | 已做：新院 `libraries.json` 自持，旧清单只读勾选导入，互认靠库内 `project.json` | OS-167 | `e282e8e` |
+| G10c | 运行态归口纪律 | 已做：套件状态库级化（OS-160）＋AGENTS 第 10 条补规则（OS-166） | OS-160／166 | `ab854be`／`cf24bfe` |
+
 ---
 
 范围：承接第一批（F1-F7 安全护航 ＋ G1-G7 插件化重构，已派发执行中）。 第二批＝三个追加批次：G8 命名归一 · G9 内核自有化 · G10 品牌分家，全部源自 2026-11-23 晚间三场调研（命名审计 / pinaxAdapter 查证 / 数据面盘点＋作者裁定）。 配套总图见《OpenStory 目标架构图.md》；本文各批次明细在《OpenStory 改进路线清单.md》批次 7/8/9 同步维护。

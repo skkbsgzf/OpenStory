@@ -43,7 +43,7 @@
 |---|---:|
 | `public/app.js` 行数 | 11,886 |
 | 契约端点数（`method:` 计数） | 107 |
-| 测试文件数（`test/*.test.mjs`） | 86 |
+| 测试文件数（`test/*.test.mjs`） | 87 |
 <!-- arch-stats:end -->
 
 ```

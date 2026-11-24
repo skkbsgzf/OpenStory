@@ -10,7 +10,7 @@ node:http 手写路由，127.0.0.1:8807；
 OS-127 进程治理：单实例锁＋stamp＋generation＋`/api/health`）
 + `public/` 原生 JS 前端。模块：**小说**（纯净写作面）/ **世界书**（参考笔记＋拆解词条只读层）/
 **习惯**（写作规矩表）/ **故事源**（fact 链可视化）/ **扮演**（主持人＋多角色，默认）/ **确定性推演**（可选）/ **剧本** / **分析**（本地引擎）。
-全部经契约层（`src/api/contracts.mjs` 聚合 `src/api/contracts/` 七域分片，101 端点）分派；
+全部经契约层（`src/api/contracts.mjs` 聚合 `src/api/contracts/` 八域分片，107 端点）分派；
 MCP 对外 24 工具（`src/host/mcp.mjs` 直跑；stdio 独立进程，数据操作走 daemon HTTP 薄适配）。
 分层见 [ARCHITECTURE.md](./ARCHITECTURE.md)（L7 前端→L6 契约→L5 daemon→
 L4 自持层→L2 自有内核 `src/kernel/`→L1 磁盘库；OS-157 起 L2/L3 合并）。
@@ -64,10 +64,10 @@ L4 自持层→L2 自有内核 `src/kernel/`→L1 磁盘库；OS-157 起 L2/L3 �
    | 目录 | 内容 |
    |---|---|
    | `src/host/` | daemon/mcp 实现（组合根：路由、进程治理、路径解析） |
-   | `src/api/` | 契约层 `contracts.mjs` ＋ `contracts/` 七域分片（API 形状唯一真源） |
-   | `src/protocol/` | 文件与协议层：chapters/chapterNumber/changelog/versionGate/plugins/agentEvents/factGuard/dependencyGraph/hostWrite/libState |
+   | `src/api/` | 契约层 `contracts.mjs` ＋ `contracts/` 八域分片（API 形状唯一真源） |
+   | `src/protocol/` | 文件与协议层：chapters/chapterNumber/changelog/versionGate/plugins/agentEvents/factGuard/dependencyGraph/hostWrite/libState/courtyard（本机院子唯一解析）/libraryManifest（自持库清单＋旧清单只读导入） |
    | `src/kernel/` | 自有内核（`openstory-kernel@1`）：公开面 `index.mjs`＋身份 `identity.mjs`，管道件 `errors.mjs`/`atomicWrite.mjs`/`fsDurability.mjs`，`fact/{factFileStore,wikiDerive,factPack,domain/}`，`enrich/`；core/、vendor/ 已退役 |
-   | `src/modules/` | 域模块：library/（建库导入）、deduce/（推演）、roleplay/（扮演）、worldbook/（参考）、agentbar/（Agent 存储）、analysis/comfyui/kb（模块插件，各带 `module.manifest.json`） |
+   | `src/modules/` | 14 份 `module.manifest.json`：四核心 chapters/script/worldbook/roleplay（core:true 恒启用），普通插件 analysis/comfyui/kb/habits/storysource/artifacts/exchange，宿主域登记 agentbar/deduce/library；library/ 建库导入、deduce/ 推演、roleplay/ 扮演、worldbook/ 参考、agentbar/ Agent 存储 |
    | `src/services/` | 外围服务：embedding-server/embeddingPaths、cli-bridge/dsh-*/runtimes（模型驱动）、stylePacks/style-check/suites/skills/genres（货架）、jobCenter/nativePicker/syncCheck/enrichEngine |
 
    实现文件不得再放仓根；垫片不得长业务逻辑。门禁 S0.1 钉死仓根恰好两个 `.mjs`。
@@ -229,8 +229,8 @@ node tools/acceptance/acceptance.mjs        # ② 交付标准 S0–S4 门禁（
 ## 仓内地图
 
 - 启动入口：`src/host/daemon.mjs` / `src/host/mcp.mjs`（OS-159 直跑，仓根零垫片）
-- 契约层：`src/api/contracts.mjs` 聚合器 ＋ `src/api/contracts/` 七域分片（library/chapters/fact/reference/
-  agent/plugins/system，101 端点）→ `src/api/handlers/` 七域 handler ＋ `src/api/registry.mjs` 注册表（OS-141，键＝endpointId）
+- 契约层：`src/api/contracts.mjs` 聚合器 ＋ `src/api/contracts/` 八域分片（library/chapters/fact/reference/
+  agent/plugins/system/exchange，107 端点）→ `src/api/handlers/` 八域 handler ＋ `src/api/registry.mjs` 注册表（OS-141，键＝endpointId）
   → `src/host/daemon.mjs` 路由分派（endpointFor → validateRequest → 取 handler → 调用）＋ 共享管线 `src/host/{http,authorize,sse}.mjs`
 - 自有内核：`src/kernel/index.mjs`（公开面五键）＋ `identity.mjs`（`openstory-kernel@1`）→
   `fact/{factFileStore,wikiDerive,factPack,domain/}`（fact 链＋写协议）＋ `enrich/`（只读度量）＋

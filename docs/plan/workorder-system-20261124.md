@@ -3,11 +3,18 @@
 > 主 agent 是**监督器＋工单撰写＋验收**；施工一律走 **CodeBuddy CLI 外部进程**（`codebuddy -p --model deepseek-v4.1-flash`）；
 > 不用 API 子 agent，主 agent 不写业务代码。看板在 [`docs/workorders/BOARD.md`](../workorders/BOARD.md)，工单在 `docs/workorders/`。
 
-## 0. 基线（2026-11-24 实测）
+## 0. 基线（OS-168 收口实测，2026-11-24）
 
-- 第二批开工时 `main` = `91c73ad`，其后有文档与编排器提交；**22 笔提交未推送**（OS-134 起，自 `d83047e` 之后）。
-- 测试 518 例（516 过 / 2 条件跳过 / 0 挂），验收门禁 16 项，vendor 未动，`app.js` 12,477 行，端点 101。
-- 第一批进度：批次 0–4、5 的 G5a/G6、6 的 G7 裁定与映射实测已完成；G5b/G5c 与 G7 导入导出未做。
+- 开工基线：`main` = `91c73ad`，测试 518 例 / 门禁 16 项 / `app.js` 12,477 行 / 端点 101 / 22 笔未推送。该基线只作历史对照，不再代表现状。
+- **收口现状**：`main` HEAD 见 `git log -1`，本地未设 upstream、提交未推送（作者口径「跑完再 push」）；
+  测试 **682 例**（680 过 / 2 条件跳过 / 0 挂）、验收门禁 **23 项**、契约端点 **107**、模块 **14**
+  （核心 4）、`app.js` **11,886 行**、测试文件 **87**。
+- 仓根布局（门禁 S0.1）：文件白名单 7 项＋目录白名单 16 项，实测 26 条目、越界 0；
+  入口直跑 `src/host/daemon.mjs` / `src/host/mcp.mjs`，根级零 `.mjs`。
+- 复现命令：`node --test test/*.test.mjs`、`node tools/acceptance/acceptance.mjs`、
+  `npm run arch:stats --check`；逐条执行清单见 [`final-audit.md`](final-audit.md)。
+- 第一批与第二批状态：OS-157～168 全部验收完成，路线逐条结果见
+  [`route-batch2-20261123.md`](route-batch2-20261123.md) 顶部「执行结果」。
 
 ## 1. 对第二批清单的事实核对（开工前必读）
 

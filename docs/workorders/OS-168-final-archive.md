@@ -7,7 +7,7 @@
 | 依赖 | OS-157～167 全部完成 |
 | 允许改动 | `docs/**`、`README.md`、`ARCHITECTURE.md`、`AGENTS.md`、`PUBLISHING.md`、`test/**`（只许补测试，不改既有断言） |
 | 风险 | 低 |
-| 状态 | 待派 |
+| 状态 | ✅ 已验收（2026-11-24） |
 
 ## 目标
 
@@ -43,4 +43,36 @@
 
 ## 施工回报（编排器自动归档）
 
+- 路线归档：`docs/plan/route-batch2-20261123.md` 顶部新增「执行结果」——G8a~e／G9a~f／G10a~c
+  共 14 条逐条标「已做」并附工单与提交号；原文照录部分未改。
+- 基线同步：`docs/plan/workorder-system-20261124.md` §0 改为收口实测（682 例／门禁 23／端点 107／
+  14 模块／`app.js` 11,886 行／测试 87 文件／仓根 7 文件＋16 目录白名单、越界 0），开工基线留作历史。
+- 文档事实对齐：`README.md`（边界 1／数据位置／仓库地图）、`ARCHITECTURE.md`（数据位置表／
+  Host API 叶子件／协议层清单）、`AGENTS.md`（契约八域 107 端点／14 模块 manifest／
+  courtyard＋libraryManifest）、`docs/PUBLISHING.md`（数值锚点只从生成段取、当前版本 v0.2.0）
+  全部按代码现状改；过期数字（七域/101/660/86 文件等）已清。
+- `docs/LEGACY-ITEMS.md` 定稿：四档 —— 已裁定 4／作者动作 2／后续可选 10／明确不做 5；
+  删掉已结案的「上游已移位长期处置」行，新增 OS-166 院冻结与 OS-167 清单分家裁定。
+- 总复核材料：新增 `docs/plan/final-audit.md`——7 条命令清单（全量测试／门禁／`arch:stats --check`／
+  两条 e2e／MCP 冒烟／两端口一致性）＋23 项门禁表（编号／断言摘要／覆盖什么）＋作者待办。
+- 新增护栏测试 `test/finalAudit.test.mjs` 4 例：门禁编号全覆盖、路线 14 条全标结果并有提交号、
+  文档硬数字与 `ARCHITECTURE.md` 生成段同源、7 条复核命令都在清单里。既有测试与业务代码零改动。
+
 ## 验收记录（主 agent 填）
+
+- **全量测试**：`node --test test/*.test.mjs` → 654 顶层项／**682 tests，680 pass，0 fail，2 skipped**
+  （OS-167 基线 678 例，本单只新增 4 例护栏测试）。
+- **验收门禁**：`node tools/acceptance/acceptance.mjs` → **23 过／0 挂／0 警**。
+- **架构统计**：`npm run arch:stats --check` → **通过（14 行生成段逐字相等）**；
+  前端 23 文件 21,317 行／宿主 7 文件 1,684 行／自持层 74 文件 16,112 行／内核 11 文件 1,871 行／
+  `app.js` 11,886 行／端点 107／测试 87 文件。
+- **MCP 冒烟**：`printf '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}\n' | npm run mcp`
+  → stdio 就绪、`tools/list` 返回 24 工具。
+- **文档数字可复现对照**：测试/门禁数字由上面两条命令给出；端点与行数由 `npm run arch:stats --check`
+  给出；模块 14／core 4／端点归属 107＝43+64 由门禁 S2.7 给出；仓根布局由 S0.1 给出；
+  路线条目由 `test/finalAudit.test.mjs` 核对，不留手写孤证。
+- **未在本会话执行的两项**：`verify-shuihu`（需作者真库 `D:/Projects/水浒传`＋真 daemon）、
+  `verify-newproj`（需真 daemon 且会写本机库清单）、两端口一致性（需起两个 daemon）——
+  已如实写入 `docs/plan/final-audit.md` 供作者环境复跑；本单纪律禁止启动/杀 daemon 与触碰真库。
+- **纪律核对**：本单只改 `docs/**` 与 `test/finalAudit.test.mjs` 新增文件；未改业务代码、
+  未改既有测试断言、未启动/未杀 daemon、未动 `.zcode/`、未 push。
