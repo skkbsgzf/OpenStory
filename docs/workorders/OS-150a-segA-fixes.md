@@ -145,3 +145,11 @@ LIMITATIONS:
 ```
 
 ## 验收记录（主 agent 填）
+
+- 2026-11-24 编排器五道门禁全绿（537 例、18 项）；红线测试 tabRegistry 12/12、naming 7/7、runtimeShelf 7/7；无越界；`app.js` 12,471 未增。
+- **主 agent 复核出编排器的一个盲点**：本轮 e2e（水浒／新建）是对着**修复前启动的 daemon**（gen 7）跑的，所以「新建绿」不算数。
+  重启后在新进程（gen 8）上亲跑：`verify-newproj` 13/13、`verify-shuihu` 10/10，均绿。A5 现在实测回到 `FACT_EMPTY`（人话：这个库还没有拆解条目）。
+  另：旧进程上新脚本会红（A5 期望 `FACT_EMPTY`、旧进程回 `INVALID_ENTRY`），说明这条门禁确实覆盖到了本单的改动。
+- 浏览器实测（临时夹具库）：① 故事源空态已变人话引导——「还没有故事源 / 拆解/ 目录下没有可读的 fact 条目……先在「世界书/条目」侧产出条目，跑一次 enrich，再回来」，页面无「形状不符合契约」等内部术语；
+  ②「设置 → 插件总览」不再出现回声参考套件（运行时只剩 Claude Code CLI／CodeBuddy CLI／Qoder CLI／DSH 原生），总数 39 → 38。
+- 结论：**已验收**。遗留两条已知豁免已记入 LIMITATIONS（S2.2 把 `script.mjs` 与 `md.mjs` 并列为共享协议豁免；`PAGE_TO_DIR_RETIRED` 残留 11 键台账）。

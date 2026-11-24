@@ -111,3 +111,12 @@ LIMITATIONS:
 ```
 
 ## 验收记录（主 agent 填）
+
+- 2026-11-24 交付 `docs/plan/kernel-own-design.md`（九节＋附录复核命令），五道门禁绿、无越界、未改任何代码。
+- 主 agent 抽核：`find core/pinax -type f | wc -l` = 24；`xargs wc -l` = 4,332；`grep -rn "from '.*core/" src/` 只命中 `pinaxAdapter.mjs`——与设计稿 §1 一致。
+- 设计稿提出三处结构性发现，其中一条是对工单验收口径的**实质修改**，主 agent 裁定：
+  1. **接受**「影子复制 → 重指向 → 延后删除」：core 侧不许 import `src/`（硬规则 1），`src/` 侧除 adapter 外不许 import `core/`（门禁 S2.4），两条夹住后删除只能发生在最后一个 core 侧消费者搬家那一步。
+     因此 OS-152 原写的「vendor 清单除名 2 项」**顺延到 OS-156** 统一处理；OS-152 验收改为「自有副本直测覆盖」。
+  2. **接受** `PINAX_*` 错误码字符串不改（只改表名与注释）：这些字符串就是 `/api` 出去的 `code`，三处测试逐字钉死，改＝破坏对外契约。
+  3. **待作者拍板**：内核名 `openstory-kernel@1`／位置 `src/kernel/`；推演链归模块（代价 `host-api@1→@2`）；若作者不愿动 Host API，备选＝推演 8 件留 `src/kernel/deduce/`。
+- 结论：**已验收（设计稿）**；代码迁移（OS-152 起）等作者对上面三件事的一句话确认后开工。
