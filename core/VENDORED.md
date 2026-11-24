@@ -1,6 +1,6 @@
 # VENDORED — 底座抽取层出处
 
-`core/pinax/` 下的 24 个文件**逐字 vendor** 自 [Pinax-next](https://github.com/skkbsgzf/Pinax-StoryHarness)
+`core/pinax/` 下的 22 个文件**逐字 vendor** 自 [Pinax-next](https://github.com/skkbsgzf/Pinax-StoryHarness)
 分支 `feat/pinax-electron-next`，提交 `70a4f44`（2026-11-15）。抽取方式＝递归追 import 闭包
 （`scripts/vendor-core.mjs`），内部相对 import 原样保留——**这些文件在本仓不改**；
 改动应发生在上游 Pinax-next，然后重跑 vendor 脚本同步。
@@ -114,6 +114,7 @@ npm run vendor:check                     # 同 check
 `enrich/{metrics,pseudoChapters}.mjs` 两文件上游（含 70a4f44）无对应文件——它们随本仓
 OS-FACT 批次（be71a12）入库，上游全历史（`git log --all` 该路径为空）与工作树均无此文件，
 从未收编；OS-132 起该情形单列为 `[上游已移位]` 信息档（不再与「本仓已删」的 `[跳过]` 混在同一档）。
+（OS-154 起这两件已转自有 `src/kernel/enrich/` 并从 core 与指纹锚除名，见文末 OS-154 节。）
 
 ## OS-132 解耦⑤：@pinax/core 收编进 vendor/contracts，tgz 依赖移除；漂移检测双段＋上游已移位档
 
@@ -150,3 +151,15 @@ OS-FACT 批次（be71a12）入库，上游全历史（`git log --all` 该路径�
 - `snapshot` 生成两段新基线并入仓（`core/.vendored-manifest.json` 已重生成：
   pinaxNext 24 文件 ＋ pinaxCore 1 文件）。护栏测试：`test/vendorDrift.test.mjs`
   补「上游已移位」拆档用例＋双段 manifest 兼容读＋pinaxCore 段口径用例。
+
+## OS-154 段 B 第 3 步：enrich 两件转自有，core 原件删除（24 → 22）
+
+`core/pinax/next/fact/usecases/enrich/{pseudoChapters,metrics}.mjs` 已转自有到
+`src/kernel/enrich/`（内容逐字同源；adapter `enrich` 组改指新位置，Host API `fact.enrich`
+形状不变），core 两份删除、`core/.vendored-manifest.json` 对应两行除名——现存 vendor 22 件。
+这两件上游从未有过（随本仓 OS-FACT 批次 `be71a12` 入库，见 OS-126 注③），**出处仍是上游
+同名来源** `devtools/lib/pseudoChapters.mjs` 与 `devtools/lib/causalMetrics.mjs`（逐字拷贝时的上游）。
+`wikiDerive.mjs`／`factPack.js` 本批只复制进 `src/kernel/fact/`（`factPack` 扩展名改 `.mjs`），
+core 原件保留——它们仍有 core 侧消费者（`next/kernel/factFileStore.mjs`、`deduce/sceneContext.js`），
+core 侧删除是 OS-156。同时按设计稿 §9-6 合并伪章公式：`src/kernel/fact/wikiDerive.mjs` 改引
+`src/kernel/enrich/pseudoChapters.mjs`，导出名不变。

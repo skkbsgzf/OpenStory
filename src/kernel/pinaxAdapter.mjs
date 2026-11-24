@@ -23,7 +23,8 @@
  * 与上面两个 fork 点同属「最小补集」口径，其余新模块仍一律走五组出口。
  * OS-152：管道三件（errors/atomicWrite/fsDurability）已影子复制进 src/kernel/ 并改由本文件
  * 从这里取；hostWrite.mjs／kernelPlumber.mjs 同期改指 src/kernel/ 直取（不再经本文件绕道）。
- * 本文件仍转出同一组函数（同一实现对象），五组出口与 core 侧的 factStore/deduce/enrich 未动。
+ * OS-154：enrich 两件（pseudoChapters/metrics）已转自有并改指 `src/kernel/enrich/`，core 原件删除；
+ * 本文件仍转出同一组函数（同一实现对象），五组出口与 core 侧的 factStore/deduce 未动。
  *
  * 循环引用说明：projectDoc/importAdapter → 本文件（取 plumber）、本文件 → 这两份（转引
  * 五组成员）。两侧被转引的都是函数声明（模块实例化期即初始化），且任何一侧都只在函数体内
@@ -38,8 +39,8 @@ import { createFactFileStore, writeFactFile, readFactWiki, FACT_DIR_NAME } from 
 import { openDeduceSession } from '../../core/pinax/next/fact/usecases/deduce/opening.js'
 import { presentTurn, applyDirectorAction } from '../../core/pinax/next/fact/usecases/deduce/turn.js'
 import { settleChoice } from '../../core/pinax/next/fact/usecases/deduce/settle.js'
-import { derivePseudoChapters, hasRealChapters } from '../../core/pinax/next/fact/usecases/enrich/pseudoChapters.mjs'
-import { causalSummary } from '../../core/pinax/next/fact/usecases/enrich/metrics.mjs'
+import { derivePseudoChapters, hasRealChapters } from './enrich/pseudoChapters.mjs'
+import { causalSummary } from './enrich/metrics.mjs'
 /* 内核 plumber 转供（见头部偏差注记；核心消费方＝projectDoc.mjs／importAdapter.mjs）
    OS-152：管道三件已影子复制进 src/kernel/（core 原件保留供 factFileStore 用），本处改指自持件。 */
 import { ok, fail } from './errors.mjs'

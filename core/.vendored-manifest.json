@@ -21,8 +21,6 @@
         "pinax/next/fact/usecases/deduce/sessionState.js": "a05aaa96b4d99eccb25718c2387a9870b19f6b3a74be55ec400ae710aa9f8119",
         "pinax/next/fact/usecases/deduce/settle.js": "71372cbf4421c19fd008d6870ffebed2700e743a7730b85edcc0d5f151e136b5",
         "pinax/next/fact/usecases/deduce/turn.js": "f62ff9d4fef8b29e9a9ab5a55a4ac87b3abdd11ea8141c3659b6821279ad1f5c",
-        "pinax/next/fact/usecases/enrich/metrics.mjs": "143e289ba91e5ba06fcadafdc0a2bd10577aa42b12fa4b4f0f417720e992367d",
-        "pinax/next/fact/usecases/enrich/pseudoChapters.mjs": "df25bfc193999e18b41b64b8d89768fa0185e1dd3ac1c84bea29b84e3b5ed747",
         "pinax/next/fact/usecases/factPack.js": "2241fb95608fbe0b995522bdf474e617684ff4945e65a6e39510c3095c405ca0",
         "pinax/next/fs/atomicWrite.mjs": "ed69320608cd47cf33483765676c7d73a98587ec91b0a7e7ea83bb2cd9fa0507",
         "pinax/next/kernel/errors.mjs": "56c86bee841da5012ee629b168b67c7ad164dcfa2db91d082840e11033b28e91",

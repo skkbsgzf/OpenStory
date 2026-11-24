@@ -71,4 +71,43 @@
 
 ## 施工回报（编排器自动归档）
 
+> 模型 deepseek-v4.1-flash · 第 1 轮 · 测试 绿（tests 582 · pass 580 · fail 0 · skip 2） · 门禁 绿 · 水浒 绿 · 新建 绿 · vendor 未动 · daemon 已重启（OS-154 改了后端）
+
+```text
+CHANGED:
+- `src/kernel/fact/wikiDerive.mjs`（新建，逐字复制 438 行；按 §9-6 删除重复伪章实现后 386 行，改引 `../enrich/pseudoChapters.mjs` 并按原导出名再转出）
+- `src/kernel/fact/factPack.mjs`（新建，`factPack.js` 194 行逐字复制＋扩展名 `.mjs`，内部 `../domain/*.js` 改 `./domain/*.js`，导出面不动）
+- `src/kernel/enrich/pseudoChapters.mjs`（新建，逐字复制 74 行）
+- `src/kernel/enrich/metrics.mjs`（新建，逐字复制 278 行）
+- `src/kernel/pinaxAdapter.mjs`（`enrich` 组改指 `./enrich/pseudoChapters.mjs`、`./enrich/metrics.mjs`；头部注记补 OS-154）
+- `test/kernelEnrich.test.mjs`（新建，9 例：伪章边界／两处同值／causalSummary 三指标／deriveWiki 幂等／factPack 形状与区间语义／与 core 原件等价）
+- `test/vendorDrift.test.mjs`（仅更新一处过时注释示例，无断言改动）
+- `core/pinax/next/fact/usecases/enrich/pseudoChapters.mjs`（删除）
+- `core/pinax/next/fact/usecases/enrich/metrics.mjs`（删除）
+- `core/.vendored-manifest.json`（删除对应两行，其余未动）
+- `core/VENDORED.md`（计数 24→22；OS-126 注③补一句；文末补 OS-154 节）
+- `ARCHITECTURE.md`（L3/L2 节补 OS-154；生成段回写）
+- `AGENTS.md`（硬规则 1／分层图／仓内地图的 core 计数改 22，补 OS-154 一句）
+
+VERIFIED:
+- `node --check` 逐个新/改文件：全过。
+- `node --test test/kernelEnrich.test.mjs`：9/9 绿；关键输出：
+  - `✔ wikiDerive 转出的伪章结果与 enrich/pseudoChapters 同值（0/1/2200/4-12 边界/超大）`
+  - `✔ deriveWiki 幂等：同输入跑两遍深等（含伪章/人物/图谱/时间线）`
+  - `✔ 等价：deriveWiki 与 core 原件同输入深等`
+  - `✔ factPack 打包形状：顶层键与各段键齐全、顺序稳定`
+  - `✔ 等价：factPack 与 core 原件同输入深等（多组查询）`
+- `node .zcode/run-gate.mjs`：582 例，580 pass／0 fail／2 skip（均为既有 win32／夹具环境 skip），只增不减。
+- `node tools/acceptance/acceptance.mjs`：19 过／0 挂／0 警，S2.4 仍绿（仅 adapter 引 core）。
+- `node scripts/vendor-drift.mjs check`：exit 0；`小结 pinaxNext：一致 22｜本仓被改 0｜上游已变 0｜清单缺项 0｜上游已移位 0｜跳过 0`（清单计数 22＋1，enrich 两件已除名）。
+- `node scripts/arch-stats.mjs --check`：通过（L3 5→9 文件、208→1,141 行；L2 24→22 文件、4,332→3,980 行）。
+- `grep` 复核：`src/` 下实际 import `core/**` 的仍只有 `src/kernel/pinaxAdapter.mjs`；旧 enrich 路径在代码/脚本中已无引用。
+- 四件源行数核对：438＋194＋74＋278＝984；core 现存 22 文件。
+
+LIMITATIONS:
+- `wikiDerive`／`factPack` 在 `src/` 侧**当前没有消费方**（仅 core 的 `factFileStore`／`deduce/sceneContext` 用 core 原件），故本批无 import 可改指；两份自持副本按设计留待 OS-155/156 接入。工单举例的 `factGuard`／`enrichEngine` 实际只经 adapter 的 `factStore`／`enrich`，不直接引这两件。
+- 未在 `test/vendorDrift.test.mjs` 增加「清单 22 项」硬编码断言（该测试走临时沙箱；真实计数由 `vendor-drift check` 报告给出），如需锁死可在后续单补。
+- `core/VENDORED.md` 追加段为 LF，原文件本身已是 CRLF/LF 混合；未做全文件行尾归一（不在本单允许范围）。
+```
+
 ## 验收记录（主 agent 填）

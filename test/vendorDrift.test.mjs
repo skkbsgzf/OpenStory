@@ -184,7 +184,7 @@ test('上游内容改动 → [上游已变]，ok=false（本仓不被误报）',
 test('上游已移位（OS-132）：锚里有、本仓还在、上游已无 → [上游已移位]，信息级 ok 不受影响', async () => {
   await withSandbox(async (coreRoot, upstreamRoot) => {
     const { manifestFiles, current, upstream } = await makeSandbox(coreRoot, upstreamRoot, {}, {
-      'next/kernel/errors.mjs': null, // 上游删掉了（本仓有意携带，如 enrich/{metrics,pseudoChapters}.mjs）
+      'next/kernel/errors.mjs': null, // 上游删掉了（本仓有意携带；历史示例：OS-154 前的 enrich/{metrics,pseudoChapters}.mjs）
     })
     const r = compareManifest(manifestFiles, current, upstream)
     assert.deepEqual(r.movedAway.map((f) => f.rel), ['pinax/next/kernel/errors.mjs'])

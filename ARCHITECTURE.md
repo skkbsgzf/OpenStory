@@ -36,15 +36,15 @@
 | L6 契约层 | `src/api/contracts/` | 8 | 1,391 |
 | L5 宿主层 | `src/host/` | 5 | 1,663 |
 | L4 自持层 | `src/{modules,services,protocol}/` | 56 | 13,145 |
-| L3 内核进口 | `src/kernel/` | 5 | 208 |
-| L2 内核 | `core/pinax/` | 24 | 4,332 |
+| L3 内核进口 | `src/kernel/` | 9 | 1,141 |
+| L2 内核 | `core/pinax/` | 22 | 3,980 |
 | L1 磁盘库 | 库＝文件夹（无代码） | — | — |
 
 | 附加指标 | 实测 |
 |---|---:|
 | `public/app.js` 行数 | 12,466 |
 | 契约端点数（`method:` 计数） | 101 |
-| 测试文件数（`test/*.test.mjs`） | 67 |
+| 测试文件数（`test/*.test.mjs`） | 68 |
 <!-- arch-stats:end -->
 
 ```
@@ -180,6 +180,13 @@ OS-123/124 解耦后，建库/导入/章节号解析全部自持，不再 vendor
   `factFileStore` 仍指 core（搬家是 OS-156），故本批不动任何消费方 import。
   扩展名依 vendor 现状保留 `.js`（仅桶改名 `.mjs`）；arch-stats 的 L3 口径只计 `.mjs`，
   本批 7 件 `.js` 不进分层表文件数/行数（口径脚本不在 OS-153 改动范围，见该单 limitations）。
+  **OS-154 派生/包装自持**：`fact/wikiDerive.mjs`、`fact/factPack.mjs`（扩展名 `.js`→`.mjs`）
+  与 `enrich/{pseudoChapters,metrics}.mjs` 逐字复制进 `src/kernel/`；adapter `enrich` 组改指
+  `src/kernel/enrich/`，core 两件**当场删除**（core 24 → 22 文件，指纹锚同步除名）。伪章公式按
+  设计稿 §9-6 合并为一份：`fact/wikiDerive.mjs` 改引 `enrich/pseudoChapters.mjs`，原导出名
+  （`plotMinSegment`/`pseudoChapterCount`/`derivePseudoChapters`/`hasRealChapters`）原样再转出。
+  `wikiDerive`/`factPack` 的 core 原件保留（仍有 core 侧消费者 `factFileStore`／`deduce/sceneContext`），
+  src 侧本批暂无消费方——OS-155/156 接推演、store 时再改指。
 - **消费方**（OS-142 后 import 本文件的）：API/宿主层 api/handlers/fact、
   api/handlers/reference、services/systemPrompt（OS-142 未约束的面，直引保留）＋协议层转供面
   protocol/index、protocol/chapters、protocol/factGuard（S2.4 的 KERNEL_GATEWAY_ALLOW 显式豁免清单；
@@ -200,9 +207,11 @@ OS-123/124 解耦后，建库/导入/章节号解析全部自持，不再 vendor
 |---|---|
 | 存储协议 | `next/kernel/factFileStore.mjs`（真源 `<库>/拆解/<id>.json`，`fact.data/v3`，revision＋operationId 幂等＋expectedRevision 乐观并发）、`next/kernel/errors.mjs`、`next/fs/atomicWrite.mjs`（被引方：`electron/projects/fsDurability.mjs` 的 fsync 耐久化链） |
 | 推演端子 | `next/fact/usecases/deduce/`（opening/turn/settle/candidates/fronts/patchChannel/sceneContext/sessionState）＋ `next/fact/usecases/factPack.js` |
-| enrich 度量 | `next/fact/usecases/enrich/{metrics,pseudoChapters}.mjs`（因果图闭环率/耦合度/断点敏感度＋伪章推导） |
+| enrich 度量 | —（OS-154 已转自有 `src/kernel/enrich/`，core 原件删除） |
 | 领域词表 | `next/fact/domain/`（aliases/pediaSchema/perspective/schema/stableId/status/validity/vocabulary）＋ `next/kernel/wikiDerive.mjs` |
 
+- **OS-154 自持副本**：`wikiDerive`/`factPack` 已在 `src/kernel/fact/` 有逐字副本
+  （`factPack` 扩展名 `.mjs`），core 原件保留到 OS-156（core 侧消费者未搬）。现存 vendor 22 件。
 - **出处与漂移**：`core/VENDORED.md`（映射＋解耦史）；sha256 指纹锚
   `core/.vendored-manifest.json`（双段：pinaxNext＋pinaxCore，逐文件），
   `npm run vendor:check` 逐文件比对。
