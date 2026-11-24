@@ -63,7 +63,7 @@
 ## 五、后续动作（G5b 起导入导出的改动面）
 
 - **入向（已有通道，复用）**：`POST /api/fact/entries/import`（`contracts/fact.mjs:30-48`）→ `src/api/handlers/fact.mjs` factEntriesImport → 内核 `writeFactFile patch.entries`。NovelPedia 导入做成本地薄适配器：pedia/v1 数据 → fact.data/v3 条目，产出后走这同一条写通道，不另开写口。
-- **出向（尚无端点）**：仓内目前没有「fact→外部格式」的导出端点——FACT-FIRST 待接入清单里的 `export-rag` 只是规划（`FACT-FIRST.md:123`），未实现（本批 grep 实测无代码）。NovelPedia 导出与 RAG 导出同源：都从 fact.data/v3 条目投影，实现时新增读侧导出，不动写协议。
+- **出向（OS-162 已落地）**：`POST /api/exchange/export` 经既有 fact 读通道投影 fact.data/v3 → pedia/v1（或 JSONL），返回丢失字段清单；可选 `save:true` 存到库内「导出/」（宿主写协议），**导出不动 fact 文件**。FACT-FIRST 待接入清单里的 `export-rag` 仍是规划（未实现），与 NovelPedia 导出同源但尚未接线。入向 `POST /api/exchange/import` 走 pedia/v1→fact 适配器，写复用 `factEntriesImport` 抽出的 `src/services/factImportWrite.mjs`（不新开写口），先 dryRun 预览再作者确认。
 - **不在改动面**：scriptFact 双向互转（落点 c 照旧）；四方消费方（§四，零改动）；内核写协议与 vendor 边界（core/** 只读复用，改动面在本仓适配器/端点层）。
 
 **NovelPedia 字段映射实测清单（实现导入导出时逐条做，本 ADR 不预填任何字段）**：

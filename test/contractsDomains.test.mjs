@@ -1,5 +1,5 @@
 /**
- * OS-130 契约分域守卫：contracts.mjs 的 ENDPOINTS 必须正好是 contracts/<域>.mjs 七域切片的并集。
+ * OS-130 契约分域守卫：contracts.mjs 的 ENDPOINTS 必须正好是 contracts/<域>.mjs 八域切片的并集。
  * 防两件事：①往域分片加了端点却忘了聚合（或反之）——daemon 经 contracts.mjs 分派，
  * 分片里的孤儿端点等于不存在；②两个域片重复登记同一段形状（静默互相覆盖）。
  */
@@ -13,6 +13,7 @@ import { referenceEndpoints } from '../src/api/contracts/reference.mjs'
 import { agentEndpoints } from '../src/api/contracts/agent.mjs'
 import { pluginsEndpoints } from '../src/api/contracts/plugins.mjs'
 import { systemEndpoints } from '../src/api/contracts/system.mjs'
+import { exchangeEndpoints } from '../src/api/contracts/exchange.mjs'
 
 const DOMAINS = [
   ['library', libraryEndpoints],
@@ -21,10 +22,11 @@ const DOMAINS = [
   ['reference', referenceEndpoints],
   ['agent', agentEndpoints],
   ['plugins', pluginsEndpoints],
-  ['system', systemEndpoints]
+  ['system', systemEndpoints],
+  ['exchange', exchangeEndpoints]
 ]
 
-test('分域切片：七域并集正好等于聚合 ENDPOINTS（无孤儿、无覆盖）', () => {
+test('分域切片：各域并集正好等于聚合 ENDPOINTS（无孤儿、无覆盖）', () => {
   const seen = new Map()
   for (const [domain, slice] of DOMAINS) {
     assert.ok(Object.keys(slice).length > 0, `${domain} 域分片为空`)

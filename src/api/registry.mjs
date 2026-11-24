@@ -14,6 +14,7 @@ import { handlers as referenceHandlers } from './handlers/reference.mjs'
 import { handlers as agentHandlers } from './handlers/agent.mjs'
 import { handlers as pluginsHandlers } from './handlers/plugins.mjs'
 import { handlers as systemHandlers } from './handlers/system.mjs'
+import { handlers as exchangeHandlers } from './handlers/exchange.mjs'
 import { MODULE_ENDPOINT_OWNERS, MODULE_MANIFESTS } from '../protocol/modules.mjs'
 
 /** endpointId → handler（统一签名 `async handler(ctx)`，ctx = { req, res, url, request, context, allowlist, loaded }）。 */
@@ -24,7 +25,8 @@ export const HANDLERS = Object.freeze({
   ...referenceHandlers,
   ...agentHandlers,
   ...pluginsHandlers,
-  ...systemHandlers
+  ...systemHandlers,
+  ...exchangeHandlers
 })
 
 /**

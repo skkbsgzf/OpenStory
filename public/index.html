@@ -2662,6 +2662,14 @@ border-left: 2px solid var(--accent); padding: var(--ui-gap-xs) var(--ui-gap-md)
 .sync-reason { color: var(--meta); overflow-wrap: anywhere; }
 
 /* ── 色板（左下角浮层）──────────────────────────────────── */
+/* OS-162：导入导出弹层（令牌化，零硬编码色） */
+.modal-mask { position: fixed; inset: 0; background: var(--shadow); display: grid; place-items: center; z-index: 120; }
+.modal-card { width: min(760px, 92vw); max-height: 86vh; overflow: auto; background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius-md); padding: var(--ui-gap-lg); }
+.modal-card .row { margin: var(--ui-gap-sm) 0; display: flex; gap: var(--ui-gap-sm); align-items: flex-start; flex-wrap: wrap; }
+.modal-card .row label { display: flex; flex-direction: column; gap: var(--ui-gap-3xs); flex: 1; min-width: 220px; font-size: var(--ui-fs-sm); color: var(--muted); }
+.modal-card textarea, .modal-card input, .modal-card select { background: var(--surface-card); color: var(--ink); border: 1px solid var(--line); border-radius: var(--radius); padding: var(--ui-gap-sm); font: inherit; }
+.modal-card textarea { width: 100%; font-family: var(--mono); }
+.ex-result { white-space: pre-wrap; word-break: break-word; font-family: var(--mono); font-size: var(--ui-fs-xs); color: var(--ink); background: var(--soft); border-radius: var(--radius); padding: var(--ui-gap-sm); max-height: 30vh; overflow: auto; }
 </style>
 </head>
 <body>

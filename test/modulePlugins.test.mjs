@@ -85,7 +85,7 @@ test('模块 manifest：普通模块都过形状校验，spec/id/core 口径统�
   // OS-161 起普通模块按批扩大：校验「全部 manifest 非核心」＋「已知批次全在」，
   // 数量不再写死（等价加强：原断言的 3 个仍在，新增的也必须过同一套校验）。
   const ids = MODULE_MANIFESTS.map((manifest) => manifest.id).sort()
-  for (const id of ['analysis', 'comfyui', 'kb', 'habits', 'storysource', 'artifacts']) assert.ok(ids.includes(id), `模块 ${id} 必须在清单`)
+  for (const id of ['analysis', 'comfyui', 'kb', 'habits', 'storysource', 'artifacts', 'exchange']) assert.ok(ids.includes(id), `模块 ${id} 必须在清单`)
   for (const manifest of MODULE_MANIFESTS) {
     const checked = validateModuleManifest(manifest, { dirName: manifest.id })
     assert.equal(checked.ok, true, `${manifest.id} 应过校验：${checked.errors?.join('；')}`)
@@ -117,7 +117,7 @@ test('端点归属：只登记独占端点，共用端点没有归属', () => {
     HANDLER_MODULE_SOURCES.map((item) => item.id).sort(),
     MODULE_MANIFESTS.map((item) => item.id).sort()
   )
-  for (const id of ['analysis', 'comfyui', 'kb', 'habits', 'storysource', 'artifacts']) {
+  for (const id of ['analysis', 'comfyui', 'kb', 'habits', 'storysource', 'artifacts', 'exchange']) {
     assert.ok(HANDLER_MODULE_SOURCES.some((item) => item.id === id), `段 C 前已落地模块 ${id} 必须在来源表`)
   }
   for (const endpoint of Object.keys(ENDPOINT_MODULES)) assert.ok(HANDLERS[endpoint], `归属端点缺 handler：${endpoint}`)

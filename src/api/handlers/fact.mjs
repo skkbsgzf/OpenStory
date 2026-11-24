@@ -19,6 +19,7 @@ import { sendError, sendJson, text } from '../../host/http.mjs'
 import { authorizeRoot, resolveInsideRoot } from '../../host/authorize.mjs'
 import { listFactBooks, factOffsetOf, factLimitOf, resolveFactBookId } from '../../services/factBooks.mjs'
 import { factStore } from '../../kernel/index.mjs' // OS-157：内核公开面唯一出口（S2.4'），实现已全树自持
+import { writeFactEntries } from '../../services/factImportWrite.mjs' // OS-162：fact 写通道唯一实现
 import { deduceOpening as deduceOpeningEngine, deducePresent as deducePresentEngine, deduceSettle as deduceSettleEngine, loadEntries, deduceStatePath } from '../../modules/deduce/deduceEngine.mjs'
 import {
   appendNode,
@@ -1014,95 +1015,28 @@ export async function nativeReveal(ctx) {
 /* ---------- 拆解整包导入（OS-78/OS-135 修）---------- */
 
 export async function factEntriesImport(ctx) {
-  // OS-78：剧本/外部数据 → 拆解条目。走内核 writeFactFile 的唯一写入口
-  // （原子写 + revision 自增 + operationId 幂等 + 写前重读复核）。
+  // OS-162：写逻辑抽入 src/services/factImportWrite.mjs（exchange 适配器共用同一份）——
+  // 这里只做授权、参数整形与响应，不再自己碰 writeFactFile。
   const { res, request, allowlist } = ctx
   const authorized = authorizeRoot(allowlist, request.root)
   if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
-  const bookId = text(request.bookId).trim()
-  if (!bookId) return sendError(res, API_ERROR_CODES.INVALID_ENTRY, 'bookId 必填')
-  const entries = Array.isArray(request.entries) ? request.entries : null
-  if (!entries || !entries.length) return sendError(res, API_ERROR_CODES.INVALID_ENTRY, 'entries 必须是非空数组')
-  // operationId：调用方没给就由 daemon 生成（来源前缀 + bookId + 时间），满足内核幂等键要求
-  const operationId = text(request.operationId).trim() || `screenplay-import-${bookId}-${Date.now().toString(36)}`
-  // 已存在就带 expectedRevision 走乐观并发（避免覆盖别人刚写的）
-  let expectedRevision = null
-  let beforeFactRaw = '' // OS-107：写前原文（写后读不到旧内容）——变更日志的 before 靠它
-  // OS-135 修：路径声明必须提在 try 外——OS-113 起这一行写的是 existsSync(factPath)，
-  // 而 factPath 是另一个端点（deducePendingSettle）try 块里的局部 const，这里够不到，
-  // ReferenceError 让本端点每次调用都 500；顺带修正 documentPath 自己也只在 try 块内可见的问题。
-  const documentPath = join(authorized.root, '拆解', `${bookId}.json`)
-  try {
-    if (existsSync(documentPath)) {
-      beforeFactRaw = await readFile(documentPath, 'utf-8')
-      const existing = JSON.parse(beforeFactRaw)
-      const rev = Number(existing?.revision)
-      if (Number.isSafeInteger(rev) && rev >= 1) expectedRevision = rev
-    }
-  } catch { /* 读不到就当新建 */ }
-  const documentExisted = existsSync(documentPath)  // OS-113：0 字节文件也算已存在（用 existsSync 而非内容非空）
-  // 书元数据：写进 patch 的 book 字段（内核要求 patch 顶层浅合并）
-  const patch = {
-    book: { id: bookId, title: text(request.title).trim() || bookId },
-    entries
-  }
-  const written = await factStore.writeFactFile({
+  const operationId = text(request.operationId).trim()
+    || `screenplay-import-${text(request.bookId).trim()}-${Date.now().toString(36)}`
+  const result = await writeFactEntries({
     root: authorized.root,
-    bookId,
-    patch,
-    operationId,
-    ...(expectedRevision !== null ? { expectedRevision } : {})
+    bookId: request.bookId,
+    entries: request.entries,
+    title: request.title,
+    wiki: request.wiki,
+    operationId
   })
-  if (!written.ok) return sendError(res, written.code ?? API_ERROR_CODES.WRITE_PROTOCOL_IO_FAILED, written.message ?? '写入拆解失败', written.details)
-  // 兄弟 wiki 文件（章摘要/角色档/伏笔）——与 fact 主档一起落
-  const wiki = request.wiki
-  let wikiError = ''
-  if (wiki && typeof wiki === 'object') {
-    try {
-      const wikiPath = join(authorized.root, '拆解', `${bookId}.wiki.json`)
-      await atomicWriteFile(wikiPath, JSON.stringify({
-        derivedFrom: { factRevision: Number(written.revision) || 1, schema: 'pinax-wiki-derived@1' },
-        ...wiki
-      }, null, 2))
-    } catch (error) {
-      // wiki 写失败不影响 fact 主档——但既然要记日志，就得让作者知道这次是同源档缺了一角
-      wikiError = `兄弟 wiki 写失败：${text(error?.message || error)}`
-    }
-  }
-  // OS-107：一次导入只留一条日志，并把兄弟 wiki 也算进同一次变更（这里是 wiki 块之后、
-  // 响应之前）——before 用写前补读的原文，after 用写后重读的原文（含主档/wiki 的真实落盘结果）。
-  let factLogError = ''
-  try {
-    const factRel = `拆解/${bookId}.json`
-    const afterFactRaw = await readFile(join(authorized.root, '拆解', `${bookId}.json`), 'utf-8')
-    const logged = await recordChange({
-      root: authorized.root,
-      module: LOG_MODULES.storysource,
-      file: factRel,
-      op: documentExisted ? 'update' : 'create',
-      before: beforeFactRaw,
-      after: afterFactRaw,
-      actor: 'author',
-      meta: {
-        bookId,
-        operationId,
-        entryCount: entries.length,
-        ...(wiki && typeof wiki === 'object' ? { wikiTouched: true } : {}),
-        ...(Number(written.revision) ? { revision: Number(written.revision) } : {})
-      }
-    })
-    if (logged.ok === false) factLogError = logged.message
-  } catch (error) {
-    factLogError = `读回拆解档失败：${text(error?.message || error)}`
-  }
+  if (!result.ok) return sendError(res, API_ERROR_CODES[result.code] ?? result.code, result.message, result.details)
   return sendJson(res, 200, {
-    ok: true,
-    bookId,
-    entries: entries.length,
-    ...(Number(written.revision) ? { revision: Number(written.revision) } : {}),
-    ...(written.backup ? { backup: written.backup } : {}),
-    ...(factLogError ? { logError: factLogError } : {}),
-    ...(wikiError ? { wikiError } : {})
+    ok: true, bookId: result.bookId, entries: result.entries,
+    ...(result.revision ? { revision: result.revision } : {}),
+    ...(result.backup ? { backup: result.backup } : {}),
+    ...(result.logError ? { logError: result.logError } : {}),
+    ...(result.wikiError ? { wikiError: result.wikiError } : {})
   })
 }
 

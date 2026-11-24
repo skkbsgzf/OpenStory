@@ -57,3 +57,12 @@
 ## 施工回报（编排器自动归档）
 
 ## 验收记录（主 agent 填）
+
+- **适配器（纯函数零 fs）**：`src/modules/exchange/pediaAdapter.mjs`——`pediaToFactEntry` 改 schema、补 `status:'draft'` 与 `provenance.mode:'analyze'`、id 不重算、style 层单列；`factEntryToPedia` 反向投影并**剥离 events 内 track/novelty/segments**（A3：v3 增量不静默透传），返回丢失清单。每条过 `validateFactEntry`（经 `protocol/factDomain.mjs` 转供叶子，S2.1 合法）。校验器经 `src/protocol/factDomain.mjs` 转供叶子取（模块不直引 kernel）。
+- **ADR 附录 A 逐条钉死**：`test/pediaAdapter.test.mjs` 4/4——三层样本转换后零 error 且 id 逐位不变；style 单列；反向丢失清单与 A3 逐项一致（top + character 4 项 + plot 5 项）；深拷贝不改入参。
+- **共存写通道**：fact 写核心抽成 `src/services/factImportWrite.mjs`，`factEntriesImport` 与 exchange 共用同一写入函数（原子写＋revision＋operationId 幂等＋wiki＋日志）——没有第二份写逻辑。
+- **两个新端点**：`exchangeImport`（pedia/v1 或 JSONL → 适配 → 逐条校验 → 共用写函数；dryRun 预览）、`exchangeExport`（经既有 fact 读通道 → 反向投影 → 可选存库内「导出/」走宿主写协议）。契约 `src/api/contracts/exchange.mjs` 第八域，`src/api/handlers/exchange.mjs`，已进 registry。
+- **端点测试证据**：`test/exchange.test.mjs` 3/3——dryRun 不落盘、真写核对 fact 文件、重复导入 revision 不倒退且同 id 不堆积；导出不动 fact 的 mtime＋sha256（含 save:true）；停用两端点 409 MODULE_DISABLED、启用恢复。
+- **界面**：入口挂宿主顶栏库面板的「导入/导出」（`moduleOn('exchange')` 控制显隐）；两段确认（先 dryRun 预览，再点一次才真写），弹层样式令牌化。
+- **文档**：ADR 0001 §五「出向（尚无端点）」改为已落地并指向新端点（export-rag 仍标规划）；`ARCHITECTURE.md` 模块清单补 exchange。
+- **测试/门禁**：全量 625 例（623 过/2 跳，开工 618 只增不减）；门禁 22/0/0；契约域守卫等价加强为八域并集；架构统计已回写。app.js 12,256 → 12,310（本单 +54 行 UI/事件，仍较 OS-161 开工 12,466 净降 156）；S2.2 前端模块 18 个照绿。

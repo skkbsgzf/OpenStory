@@ -24,6 +24,7 @@ import { referenceEndpoints } from './contracts/reference.mjs'
 import { agentEndpoints } from './contracts/agent.mjs'
 import { pluginsEndpoints } from './contracts/plugins.mjs'
 import { systemEndpoints } from './contracts/system.mjs'
+import { exchangeEndpoints } from './contracts/exchange.mjs'
 
 /** 错误码词表（daemon 只从这里取码；测试按这里校验）。 */
 export const API_ERROR_CODES = Object.freeze({
@@ -62,7 +63,8 @@ export const ENDPOINTS = Object.freeze({
   ...referenceEndpoints,
   ...agentEndpoints,
   ...pluginsEndpoints,
-  ...systemEndpoints
+  ...systemEndpoints,
+  ...exchangeEndpoints
 })
 
 export const ENDPOINT_LIST = Object.freeze(Object.values(ENDPOINTS))

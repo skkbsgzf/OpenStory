@@ -32,18 +32,18 @@
 <!-- arch-stats:start -->
 | 层 | 目录 | 文件数 | 行数 |
 |---|---|---:|---:|
-| L7 前端 | `public/`（含 `views/`） | 20 | 20,955 |
-| L6 契约层 | `src/api/contracts/` | 8 | 1,410 |
+| L7 前端 | `public/`（含 `views/`） | 20 | 21,021 |
+| L6 契约层 | `src/api/contracts/` | 9 | 1,438 |
 | L5 宿主层 | `src/host/` | 6 | 1,713 |
-| L4 自持层 | `src/{modules,services,protocol}/` | 70 | 15,513 |
+| L4 自持层 | `src/{modules,services,protocol}/` | 72 | 15,721 |
 | L2 自有内核 | `src/kernel/` | 11 | 1,871 |
 | L1 磁盘库 | 库＝文件夹（无代码） | — | — |
 
 | 附加指标 | 实测 |
 |---|---:|
-| `public/app.js` 行数 | 12,256 |
-| 契约端点数（`method:` 计数） | 103 |
-| 测试文件数（`test/*.test.mjs`） | 76 |
+| `public/app.js` 行数 | 12,314 |
+| 契约端点数（`method:` 计数） | 105 |
+| 测试文件数（`test/*.test.mjs`） | 78 |
 <!-- arch-stats:end -->
 
 ```
@@ -127,7 +127,7 @@ OS-123/124 解耦后，建库/导入/章节号解析全部自持，不再 vendor
 | 参考/世界书 | referenceStore（标签/双链/图谱，src/modules/worldbook/） |
 | Agent | agentStore（src/modules/agentbar/） / agentEvents（AG-UI canonical 事件模型＋SSE 投影，src/protocol/） / roleplayEngine / roleplayPrompts（后两者 src/modules/roleplay/） |
 | 插件货架（src/services/，数据目录仍在仓根 suites//styles//runtimes//genres//skills/） | suites / skills / runtimes / genres / stylePacks |
-| 模块插件（OS-144，`src/modules/<id>/module.manifest.json`＝`openstory-module@1`） | analysis（manifest 声明；引擎仍是 public/analysis.mjs 零依赖纯函数，前端与 Node 共用，无 daemon 端点）/ comfyui（comfyEngine 生图；独占端点 deduceImage / referenceImageGenerate / visionDescribe）/ kb（kbRouter / kbAdapter / kbHealth；独占端点 kbStatusGet / kbConfigGet / kbConfigPut / kbTest）/ OS-161 三个普通模块：habits（习惯实现已移入模块目录，独占 habitsGet / habitsPut；lint 与提示词注入经宿主钩子 `src/host/moduleHooks.mjs`）/ storysource（零独占端点——读宿主共享 fact 端点，停用不影响它们）/ artifacts（独占 artifactsGet）。启停判定单一入口 `src/protocol/modules.mjs` 的 isModuleEnabled（ui-state `modules.enabled.<id>`，缺省 true）；独占端点停用回 MODULE_DISABLED，共用端点不受影响，值与数据保留。设置见下方「模块自报设置」表 |
+| 模块插件（OS-144，`src/modules/<id>/module.manifest.json`＝`openstory-module@1`） | analysis（manifest 声明；引擎仍是 public/analysis.mjs 零依赖纯函数，前端与 Node 共用，无 daemon 端点）/ comfyui（comfyEngine 生图；独占端点 deduceImage / referenceImageGenerate / visionDescribe）/ kb（kbRouter / kbAdapter / kbHealth；独占端点 kbStatusGet / kbConfigGet / kbConfigPut / kbTest）/ OS-161 三个普通模块：habits（习惯实现已移入模块目录，独占 habitsGet / habitsPut；lint 与提示词注入经宿主钩子 `src/host/moduleHooks.mjs`）/ storysource（零独占端点——读宿主共享 fact 端点，停用不影响它们）/ artifacts（独占 artifactsGet）/ exchange（pedia/v1↔fact.data/v3 薄适配，独占 exchangeImport / exchangeExport；写复用 factEntriesImport 抽出的共用函数）。启停判定单一入口 `src/protocol/modules.mjs` 的 isModuleEnabled（ui-state `modules.enabled.<id>`，缺省 true）；独占端点停用回 MODULE_DISABLED，共用端点不受影响，值与数据保留。设置见下方「模块自报设置」表 |
 | 引擎与周边（src/services/） | libState（src/protocol/） / jobCenter（任务中心） / nativePicker / dsh-bridge / dsh-cli / embedding-server / embeddingPaths / cli-bridge / style-check |
 
 **模块自报设置（OS-145 立、OS-146 收紧口径）**：`openstory-module@1` 的 `settings` 是渲染声明，

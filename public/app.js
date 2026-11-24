@@ -157,7 +157,7 @@ const workbenchViewsReady = import('./views/workbenchViews.mjs').then((mod) => {
   .catch((error) => { console.error('[views] 工作面视图模块加载失败', error); return null })
 /* OS-161：前端模块 id 清单（与各模块目录的 module.manifest.json 对齐；后端 manifest 装载结果在此镜像，
    页签可见性只按这张表 × moduleOn(id) 判定，新增模块须同步这里一行）。 */
-const MODULE_IDS = ['analysis', 'comfyui', 'kb', 'habits', 'storysource', 'artifacts']
+const MODULE_IDS = ['analysis', 'comfyui', 'kb', 'habits', 'storysource', 'artifacts', 'exchange']
 
 /* OS-149：运行时货架过滤（views/runtimeShelf.mjs）——fixture 套件不进作者可见列表；纯函数在 views/，这里只接线 */
 let runtimeShelf = null
@@ -7404,6 +7404,60 @@ function renderTabs() {
   tabsEl.innerHTML = tabHtml + addBtn
 }
 
+/* OS-162：宿主顶栏「导入 / 导出」——模块注册的动作，停用即不出现（同 OS-144 分析入口口径）。
+   流程：选格式与目标书 → 贴 JSONL/pedia JSON → 先 dryRun 预览 → 作者确认才真写。 */
+function openExchangeDialog() {
+  if (!state.current) return
+  document.getElementById('exchange-dialog')?.remove()
+  const box = document.createElement('div')
+  box.id = 'exchange-dialog'
+  box.className = 'modal-mask'
+  box.innerHTML = `<div class="modal-card">
+    <div class="doc-head"><h2>导入 / 导出（NovelPedia ↔ fact）</h2></div>
+    <div class="row"><label>方向 <select id="ex-dir"><option value="import">导入 pedia → fact</option><option value="export">导出 fact → pedia</option></select></label></div>
+    <div class="row"><label>目标书 id <input id="ex-book" placeholder="例如 shuihu" value="${esc(state.current.name || '')}"></label></div>
+    <div class="row"><label>格式 <select id="ex-format"><option value="pedia/v1">pedia/v1 (JSON)</option><option value="jsonl">JSONL</option></select></label></div>
+    <div class="row" id="ex-text-row"><label>JSON 文本 <textarea id="ex-text" rows="8" placeholder="粘贴 pedia/v1 条目或 JSONL 每行一条"></textarea></label></div>
+    <div class="row"><button class="btn-primary" data-action="exchange-run">先预览（dryRun）</button><button class="btn-ghost" data-action="exchange-close">关闭</button></div>
+    <pre id="ex-result" class="ex-result"></pre>
+  </div>`
+  document.body.appendChild(box)
+}
+
+async function runExchange() {
+  const dir = document.getElementById('ex-dir')?.value
+  const bookId = text(document.getElementById('ex-book')?.value).trim()
+  const format = document.getElementById('ex-format')?.value
+  const resultEl = document.getElementById('ex-result')
+  if (!bookId || !resultEl) return
+  if (dir === 'export') {
+    resultEl.textContent = '导出中…'
+    try {
+      const payload = await api('/api/exchange/export', { method: 'POST', body: JSON.stringify({ root: state.current.path, bookId, format }) })
+      resultEl.textContent = `导出 ${payload.entries?.length || 0} 条；丢失字段：${(payload.lost || []).join('、') || '无'}
+${JSON.stringify(payload.entries, null, 2).slice(0, 4000)}`
+    } catch (error) { resultEl.textContent = `${error?.code || '错误'} · ${text(error?.message || error)}` }
+    return
+  }
+  const raw = document.getElementById('ex-text')?.value || ''
+  const body = JSON.stringify({ root: state.current.path, bookId, format, text: raw })
+  // 两段确认：初次＝dryRun 预览；再点一次（pending 态）才真写——作者确认前绝不落盘。
+  const dryRun = resultEl.dataset.confirmed !== 'pending'
+  try {
+    const payload = await api('/api/exchange/import', { method: 'POST', body: JSON.stringify({ ...JSON.parse(body), dryRun }) })
+    if (dryRun) {
+      resultEl.textContent = `预览：${payload.entries} 条通过，跳过 ${payload.skipped?.length || 0}，错误 ${payload.errors?.length || 0}。确认无误请再点一次「写盘」。`
+      resultEl.dataset.confirmed = 'pending'
+      return
+    }
+    resultEl.dataset.confirmed = ''
+    resultEl.textContent = `已写入 ${payload.entries} 条（revision ${payload.written?.revision ?? '—'}）。`
+    render()
+  } catch (error) {
+    resultEl.textContent = `${error?.code || '错误'} · ${text(error?.message || error)}`
+  }
+}
+
 /* ---------- 顶栏库切换器（OS-12）---------- */
 
 function renderLibSwitchPanel() {
@@ -7422,6 +7476,7 @@ function renderLibSwitchPanel() {
          <button data-go="libraries">管理库</button>
          <button data-action="flow-create">＋新建库</button>
          <button data-action="flow-import">导入稿件</button>
+         ${moduleOn('exchange') ? '<button data-action="exchange-open">导入/导出</button>' : ''}
        </div>`
     : `<div class="empty">还没有库。<br>从建一个空库或导入一份稿子开始。</div>
        <div class="divider"></div>
@@ -10539,6 +10594,9 @@ document.addEventListener('click', (event) => {
     return
   }
   const action = target.dataset.action
+  if (action === 'exchange-open') { openExchangeDialog(); return }
+  if (action === 'exchange-run') { runExchange(); return }
+  if (action === 'exchange-close') { document.getElementById('exchange-dialog')?.remove(); return }
   if (action === 'para-polish') {
     hideParaMenu()
     startPolishRequest()
