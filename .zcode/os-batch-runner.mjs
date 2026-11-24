@@ -24,7 +24,7 @@
  *   · 两轮后仍红或仍越界＝停线，不提交，留给主 agent。
  */
 import { spawn, spawnSync } from 'node:child_process'
-import { readFileSync, writeFileSync, mkdirSync, readdirSync } from 'node:fs'
+import { readFileSync, writeFileSync, mkdirSync, readdirSync, existsSync } from 'node:fs'
 import { basename, dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -43,6 +43,30 @@ const PLAN = arg('plan')
 const STATUS = arg('status')
 const ROUNDS = Number(arg('rounds', '2'))
 const PROBE_PATTERN = /(^|\/)\.[^/]+$|probe|\.tmp$|\.bak$|~$/
+
+/* ---------- 路径解析（脚本会随工单换位置） ----------
+ * OS-157 退役 scripts/vendor-*.mjs；OS-159 把 scripts/ 并入 tools/、把根目录入口垫片归位。
+ * 所以这里一律按候选路径找，找不到就如实报，不写死。 */
+function firstExisting(candidates) {
+  for (const candidate of candidates) {
+    if (existsSync(join(REPO, candidate))) return candidate
+  }
+  return ''
+}
+const SHUIHU_SCRIPT = () => firstExisting(['scripts/verify-shuihu.mjs', 'tools/verify/verify-shuihu.mjs', 'tools/verify-shuihu.mjs'])
+const NEWPROJ_SCRIPT = () => firstExisting(['scripts/verify-newproj.mjs', 'tools/verify/verify-newproj.mjs', 'tools/verify-newproj.mjs'])
+const VENDOR_SCRIPT = () => firstExisting(['scripts/vendor-drift.mjs', 'tools/verify/vendor-drift.mjs', 'tools/vendor-drift.mjs'])
+/** daemon 入口：取 package.json 的 start 脚本（`node <path>`），读不到回落根目录垫片。 */
+function daemonEntry() {
+  try {
+    const start = String(JSON.parse(readFileSync(join(REPO, 'package.json'), 'utf-8')).scripts?.start ?? '').trim()
+    const match = /^node\s+(\S+)/.exec(start)
+    if (match) return match[1]
+  } catch {
+    /* 读不到就用回落值 */
+  }
+  return 'daemon.mjs'
+}
 
 /* ---------- 范围匹配 ---------- */
 
@@ -190,7 +214,7 @@ function daemonHealthy() {
 function ensureDaemon() {
   if (daemonHealthy()) return 'daemon 在跑'
   try {
-    const child = spawn(process.execPath, ['daemon.mjs', '--port=8807'], { cwd: REPO, detached: true, stdio: 'ignore' })
+    const child = spawn(process.execPath, [daemonEntry(), '--port=8807'], { cwd: REPO, detached: true, stdio: 'ignore' })
     child.unref()
   } catch (error) {
     return 'daemon 拉不起来：' + String(error?.message || error)
@@ -226,7 +250,7 @@ function restartDaemon(reason) {
   if (pid) spawnSync('taskkill', ['/PID', pid, '/F'], { encoding: 'utf8', timeout: 20_000 })
   spawnSync(process.execPath, ['-e', 'setTimeout(function(){},1200)'], { timeout: 8000 })
   try {
-    const child = spawn(process.execPath, ['daemon.mjs', '--port=8807'], { cwd: REPO, detached: true, stdio: 'ignore' })
+    const child = spawn(process.execPath, [daemonEntry(), '--port=8807'], { cwd: REPO, detached: true, stdio: 'ignore' })
     child.unref()
   } catch (error) {
     return 'daemon 重启失败：' + String(error?.message || error)
@@ -247,16 +271,20 @@ function gates(options = {}) {
   const daemonNote = options.restartDaemon ? restartDaemon(options.reason || '本批改了后端') : ensureDaemon()
   const tests = run(process.execPath, ['--test', ...testFiles()], 420_000)
   const acceptance = run(process.execPath, [join('tools', 'acceptance', 'acceptance.mjs')], 420_000)
-  const shuihu = run(process.execPath, [join('scripts', 'verify-shuihu.mjs')], 900_000)
-  const newproj = run(process.execPath, [join('scripts', 'verify-newproj.mjs')], 900_000)
-  const vendor = run(process.execPath, [join('scripts', 'vendor-drift.mjs'), 'check'], 180_000)
+  const shuihuScript = SHUIHU_SCRIPT()
+  const newprojScript = NEWPROJ_SCRIPT()
+  const vendorScript = VENDOR_SCRIPT()
+  const shuihu = run(process.execPath, [shuihuScript], 900_000)
+  const newproj = run(process.execPath, [newprojScript], 900_000)
+  // vendor 漂移脚本随 OS-157 退役：脚本不在了就不跑这一道（如实写「已退役」，不是「未动」）
+  const vendor = vendorScript ? run(process.execPath, [vendorScript, 'check'], 180_000) : { code: 0, out: '' }
   const ok = [tests, acceptance, shuihu, newproj, vendor].every((item) => item.code === 0)
   const summary = [
     '测试 ' + (tests.code === 0 ? '绿' : '红') + '（' + testSummary(tests.out) + '）',
     '门禁 ' + (acceptance.code === 0 ? '绿' : '红'),
-    '水浒 ' + (shuihu.code === 0 ? '绿' : '红'),
-    '新建 ' + (newproj.code === 0 ? '绿' : '红'),
-    'vendor ' + (vendor.code === 0 ? '未动' : '被改'),
+    '水浒 ' + (shuihu.code === 0 ? '绿' : '红') + (shuihuScript ? '' : '（找不到脚本）'),
+    '新建 ' + (newproj.code === 0 ? '绿' : '红') + (newprojScript ? '' : '（找不到脚本）'),
+    'vendor ' + (vendorScript ? (vendor.code === 0 ? '未动' : '被改') : '已退役'),
     daemonNote,
   ].join(' · ')
   const failed = [tests, acceptance, shuihu, newproj, vendor].filter((item) => item.code !== 0)
