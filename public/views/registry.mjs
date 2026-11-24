@@ -223,7 +223,7 @@ function tabNaming(id) {
 
 export const TAB_REGISTRY = Object.freeze([
   // OS-12：页签首格固定＝产物中心（产出物＋多版本＋历史）；「库」上移顶栏。
-  { id: 'artifacts', kind: 'fixed', core: true, view: 'artifacts', ...tabNaming('artifacts'), icon: '产', render: 'artifactsHtml', panel: true, closable: true, scope: 'library' },
+  { id: 'artifacts', kind: 'fixed', core: true, module: 'artifacts', view: 'artifacts', ...tabNaming('artifacts'), icon: '产', render: 'artifactsHtml', panel: true, closable: true, scope: 'library' },
   // OS-19：正文走 libDirs 判断——体裁声明后（如短故事）没有 正文/ 目录就不出。
   { id: 'write', kind: 'fixed', core: true, view: 'write', ...tabNaming('chapters'), icon: '章', render: 'writeHtml', panel: true, closable: true, scope: 'library',
     visibleWhen: (ctx) => !ctx.brief || ctx.hasDir(namingEntry('chapters').dir) },
@@ -233,9 +233,9 @@ export const TAB_REGISTRY = Object.freeze([
   // OS-75：剧本页 fork 正文页（dir:剧本 视图，剧本版式渲染）。
   { id: 'script', kind: 'fixed', core: true, view: 'dir:剧本', ...tabNaming('script'), dirScan: true, icon: '剧', render: 'dirViewHtml', closable: true, scope: 'library' },
   // OS-48：拆解目录承载故事源（fact 链可视化）——目录名不动，页签改叫故事源。
-  { id: 'storySource', kind: 'fixed', core: true, view: 'dir:拆解', ...tabNaming('storysource'), dirScan: true, icon: '故', render: 'dirViewHtml', closable: true, scope: 'library' },
+  { id: 'storySource', kind: 'fixed', core: true, module: 'storysource', view: 'dir:拆解', ...tabNaming('storysource'), dirScan: true, icon: '故', render: 'dirViewHtml', closable: true, scope: 'library' },
   // OS-59：习惯——规则类内容归 habits.json，专页承载。
-  { id: 'habits', kind: 'dir', view: 'habits', ...tabNaming('habits'), dirScan: true, icon: '习', render: 'habitsViewHtml', closable: true, scope: 'library' },
+  { id: 'habits', kind: 'dir', module: 'habits', view: 'habits', ...tabNaming('habits'), dirScan: true, icon: '习', render: 'habitsViewHtml', closable: true, scope: 'library' },
   // OS-89：日志只读页签（模块修改痕迹的自检索载体）。
   { id: 'log', kind: 'dir', view: 'dir:日志', ...tabNaming('log'), dirScan: true, icon: '日', readonly: true, render: 'dirViewHtml', closable: true, scope: 'library' },
   // ── 已退场目录（OS-84/86，作者裁定）：注册表里留档＋无条件过滤，双保险。──
@@ -269,6 +269,16 @@ function orderIndexOf(dir) {
   return index === -1 ? 99 : index
 }
 
+/** OS-161：模块可见性。ctx 没给 modulesEnabled（undefined/null）＝全启用——
+ *  旧快照与所有不带该字段的调用点一个字不改；给了就只认显式启用的模块（Set / 数组 / 对象）。 */
+function moduleVisible(entry, modulesEnabled) {
+  if (!entry.module) return true
+  if (modulesEnabled === undefined || modulesEnabled === null) return true
+  if (modulesEnabled instanceof Set) return modulesEnabled.has(entry.module)
+  if (Array.isArray(modulesEnabled)) return modulesEnabled.includes(entry.module)
+  return modulesEnabled[entry.module] === true
+}
+
 /** 体裁 excludedPages（页签名）→ 库内目录名集合（OS-19 页签裁剪）。 */
 export function excludedDirSet(briefGenre) {
   return new Set(listOf(briefGenre?.excludedPages).map((page) => PAGE_TO_DIR_LOCAL[page] ?? page))
@@ -281,9 +291,9 @@ export function excludedDirSet(briefGenre) {
  *   ② 体裁 excludedPages 裁掉的目录不出；
  *   ③ 按 DIR_ORDER 轨道稳定排序（轨道外一律 99，保持磁盘目录的原相对序）。
  */
-export function dirTabDefs({ libDirs, excluded, registry = TAB_REGISTRY } = {}) {
+export function dirTabDefs({ libDirs, excluded, registry = TAB_REGISTRY, modulesEnabled } = {}) {
   const byDir = new Map(listOf(registry)
-    .filter((entry) => entry.dirScan && !entry.retired && entry.dir)
+    .filter((entry) => entry.dirScan && !entry.retired && entry.dir && moduleVisible(entry, modulesEnabled))
     .map((entry) => [entry.dir, entry]))
   return listOf(libDirs)
     .filter((dir) => !excluded.has(dir) && byDir.has(dir))
@@ -310,11 +320,12 @@ export function computeTabDefs(ctx = {}, registry = TAB_REGISTRY) {
   const excluded = excludedDirSet(ctx.briefGenre)
   const hasDir = (name) => libDirs.includes(name)
   // 目录型组：无库时不扫（旧算法整个扫描在 if (state.current) 里）
-  const dirDefs = ctx.current ? dirTabDefs({ libDirs, excluded, registry }) : []
+  const dirDefs = ctx.current ? dirTabDefs({ libDirs, excluded, registry, modulesEnabled: ctx.modulesEnabled }) : []
   const defs = []
   let dirPlaced = false
   for (const entry of listOf(registry)) {
     if (entry.retired) continue // OS-84/86：退场条目无条件过滤——任何输入下都不出页签
+    if (!moduleVisible(entry, ctx.modulesEnabled)) continue // OS-161：所属模块停用＝页签消失
     if (entry.dirScan) {
       // 第一个 dirScan 条目的声明位＝目录型组的插入点（固定页签组之后、扮演之前）
       if (!dirPlaced) { defs.push(...dirDefs); dirPlaced = true }

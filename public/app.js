@@ -151,6 +151,13 @@ const settingsAggregationReady = import('./views/settingsAggregation.mjs').then(
   settingsAggregation = mod
   return mod
 }).catch((error) => { console.error('[settings] 设置聚合模块加载失败', error); return null })
+/* OS-161：工作面纯视图（views/workbenchViews.mjs）——habits/artifacts/故事源的纯 HTML 构造函数住这里 */
+let workbenchViews = null
+const workbenchViewsReady = import('./views/workbenchViews.mjs').then((mod) => { workbenchViews = mod; return mod })
+  .catch((error) => { console.error('[views] 工作面视图模块加载失败', error); return null })
+/* OS-161：前端模块 id 清单（与各模块目录的 module.manifest.json 对齐；后端 manifest 装载结果在此镜像，
+   页签可见性只按这张表 × moduleOn(id) 判定，新增模块须同步这里一行）。 */
+const MODULE_IDS = ['analysis', 'comfyui', 'kb', 'habits']
 
 /* OS-149：运行时货架过滤（views/runtimeShelf.mjs）——fixture 套件不进作者可见列表；纯函数在 views/，这里只接线 */
 let runtimeShelf = null
@@ -5330,41 +5337,13 @@ const HABIT_FIELDS = [
  * 点击删按钮，下面的标签都出现 × 号，可以删除。」
  */
 function habitsViewHtml() {
-  const h = state.habits
-  if (!state.current) return needLibraryHtml()
-  if (!h) return '<div class="loading">正在读取习惯表…</div>'
-  const fields = HABIT_FIELDS.map((item) => uiKit.chipField({
-    key: item.key,
-    label: item.label,
-    hint: item.hint.replace(/（一行一个）/u, ''),
-    values: Array.isArray(h[item.key]) ? h[item.key] : [],
-    placeholder: item.ph.split(String.fromCharCode(10))[0] || '输入后按空格添加…',
-    max: 60
-  })).join('')
-  const toneControl = uiKit.select({
-    id: 'habit-tone', value: h.tone || 'direct',
-    options: [
-      { value: 'direct', label: '直言——编辑体，问题直接说' },
-      { value: 'gentle', label: '温和——先扬后抑，问题说成「可以先动的」' }
-    ]
+  // OS-161：纯构造函数已迁 views/workbenchViews.mjs；这里只取数＋转交（增量冻结，本体只出不进）。
+  if (!workbenchViews) return needLibraryHtml()
+  return workbenchViews.habitsViewHtml({
+    current: state.current, habits: state.habits, fields: HABIT_FIELDS, uiKit,
+    errorBox: errorHtml(), logHtml: moduleLogHtml('习惯', { title: '习惯表修改记录' }),
+    esc, text
   })
-  return `<div class="doc-head"><div class="kick">${esc(state.current.name)} / 习惯</div><h1>习惯</h1>
-      <div class="doc-meta"><span class="b">你的写作习惯表</span><span>Agent 成文前会逐条遵循；分析引擎按它扫问题</span></div></div>
-    ${errorHtml()}
-    <div class="habits-form">
-      ${uiKit.field({ label: '口吻', hint: '分析结论的说话方式', control: toneControl })}
-      ${uiKit.field({
-        label: '文风',
-        hint: '一句自述，Agent 成文与总评都以它为基调',
-        control: uiKit.textInput({ id: 'habit-style', value: h.style || '', placeholder: '例如：宋明白话为骨，白描，少形容词' })
-      })}
-      ${fields}
-      ${uiKit.toolbar({
-        left: uiKit.buttonGroup({ items: [{ label: '保存习惯表', kind: 'primary', action: 'habits-save' }] }),
-        right: '<span class="uikit-empty-hint">保存后立即生效：Agent 成文注入＋分析扫描</span>'
-      })}
-    </div>
-    ${moduleLogHtml('习惯', { title: '习惯表修改记录' })}`
 }
 
 async function saveHabits() {
@@ -7455,12 +7434,16 @@ function renderTabs() {
   const tabsEl = document.getElementById('tabs')
   if (!tabsEl || !registryModule) return
   const hidden = state.current ? hiddenTabs() : new Set()
+  // OS-161：模块停用 → 归属页签消失。用前端单一入口 moduleOn 构造显式启用映射；
+  // 核心模块（core:true）恒启用，所以不会误伤。
+  const modulesEnabled = Object.fromEntries(MODULE_IDS.map((id) => [id, moduleOn(id)]))
   const defs = registryModule.computeTabDefs({
     current: state.current,
     brief: state.brief ?? null,
     briefGenre: state.briefGenre ?? null,
     libDirs: state.libDirs,
-    settingsOpen: state.settings.open
+    settingsOpen: state.settings.open,
+    modulesEnabled
   })
   const visible = registryModule.visibleTabDefs(defs, hidden)
   const tabHtml = visible.map((def) => `<button class="tab${state.view === def.view ? ' on' : ''}" data-view="${esc(def.view)}"><span class="ic">${esc(def.ic)}</span>${esc(def.label)}${def.readonly ? '<span class="pill">只读</span>' : ''}${def.closable ? `<span class="tab-x" data-action="${def.view === 'settings' ? 'settings-close' : 'tab-hide'}" data-tab-view="${esc(def.view)}" title="收起这个页签（不动磁盘上的东西）">×</span>` : ''}</button>`).join('')
@@ -10126,7 +10109,7 @@ function deduceAgentHtml() {
 /* ---------- 数据加载 ---------- */
 
 async function boot() {
-  await Promise.all([registryReady, runtimeShelfReady]) // OS-143/149：注册表与运行时货架先就位（首帧起页签全部由注册表驱动）
+  await Promise.all([registryReady, runtimeShelfReady, workbenchViewsReady]) // OS-143/149/161：注册表、运行时货架、工作面视图先就位（首帧起页签全部由注册表驱动）
   applyTypography()   // OS-91：无库时也先套默认字号档，避免首帧跳变
   applyAgentCollapse() // OS-103
   // 运行时清单与 config 一起拉：chip 要能显示「DSH 原生」这类具体名字，不能等进设置页才加载

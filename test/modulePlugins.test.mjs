@@ -81,10 +81,11 @@ function startMcp(env = process.env) {
   return { request, close: () => child.kill() }
 }
 
-test('模块 manifest：三个都过形状校验，spec/id/core 口径统一', () => {
-  assert.equal(MODULE_MANIFESTS.length, 3)
+test('模块 manifest：普通模块都过形状校验，spec/id/core 口径统一', () => {
+  // OS-161 起普通模块按批扩大：校验「全部 manifest 非核心」＋「已知批次全在」，
+  // 数量不再写死（等价加强：原断言的 3 个仍在，新增的也必须过同一套校验）。
   const ids = MODULE_MANIFESTS.map((manifest) => manifest.id).sort()
-  assert.deepEqual(ids, ['analysis', 'comfyui', 'kb'])
+  for (const id of ['analysis', 'comfyui', 'kb', 'habits']) assert.ok(ids.includes(id), `模块 ${id} 必须在清单`)
   for (const manifest of MODULE_MANIFESTS) {
     const checked = validateModuleManifest(manifest, { dirName: manifest.id })
     assert.equal(checked.ok, true, `${manifest.id} 应过校验：${checked.errors?.join('；')}`)
@@ -110,7 +111,15 @@ test('端点归属：只登记独占端点，共用端点没有归属', () => {
   assert.equal(moduleOfEndpoint('chapterGet'), null)
   // 分析没有 daemon 端点（纯本地引擎），表里不该硬塞
   assert.equal(ENDPOINT_MODULES.analysis, undefined)
-  assert.deepEqual(HANDLER_MODULE_SOURCES.map((item) => item.id).sort(), ['analysis', 'comfyui', 'kb'])
+  // OS-161 起模块清单按批扩大：断言改为「与 manifest 装载结果一致」的动态等价加强——
+  // 每个 manifest 都进来源表、且没有多余项；强度不减（原来也是全等比较，只是写死集合）。
+  assert.deepEqual(
+    HANDLER_MODULE_SOURCES.map((item) => item.id).sort(),
+    MODULE_MANIFESTS.map((item) => item.id).sort()
+  )
+  for (const id of ['analysis', 'comfyui', 'kb', 'habits']) {
+    assert.ok(HANDLER_MODULE_SOURCES.some((item) => item.id === id), `段 C 前已落地模块 ${id} 必须在来源表`)
+  }
   for (const endpoint of Object.keys(ENDPOINT_MODULES)) assert.ok(HANDLERS[endpoint], `归属端点缺 handler：${endpoint}`)
 })
 
@@ -156,9 +165,8 @@ test('daemon：独占端点停用返回 MODULE_DISABLED，共用端点照常，�
     assert.equal(image.status, 409)
     assert.equal((await image.json()).error.code, 'MODULE_DISABLED')
 
-    // 共用端点不受影响（fact 读＝多方共用，任何模块停用都不许让它失效）
-    const habits = await (await fetch(`${origin}/api/habits?root=${encodeURIComponent(root)}`)).json()
-    assert.equal(habits.ok, true)
+    // 共用端点不受影响（fact 读＝多方共用，任何模块停用都不许让它失效）。
+    // OS-161 起 habits 已升为独占端点，不能再当共用端点的例子——这里只钉 fact 读。
     const entries = await (await fetch(`${origin}/api/fact/curve?root=${encodeURIComponent(root)}`)).json()
     assert.equal(entries.ok, true, 'fact 读端点不能被模块停用带走')
 

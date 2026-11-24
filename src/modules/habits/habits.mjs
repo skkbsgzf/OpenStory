@@ -11,9 +11,9 @@
 import { readFileSync } from 'node:fs'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
-import { atomicWriteFile } from '../protocol/hostWrite.mjs'
-import { recordChange } from '../protocol/changelog.mjs'
-import { LOG_MODULES } from '../protocol/naming.mjs' // OS-148：日志模块名只从命名表取
+import { atomicWriteFile } from '../../protocol/hostWrite.mjs'
+import { recordChange } from '../../protocol/changelog.mjs'
+import { LOG_MODULES } from '../../protocol/naming.mjs' // OS-148：日志模块名只从命名表取
 
 export function text(value) {
   return String(value ?? '')

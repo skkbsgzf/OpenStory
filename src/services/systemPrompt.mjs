@@ -13,7 +13,7 @@
  */
 import { basename, join } from 'node:path'
 import { rootKey, text } from '../host/authorize.mjs'
-import { readHabits } from './habits.mjs'
+import { habitsForPrompt } from '../host/moduleHooks.mjs'
 import { loadGenres, readBrief, briefPromptSection } from './genres.mjs'
 import { loadSkills, craftSkillsForPrompt, craftInstructionBlock, readAgentPicks, suiteSkillDirs } from './skills.mjs'
 import { precedentPromptSectionForGenre } from '../modules/kb/kbRouter.mjs'
@@ -50,18 +50,21 @@ export async function systemPromptFor(root, libraries, genresDirs, skillsDirs, {
       : [])
   ]
   // 习惯表（OS-57）：作者定义的写作习惯——Agent 成文前必须逐条遵循。规则唯一来源。
+  // OS-161：经宿主模块钩子取——习惯模块停用（钩子返回 null）＝整段不注入。
   try {
-    const habits = readHabits(root)
-    const habitLines = []
-    if (habits.style) habitLines.push(`- 文风：${habits.style}`)
-    if (habits.bannedWords?.length) habitLines.push(`- 禁用词（出现即改）：${habits.bannedWords.join('、')}`)
-    if (habits.preferredWords?.length) habitLines.push(`- 惯用词（优先使用）：${habits.preferredWords.join('、')}`)
-    if (habits.bannedPatterns?.length) habitLines.push(`- 禁用句式：${habits.bannedPatterns.join('；')}`)
-    if (habits.bannedRhetoric?.length) habitLines.push(`- 禁用修辞：${habits.bannedRhetoric.join('；')}`)
-    if (habits.formulas?.length) habitLines.push(`- 喜好的描述公式：${habits.formulas.join('；')}`)
-    if (habitLines.length) {
-      lines.push('', '【本库写作习惯】（作者自定义，产出任何成文文字前必须逐条遵循）：', ...habitLines)
-      applied.habits = habitLines.length
+    const habits = await habitsForPrompt(root)
+    if (habits) {
+      const habitLines = []
+      if (habits.style) habitLines.push(`- 文风：${habits.style}`)
+      if (habits.bannedWords?.length) habitLines.push(`- 禁用词（出现即改）：${habits.bannedWords.join('、')}`)
+      if (habits.preferredWords?.length) habitLines.push(`- 惯用词（优先使用）：${habits.preferredWords.join('、')}`)
+      if (habits.bannedPatterns?.length) habitLines.push(`- 禁用句式：${habits.bannedPatterns.join('；')}`)
+      if (habits.bannedRhetoric?.length) habitLines.push(`- 禁用修辞：${habits.bannedRhetoric.join('；')}`)
+      if (habits.formulas?.length) habitLines.push(`- 喜好的描述公式：${habits.formulas.join('；')}`)
+      if (habitLines.length) {
+        lines.push('', '【本库写作习惯】（作者自定义，产出任何成文文字前必须逐条遵循）：', ...habitLines)
+        applied.habits = habitLines.length
+      }
     }
   } catch { /* 习惯表读不到就不注入，不拦聊天 */ }
   // OS-19：项目简报（体裁/篇幅/分章）是一等约束——注入体裁策略段

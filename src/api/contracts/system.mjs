@@ -132,7 +132,7 @@ export const systemEndpoints = {
     // Agent 成文前必读；分析引擎的 verdict 也按它参数化。
     request: { query: { root: 'string' } },
     response: { ok: 'true', habits: 'object' },
-    errors: ['NO_LIBRARY']
+    errors: ['NO_LIBRARY', 'MODULE_DISABLED']
   },
 
   habitsPut: {
@@ -141,7 +141,7 @@ export const systemEndpoints = {
     // 保存习惯表：按 schema 归一（未知键丢弃、列表去重限长）；原子写＋.history 备份。
     request: { body: { root: 'string', habits: 'object' } },
     response: { ok: 'true', habits: 'object', backup: 'string?' },
-    errors: ['NO_LIBRARY', 'INVALID_ENTRY', 'WRITE_PROTOCOL_IO_FAILED']
+    errors: ['NO_LIBRARY', 'INVALID_ENTRY', 'WRITE_PROTOCOL_IO_FAILED', 'MODULE_DISABLED']
   },
 
   dirCreate: {

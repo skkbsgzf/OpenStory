@@ -77,3 +77,16 @@
 ## 施工回报（编排器自动归档）
 
 ## 验收记录（主 agent 填）
+
+### 子件一：习惯（habits）— 提交见 git log
+
+- **manifest 形状**：`src/modules/habits/module.manifest.json`，`spec=openstory-module@1`、`core:false`、独占 `habitsGet`/`habitsPut`、无可调 settings 但有 `settingsHint` 指路；`validateModuleManifest` 过。
+- **停用三处证据**：
+  - 端点：`moduleOfEndpoint('habitsGet')==='habits'`，daemon 实测停用后 GET/PUT 均 409 `MODULE_DISABLED`（`test/habitsModule.test.mjs`）；
+  - 钩子：`src/host/moduleHooks.mjs` 的 `habitLint`/`habitsForPrompt` 经 `isModuleEnabled(root,'habits')`，停用 lint 返回 []、提示词返回 null，值不删（`test/habitsModule.test.mjs`）；
+  - 页签：`TAB_REGISTRY` 的 habits 条目加 `module:'habits'`，`computeTabDefs` 按 `ctx.modulesEnabled` 过滤；ctx 缺该字段＝全启用，`test/tabRegistry.test.mjs` 12/12 快照一个字不改。
+- **视图迁出**：`habitsViewHtml` 本体 → `public/views/workbenchViews.mjs`（零 import 纯函数，依赖注入）；app.js 留薄壳，行数 12,466 → 12,449（净降 17）；金样＋纯度测试 `test/workbenchViews.test.mjs` 5/5。
+- **测试**：专项 13/13（habitsModule＋modulePlugins），全量 605 例；门禁 22/0/0；架构统计已回写。
+- **等价加强的既有测试**：`modulePlugins.test.mjs` 两处写死的 3 模块集合、`settingsAggregation.test.mjs` 一处，改为「与 manifest 动态一致＋已知模块必须在」——断言强度不减，旧模块仍在校验面内。
+
+（子件二、三待续）

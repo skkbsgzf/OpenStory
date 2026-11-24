@@ -258,7 +258,10 @@ test('旧键迁移：OS-146 起默认表为空——不再往库里写没有消�
 test('三个模块 manifest：settings 声明合法；OS-146 起不再有「改了不生效」的死设置项', () => {
   const { manifests, warnings } = loadModuleManifests()
   assert.deepEqual(warnings, [])
-  assert.deepEqual(manifests.map((manifest) => manifest.id).sort(), ['analysis', 'comfyui', 'kb'])
+  // OS-161 起模块清单按批扩大：已知模块必须全在，新增模块也走下面同一套 settings 校验。
+  for (const id of ['analysis', 'comfyui', 'kb', 'habits']) {
+    assert.ok(manifests.some((manifest) => manifest.id === id), `模块 ${id} 必须在清单`)
+  }
   for (const manifest of manifests) {
     assert.ok(Array.isArray(manifest.settings), `${manifest.id} 的 settings 必须是数组`)
     for (const setting of manifest.settings) {

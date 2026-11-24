@@ -40,7 +40,7 @@ import { detectDshAny, detectDshModels, probeDshStack, setupDshStack } from '../
 import { runCliChat } from '../../services/cli-bridge.mjs'
 import { runDshStdio } from '../../services/dsh-cli.mjs'
 import { projectLegacyFrame } from '../../protocol/agentEvents.mjs'
-import { readHabits, lintHabits } from '../../services/habits.mjs'
+import { habitLint } from '../../host/moduleHooks.mjs'
 import { writeChapterWithBackup } from '../../protocol/chapterWrite.mjs'
 import { readAgentPicks, writeAgentPicks } from '../../services/skills.mjs'
 
@@ -725,8 +725,7 @@ export async function agentCardAdopt(ctx) {
   }
   // 习惯 lint（OS-59）：采纳前对产物跑禁用词/句式检测。命中且未确认 → 409 让前端弹确认；
   // 作者确认后带 confirm:true 再来一次。只提醒不阻断（习惯表是作者自己的规矩）。
-  const habits = readHabits(root)
-  const habitHits = lintHabits(card.text, habits)
+  const habitHits = await habitLint(root, card.text)
   if (habitHits.length && request.confirm !== true) {
     return sendError(res, API_ERROR_CODES.INVALID_ENTRY,
       `这段产物命中了你的习惯表：${habitHits.map((hit) => hit.message).join('；')}。确认仍要采纳？`,

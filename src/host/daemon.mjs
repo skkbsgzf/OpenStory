@@ -64,7 +64,7 @@ export {
   pruneHistoryBackups,
   resolveHistoryKeepPerFile
 } from '../protocol/chapterWrite.mjs'
-export { lintHabits } from '../services/habits.mjs'
+export { lintHabits } from '../modules/habits/habits.mjs'
 export { resolveSuiteAssetPath } from '../services/suiteAssets.mjs'
 import { systemPromptFor } from '../services/systemPrompt.mjs'
 /** 测试钩子（OS-45）：把 systemPromptFor 暴露给单测，验「参考只给链接不给全文」。 */
