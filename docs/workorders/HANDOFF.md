@@ -1,7 +1,7 @@
 # 工单交接说明（给 workbuddy / 后续执行者）
 
 > **第三批已立项（2026-11-24 晚，只立单、未开发）**：微内核·三层半。规划与评审意见在
-> [`docs/plan/batch3-microkernel-plan.md`](../plan/batch3-microkernel-plan.md)，工单 OS-169～188 在本目录，
+> [`docs/plan/batch3-microkernel-plan.md`](../plan/batch3-microkernel-plan.md)，工单**只立到批次 A**（OS-169～173）；B／C／D 批只是工作包，等分类排比重捋定稿、作者过目后再逐批立单，
 > 通用纪律与门禁在 [`COMMON-RULES.md`](COMMON-RULES.md)（工单里不再重复）。
 > **先做 OS-169（修 5 红）→ OS-170（数字锚）**：这两张验收通过即满足出口条件 S5，前两批关闭、准予上 CI（OS-171）。
 > OS-172（互认拆除）与 OS-173（底座宪法）**要等作者确认／过目**后才派。

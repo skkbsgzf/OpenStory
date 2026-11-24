@@ -17,11 +17,18 @@
 
 ## 动工前必读
 
-- 规划文档全文（§1 架构、§2 协议要点、§3 评审意见 R1–R14）。
+- 规划文档全文（§1 架构、**§1.3a 分类重捋稿**、§2 协议要点、§3 评审意见 R1–R14）。
 - 当前实现：`src/host/{daemon,http,moduleHooks}.mjs`、`src/protocol/{index,modules,naming,apiErrors}.mjs`、`src/kernel/index.mjs`、14 份 `src/modules/*/module.manifest.json`。
 - 既有裁定：`docs/adr/0001-fact-schema-unification.md`、`docs/LEGACY-ITEMS.md`、`AGENTS.md` 硬规则。
 
 ## 任务
+
+### 零、分类排比定稿（先做；作者 2026-11-24 晚裁定「动工前把新插件的分类排比重新捋一遍」）
+
+0. 以规划 §1.3a 的重捋稿为起点，**逐件过「为什么在这一类、排在这一序」**：内核件七件（storage→fact→prose→text→deduce→agent.runtime→media）、工作台三档（创作台／辅助台／宿主面）、套件六种供给类型。每一件给一句归类理由；你认为该挪的就挪，并写明挪动后谁受影响。
+0. 必须给出结论的三处：`text`（文本分析纯引擎）与 `media`（生图／识图执行器）是否新增为内核件；运行时套件（CLI kit，带可执行入口）归 agent.runtime 的本机扩展还是单列一类；工作台分三档是否成立。
+0. **与 Pinax 断干净**：按 §1.3a 末的收尾清单逐项确认落点（`project.json` 谱系名、`DEMO.md` 口径、三份 Pinax 对标文档标「历史」、台账「桌面端开新库确认」作废）。
+0. 定稿的分类表同时写进 ADR 与协议定稿（作为 manifest@2 里 `class` 与各专属字段的权威依据）。
 
 ### 一、ADR 0002 `docs/adr/0002-base-constitution.md`
 
@@ -46,6 +53,7 @@
 
 - 不改任何代码、测试、manifest。
 - 不替作者做有争议的取舍——拿不准的写进 ADR 的「待作者裁定」一节，每条给你的建议。
+- **不新建 demo**：新 demo 只做《水浒传》、从 0 新建，是优先级最低的独立项目（作者 2026-11-24 晚裁定），不在第三批范围；本单只在文档里把口径记下来。
 
 ## 验收
 

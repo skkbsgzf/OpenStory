@@ -3,6 +3,7 @@
 > **来源**：作者 2026-11-24 晚贴入的「总形状：三层半」架构方案与「插件协议草案」，并指示——先深度阅读、规划下一批、把遗留事项处理干净，**只立工单，不实际投入开发**。
 > 本文 §1、§2 是对作者方案的结构化照录（贴入时架构图的代码块内容丢失，已按后文表格还原）；如与作者原件有出入，以作者原件为准并回填本文。
 > §3 是主 agent 对着当前仓（`4d8ad95`）核对后的评审意见；§4 是工单索引；工单正文在 [`docs/workorders/`](../workorders/BOARD.md)。
+> **作者追加裁定（2026-11-24 晚）**：① 这份文档先是让主 agent **初步了解项目**，不要一口气把工单排完——工单只立到批次 A，B／C／D 待分类重捋定稿后逐批再立；② 项目与 **Pinax 不再有任何关联**，动工前把新插件的**分类排比重新捋**一遍（见 §1.3a）；③ 新 demo **只做《水浒传》**，从 0 新建，**优先级最低**，不在第三批范围。
 
 ## 0. 一句话
 
@@ -80,6 +81,52 @@
 | 文风包 · 体裁包 | 资源 | `styles/` · `genres/` |
 | 运行时套件 | tool | `runtimes/`（CLI kit，agent.runtime 适配器） |
 | 业务套装 | 捆绑 | `suites/`：skill＋tool＋资源预设组合＋依赖闭包 |
+
+### 1.3a 分类重捋稿（主 agent，2026-11-24；待作者过目，OS-173 据此定稿）
+
+重捋原则：**每一类只按一个轴排**——内核件按「依赖深度」从底到高，工作台按「离创作的主次」，套件按「供给的东西是什么」。
+草案里混轴的三处（分析引擎、生图执行器、运行时套件）在这里各归各位。
+
+**内核件（能力供给，无 UI；从底到高）**
+
+| 序 | 件 | 供给能力 | 一句话 | 与草案的差别 |
+|---|---|---|---|---|
+| 1 | storage | `storage.roots@1` `library.list@1` | 库在哪、院子在哪；建库骨架按体裁包的模板建 | 不变 |
+| 2 | fact | `fact.store@3` `fact.pack@1` `fact.enrich@1` | 事实链 | 不变 |
+| 3 | prose | `prose.write@1` `changelog@1` | 文稿写通道（正文／剧本／参考共用） | 不变 |
+| 4 | text | `text.analyze@1` | 文本分析纯引擎，服务端与浏览器共用同一份 | **新增**（R3）：从「分析台」拆出 |
+| 5 | deduce | `deduce.engine@1` | 确定性推演执行器，规则来自套件 | 不变 |
+| 6 | agent.runtime | `agent.runtime@1` | 模型运行时：LLM port、会话存储、上游通道、embedding | 不变 |
+| 7 | media | `media.gen@1` `media.vision@1` | 生图／识图执行器 | **新增**（R11）：草案并进了 agent.runtime |
+
+**工作台（用户功能面；按离创作的主次分三档）**
+
+| 档 | 台 | requires | slot | 可停性 |
+|---|---|---|---|---|
+| 创作台 | 写作台 | `prose.write` `fact.store` | tab | 底座 requires 推导，不可停 |
+| 创作台 | 参考台 | `fact.store` | tab | 同上 |
+| 创作台 | 剧本台 | `prose.write` `fact.store` | tab | 同上 |
+| 创作台 | 扮演台 | `deduce.engine` `agent.runtime` `fact.store` | tab | 同上 |
+| 辅助台 | 分析台 | `text.analyze` | tab | 可停 |
+| 辅助台 | 知识库台 | `agent.runtime` | tab | 可停 |
+| 辅助台 | 习惯台 | `storage.roots` | tab | 可停（习惯规则由 `prose.write` 的 lint 与 `agent.runtime` 的提示词组装消费） |
+| 辅助台 | 素材台（产物中心） | `storage.roots` | tab | 可停 |
+| 辅助台 | 交换台（导入导出，吸收故事源） | `fact.store` | host-actions | 可停 |
+| 宿主面 | Agent 栏 | `agent.runtime` | sidebar | 可停 |
+| 底座自身 | 设置、库管理入口 | — | host | 不可停 |
+
+**创作套件（数据为主；按供给的东西）**
+
+| 供给类型 | 套件 | 参数化谁 | 备注 |
+|---|---|---|---|
+| skill（提示词技能） | skill 包 | — | 现有 `skills/` |
+| tool·规则 | 推演规则包 | `deduce.engine` | 自引擎析出（新） |
+| tool·流程 | 生图工作流包 | `media.gen` | 自 comfyui 析出 |
+| resource | 文风包、体裁包 | — | 现有 `styles/`、`genres/`；体裁包带建库骨架模板 |
+| bundle | 业务套装 | — | 现有 `suites/`：skill＋tool＋资源的预设组合 |
+| **待裁定** | 运行时套件（CLI kit） | `agent.runtime` | 带可执行入口，与「套件不得携带代码」冲突：归 agent.runtime 的本机扩展，还是单列「适配器」类 |
+
+**与 Pinax 断干净的收尾清单**（并入相应工单，不单立）：`project.json` 的谱系名（OS-172）；`DEMO.md` 的三库口径改为只留《水浒传》；`docs/plan/` 里三份 Pinax 对标文档标「历史」；台账「桌面端开新库确认」作废（OS-172）。
 
 ### 1.4 现有 14 模块与三层货架的重组对照
 
@@ -241,38 +288,38 @@ storage × genres 边界（倾向：骨架模板属体裁包，storage 件只提
 | [OS-172](../workorders/OS-172-interop-retire.md) | A1 | 互认拆除：`.pinax/`→`.openstory/` 单态收敛＋一次性升级迁移＋pinax 端点退役 |
 | [OS-173](../workorders/OS-173-base-constitution.md) | A2 | 底座宪法 ADR 0002 定稿＋协议定稿（设计单，闭掉 §3 全部评审意见） |
 
-### 批次 B · 能力批（约 5–8 人日，依赖 A2）
+### 批次 B · 能力批（约 5–8 人日，依赖 A2；**工作包，工单待立**）
 
 | 工单 | 工作包 | 内容 |
 |---|---|---|
-| [OS-174](../workorders/OS-174-manifest-v2.md) | B1 | manifest@2 落地：schema＋校验器＋@1→@2 迁移工具，14 份 manifest 升版 |
-| [OS-175](../workorders/OS-175-capability-graph.md) | B2 | 能力图检查器：闭环／冲突／覆盖合法三检查，「有依赖不可停」由推导产生 |
-| [OS-176](../workorders/OS-176-core-derived.md) | B3 | core 派生化：`core:true` 四件退役，`MODULE_CORE` 语义消失 |
-| [OS-177](../workorders/OS-177-host-domain-rename.md) | B4 | 宿主域正名：agentbar／deduce／library 归位（`builtin` 字段或清单分区） |
-| [OS-178](../workorders/OS-178-deduce-vertical-slice.md) | B5 | deduce 垂直切片：handlers→引擎直连改能力路由；写作台 `requires: deduce.engine` 跑通 |
+| OS-174（工单待立） | B1 | manifest@2 落地：schema＋校验器＋@1→@2 迁移工具，14 份 manifest 升版 |
+| OS-175（工单待立） | B2 | 能力图检查器：闭环／冲突／覆盖合法三检查，「有依赖不可停」由推导产生 |
+| OS-176（工单待立） | B3 | core 派生化：`core:true` 四件退役，`MODULE_CORE` 语义消失 |
+| OS-177（工单待立） | B4 | 宿主域正名：agentbar／deduce／library 归位（`builtin` 字段或清单分区） |
+| OS-178（工单待立） | B5 | deduce 垂直切片：handlers→引擎直连改能力路由；写作台 `requires: deduce.engine` 跑通 |
 
-### 批次 C · 降级批（约 8–12 人日，依赖 B1–B2）
-
-| 工单 | 工作包 | 内容 |
-|---|---|---|
-| [OS-179](../workorders/OS-179-fact-plugin.md) | C1 | fact 插件化：fact 链出底座，金样随 `fact.store` 走 |
-| [OS-180](../workorders/OS-180-prose-plugin.md) | C2 | prose 插件化：chapters 拆两半（写协议下沉／页面上浮） |
-| [OS-181](../workorders/OS-181-storage-plugin.md) | C3 | storage 插件化：courtyard／libraryManifest／建库骨架降级 |
-| [OS-182](../workorders/OS-182-agent-runtime-plugin.md) | C4 | agent.runtime 件：services 收编，三消费方走同一能力 |
-| [OS-183](../workorders/OS-183-deduce-split.md) | C5 | deduce 三拆：引擎件＋推演规则包＋扮演台门面 |
-| [OS-183a](../workorders/OS-183a-analysis-engine-split.md) | C5b（新增，视 A2） | 分析引擎拆分：纯引擎→内核件能力；分析台→工作台 |
-| [OS-184](../workorders/OS-184-gates-rewrite.md) | C6 | 门禁改写：`arch-stats` 分层表、S2.1→能力路由、S2.4'→底座边界、S2.7→能力归属 |
-
-### 批次 D · 魔改批（可选，约 5–8 人日，依赖 C）
+### 批次 C · 降级批（约 8–12 人日，依赖 B1–B2；**工作包，工单待立**）
 
 | 工单 | 工作包 | 内容 |
 |---|---|---|
-| [OS-185](../workorders/OS-185-override-routing.md) | D1 | 覆盖路由＋回退链 |
-| [OS-186](../workorders/OS-186-migration-framework.md) | D2 | 迁移器框架（from→to 单向，失败安全阀） |
-| [OS-187](../workorders/OS-187-suite-manifest-unify.md) | D3 | 套件统一 manifest（三层货架升格） |
-| [OS-188](../workorders/OS-188-slots-dynamic-loading.md) | D4 | slots 扩展＋动态装载评估 |
+| OS-179（工单待立） | C1 | fact 插件化：fact 链出底座，金样随 `fact.store` 走 |
+| OS-180（工单待立） | C2 | prose 插件化：chapters 拆两半（写协议下沉／页面上浮） |
+| OS-181（工单待立） | C3 | storage 插件化：courtyard／libraryManifest／建库骨架降级 |
+| OS-182（工单待立） | C4 | agent.runtime 件：services 收编，三消费方走同一能力 |
+| OS-183（工单待立） | C5 | deduce 三拆：引擎件＋推演规则包＋扮演台门面 |
+| OS-183a（工单待立） | C5b（新增，视 A2） | 分析引擎拆分：纯引擎→内核件能力；分析台→工作台 |
+| OS-184（工单待立） | C6 | 门禁改写：`arch-stats` 分层表、S2.1→能力路由、S2.4'→底座边界、S2.7→能力归属 |
 
-**执行顺序**：OS-169 → OS-170 →（出口 S5）→ OS-171 → OS-172 → OS-173 → OS-174 → OS-175 → OS-178 → OS-176 → OS-177 → OS-179 → OS-180 → OS-181 → OS-182 → OS-183 →（OS-183a，若 A2 采纳）→ OS-184 → OS-185 → OS-186 → OS-187 → OS-188。
+### 批次 D · 魔改批（可选，约 5–8 人日，依赖 C；**工作包，工单待立**）
+
+| 工单 | 工作包 | 内容 |
+|---|---|---|
+| OS-185（工单待立） | D1 | 覆盖路由＋回退链 |
+| OS-186（工单待立） | D2 | 迁移器框架（from→to 单向，失败安全阀） |
+| OS-187（工单待立） | D3 | 套件统一 manifest（三层货架升格） |
+| OS-188（工单待立） | D4 | slots 扩展＋动态装载评估 |
+
+**顺序参考**（B 批起为工作包顺序，不是已立工单）：OS-169 → OS-170 →（出口 S5）→ OS-171 → OS-172 → OS-173 → OS-174 → OS-175 → OS-178 → OS-176 → OS-177 → OS-179 → OS-180 → OS-181 → OS-182 → OS-183 →（OS-183a，若 A2 采纳）→ OS-184 → OS-185 → OS-186 → OS-187 → OS-188。
 
 **里程碑口径**（作者）：A 完成＝宪法与地基干净（互认包袱清零）；B 完成＝平级的语言就位（manifest@2＋裁判），生态耦合第一条链路（deduce）跑通；C 完成＝微内核成型（L2 消失，三类就位），架构图从讨论稿变实测图；D 完成＝魔改开放，第三方生态的门打开。
 
@@ -308,6 +355,7 @@ storage × genres 边界（倾向：骨架模板属体裁包，storage 件只提
 
 ## 6. 需要作者拍板
 
+0. **分类重捋稿过目**（§1.3a）：`text`、`media` 两件是否新增；运行时套件归哪一类；工作台分「创作台／辅助台／宿主面」三档是否合意。
 1. **A1 互认拆除**（OS-172）会让 Pinax 桌面端不再认得 OpenStory 的库，且会迁移作者四个真库的 `.pinax/`——这是作者方案里的明示选择，请再确认一次，并决定真库升级由谁触发（默认：作者首次用新版打开库时自动迁移，迁移前留 `.history` 备份）。
 2. **CI 形态**（OS-171）：默认 GitHub Actions（仓库在 GitHub、零依赖零构建）；若另有 CI，改触发器即可。
 3. **R3 分析引擎拆分**（OS-183a）与 **R11 生图执行器归属**：是否按建议改草案。
