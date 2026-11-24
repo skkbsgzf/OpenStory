@@ -5,9 +5,9 @@
 | 批次 | 第三批·批次 A 宪法批（工作包 A1「互认拆除」；按作者「三名一致」裁定扩成完整的去 Pinax 化） |
 | 对应 | 规划 [`batch3-microkernel-plan.md`](../plan/batch3-microkernel-plan.md) §1.3a 第二版（规则与不一致清单）、§3 R1／R14 |
 | 依赖 | OS-170（数字锚门禁已就位，文档改动受控） |
-| 允许改动 | `src/**`、`public/**`、`test/**`、`tools/**`、`skills/**`、`suites/**`、`genres/**`、`samples/**`、`.gitignore`、`docs/**`、`AGENTS.md`、`ARCHITECTURE.md`、`README.md`、`package.json`（只许改 `description`／`keywords` 一类元数据与 `scripts`；**`author`、`version`、依赖不动**） |
+| 允许改动 | `src/**`、`public/**`、`test/**`、`tools/**`、`skills/**`、`suites/**`、`genres/**`、`samples/**`、`.gitignore`、`docs/**`、`AGENTS.md`、`ARCHITECTURE.md`、`README.md`、`package.json`（只许改 `description`／`keywords` 一类元数据与 `scripts`；`author` 按作者裁定改为 `skkbsgzf`；**`version`、依赖不动**） |
 | 风险 | **高**（改库的落盘位置与目录名；会迁移作者既有库） |
-| 状态 | 待派（**需作者确认**，见文末「本单专属纪律」） |
+| 状态 | 待派（**作者已确认** 2026-11-24 晚；派发前主 agent 打 bundle 备份） |
 
 通用规则见 [`COMMON-RULES.md`](COMMON-RULES.md)。
 
@@ -30,7 +30,7 @@ OpenStory 的库与本机，从里到外不再有 Pinax：运行态只有一个�
    前两处在库清单自持（OS-167）之后**已经是错话**。
 6. **货架内容**：`skills/` 9 份里有 15 处「Pinax」，而且技能提示词引用的是 Pinax 的 MCP 工具名（`pinax_chapter_read`、`pinax_worldbook_list`、`pinax_chapter_save`、`pinax_fact_check`、`pinax_extract_status`），不是 OpenStory 自己的 `openstory_*`；`suites/` 6 处「Pinax」。
 7. `src/api/handlers/fact.mjs` 约 :1112 的提示语「先跑抽取（pinax_extract_*）再 enrich」。
-8. `package.json` 的 `author` 写「Pinax 作者（OpenStory 线）」——这是作者本人的署名，**不在本单范围**。
+8. **署名还是 Pinax**（作者 2026-11-24 晚裁定：署名明确统一用自己的 GitHub 名字，不要「Pinax 作者」）：`package.json` 的 `author`「Pinax 作者（OpenStory 线）」；三个内置套件 `suites/{writing,screenwriting,comicdrama}/manifest.json` 与 `suites/PROTOCOL.md` 示例的 `"vendor": "Pinax 官方"`；两份技能头的 `vendor: Pinax 官方`；`test/suites.test.mjs`、`test/pluginGovernance.test.mjs` 里有夹具与断言钉着「Pinax 官方」。
 
 ## 任务（可按 A–E 分多次提交，每次提交后全量测试必须绿）
 
@@ -61,6 +61,7 @@ OpenStory 的库与本机，从里到外不再有 Pinax：运行态只有一个�
 10. 对用户说的话改成事实（现状第 5 条的四句）。
 11. 技能与套件内容：**只替换产品称呼与 MCP 工具名**——`pinax_*` 换成 OpenStory 自己对应的 `openstory_*`（先核对工具确实存在；没有对应的保留原词，并在报告里逐条列出）。不改技能的写法指导本身。
 12. 提示语「先跑抽取（pinax_extract_*）」改成 OpenStory 自己的工具名或中性说法。
+13a. **署名统一为 `skkbsgzf`**（仓的 git 身份是 `skkbsgzf <59155174+skkbsgzf@users.noreply.github.com>`）：`package.json` 的 `author` 改成 `"skkbsgzf <59155174+skkbsgzf@users.noreply.github.com>"`（与 git 身份逐字一致）；套件与技能里的 `vendor: Pinax 官方` 改成 `skkbsgzf`；`suites/PROTOCOL.md` 示例同步；相关测试夹具与断言跟着改（这是被改的东西本身，属合法更新，逐处说明）。`LICENSE` 的版权人行「Copyright (c) 2026 OpenStory 作者与贡献者」改为「Copyright (c) 2026 skkbsgzf」——**只换版权人名字，许可条款一个字不动**。
 13. 样例库 `samples/水浒传` 用生成脚本重跑成新布局（现在同时有 `.openstory` 与 `.pinax`，且还是旧目录名）。
 
 ### E. 文档
@@ -75,13 +76,13 @@ OpenStory 的库与本机，从里到外不再有 Pinax：运行态只有一个�
 - **绝不碰作者真库**（`D:/Projects/**`）：迁移只在临时夹具库上验证；作者真库由作者用新版第一次打开时升级。
 - 不删任何旧数据（只备份、改名留档）；不保留 `.pinax` 的长期双读。
 - 不改端点路径与 MCP 工具名（对外契约名，作者裁定不在三层之内）。
-- 不动 `package.json` 的 `author`；不新建 demo。
+- 不改 `LICENSE` 的许可条款；不新建 demo。
 
 ## 验收
 
 - **迁移测试**（临时夹具旧库）：升级后三个新目录名在、`.openstory/` 在、`project.json` 与派生档是新名、旧目录已改名留档、`.history` 有备份、重复打开幂等、逐步注入失败都原样保留、同名冲突加后缀入报告。
 - **三名一致门禁**（验收新增）：每个模块的显示名 ＝ 其页签或入口的显示名 ＝ 库内目录名（有目录的）＝ 修改日志模块名；命名表一个正名只许一个 slug。
-- **谱系名门禁**（验收新增）：`src/**`、`public/**`、`genres/**`、`skills/**`、`suites/**` 里，除出处声明与迁移代码里的旧路径常量外，不许出现 `pinax`（不区分大小写）。
+- **谱系名门禁**（验收新增）：`src/**`、`public/**`、`genres/**`、`skills/**`、`suites/**`、`package.json` 的署名与归属字段里，除出处声明与迁移代码里的旧路径常量外，不许出现 `pinax`（不区分大小写）。
 - 反证两则：临时把某目录名改回旧名、临时在某个源文件里写一个 `pinax_xxx`，两道门禁都必须红；贴输出后还原。
 - 全量测试与验收门禁全绿；水浒／新建两条 e2e 全绿。
 - 报告贴：影响面清单（逐类逐文件）、新旧目录对照、迁移测试输出、四句文案的改后原文、技能里无法替换的 Pinax 工具名清单。
@@ -89,7 +90,7 @@ OpenStory 的库与本机，从里到外不再有 Pinax：运行态只有一个�
 ## 本单专属纪律
 
 - 迁移逻辑的每一个分支（成功／幂等／每一步失败／同名冲突）都要有测试。
-- **需作者确认**：目录改名与运行态迁移会动作者四个真库；确认后主 agent 先打一份 git bundle 备份再派。
+- **作者已确认（2026-11-24 晚）**：互认拆除、三个目录改名、真库一次性迁移（默认由新版首次打开库时触发）。主 agent 派发前先打一份 git bundle 备份。
 
 ## 施工回报（编排器自动归档）
 
