@@ -59,11 +59,11 @@ src/modules/deduce/engine/   推演链 8 件（产品引擎，不是内核）
 
 ### 0.4 最需要作者拍板的三件事
 
-| # | 事 | 我的建议 |
+| # | 事 | 我的建议 | 作者裁定（2026-11-24） |
 |---|---|---|
-| A | 内核名字 `openstory-kernel@1` ＋ 位置 `src/kernel/` | 照默认方案，一句「可以」即开工 |
-| B | 推演链归模块（默认）还是留内核 | 归模块；代价是 `host-api@1→@2`（§9-3） |
-| C | `PINAX_*` 错误码字符串改不改 | 不改。它是线上 API 的 `code`，改＝破坏对外契约（§9-1） |
+| A | 内核名字 `openstory-kernel@1` ＋ 位置 `src/kernel/` | 照默认方案，一句「可以」即开工 | **同意** |
+| B | 推演链归模块（默认）还是留内核 | 归模块；代价是 `host-api@1→@2`（§9-3） | **同意**（Host API 升 `@2`） |
+| C | `PINAX_*` 错误码字符串改不改 | 不改。它是线上 API 的 `code`，改＝破坏对外契约（§9-1） | **要改**（作者原话「c要改吧」）——方案见新增 §4.5 |
 
 ---
 
@@ -388,11 +388,34 @@ src/protocol/factDomain.mjs    ← 新建：domain 原语＋factPack 的协议�
 | 项 | 处置 | 证据 |
 |---|---|---|
 | 表名 `NEXT_ERROR_CODES` | **改** `KERNEL_ERROR_CODES` | 纯内部（§4.2） |
-| 值 `'PINAX_INVALID_INPUT'` 等 26 个字符串 | **不改** | 它们是 `/api` 响应的 `code`（`handlers/fact.mjs:737`）；被 `chapterWrite.mjs:165`、`libraryManage.mjs:116` 用 `^PINAX_` 解析；被 `test/decoupleStep3.test.mjs:112,119,136`、`factEntriesImport.test.mjs:183`、`contracts.test.mjs:263` 逐字锁死 |
+| 值 `'PINAX_INVALID_INPUT'` 等 26 个字符串 | **要改**（作者 2026-11-24 裁定；两步走见 §4.5） | 它们是 `/api` 响应的 `code`（`handlers/fact.mjs:737`）；被 `chapterWrite.mjs:165`、`libraryManage.mjs:116` 用 `^PINAX_` 解析；被 `test/decoupleStep3.test.mjs:112,119,136`、`factEntriesImport.test.mjs:183`、`contracts.test.mjs:263` 逐字锁死 |
 | 端口码 `OPERATION_ID_REQUIRED`／`VALIDATION_FAILED`／`REVISION_MISMATCH`／`NOT_FOUND` | 不改 | 本来就不是谱系名 |
 
 > 与工单原文的冲突已登记 §9-1。若作者坚持「品牌要干净」，唯一安全路径是**另立工单**：
 > 新增 `OPENSTORY_*` 别名码、旧码保留一整个大版本、前端与测试同步双读——那是一次真正的对外契约变更，不属于「转自有」。
+
+
+### 4.5 错误码改名方案（作者裁定 C：要改）
+
+**目标**：仓里不再出现 `PINAX_` 前缀；内核码与宿主码收敛成一套 OpenStory 自己的词表。
+
+**关键事实（实测，决定了分几步做）**：
+- `src/protocol/chapterWrite.mjs:165` 早就在剥前缀（`code.replace(/^PINAX_/u, '')`），再映射到 `src/protocol/apiErrors.mjs` 的对外码表；
+- 但并非所有路径都过这层映射：`test/factEntriesImport.test.mjs:183` 断言 `body.error.code === 'PINAX_IO_FAILED'`——即**裸内核码会直接透给客户端**；
+- `core/pinax` 内部多处 import `errors.mjs` 的 `ERROR_CODES` 并比较码值，迁移期一定会出现「core 副本」与「自有副本」两套词表并存。
+
+**因此分两步**：
+
+1. **OS-152（迁 errors.mjs）**：影子复制进 `src/kernel/`，**码值一个字不改**（两套副本必须词表一致，否则迁移期码比较会错）；只把表名改为 `KERNEL_ERROR_CODES`。
+2. **OS-157（收尾退役）**：`core/` 已无消费者后**一次性扫净**：
+   - 码值去掉 `PINAX_` 前缀 → 与宿主码表同一命名法（`PINAX_INVALID_ENTRY` → `INVALID_ENTRY`、`PINAX_IO_FAILED` → `IO_FAILED`、`PINAX_STALE_REVISION` → `STALE_REVISION` …），
+     并核对与 `src/protocol/apiErrors.mjs` 的同名码语义一致；语义不同的（如内核 `STALE_REVISION` vs 宿主 `REVISION_MISMATCH`）在映射表处显式对应。
+   - `chapterWrite.mjs` 的剥前缀逻辑随之简化（已无前缀可剥）或删除；
+   - 本地环境变量一并改名并**双读兼容一个大版本**：`PINAX_OS_PREFERENCES` → `OPENSTORY_PREFERENCES`、`PINAX_OS_FIXTURE` → `OPENSTORY_FIXTURE`（新名优先、旧名仍认、命中旧名打一次 deprecation 日志）；
+   - 文档与测试同批：`docs/ACCEPTANCE.md`、`ARCHITECTURE.md` 的错误码段、对外契约表；测试里的字面量断言逐个改为新值；
+   - **对外变更记录**：新增一节「错误码改名对照表（旧 → 新）」进 `docs/`，供外部调用方（MCP 客户端、脚本）迁移。
+
+**不做兼容层**：不保留「旧码也能返回」的双发。理由：作者要的是干干净静的自家名字；双发会让词表永久分裂。代价是外部调用方需照对照表改一次——已由对照表承接。
 
 ---
 
