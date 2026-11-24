@@ -1,10 +1,11 @@
 /**
- * 推演引擎封装（OS-29）——把 Pinax 的 fact 推演链接进 OpenStory daemon。
+ * 推演引擎封装（OS-29；OS-155 引擎归位到 `./engine/`）——把确定性推演链接进 OpenStory daemon。
  *
- * 复用面（core/pinax/ 逐字 vendor，见 scripts/vendor-deduce.mjs）：
+ * 复用面（扮演模块自有，`src/modules/deduce/engine/`：OS-155 自 core 平移、逻辑逐字未改）：
  *   openDeduceSession（开局：worldview 必需，无则 WORLD_EMPTY 如实报）→ presentTurn（定局面卡＋候选）
  *   → applyDirectorAction（导演动作）→ settle（作者选择→事件条目）。
  * 引擎本身确定性（mulberry32 种子化 2d6），LLM 只是「戏剧」候选的可选来源——没配模型也能跑。
+ * llmPort 规范接口见 docs/deduce-llm-port.md（本封装做显式形状校验，坏形状＝当 null 不炸）。
  *
  * 会话状态：一个库一个推演会话文件 `.openstory/deduce/<bookId>.json`（原子写，不碰 Pinax 元数据）。
  */
@@ -12,10 +13,11 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { mkdir } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fact } from '../../protocol/index.mjs' // OS-142：内核能力经 Host API fact 命名空间转出（模块纪律：modules 不直引 kernel/pinaxAdapter）
+import { openDeduceSession, presentTurn, applyDirectorAction, settleChoice } from './engine/index.mjs'
 import { buildNarrativeContext, firstPersonify, readWikiSafe } from './deduceNarrative.mjs'
 import { atomicWriteFile } from '../../protocol/hostWrite.mjs'
 
-const { deduce, factStore } = fact // OS-125 五组出口的推演端子＋fact 存储协议（经协议层转出，实现不换）
+const { factStore } = fact // OS-125 出口组的 fact 存储协议（经协议层转出）；推演端子 OS-155 起归本模块 engine/
 
 function text(value) {
   return String(value ?? '')
@@ -129,6 +131,50 @@ function defaultPov(entries) {
   return chars[0]?.name ?? null
 }
 
+/**
+ * llmPort 归一（OS-155，规范接口见 docs/deduce-llm-port.md）：
+ *   propose({ prompt, refs }) → [{ text, refs }] | null     ← 规范形状
+ *   complete({ system, maxTokens }) → { text }              ← 宿主历史形状（等价支持）
+ * 返回 { port, notes }：port 是给引擎的 `{ complete }`（形状坏＝null）；notes 收集形状问题
+ * 由调用方在响应里如实带出——坏端口只让本拍戏剧候选缺席，绝不让整拍抛错。
+ */
+function normalizeLlmPort(llmPort) {
+  if (!llmPort || typeof llmPort !== 'object') return { port: null, notes: [] }
+  if (typeof llmPort.complete === 'function') {
+    return { port: { complete: (payload) => llmPort.complete(payload) }, notes: [] }
+  }
+  if (typeof llmPort.propose !== 'function') {
+    return { port: null, notes: ['llmPort 既没有 propose 也没有 complete：本拍戏剧候选缺席'] }
+  }
+  const notes = []
+  const port = {
+    async complete({ system = '' } = {}) {
+      let answer
+      try {
+        answer = await llmPort.propose({ prompt: system, refs: [] })
+      } catch (error) {
+        notes.push(`llmPort.propose 抛错：${text(error?.message || error)}`)
+        return { text: '' }
+      }
+      if (answer === null || answer === undefined) return { text: '' }
+      if (!Array.isArray(answer)) {
+        notes.push('llmPort.propose 返回值不是数组：按 null 处理（本拍戏剧候选缺席）')
+        return { text: '' }
+      }
+      const proposals = []
+      for (const item of answer) {
+        if (!item || typeof item.text !== 'string' || !item.text.trim()) {
+          notes.push('llmPort.propose 有条目形状坏（缺 text）：已丢弃')
+          continue
+        }
+        proposals.push({ text: item.text, refs: Array.isArray(item.refs) ? item.refs.map(String) : [] })
+      }
+      return { text: JSON.stringify({ proposals }) }
+    }
+  }
+  return { port, notes }
+}
+
 export async function deducePresent({ root, bookId = 'default', pov = '', seed = null, reset = false, peek = false, llmPort = null, sessionId = '', seedPrompt = '', chapterLimit = null } = {}) {
   const loaded = loadEntries(root)
   if (!loaded.ok) return { ok: false, code: 'INVALID_ENTRY', message: loaded.message }
@@ -189,7 +235,7 @@ export async function deducePresent({ root, bookId = 'default', pov = '', seed =
     try {
       // POV 缺省（OS-54）：没填就取出场最多的角色——条目页签剔除后角色名单从 present
       // 响应的 characters 来，第一次点「呈现」就能直接开局
-      opened = deduce.openDeduceSession({ entries, pov: pov || (state ? state.pov : null) || defaultPov(entries), runId: `os-${Date.now().toString(36)}` })
+      opened = openDeduceSession({ entries, pov: pov || (state ? state.pov : null) || defaultPov(entries), runId: `os-${Date.now().toString(36)}` })
     } catch (error) {
       // 引擎的前置校验（如 WORLD_EMPTY）如实透传，不伪造开局
       return { ok: false, code: text(error?.code || 'INVALID_ENTRY'), message: text(error?.message || error) }
@@ -200,14 +246,16 @@ export async function deducePresent({ root, bookId = 'default', pov = '', seed =
   }
   const useSeed = Number.isSafeInteger(seed) ? seed : (state.seed ?? (Math.floor(Math.random() * 1e9)))
   state.seed = useSeed
+  // OS-155：llmPort 显式形状校验（docs/deduce-llm-port.md）——坏形状只让戏剧候选缺席，不炸拍。
+  const { port: safeLlmPort, notes: llmPortNotes } = normalizeLlmPort(llmPort)
   let turn
   try {
     // OS-82：llmPort 透传给引擎——「戏剧✦」候选从配置的文本模型来（没配模型时 dramaCandidates
     // 自己返回空数组，必然/命运两层照常跑，推演永远不被模型不可用卡死）。
     // OS-93：seedPrompt＝玩家选的开头（剧情骨架段）——戏剧候选围绕它锚定。
-    turn = await deduce.presentTurn({
+    turn = await presentTurn({
       state, entries, pov: pov || state.pov || null, seed: useSeed,
-      ...(seedPrompt ? { seedPrompt } : {}), ...(llmPort ? { llmPort } : {})
+      ...(seedPrompt ? { seedPrompt } : {}), ...(safeLlmPort ? { llmPort: safeLlmPort } : {})
     })
   } catch (error) {
     return { ok: false, code: text(error?.code || 'INVALID_ENTRY'), message: text(error?.message || error) }
@@ -267,6 +315,8 @@ export async function deducePresent({ root, bookId = 'default', pov = '', seed =
     budget: { used: state.aiSpent ?? 0, max: state.budgetMax ?? 8 },
     pov: presentPov,
     narrative: presentNarrative,
+    // OS-155：坏 llmPort 的形状问题如实带出（前端可忽略；不写日志、不落库，纯本拍信息）
+    ...(llmPortNotes.length ? { llmPortNote: llmPortNotes.join('；') } : {}),
     // POV 候选（OS-54）：条目页签剔除后，角色名单由 present 响应直接带——
     // 前端 datalist 不再依赖 /api/entries 侧通道
     characters: entries
@@ -321,9 +371,9 @@ export async function deduceSettle({ root, bookId = 'default', candidateId = '',
   let settled
   try {
     if (action === 'choose') {
-      settled = deduce.settleChoice({ state, domain: 'deduce', candidate })
+      settled = settleChoice({ state, domain: 'deduce', candidate })
     } else {
-      settled = deduce.applyDirectorAction({ state, action, candidate, name: note })
+      settled = applyDirectorAction({ state, action, candidate, name: note })
     }
   } catch (error) {
     return { ok: false, code: text(error?.code || 'INVALID_ENTRY'), message: text(error?.message || error) }

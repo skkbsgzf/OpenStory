@@ -1,9 +1,9 @@
 /** 三层候选生成（M1-a）：必然▮（世界事实确定性推导）／命运⚙（2d6 剧情检定）／戏剧✦（LlmPort 提议）。
  * 每候选带来源徽章；全部过一致性筛（引用未知实体＝与已确认世界矛盾，候选层确定性拒——端点固定路径自由）。
  * P-WIRE：筛子有两档——世界级（实体存在）与视角级（POV 此刻是否知晓，见 sceneContext.js）。 */
-import { createAliasIndex } from '../../domain/aliases.js'
-import { spendAi } from './sessionState.js'
-import { buildSceneContext, refsWithinKnown, visibleNamesOf } from './sceneContext.js'
+import { createAliasIndex } from '../../../protocol/factDomain.mjs'
+import { spendAi } from './sessionState.mjs'
+import { buildSceneContext, refsWithinKnown, visibleNamesOf } from './sceneContext.mjs'
 /**
  * 游玩 / 推演提议用的 system prompt（双叙述纪律的「游玩侧」常量）。
  * 这是主持问答 / 候选提议体：提议剧情走向、输出候选 JSON，面向推演会话，

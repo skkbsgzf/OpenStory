@@ -4,10 +4,10 @@
  * P-WIRE：局面卡四字段全部改从 factPack 投影出来的 sceneContext 取数——
  * 在场角色只有 POV 认识的人、地点只有 POV 知道的地方、钩子优先取已埋的悬置伏笔。
  * 旧写法（取前 4 个角色名／第一个地点条目）会让第一视角在开场就报出角色这辈子没见过的地方。 */
-import { generateCandidates } from './candidates.js'
-import { pushLog } from './sessionState.js'
-import { buildSceneContext } from './sceneContext.js'
-import { braidFronts, advanceFront, pendingTriggers, tensionReading, tensionText, tickIdleFronts, touchFront, resolveFront } from './fronts.js'
+import { generateCandidates } from './candidates.mjs'
+import { pushLog } from './sessionState.mjs'
+import { buildSceneContext } from './sceneContext.mjs'
+import { braidFronts, advanceFront, pendingTriggers, tensionReading, tensionText, tickIdleFronts, touchFront, resolveFront } from './fronts.mjs'
 
 /** 呈现一拍：局面卡（who/where/张力/钩子 四字段简笔）＋ 2–4 个混合候选。 */
 export async function presentTurn({ state, entries, pov, llmPort, seed, seedPrompt, span, extraKnown } = {}) {

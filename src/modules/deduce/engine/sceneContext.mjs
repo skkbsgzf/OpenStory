@@ -14,11 +14,9 @@
  *   - rules      世界规则（物理级约束，不按知情筛——规则对谁都成立，但只当约束用）；
  *   - openHypotheses 悬而未决（plot 条目 hypothesis+open，推演张力的现成来源）。
  *
- * 纯函数、零宿主依赖：只 import fact 域内相对路径，不碰 node 内置 / process / 文件系统。
+ * 纯函数、零宿主依赖：只 import 协议层 factDomain 转供面（fact 域原语＋factPack），不碰 node 内置 / process / 文件系统。
  */
-import { buildFactPack } from '../factPack.js'
-import { createAliasIndex } from '../../domain/aliases.js'
-import { isActiveAt, normalizeSpan } from '../../domain/validity.js'
+import { buildFactPack, createAliasIndex, isActiveAt, normalizeSpan } from '../../../protocol/factDomain.mjs'
 
 export const SCENE_CONTEXT_VERSION = 'scene-context@1'
 

@@ -17,10 +17,9 @@
  * 关键设计：**补丁是幂等的**。stableEntryId 按「层|域|槽|名」算，同一个事件同一次回写
  * 得到同一个 id；重复回写不会产生重复条目，只会被 dedupe 掉（如实计数）。
  *
- * 纯函数、零宿主依赖：只 import fact 域内相对路径。
+ * 纯函数、零宿主依赖：只 import 协议层 factDomain 转供面（fact 域原语）。
  */
-import { FACT_SCHEMA } from '../../domain/vocabulary.js'
-import { stableEntryId } from '../../domain/stableId.js'
+import { FACT_SCHEMA, stableEntryId } from '../../../protocol/factDomain.mjs'
 
 export const PATCH_CHANNEL_VERSION = 'fact-patch@1'
 

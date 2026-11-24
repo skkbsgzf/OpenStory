@@ -8,20 +8,23 @@
  *   ② `wikiDerive` 转出的伪章结果与 `enrich/pseudoChapters` 同值（合并后不许再分叉）；
  *   ③ `causalSummary` 三指标对固定小图的读数（闭环率／耦合度／断点敏感度）；
  *   ④ `deriveWiki` 幂等；`factPack` 打包形状与查询区间语义（无界／相交／角色知情）。
- * 另有等价锁：`deriveWiki`／`buildFactPack` 与本批仍保留的 core 原件同输入深等。
+ * 另有等价锁：`deriveWiki` 与本批仍保留的 core 原件同输入深等；`buildFactPack` 的 core 原件
+ * 已在 OS-155 删除，等价锁改为**摘要金样**（下列 8 组查询的输出 sha256 在删除前由 src≡core
+ * 的等价对拍实测冻结——同一份锁，core 原件不再需要）。
  *
  * 全部是纯函数用例，不落盘——绝不碰作者真库。
  */
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { createHash } from 'node:crypto'
 
 import * as enrichPseudo from '../src/kernel/enrich/pseudoChapters.mjs'
 import * as enrichMetrics from '../src/kernel/enrich/metrics.mjs'
 import * as wikiDerive from '../src/kernel/fact/wikiDerive.mjs'
 import { buildFactPack } from '../src/kernel/fact/factPack.mjs'
-/* core 原件只读引用（测试文件不在 S2.4 扫描面；等价对的对照组。wikiDerive／factPack 本批不删） */
+/* core 原件只读引用（测试文件不在 S2.4 扫描面；等价对的对照组。wikiDerive 本批不删；
+    factPack 的 core 原件已随 OS-155 删除——它的等价锁改为下方的摘要金样） */
 import * as coreWikiDerive from '../core/pinax/next/kernel/wikiDerive.mjs'
-import { buildFactPack as buildFactPackCore } from '../core/pinax/next/fact/usecases/factPack.js'
 
 /* ---------- ① 伪章数边界 ---------- */
 
@@ -290,7 +293,7 @@ test('factPack 查询区间语义：无界/相交/角色知情', () => {
   assert.deepEqual(slots.query.slots, ['other'])
 })
 
-test('等价：factPack 与 core 原件同输入深等（多组查询）', () => {
+test('金样：factPack 多组查询输出的 sha256 逐组锁死（OS-155 删除 core 原件前由 src≡core 等价对拍冻结）', () => {
   const entries = factEntries()
   const queries = [
     {},
@@ -302,7 +305,19 @@ test('等价：factPack 与 core 原件同输入深等（多组查询）', () =>
     { slots: ['other'], layer: 'worldview' },
     { domain: '修炼体系' }
   ]
-  for (const query of queries) {
-    assert.deepEqual(buildFactPack(entries, query), buildFactPackCore(entries, query), `查询 ${JSON.stringify(query)} 必须与 core 原件同值`)
-  }
+  // 金样＝删除 core 原件当日实测（当时 `buildFactPack` 与 core 原件对拍深等），顺序与 queries 一一对应。
+  const golden = [
+    'e8622a87dc123ac403c9634c2770850d76db37e81376d83f00cfb36d0589085e',
+    'e44a20caf3412ab64c8c782a90fa6f42a7ffb1c64ff3d9acfd180ea067bafcca',
+    'c98d545b13bad3eb5a30997efc044504b1d5387775dd2f16fb7e0c270fc72f3c',
+    '3b0880b76067ed25307c851bed80899d7cc2e8579f7d85994c5b1bd8136e8759',
+    'e64b35e936e3d6d7a3f33703c40412a8617eeb55c94bfd274a1f9edbfc690da1',
+    'c52506ed46902845b4167b3706f560cbf0116036fcd04b80c9e6b1d2cca993d8',
+    'c6bc9bfc9d9d43f6a46563d3ccddcb9aa4c850722b0dc65957c6eded544158bc',
+    '456623d42a74b898c505cea048fc30c976006d65e0c75e6450810a4ecd02315b'
+  ]
+  queries.forEach((query, index) => {
+    const digest = createHash('sha256').update(JSON.stringify(buildFactPack(entries, query))).digest('hex')
+    assert.equal(digest, golden[index], `查询 ${JSON.stringify(query)} 的输出与金样不符（行为漂移）`)
+  })
 })

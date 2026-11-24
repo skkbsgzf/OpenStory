@@ -2,11 +2,11 @@
  * ADR：拒绝从草稿开局——worldview 条目必须全部 adopted，否则拒（D2 判据的世界侧前置）。
  * P-M4：开局从世界书 rules 槽位预埋 fronts 模板立起威胁前线（有没有模板决定这一局有无累积压力）。
  * P-M5：换视角重演（同期重演）时，先跑视角的已确认拍作为固定端点进状态——端点固定、路径自由。
- * 禁宿主依赖：仅 import fact 域内模块。 */
-import { sha1Hex } from '../../domain/stableId.js'
-import { createSessionState } from './sessionState.js'
-import { frontsFromRules } from './fronts.js'
-import { replayBackdrop } from './patchChannel.js'
+ * 禁宿主依赖：仅 import 协议层 factDomain 转供面与同目录引擎件。 */
+import { sha1Hex } from '../../../protocol/factDomain.mjs'
+import { createSessionState } from './sessionState.mjs'
+import { frontsFromRules } from './fronts.mjs'
+import { replayBackdrop } from './patchChannel.mjs'
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value ?? null))

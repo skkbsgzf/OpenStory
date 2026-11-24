@@ -1,17 +1,19 @@
 /**
- * OpenStory Host API（OS-142）——host-api@1 显式入口。
+ * OpenStory Host API（OS-142）——host-api@2 显式入口。
  *
  * 这是协议层的**唯一命名空间入口**：插件（三层货架的任何代码）只准 `import` 本文件，
  * 不许直接 import src/protocol/ 下的其他文件或仓内任何别的模块；本仓模块层
  * （src/modules/**）按门禁 S2.1 的路径规则也只准引 node 内置、src/protocol/**（含本
  * 入口与各叶子转供件）和自己模块目录内的文件。
  *
- * 版本约定：HOST_API_VERSION 字面量 `host-api@1`。**只有破坏性变更（删除导出、改签名、
- * 改语义、改错误码）才升 host-api@2**；纯增量（新命名空间成员）留在 @1 内，但必须同步
+ * 版本约定：HOST_API_VERSION 字面量 `host-api@2`。**只有破坏性变更（删除导出、改签名、
+ * 改语义、改错误码）才升版**；纯增量（新命名空间成员）留在当前版本内，但必须同步
  * 改 test/hostApi.test.mjs 的键清单快照与本文件 JSDoc——快照强制每次增删都是显式确认。
+ * 版本史：`@1`（OS-142 建档）→ `@2`（OS-155：`fact.deduce` 删除——推演端子归扮演模块
+ * `src/modules/deduce/engine/`，协议层不依赖产品模块）。
  *
  * 七个能力命名空间（每个都是冻结对象；落盘只走协议写通道 hostWrite/changelog）：
- *   fact      —— 内核能力通道（经 src/kernel/pinaxAdapter.mjs 五组出口转出＋plumber）
+ *   fact      —— 内核能力通道（经 src/kernel/pinaxAdapter.mjs 四组出口转出＋plumber）
  *   prose     —— chapters 正文协议（列表/建章/改名/删章＋写备份/.history 保留）
  *   changelog —— 变更日志协议（diff＋月度 jsonl，库内唯一「修改留痕」通道）
  *   jobs      —— 任务中心（进程内任务登记/查询/取消/订阅，重启即清，不落盘）
@@ -29,8 +31,8 @@
  * 任何装载序都安全（test/hostApi.test.mjs 双向冒烟钉死）。
  */
 
-/** Host API 版本字面量（host-api@1）。破坏性变更才升 @2，见文件头版本约定。 */
-export const HOST_API_VERSION = 'host-api@1'
+/** Host API 版本字面量（host-api@2）。破坏性变更才升版，见文件头版本约定。 */
+export const HOST_API_VERSION = 'host-api@2'
 
 import * as pinaxAdapter from '../kernel/pinaxAdapter.mjs'
 import * as chaptersProtocol from './chapters.mjs'
@@ -46,15 +48,13 @@ import * as factGuardProtocol from './factGuard.mjs'
 /**
  * fact 命名空间——内核能力通道（经 src/kernel/pinaxAdapter.mjs 转出，实现不换）。
  *
- * 成员（OS-125 五组能力出口＋内核 plumber）：
+ * 成员（OS-125 四组能力出口＋内核 plumber；OS-155 起 `deduce` 已退出——推演端子归
+ * `src/modules/deduce/engine/`，协议层不再依赖产品模块）：
  *   · factStore          —— fact 存储协议：createFactFileStore/writeFactFile/readFactWiki/
  *                          FACT_DIR_NAME。读只读不落盘；writeFactFile 落盘到
  *                          `<库>/拆解/<id>.json`（operationId 幂等＋expectedRevision 乐观并发），
  *                          错误码 WRITE_PROTOCOL_*（REVISION_MISMATCH/OPERATION_ID_REQUIRED/
  *                          VALIDATION_FAILED/INVALID_INPUT/NOT_FOUND/IO_FAILED）。
- *   · deduce             —— 确定性推演端子：openDeduceSession/presentTurn/applyDirectorAction/
- *                          settleChoice。同种子同事实包＝同一拍；返回内存会话对象，不落盘
- *                          （落盘由调用方经写通道完成）。
  *   · enrich             —— enrich 度量：derivePseudoChapters/hasRealChapters/causalSummary。
  *                          纯函数，不落盘。
  *   · projectMeta        —— `.pinax/project.json` 合同：readProjectDocument（只读）/
@@ -70,7 +70,6 @@ import * as factGuardProtocol from './factGuard.mjs'
  */
 export const fact = Object.freeze({
   factStore: pinaxAdapter.factStore,
-  deduce: pinaxAdapter.deduce,
   enrich: pinaxAdapter.enrich,
   projectMeta: pinaxAdapter.projectMeta,
   projectImport: pinaxAdapter.projectImport,

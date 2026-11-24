@@ -1,9 +1,8 @@
 /** 结算落库（M1-a）：作者选择 → 事件条目（plot）＋知情增量＋假设轨；导演三动作。
  * 事件带 runId/pov/fate|author provenance（成书渲染与「命运之笔/作者之笔」的数据地基）。 */
-import { FACT_SCHEMA } from '../../domain/vocabulary.js'
-import { stableEntryId } from '../../domain/stableId.js'
-import { pushLog } from './sessionState.js'
-import { advanceFront } from './fronts.js'
+import { FACT_SCHEMA, stableEntryId } from '../../../protocol/factDomain.mjs'
+import { pushLog } from './sessionState.mjs'
+import { advanceFront } from './fronts.mjs'
 
 function trunc(text, n) {
   const s = String(text ?? '')

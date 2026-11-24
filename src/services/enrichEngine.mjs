@@ -24,7 +24,7 @@ import { fact } from '../protocol/index.mjs' // OS-142：内核能力经 Host AP
 import { recordChange } from '../protocol/changelog.mjs'
 import { LOG_MODULES } from '../protocol/naming.mjs' // OS-148：日志模块名只从命名表取
 
-const { factStore, enrich } = fact // OS-125 五组出口的 fact 存储协议＋enrich 度量（经协议层转出，实现不换）
+const { factStore, enrich } = fact // OS-125 出口组的 fact 存储协议＋enrich 度量（经协议层转出，实现不换）
 
 const TRACE_HEADER = [
   '推理纪律：',

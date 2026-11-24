@@ -35,16 +35,16 @@
 | L7 前端 | `public/`（含 `views/`） | 19 | 20,838 |
 | L6 契约层 | `src/api/contracts/` | 8 | 1,391 |
 | L5 宿主层 | `src/host/` | 5 | 1,663 |
-| L4 自持层 | `src/{modules,services,protocol}/` | 56 | 13,145 |
-| L3 内核进口 | `src/kernel/` | 9 | 1,141 |
-| L2 内核 | `core/pinax/` | 22 | 3,980 |
+| L4 自持层 | `src/{modules,services,protocol}/` | 66 | 14,462 |
+| L3 内核进口 | `src/kernel/` | 9 | 1,139 |
+| L2 内核 | `core/pinax/` | 13 | 2,550 |
 | L1 磁盘库 | 库＝文件夹（无代码） | — | — |
 
 | 附加指标 | 实测 |
 |---|---:|
 | `public/app.js` 行数 | 12,466 |
 | 契约端点数（`method:` 计数） | 101 |
-| 测试文件数（`test/*.test.mjs`） | 68 |
+| 测试文件数（`test/*.test.mjs`） | 69 |
 <!-- arch-stats:end -->
 
 ```
@@ -123,8 +123,8 @@ OS-123/124 解耦后，建库/导入/章节号解析全部自持，不再 vendor
 | 组 | 模块 |
 |---|---|
 | 建库与导入（OS-123/124 fork 点，src/modules/library/） | projectDoc（建库＋project.json 合同） / importAdapter（整目录导入） / textUtil（章节号＋世界书契约判定） / libraryManage |
-| fact 消费与校验 | enrichEngine（语义富化 6 窗，src/services/） / factGuard（src/protocol/） / deduceEngine（推演核封装，src/modules/deduce/） / deduceSession（多局会话容器） / deduceNarrative / dependencyGraph（因果依赖图，src/protocol/） / syncCheck（正文↔拆解一致性，src/services/） |
-| 协议层（OS-142 起为显式 Host API：`src/protocol/index.mjs` 入口＋叶子件，能力清单与版本约定见 [src/protocol/README.md](./src/protocol/README.md)） | index（host-api@1 入口：fact/prose/changelog/jobs/events/plugins/guard 七命名空间，全部冻结对象；键清单快照由 test/hostApi.test.mjs 钉死） / chapters（正文读写协议） / chapterWrite（正文写备份＋.history 保留策略） / changelog（diff＋月度 jsonl） / versionGate（插件版本闸） / plugins（三货架只读聚合） / dependencyGraph（套件依赖闭包） / agentEvents（AG-UI canonical 事件＋SSE 投影） / factGuard（FACT-FIRST 守卫） / libState（库内状态与草稿） / hostWrite（OS-138 宿主写协议唯一入口——原子写收敛，内联 tmp＋rename 全归一处） ＋转供叶子 kernelPlumber / authorize / apiErrors / upstream / worldbookContract（OS-142：把 fork 点 plumber、路径授权、错误码、上游模型通道、世界书契约按原名转供给模块层） |
+| fact 消费与校验 | enrichEngine（语义富化 6 窗，src/services/） / factGuard（src/protocol/） / deduceEngine（推演核封装，src/modules/deduce/） / **engine/（OS-155 自 core 归位的确定性推演链 8 件：opening/turn/settle/candidates/fronts/patchChannel/sceneContext/sessionState＋出口 index.mjs——推演是产品引擎，不是内核能力）** / deduceSession（多局会话容器） / deduceNarrative / dependencyGraph（因果依赖图，src/protocol/） / syncCheck（正文↔拆解一致性，src/services/） |
+| 协议层（OS-142 起为显式 Host API：`src/protocol/index.mjs` 入口＋叶子件，能力清单与版本约定见 [src/protocol/README.md](./src/protocol/README.md)） | index（host-api@2 入口：fact/prose/changelog/jobs/events/plugins/guard 七命名空间，全部冻结对象；键清单快照由 test/hostApi.test.mjs 钉死） / chapters（正文读写协议） / chapterWrite（正文写备份＋.history 保留策略） / changelog（diff＋月度 jsonl） / versionGate（插件版本闸） / plugins（三货架只读聚合） / dependencyGraph（套件依赖闭包） / agentEvents（AG-UI canonical 事件＋SSE 投影） / factGuard（FACT-FIRST 守卫） / libState（库内状态与草稿） / hostWrite（OS-138 宿主写协议唯一入口——原子写收敛，内联 tmp＋rename 全归一处） ＋转供叶子 kernelPlumber / authorize / apiErrors / upstream / worldbookContract（OS-142：把 fork 点 plumber、路径授权、错误码、上游模型通道、世界书契约按原名转供给模块层）/ **factDomain（OS-155：fact 域原语＋factPack 的只 re-export，给推演引擎——模块不许直引 src/kernel/）** |
 | 参考/世界书 | referenceStore（标签/双链/图谱，src/modules/worldbook/） |
 | Agent | agentStore（src/modules/agentbar/） / agentEvents（AG-UI canonical 事件模型＋SSE 投影，src/protocol/） / roleplayEngine / roleplayPrompts（后两者 src/modules/roleplay/） |
 | 插件货架（src/services/，数据目录仍在仓根 suites//styles//runtimes//genres//skills/） | suites / skills / runtimes / genres / stylePacks |
@@ -156,17 +156,17 @@ OS-123/124 解耦后，建库/导入/章节号解析全部自持，不再 vendor
 - **边界**（OS-142 升格为路径规则）：`src/modules/**` 只准引三类——node 内置模块
   （`node:` 前缀）、`src/protocol/**`（Host API：index.mjs 七命名空间＋叶子件）、自己模块
   目录内文件；模块间禁止直接 import（门禁 S2.1，静态 from 与动态 import() 都扫）。
-  内核能力只从协议层 `fact` 命名空间取（经 L3 五组出口转出，模块层不再直引 pinaxAdapter）；
+  内核能力只从协议层 `fact` 命名空间取（经 L3 四组出口转出，模块层不再直引 pinaxAdapter）；
   **插件只准 import `src/protocol/index.mjs`**。豁免唯一且显式点名：
   roleplayEngine→public/analysis.mjs（纯函数 AI 味分析，台账见 src/protocol/README.md）。
 
 ### L3 src/kernel/pinaxAdapter.mjs（内核唯一进口）
 
 - **职责**（OS-125 解耦③）：src/ 树＋仓根垫片里唯一允许 import `core/**` 的模块（门禁 S2.4
-  扫描 `src/` 全部模块＋两个垫片）。**五能力组出口**：
-  `factStore`（S1 只读 list/get ＋ S2 writeFactFile 写协议）、`deduce`（opening/turn/settle
-  端子）、`enrich`（伪章推导＋因果图三指标）、`projectMeta`（转引本仓 projectDoc）、
-  `projectImport`（转引本仓 importAdapter/textUtil）；后两组是自有能力的统一出口。
+  扫描 `src/` 全部模块＋两个垫片）。**四能力组出口**（OS-155 起；`deduce` 已随推演链归模块退出）：
+  `factStore`（S1 只读 list/get ＋ S2 writeFactFile 写协议）、`enrich`（伪章推导＋因果图三指标）、
+  `projectMeta`（转引本仓 projectDoc）、`projectImport`（转引本仓 importAdapter/textUtil）；
+  后两组是自有能力的统一出口。
   另有最小补集 plumber（`ok`/`fail`/`writeFileAtomic`）仅限 projectDoc/importAdapter
   两个既有 fork 点使用；OS-138 写通道收敛起 hostWrite.mjs（全仓唯一写入口）也取
   `writeFileAtomic`/`TMP_PREFIX`/`syncDirectory`，同属最小补集口径。
@@ -185,8 +185,13 @@ OS-123/124 解耦后，建库/导入/章节号解析全部自持，不再 vendor
   `src/kernel/enrich/`，core 两件**当场删除**（core 24 → 22 文件，指纹锚同步除名）。伪章公式按
   设计稿 §9-6 合并为一份：`fact/wikiDerive.mjs` 改引 `enrich/pseudoChapters.mjs`，原导出名
   （`plotMinSegment`/`pseudoChapterCount`/`derivePseudoChapters`/`hasRealChapters`）原样再转出。
-  `wikiDerive`/`factPack` 的 core 原件保留（仍有 core 侧消费者 `factFileStore`／`deduce/sceneContext`），
-  src 侧本批暂无消费方——OS-155/156 接推演、store 时再改指。
+  `wikiDerive`/`factPack` 的 core 原件：`wikiDerive` 仍保留（core 侧 `factFileStore` 用），
+  `factPack.js` 随 OS-155 推演链搬家删除（最后一个 core 消费者 `deduce/sceneContext` 已迁）。
+  **OS-155 推演链归位**：8 件 `next/fact/usecases/deduce/*.js` → `src/modules/deduce/engine/*.mjs`
+  （逻辑逐字未改，fact 域原语与 `factPack` 改经协议层 `src/protocol/factDomain.mjs` 取）；
+  `fact.deduce` 退出 Host API（**host-api@2**），`deduceEngine.mjs` 改引模块内 `./engine/index.mjs`。
+  core **22 → 13 文件**（指纹锚同步除名 9 项）。llmPort 的规范/兼容两种形态与坏形状降级口径
+  见 [docs/deduce-llm-port.md](./docs/deduce-llm-port.md)（封装层 `normalizeLlmPort` 做形状校验）。
 - **消费方**（OS-142 后 import 本文件的）：API/宿主层 api/handlers/fact、
   api/handlers/reference、services/systemPrompt（OS-142 未约束的面，直引保留）＋协议层转供面
   protocol/index、protocol/chapters、protocol/factGuard（S2.4 的 KERNEL_GATEWAY_ALLOW 显式豁免清单；
@@ -196,8 +201,8 @@ OS-123/124 解耦后，建库/导入/章节号解析全部自持，不再 vendor
 - **不在管辖**：worldbook 格式契约（vendor/contracts/worldbookFileContract.js）是格式契约面，
   OS-142 起模块层经 src/protocol/worldbookContract.mjs 转供取用（护栏测试仍直引 vendor 本体），
   不经 adapter（解耦规划 §4「不动」）。
-- **边界**：内核换版本/换实现只改这一个文件；新模块一律走协议层 fact 命名空间（即五组出口），
-  不得绕行。
+- **边界**：内核换版本/换实现只改这一个文件；新模块一律走协议层 fact 命名空间（即四组出口），
+  不得绕行。推演端子不在本文件——它属扮演模块（`src/modules/deduce/engine/`）。
 
 ### L2 core/pinax（fact 链底座，逐字 vendor）
 
@@ -206,12 +211,13 @@ OS-123/124 解耦后，建库/导入/章节号解析全部自持，不再 vendor
 | 能力 | 文件 |
 |---|---|
 | 存储协议 | `next/kernel/factFileStore.mjs`（真源 `<库>/拆解/<id>.json`，`fact.data/v3`，revision＋operationId 幂等＋expectedRevision 乐观并发）、`next/kernel/errors.mjs`、`next/fs/atomicWrite.mjs`（被引方：`electron/projects/fsDurability.mjs` 的 fsync 耐久化链） |
-| 推演端子 | `next/fact/usecases/deduce/`（opening/turn/settle/candidates/fronts/patchChannel/sceneContext/sessionState）＋ `next/fact/usecases/factPack.js` |
-| enrich 度量 | —（OS-154 已转自有 `src/kernel/enrich/`，core 原件删除） |
 | 领域词表 | `next/fact/domain/`（aliases/pediaSchema/perspective/schema/stableId/status/validity/vocabulary）＋ `next/kernel/wikiDerive.mjs` |
+| 推演端子 | **已退出（OS-155）**——8 件迁 `src/modules/deduce/engine/`，`factPack.js` 一并删除；core 不再有推演链 |
+| enrich 度量 | —（OS-154 已转自有 `src/kernel/enrich/`，core 原件删除） |
 
 - **OS-154 自持副本**：`wikiDerive`/`factPack` 已在 `src/kernel/fact/` 有逐字副本
-  （`factPack` 扩展名 `.mjs`），core 原件保留到 OS-156（core 侧消费者未搬）。现存 vendor 22 件。
+  （`factPack` 扩展名 `.mjs`）；`factPack` 的 core 原件随 OS-155 删除，`wikiDerive` 仍保留到 OS-156。
+  **现存 vendor 13 件**（OS-155：22 → 13，推演 8 件＋`factPack.js` 除名）。
 - **出处与漂移**：`core/VENDORED.md`（映射＋解耦史）；sha256 指纹锚
   `core/.vendored-manifest.json`（双段：pinaxNext＋pinaxCore，逐文件），
   `npm run vendor:check` 逐文件比对。
@@ -245,14 +251,15 @@ OS-123/124 解耦后，建库/导入/章节号解析全部自持，不再 vendor
 1. **`npm run vendor:check`**（`scripts/vendor-drift.mjs check`）——先分清现状：
    `[本仓被改]`＝红线被踩，先回滚本仓改动；`[上游已变]`＝上游在锚 `70a4f44`/`e56a0bc`
    之后动过，逐文件评估要不要跟；`[上游已移位]`＝信息级（上游没这文件，本仓有意保留）。
-2. **看 pinaxAdapter.mjs**——消费面只有五组出口＋plumber。上游改了什么能力，先落到
-   `factStore/deduce/enrich/projectMeta/projectImport` 五组里评估波及面（消费方只有上面点名的那几个），
-   破坏性变更在 adapter 内消化，不让消费方跟着改。
-3. **重 vendor**：改上游 → 重跑 `scripts/vendor-deduce.mjs`（`core/pinax/next/fact/**`
-   递归闭包）／重收编 `vendor/contracts/` → `node scripts/vendor-drift.mjs snapshot`
+2. **看 pinaxAdapter.mjs**——消费面只有四组出口＋plumber。上游改了什么能力，先落到
+   `factStore/enrich/projectMeta/projectImport` 四组里评估波及面（消费方只有上面点名的那几个），
+   破坏性变更在 adapter 内消化，不让消费方跟着改。推演端子不在其中（OS-155 起属扮演模块）。
+3. **重 vendor**：改上游 → 重收编 `vendor/contracts/` → `node scripts/vendor-drift.mjs snapshot`
    重建指纹锚 → 全量测试＋门禁。
    **不要跑 `scripts/vendor-core.mjs`**——其 SEEDS 表已随 OS-123/124 删除面过时，
    重跑会把已删层拉回仓（VENDORED.md OS-124 节）。
+   **也不要跑 `scripts/vendor-deduce.mjs`**——推演 8 件＋`factPack.js` 已随 OS-155 迁出自持
+   （`src/modules/deduce/engine/`），SEEDS 表同样过时，重跑会把迁移面拉回 core。
 
 ## 跨层红线
 

@@ -16,9 +16,9 @@
  *   3) **满格＝触发，不是静默**：满了要给出可观察的世界动作（trigger text），
  *      由调用方决定接进候选还是直接落一条必然事件；引擎不替作者写剧情。
  *
- * 纯函数、零宿主依赖：只 import fact 域内相对路径，不碰 node 内置 / process / 文件系统。
+ * 纯函数、零宿主依赖：只 import 协议层 factDomain 转供面（fact 域原语），不碰 node 内置 / process / 文件系统。
  */
-import { sha1Hex } from '../../domain/stableId.js'
+import { sha1Hex } from '../../../protocol/factDomain.mjs'
 
 export const FRONTS_VERSION = 'fronts-clock@1'
 

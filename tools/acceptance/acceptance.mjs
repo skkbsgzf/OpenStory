@@ -226,7 +226,10 @@ const isProtocolPath = (rel) => rel.startsWith('src/protocol/') || rel === 'src/
 const KERNEL_ALLOW = new Set([
   // OS-79：deduceNarrative 是推演引擎的内部子模块（只做叙事上下文拼装，纯函数），
   // 不是平等功能模块——引擎引它属于内部组合，不是跨模块耦合（OS-142 起同属新口径③）。
-  'src/modules/deduce/deduceEngine.mjs -> src/modules/deduce/deduceNarrative.mjs'
+  'src/modules/deduce/deduceEngine.mjs -> src/modules/deduce/deduceNarrative.mjs',
+  // OS-155：推演链归扮演模块后，engine/index.mjs 是同一模块目录内的出口（八个引擎件的
+  // 组合面）——deduceEngine 引它同属模块内部组合（新口径③已放行；此处让旧口径②同口径）。
+  'src/modules/deduce/deduceEngine.mjs -> src/modules/deduce/engine/index.mjs'
 ])
 const MODULES = [
   'src/modules/deduce/deduceEngine.mjs', 'src/modules/deduce/deduceSession.mjs', 'src/modules/worldbook/referenceStore.mjs', 'src/services/enrichEngine.mjs',

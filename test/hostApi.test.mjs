@@ -5,7 +5,7 @@
  *
  * 键清单快照的约定：index.mjs 增删任何命名空间成员，本文件的 SNAPSHOT 必须同步改——
  * 改快照这个动作本身就是「显式确认」；破坏性变更（删成员/改签名）还要升 HOST_API_VERSION
- * 到 host-api@2（见 src/protocol/README.md 版本约定）。
+ * （现行 host-api@2，OS-155 因删除 fact.deduce 升版；见 src/protocol/README.md 版本约定）。
  *
  * 装载序说明：本文件先 import index.mjs（index→pinaxAdapter→library fork 点方向）；
  * 反方向（fork 点先装）用子进程单独起一趟——node --test 每个文件各起一个进程，同进程内
@@ -31,8 +31,8 @@ import {
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 
-test('HOST_API_VERSION 是字面量 host-api@1', () => {
-  assert.equal(HOST_API_VERSION, 'host-api@1')
+test('HOST_API_VERSION 是字面量 host-api@2', () => {
+  assert.equal(HOST_API_VERSION, 'host-api@2')
   assert.equal(typeof HOST_API_VERSION, 'string')
 })
 
@@ -46,9 +46,9 @@ test('七个能力命名空间全部导出且为冻结对象', () => {
   }
 })
 
-/* 键清单快照（2026-11-23 OS-142 建档，键序为字母序）。增删 index.mjs 的命名空间成员必须同步改这里。 */
+/* 键清单快照（2026-11-23 OS-142 建档，键序为字母序；OS-155 升 host-api@2 删除 fact.deduce）。增删 index.mjs 的命名空间成员必须同步改这里。 */
 const SNAPSHOT = {
-  fact: ['deduce', 'enrich', 'factStore', 'fail', 'ok', 'projectImport', 'projectMeta', 'writeFileAtomic'],
+  fact: ['enrich', 'factStore', 'fail', 'ok', 'projectImport', 'projectMeta', 'writeFileAtomic'],
   prose: ['HISTORY_KEEP_DEFAULT', 'chapterFileName', 'createChapter', 'deleteChapter', 'historyBackupPath', 'listChapters', 'mapWriteErrorCode', 'moduleOfPath', 'nextChapterNumber', 'parseChapterName', 'pruneHistoryBackups', 'renameChapter', 'resolveHistoryKeepPerFile', 'sanitizeChapterTitle', 'writeChapterWithBackup'],
   changelog: ['LOG_DIR', 'contentHash', 'findRestoreCandidate', 'hasLog', 'logFilePath', 'logSummary', 'readChange', 'readLatestByFile', 'readLog', 'recordChange', 'safeModuleName', 'unifiedDiff'],
   jobs: ['activeCount', 'cancelJob', 'clearSettled', 'getJob', 'listJobs', 'submitJob', 'subscribe'],
@@ -71,20 +71,22 @@ test('快照覆盖全部命名空间（快照本身不许漏命名空间）', ()
   assert.deepEqual(Object.keys(SNAPSHOT).sort(), Object.keys(NAMESPACES).sort())
 })
 
-test('fact 命名空间与 pinaxAdapter 五组出口同源（转出不换实现）', async () => {
+test('fact 命名空间与 pinaxAdapter 四组出口同源（转出不换实现；OS-155 起推演端子不在其中）', async () => {
   const adapter = await import('../src/kernel/pinaxAdapter.mjs')
   assert.equal(fact.factStore, adapter.factStore)
-  assert.equal(fact.deduce, adapter.deduce)
   assert.equal(fact.enrich, adapter.enrich)
   assert.equal(fact.projectMeta, adapter.projectMeta)
   assert.equal(fact.projectImport, adapter.projectImport)
   assert.equal(fact.ok, adapter.ok)
   assert.equal(fact.fail, adapter.fail)
   assert.equal(fact.writeFileAtomic, adapter.writeFileAtomic)
+  // OS-155：推演端子已归扮演模块，Host API 不再转出
+  assert.equal('deduce' in fact, false)
+  assert.equal('deduce' in adapter, false)
 })
 
 test('冻结是真冻结：改写命名空间成员静默失效（严格模式抛错）', () => {
-  assert.throws(() => { ' infect' && (fact.deduce = null) }, TypeError)
+  assert.throws(() => { ' infect' && (fact.factStore = null) }, TypeError)
   assert.throws(() => { jobs.submitJob = () => {} }, TypeError)
   assert.throws(() => { prose.HISTORY_KEEP_DEFAULT = 0 }, TypeError)
 })
@@ -94,7 +96,7 @@ test('反方向装载序冒烟：library fork 点先于 index 装载（子进程
 import assert from 'node:assert/strict'
 const projectDoc = await import(${JSON.stringify(pathToFileURL(join(ROOT, 'src/modules/library/projectDoc.mjs')).href)})
 const mod = await import(${JSON.stringify(pathToFileURL(join(ROOT, 'src/protocol/index.mjs')).href)})
-assert.equal(mod.HOST_API_VERSION, 'host-api@1')
+assert.equal(mod.HOST_API_VERSION, 'host-api@2')
 for (const name of ['fact', 'prose', 'changelog', 'jobs', 'events', 'plugins', 'guard']) {
   assert.equal(Object.isFrozen(mod[name]), true, name)
 }

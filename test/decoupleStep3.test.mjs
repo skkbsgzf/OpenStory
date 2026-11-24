@@ -5,7 +5,9 @@
  *     （静态 from ＋动态 import()）的只剩 src/kernel/pinaxAdapter.mjs——
  *     与门禁 S2.4（tools/acceptance/acceptance.mjs）同口径，这里锁测试侧副本
  *     （OS-140 起扫描范围随布局归一改为 src/ 树）；
- *   · 五组能力出口形状锁：factStore/deduce/enrich/projectMeta/projectImport 成员一个不差；
+ *   · 四组能力出口形状锁：factStore/enrich/projectMeta/projectImport 成员一个不差
+ *     （OS-155 起 `deduce` 已退出——推演端子归扮演模块，形状锁移到
+ *     `src/modules/deduce/engine/index.mjs`，见本文件同名用例）；
  *   · 每组真跑一条行为冒烟（内核端子真实调用，不是只验 typeof）；
  *   · plumber 转供锁：ok/fail/writeFileAtomic 经 adapter 转供 projectDoc/importAdapter，
  *     fail 的错误码映射（PINAX_* 字符串）是与内核共见的契约，锁死。
@@ -23,7 +25,8 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { factStore, deduce, enrich, projectMeta, projectImport, ok, fail, writeFileAtomic } from '../src/kernel/pinaxAdapter.mjs'
+import { factStore, enrich, projectMeta, projectImport, ok, fail, writeFileAtomic } from '../src/kernel/pinaxAdapter.mjs'
+import * as deduceEngine from '../src/modules/deduce/engine/index.mjs'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 
@@ -57,14 +60,21 @@ test('全仓唯一进口：src/ 模块里 import core/** 的只有 src/kernel/pi
   assert.match(adapterSrc, /from '\.\.\/\.\.\/core\/pinax\/next\/kernel\/factFileStore\.mjs'/)
 })
 
-test('五组能力出口形状锁（成员与顺序都是接触面契约）', () => {
+test('四组能力出口形状锁（成员与顺序都是接触面契约）', () => {
   assert.deepEqual([...Object.keys(factStore)], ['createFactFileStore', 'writeFactFile', 'readFactWiki', 'FACT_DIR_NAME'])
-  assert.deepEqual([...Object.keys(deduce)], ['openDeduceSession', 'presentTurn', 'applyDirectorAction', 'settleChoice'])
   assert.deepEqual([...Object.keys(enrich)], ['derivePseudoChapters', 'hasRealChapters', 'causalSummary'])
   assert.deepEqual([...Object.keys(projectMeta)], ['readProjectDocument', 'writeProjectDocument', 'nextCarriers', 'validateProjectDocument'])
   assert.deepEqual([...Object.keys(projectImport)], ['planImport', 'runImport', 'parseChapterNumber'])
-  // 五组对象冻结：消费方不许（也不能）往出口上挂私货
-  for (const group of [factStore, deduce, enrich, projectMeta, projectImport]) assert.equal(Object.isFrozen(group), true)
+  // 四组对象冻结：消费方不许（也不能）往出口上挂私货
+  for (const group of [factStore, enrich, projectMeta, projectImport]) assert.equal(Object.isFrozen(group), true)
+})
+
+test('推演端子形状锁（OS-155 归扮演模块：四端子名字一字不改，模块命名空间不可改写）', () => {
+  assert.deepEqual(Object.keys(deduceEngine), ['applyDirectorAction', 'openDeduceSession', 'presentTurn', 'settleChoice'])
+  for (const name of Object.keys(deduceEngine)) assert.equal(typeof deduceEngine[name], 'function', name)
+  // 模块命名空间：sealed（可读不可增删），严格模式下改写抛 TypeError——与冻结对象同等不可篡改
+  assert.equal(Object.isSealed(deduceEngine), true)
+  assert.throws(() => { deduceEngine.presentTurn = null }, TypeError)
 })
 
 test('factStore 冒烟：FACT_DIR_NAME 口径不变＋list 真读内核', async () => {
@@ -80,8 +90,8 @@ test('factStore 冒烟：FACT_DIR_NAME 口径不变＋list 真读内核', async 
 })
 
 test('deduce 冒烟：空世界书如实拒开局（WORLD_EMPTY）＋最小世界书能开局', () => {
-  assert.throws(() => deduce.openDeduceSession({ entries: [] }), (error) => error.code === 'WORLD_EMPTY')
-  const opened = deduce.openDeduceSession({
+  assert.throws(() => deduceEngine.openDeduceSession({ entries: [] }), (error) => error.code === 'WORLD_EMPTY')
+  const opened = deduceEngine.openDeduceSession({
     entries: [
       { id: 'w1', layer: 'worldview', status: 'adopted', name: '世界', content: '…' },
       { id: 'c1', layer: 'character', status: 'adopted', name: '我', content: '…' }

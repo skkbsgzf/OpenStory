@@ -1,7 +1,8 @@
-# src/protocol —— Host API（host-api@1）
+# src/protocol —— Host API（host-api@2）
 
 协议层是宿主能力的**唯一对外表面**：一个显式入口（`index.mjs`）＋一组叶子协议件。
-版本字面量 `host-api@1`（`src/protocol/index.mjs` 的 `HOST_API_VERSION`）。
+版本字面量 `host-api@2`（`src/protocol/index.mjs` 的 `HOST_API_VERSION`；`@2` ＝ OS-155 删除
+`fact.deduce`——推演端子归扮演模块，协议层不依赖产品模块）。
 
 ## 谁准 import 什么
 
@@ -16,7 +17,7 @@
 
 | 命名空间 | 来源 | 能力 | 落盘 |
 |---|---|---|---|
-| `fact` | kernel/pinaxAdapter 五组出口＋plumber | factStore（fact 存储）、deduce（推演端子）、enrich（度量）、projectMeta（project.json 合同）、projectImport（整目录导入）、ok/fail、writeFileAtomic | writeFactFile/writeProjectDocument/runImport/writeFileAtomic 落盘（原子写＋.history）；读全部只读 |
+| `fact` | kernel/pinaxAdapter 四组出口＋plumber | factStore（fact 存储）、enrich（度量）、projectMeta（project.json 合同）、projectImport（整目录导入）、ok/fail、writeFileAtomic。**推演端子不在其中**（OS-155 起归 `src/modules/deduce/engine/`） | writeFactFile/writeProjectDocument/runImport/writeFileAtomic 落盘（原子写＋.history）；读全部只读 |
 | `prose` | chapters.mjs＋chapterWrite.mjs | 正文 `NNN-标题.md` 协议：list/create/rename/delete＋writeChapterWithBackup＋.history 保留策略 | create/rename/delete/write 落盘；.history 备份；changelog 留痕 |
 | `changelog` | changelog.mjs | 库内唯一修改留痕通道：recordChange＋readLog/readChange 等（diff＋月度 jsonl） | recordChange 落盘 `.pinax/log/<模块>/<yyyy-mm>.jsonl`；读只读 |
 | `jobs` | services/jobCenter.mjs | 任务中心：submit/get/list/cancel/clearSettled/activeCount/subscribe | **不落盘**（进程内，重启即清） |
@@ -37,13 +38,14 @@
 | `modules.mjs` | 模块插件（OS-144）：manifest 装载/形状校验、端点归属 `MODULE_ENDPOINT_OWNERS`、启停唯一入口 `isModuleEnabled` / `isModuleDisabledFor`（ui-state `modules.enabled.<id>`） | daemon 路由停用闸、MCP 分析工具、API handler（扮演 AI 味闸） |
 | `naming.mjs` | 五层命名单一真源（OS-148）：`NAMING_TABLE` / `LOG_MODULES` / `namingEntry` / `logModuleForDir`（目录→日志模块名）/ `PAGE_TO_DIR_LOCAL`（页签名→目录名，OS-150a 起 genres 也走这里），**从 `public/views/registry.mjs` 原样 re-export** | 写通道（chapterWrite 的 moduleOfPath）、各模块写日志取 `LOG_MODULES`、推演会话目录名、体裁裁剪（genres.excludedDirNames） |
 | `chapters.mjs` 等 | 各协议件本体（index.mjs 聚合它们的导出） | 协议层内部与 API/宿主层 |
+| `factDomain.mjs` | fact 域原语＋`buildFactPack` 的**只 re-export** 转供面（实现真源 `src/kernel/fact/domain/index.mjs`／`src/kernel/fact/factPack.mjs`） | 推演引擎（`src/modules/deduce/engine/`）——模块不许直引 `src/kernel/**`（S2.1），这是唯一不开口子的取数路径（OS-155） |
 
 ## 版本约定
 
-- **只有破坏性变更才升 `host-api@2`**：删除命名空间成员、改函数签名、改语义、改错误码词表。
-- 纯增量（新命名空间成员）留在 `@1` 内，但必须同批改两处：`test/hostApi.test.mjs` 的
+- **只有破坏性变更才升版**（`host-api@1` → `host-api@2`）：删除命名空间成员、改函数签名、改语义、改错误码词表。现行版本 `host-api@2`。
+- 纯增量（新命名空间成员）留在当前版本内，但必须同批改两处：`test/hostApi.test.mjs` 的
   键清单快照（改快照＝显式确认）＋本文件能力清单。
-- `HOST_API_VERSION` 是字面量，不许动态拼接；快照测试钉死它是 `host-api@1`。
+- `HOST_API_VERSION` 是字面量，不许动态拼接；快照测试钉死它是 `host-api@2`。
 
 ## 豁免台账（门禁显式点名，不许静默放过）
 

@@ -59,10 +59,13 @@ node tools/acceptance/acceptance.mjs --json tools/acceptance/out/report-<日期>
 
 ## 白名单与豁免（改架构时同步这里）
 
-- S2.1 白名单：`src/modules/deduce/deduceSession.mjs → src/modules/deduce/deduceEngine.mjs`（会话容器引引擎＝内核依赖）；
+- S2.1 白名单（旧口径 `KERNEL_ALLOW` 内部边，新口径③「模块目录内」已直接放行，这里同口径登记）：
+  `src/modules/deduce/deduceEngine.mjs → src/modules/deduce/deduceNarrative.mjs`（叙事拼装子模块）、
+  `src/modules/deduce/deduceEngine.mjs → src/modules/deduce/engine/index.mjs`（OS-155 推演链出口）；
   `core/**` vendor 内核不算模块；`src/kernel/pinaxAdapter.mjs` 是内核唯一进口＝能力协议面（OS-125）。
 - S2.4 唯一进口：src/ 模块＋仓根两个垫片中只有 `src/kernel/pinaxAdapter.mjs` 允许 import `core/**`（静态 `from` 与动态
-  `import()` 都算；OS-140 起扫描面＝`src/` 树全部 `.mjs` ＋垫片）；内核能力只经它的五组出口（factStore/deduce/enrich/projectMeta/projectImport）。
+  `import()` 都算；OS-140 起扫描面＝`src/` 树全部 `.mjs` ＋垫片）；内核能力只经它的四组出口（factStore/enrich/projectMeta/projectImport；
+  OS-155 起 `deduce` 已退出——推演链归 `src/modules/deduce/engine/`，Host API 升 `host-api@2`）。
   `vendor/contracts`（@pinax/core 收编后的世界书契约，OS-132）与 `test/*.test.mjs` 不在扫描范围。
 - S4.2 关闭家族：模块卡 `rm-x`，整页 `page-close`。
 - S3.1 裸色值豁免：无（画布绘图用 getComputedStyle 现读令牌，见 public/graph.mjs）。

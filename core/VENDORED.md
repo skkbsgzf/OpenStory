@@ -1,9 +1,11 @@
 # VENDORED — 底座抽取层出处
 
-`core/pinax/` 下的 22 个文件**逐字 vendor** 自 [Pinax-next](https://github.com/skkbsgzf/Pinax-StoryHarness)
+`core/pinax/` 下的 13 个文件**逐字 vendor** 自 [Pinax-next](https://github.com/skkbsgzf/Pinax-StoryHarness)
 分支 `feat/pinax-electron-next`，提交 `70a4f44`（2026-11-15）。抽取方式＝递归追 import 闭包
 （`scripts/vendor-core.mjs`），内部相对 import 原样保留——**这些文件在本仓不改**；
 改动应发生在上游 Pinax-next，然后重跑 vendor 脚本同步。
+（现行 13 个：OS-154 自持 enrich 两件（24 → 22），OS-155 推演 8 件＋`factPack.js` 迁出（22 → 13）——
+后者的去向见文末 OS-155 节。）
 已自持的面（server 层／章节号与导入、建库）见下方 OS-123／OS-124 两节——那些文件删了就删了，
 不要用 vendor 脚本拉回。
 
@@ -80,8 +82,8 @@ capabilityGraph/projectSkeleton/pluginLoader/declarativeImpl（14 文件）、`c
 
 | 本仓 | 上游 |
 |---|---|
-| `core/pinax/next/fact/usecases/deduce/**` | 推演链：turn / candidates / settle / opening / sessionState |
-| `core/pinax/next/fact/usecases/factPack.js` | 事实包投影（局面卡与候选的数据源） |
+| `core/pinax/next/fact/usecases/deduce/**` | 推演链：turn / candidates / settle / opening / sessionState（**OS-155 已迁出 core → `src/modules/deduce/engine/`**） |
+| `core/pinax/next/fact/usecases/factPack.js` | 事实包投影（局面卡与候选的数据源；**OS-155 已从 core 删除**，实现真源 `src/kernel/fact/factPack.mjs`） |
 | `core/pinax/next/fact/domain/**` | aliases / stableId / vocabulary / validity / pediaSchema |
 
 同步方式：改上游 → 重跑 `scripts/vendor-deduce.mjs`（递归闭包，零外部依赖）。
@@ -163,3 +165,18 @@ OS-FACT 批次（be71a12）入库，上游全历史（`git log --all` 该路径�
 core 原件保留——它们仍有 core 侧消费者（`next/kernel/factFileStore.mjs`、`deduce/sceneContext.js`），
 core 侧删除是 OS-156。同时按设计稿 §9-6 合并伪章公式：`src/kernel/fact/wikiDerive.mjs` 改引
 `src/kernel/enrich/pseudoChapters.mjs`，导出名不变。
+
+## OS-155 段 B 第 4 步：推演链归模块，core 9 件删除（22 → 13）
+
+推演链判为**产品引擎**（产生会话状态与新条目，不是只读派生），不留在内核：
+
+- 8 件 `core/pinax/next/fact/usecases/deduce/{opening,turn,settle,candidates,fronts,patchChannel,sceneContext,sessionState}.js`
+  → `src/modules/deduce/engine/<同名>.mjs`（扩展名 `.js`→`.mjs`；逻辑逐字未改，仅 import 重指向：
+  fact 域原语与 `factPack` 改从协议层 `src/protocol/factDomain.mjs` 取）。
+- `core/pinax/next/fact/usecases/factPack.js` → 已在 OS-154 复制为 `src/kernel/fact/factPack.mjs`；
+  最后一个 core 侧消费者 `deduce/sceneContext.js` 随本次搬家消失，本批删除该原件。
+- 计数：core 22 → **13**；`core/.vendored-manifest.json` 同步除名 9 项（pinaxNext 段 13 文件）。
+- Host API 随之升 `host-api@2`（删 `fact.deduce`——协议层不依赖产品模块）；推演消费方
+  `src/modules/deduce/deduceEngine.mjs` 改引模块内 `./engine/index.mjs`（S2.1 ③ 模块内组合）。
+- 上游出处不变（同提交 `70a4f44` 同名文件）。`scripts/vendor-deduce.mjs` 的 SEEDS 表已随本次
+  删除面过时——**不要重跑**（会把已迁出的推演链拉回 core）。

@@ -13,16 +13,17 @@ OS-127 进程治理：单实例锁＋stamp＋generation＋`/api/health`）
 全部经契约层（`src/api/contracts.mjs` 聚合 `src/api/contracts/` 七域分片，101 端点）分派；
 MCP 对外 24 工具（`src/host/mcp.mjs`，仓根 `mcp.mjs` 只是垫片；stdio 独立进程，数据操作走 daemon HTTP 薄适配）。
 七层实测分层见 [ARCHITECTURE.md](./ARCHITECTURE.md)（L7 前端→L6 契约→L5 daemon→
-L4 自持层→L3 pinaxAdapter→L2 core/pinax 22 文件→L1 磁盘库）。
+L4 自持层→L3 pinaxAdapter→L2 core/pinax 13 文件→L1 磁盘库）。
 
 ## 硬规则（违反＝白干）
 
-1. **内核 vendor 禁改**：`core/pinax/**`（22 文件 fact 链，逐字 vendor 自 Pinax-next@70a4f44）
+1. **内核 vendor 禁改**：`core/pinax/**`（13 文件 fact 链，逐字 vendor 自 Pinax-next@70a4f44）
    与 `vendor/contracts/**`（OS-132 收编自 @pinax/core 0.16.0）内容一个字节不许动（见
    `core/VENDORED.md`）。改动发生在上游再同步；漂移检测：`npm run vendor:check`
    （sha256 指纹锚 `core/.vendored-manifest.json`）。**src/ 模块只有 `src/kernel/pinaxAdapter.mjs`
-   可以 import `core/**`**（仓根两个入口垫片也不许；门禁 S2.4 钉死）——内核能力一律走它的五组出口
-   （factStore/deduce/enrich/projectMeta/projectImport）。
+   可以 import `core/**`**（仓根两个入口垫片也不许；门禁 S2.4 钉死）——内核能力一律走它的四组出口
+   （factStore/enrich/projectMeta/projectImport；OS-155 起 `deduce` 已退出——推演链是产品引擎，
+   归 `src/modules/deduce/engine/`，Host API 升 `host-api@2`）。
    内核**管道件**（errors/atomicWrite/fsDurability）自 OS-152 起影子复制到 `src/kernel/` 自持，
    core 原件保留（仍供 `core/.../factFileStore.mjs` 用）；宿主写通道与 fork 点直取
    `src/kernel/` 那三件，不再经 adapter 绕道。
@@ -32,6 +33,10 @@ L4 自持层→L3 pinaxAdapter→L2 core/pinax 22 文件→L1 磁盘库）。
    内核**派生/包装件**：`wikiDerive`/`factPack` 自 OS-154 起复制到 `src/kernel/fact/`；`enrich`
    两件（pseudoChapters/metrics）已转自有 `src/kernel/enrich/` 并**从 core 删除**（24 → 22，
    清单同步除名）。伪章公式自此只有一份（`wikiDerive` 改引 `enrich/pseudoChapters`）。
+   OS-155：推演 8 件（opening/turn/settle/candidates/fronts/patchChannel/sceneContext/sessionState）
+   平移到 `src/modules/deduce/engine/`，`core/.../factPack.js` 最后消费者随之消失一并删除
+   （core **22 → 13**，清单除名 9 项）；引擎的 fact 域原语改经协议层转供叶
+   `src/protocol/factDomain.mjs` 取（模块不许直引 `src/kernel/**`）。
 2. **daemon 只监听 127.0.0.1**；凭据只存本机（agent-config.json），响应只回掩码。
 3. **参考单向性**：正文不反向进参考上下文；参考不能全量丢进 Agent 上下文。
 4. **absorb 不开 MCP**：旧目录迁入参考是显式动稿操作，只走界面按钮。
@@ -229,8 +234,9 @@ node tools/acceptance/acceptance.mjs        # ② 交付标准 S0–S4 门禁（
 - 契约层：`src/api/contracts.mjs` 聚合器 ＋ `src/api/contracts/` 七域分片（library/chapters/fact/reference/
   agent/plugins/system，101 端点）→ `src/api/handlers/` 七域 handler ＋ `src/api/registry.mjs` 注册表（OS-141，键＝endpointId）
   → `src/host/daemon.mjs` 路由分派（endpointFor → validateRequest → 取 handler → 调用）＋ 共享管线 `src/host/{http,authorize,sse}.mjs`
-- 内核进口：`src/kernel/pinaxAdapter.mjs`（唯一进口，五组能力出口）→ `core/pinax/` 22 文件 fact 链
-  （存储协议 factFileStore ／推演端子 deduce；enrich 度量 OS-154 起自持于 `src/kernel/enrich/`）＋ `vendor/contracts/worldbookFileContract.js`；
+- 内核进口：`src/kernel/pinaxAdapter.mjs`（唯一进口，四组能力出口）→ `core/pinax/` 13 文件 fact 链
+  （存储协议 factFileStore ＋ domain 8 件 ＋ wikiDerive；enrich 度量 OS-154 起自持于 `src/kernel/enrich/`，
+  推演链 OS-155 起归 `src/modules/deduce/engine/`）＋ `vendor/contracts/worldbookFileContract.js`；
   同目录自持管道件 `errors.mjs`／`atomicWrite.mjs`／`fsDurability.mjs`（OS-152 影子复制，core 原件保留）；
   出处与漂移见 `core/VENDORED.md` ＋ `npm run vendor:check`
 - 协议层（`src/protocol/`）：chapters（章节协议）/ changelog（变更日志）/ versionGate（版本闸）/
@@ -238,7 +244,9 @@ node tools/acceptance/acceptance.mjs        # ② 交付标准 S0–S4 门禁（
 - 建库/导入自持（OS-123/124 fork 点，`src/modules/library/`）：`projectDoc.mjs`（project.json 合同＋建库骨架，
   `.pinax/project.json` 格式是与 Pinax 桌面端的双向兼容契约）/ `importAdapter.mjs`（整目录导入）/
   `textUtil.mjs`（章节号＋世界书契约判定）
-- `src/modules/deduce/`：`deduceEngine.mjs`（推演核封装，端子走 pinaxAdapter）/ `deduceSession.mjs`（会话容器，推演/<bookId>/session.json）
+- `src/modules/deduce/`：`deduceEngine.mjs`（推演核封装，端子走模块内 `engine/index.mjs`）/
+  `engine/`（OS-155 自 core 平移到本模块的确定性推演链 8 件＋出口 index.mjs）/
+  `deduceSession.mjs`（会话容器，推演/<bookId>/session.json）
 - `src/modules/worldbook/referenceStore.mjs`（参考索引/图谱）· `src/services/enrichEngine.mjs`（语义富化 6 窗）· `src/protocol/factGuard.mjs`
 - 外围服务（`src/services/`）：kb*（知识库三件套）＋ embedding-server ＋ cli-bridge/dsh-cli/dsh-bridge/runtimes（模型驱动）
   ＋ stylePacks/style-check/suites/skills/genres（货架）＋ jobCenter/nativePicker/comfyEngine/syncCheck

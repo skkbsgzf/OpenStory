@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-23T03:05:49.124Z",
+  "generatedAt": "2026-11-24T04:47:13.948Z",
   "sections": {
     "pinaxNext": {
       "upstreamCommit": "70a4f44",
@@ -13,15 +13,6 @@
         "pinax/next/fact/domain/status.js": "f3ff5dc32bb1148257d7491a6bbe3001879f198650fae84b65f91ec60ee0f570",
         "pinax/next/fact/domain/validity.js": "ce85b43b274f37d8a730869cfc5c9a1e8f22ec42947954a6906cbe1388388db1",
         "pinax/next/fact/domain/vocabulary.js": "0913c738011b6af713e6176930b89082057a2a68c8fcc7355caa62768e5b0c3c",
-        "pinax/next/fact/usecases/deduce/candidates.js": "b2b4fe1ee1b9339b9ae714cb695488a48f9c3e9ae1424bb4366c0e43b36d05b0",
-        "pinax/next/fact/usecases/deduce/fronts.js": "f7ddcf0b3fa3b9d2f79ec3bff6ea234accdf08a53f222cfe7fbe4e9dadaa89f0",
-        "pinax/next/fact/usecases/deduce/opening.js": "cf98c49f37d266d9fdddfe8f88c560fd02e2fd4290f8d2027f2fd4b599bb701e",
-        "pinax/next/fact/usecases/deduce/patchChannel.js": "cc485bbebb228d1dfc2bb028ad5e5ae7b1fab6244823218e22084acd919900ac",
-        "pinax/next/fact/usecases/deduce/sceneContext.js": "5e3c0727e54ec71e55382f4d45a6d063c6ea4e843f9f5c235edfbb7e46390427",
-        "pinax/next/fact/usecases/deduce/sessionState.js": "a05aaa96b4d99eccb25718c2387a9870b19f6b3a74be55ec400ae710aa9f8119",
-        "pinax/next/fact/usecases/deduce/settle.js": "71372cbf4421c19fd008d6870ffebed2700e743a7730b85edcc0d5f151e136b5",
-        "pinax/next/fact/usecases/deduce/turn.js": "f62ff9d4fef8b29e9a9ab5a55a4ac87b3abdd11ea8141c3659b6821279ad1f5c",
-        "pinax/next/fact/usecases/factPack.js": "2241fb95608fbe0b995522bdf474e617684ff4945e65a6e39510c3095c405ca0",
         "pinax/next/fs/atomicWrite.mjs": "ed69320608cd47cf33483765676c7d73a98587ec91b0a7e7ea83bb2cd9fa0507",
         "pinax/next/kernel/errors.mjs": "56c86bee841da5012ee629b168b67c7ad164dcfa2db91d082840e11033b28e91",
         "pinax/next/kernel/factFileStore.mjs": "f0eacf9b57db79d75c51cab4ca763d6a7648cc83925b869f5d2060d0a81fe42e",
