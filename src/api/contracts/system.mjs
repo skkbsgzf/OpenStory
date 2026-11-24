@@ -243,6 +243,25 @@ export const systemEndpoints = {
     errors: ['NO_LIBRARY', 'INVALID_ENTRY', 'WRITE_PROTOCOL_IO_FAILED']
   },
 
+  uiPreferencesGet: {
+    method: 'GET',
+    path: '/api/ui-preferences',
+    // OS-158：机器级界面偏好（当前只有皮肤）——落本机院子 ui-preferences.json，不随库走、
+    // 不进浏览器存储。任何端口打开同一项目读同一份；文件缺失/坏档回空对象（前端取缺省皮肤）。
+    request: { query: {} },
+    response: { ok: 'true', preferences: 'object', path: 'string' },
+    errors: []
+  },
+
+  uiPreferencesPut: {
+    method: 'PUT',
+    path: '/api/ui-preferences',
+    // OS-158：写机器级界面偏好（皮肤）。skin 空＝清除回缺省；未知键丢弃；原子写。
+    request: { body: { skin: 'string?' } },
+    response: { ok: 'true', preferences: 'object', path: 'string' },
+    errors: ['INVALID_ENTRY', 'WRITE_PROTOCOL_IO_FAILED']
+  },
+
   healthGet: {
     method: 'GET',
     path: '/api/health',

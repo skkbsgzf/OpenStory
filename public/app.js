@@ -753,7 +753,7 @@ const DOC_PREF_DEFAULTS = { fontSize: 17, lineHeight: 1.9, paraGap: 1, indent: 2
 
 function loadDocPrefs() {
   if (state.write.docPrefs) return state.write.docPrefs
-  // OS-89：写作偏好落库内 ui-state（不用 localStorage）——换机器/清缓存后仍能复原
+  // OS-89：写作偏好落库内 ui-state——换机器/清缓存后仍能复原
   const saved = uiGet('docPrefs', {})
   state.write.docPrefs = { ...DOC_PREF_DEFAULTS, ...(saved && typeof saved === 'object' ? saved : {}) }
   return state.write.docPrefs
@@ -1189,7 +1189,7 @@ function selectionContext() {
 /**
  * 默认临时会话（OS-39）。
  * 作者口径：临时插入一个润笔或分析，应优先在一个「默认固定」的会话上完成，
- * 而不是抢占正在聊的主会话。实现＝每库记一个 tempSessionId（localStorage）：
+ * 而不是抢占正在聊的主会话。实现＝每库记一个 tempSessionId（库内 ui-state）：
  *  · 作者可在会话面板里把任意会话标成「临时」（再点一次取消）；
  *  · 没标过就自动用一条叫「临时需求」的会话（首次临时动作时自动创建）。
  */
@@ -1544,7 +1544,7 @@ function analyzeModuleById(id) {
 }
 
 /**
- * 已启用的分析模块（per-library localStorage，照 hiddenTabs 的键模式）。
+ * 已启用的分析模块（库内 ui-state，照 hiddenTabs 的键模式）。
  * 键不存在＝作者从未表态 → 只开「本章编辑总评」（保持改造前的默认体验）。
  */
 function analyzeEnabled() {
@@ -2540,8 +2540,8 @@ function newSession() {
 }
 
 /**
- * 打开库之后恢复上次会话（OS-39）：优先 localStorage 记的那条，
- * 它没了就退到服务端最新的那条（换机器/清了 localStorage 也能接上）。
+ * 打开库之后恢复上次会话（OS-39）：优先库内 ui-state 记的那条，
+ * 它没了就退到服务端最新的那条（换机器/清了浏览器缓存也能接上）。
  * 临时会话不参与恢复——那是润笔/分析的落脚点，不是作者的对话主线。
  */
 async function restoreAgentSession() {
@@ -3412,7 +3412,7 @@ const WORKBENCH_MODULES = Object.freeze([
 /* ---------- 设置 · 剧本（OS-78）：自动排版与角色配色 ---------- */
 
 /**
- * 剧本设置项（per-library localStorage，与 hiddenTabs 同 pattern）：
+ * 剧本设置项（库内 ui-state，与 hiddenTabs 同 pattern）：
  *   autoFormat   —— 自动排版（自由文本 → 规范剧本格式）
  *   castColors   —— 角色专属颜色
  */
@@ -6171,7 +6171,7 @@ function repaintRefModule(id) {
 }
 
 /**
- * 模块插拔（OS-44）：per-library localStorage，照 hiddenTabs 的模式。
+ * 模块插拔（OS-44）：库内 ui-state，照 hiddenTabs 的模式。
  * 可在设置里关掉任意模块；全关则左栏整体消失。
  */
 const MODULE_HIDE_KEY = (root) => `openstory-modules-hidden::${root || ''}`
@@ -7304,7 +7304,7 @@ async function refreshLibraries() {
  * 作者口径：「上面的这些正文/世界书/大纲/产物，它应该能删除，也应该能添加」。
  *  × ＝只把这个页签收起来，磁盘上的目录和稿子一个字节都不动；在「＋」里能再勾回来。
  *  ＋ ＝列出库里所有还没显示的目录可勾选，也能现场新建一个目录。
- * 全部是每库本机偏好（localStorage，按库路径分键），不写进 .pinax，不动任何稿子。
+ * 全部是每库本机偏好（库内 ui-state，随库走），不写进业务稿，不动任何稿子。
  */
 const TAB_HIDE_KEY = (root) => `openstory-tab-hidden::${root || ''}`
 
@@ -11183,7 +11183,7 @@ document.addEventListener('click', (event) => {
       deduceEngineTurn({ customText: customValue })
     }
   } else if (action === 'agent-collapse') {
-    // OS-103：折叠/展开 Agent 栏——状态落库内 ui-state（不用 localStorage）
+    // OS-103：折叠/展开 Agent 栏——状态落库内 ui-state
     const next = !uiGet('agentCollapsed', false)
     uiSet('agentCollapsed', next || null, { immediate: true })
     applyAgentCollapse()
@@ -11878,7 +11878,7 @@ function setSkin(id) {
   const pack = state.styles.find((item) => item.id === id)
   if (!pack) return
   applySkin(pack)
-  try { localStorage.setItem('openstory-skin', id) } catch { /* 隐私模式存不了就本次有效 */ }
+  api('/api/ui-preferences', { method: 'PUT', body: JSON.stringify({ skin: id }) }).catch(() => {}) // OS-158：皮肤落服务端，失败不影响本次生效
   // wiki 网页态的强调色跟包走，换皮即重载 iframe；设置页要刷新选中态。
   if (state.view === 'settings') render()
   // 图谱是 canvas 绘制、配色取自 CSS 变量；换皮后重挂一次才能跟上新色板
@@ -12005,7 +12005,7 @@ function removeKbCollectionRow(button) {
 async function bootStyles() {
   await loadStyles()
   let saved = ''
-  try { saved = text(localStorage.getItem('openstory-skin')) } catch { saved = '' }
+  try { saved = text((await api('/api/ui-preferences')).preferences?.skin) } catch { saved = '' }
   state.skin = saved
   applySkin(currentPack())
 }
@@ -12017,13 +12017,13 @@ async function bootStyles() {
  *   「绝对不能放在任何浏览器缓存里……关掉浏览器、换一台机器、清缓存后，
  *     重新打开库必须完全复原。不能复原＝违规。」
  *
- * 所以原来的 localStorage 用法全部改到库内 `.pinax/ui-state.json`：
+ * 所以这些偏好全部改到库内 `.pinax/ui-state.json`：
  *   · 读：同步（界面渲染需要立即拿到值）——从内存镜像 state.uiState 读；
  *     进库时由 loadUiState() 从服务端拉一次灌满镜像。
  *   · 写：同步更新镜像 + 异步防抖落库（不阻塞 UI，但保证最终一致）。
  *   · 无库可写时（库清单页）才退到内存，不落任何浏览器存储。
  *
- * localStorage 只保留一个例外：皮肤（纯渲染偏好，且要在没有库时也生效）。
+ * 皮肤是另一个例外：它没有库也要生效，故落服务端机器级 ui-preferences.json（OS-158）。
  */
 
 /** 内存镜像：库内 ui-state.json 的副本。切换库时重置。 */
@@ -12331,8 +12331,8 @@ function flushDraftsOnUnload() {
 }
 window.addEventListener('beforeunload', flushDraftsOnUnload)
 
-bootStyles()
-boot()
+// OS-158：先取服务端皮肤再首屏渲染，杜绝闪一下；取数失败内部已回落缺省，不拦启动。
+;(async () => { await bootStyles(); boot() })()
 
 /** OS-89：当前视图对应的模块名（用于「模块加载时检索自己的 log」）。
  * OS-148：视图→日志模块名唯一真源在命名表（registry.logModuleForView），这里不再抄一份映射。 */

@@ -45,6 +45,7 @@ import { runDshStdio, dshModelSelection } from '../../services/dsh-cli.mjs'
 import { listArtifacts, listLibraryFiles } from '../../modules/library/inventory.mjs'
 import { readUiState, writeUiState } from '../../protocol/libState.mjs'
 import { atomicWriteFile } from '../../protocol/hostWrite.mjs'
+import { defaultUiPreferencesPath, readUiPreferences, writeUiSkin } from '../../services/uiPreferences.mjs'
 
 /* OS-127 健康端点：免 root 授权（不碰库清单、不落任何库信息，只报进程事实），
  * 放在最前面——探活要轻，而且这是「还没授权 root」时唯一有用的 API。
@@ -278,6 +279,23 @@ export async function uiStatePut(ctx) {
   return sendJson(res, 200, { ok: true, state: result.state, ...(result.backup ? { backup: result.backup } : {}) })
 }
 
+/* OS-158：机器级界面偏好（皮肤）——不碰库、不做 root 校验（与 config/jobs 同属本机端点）。
+ * 路径只从 services/uiPreferences 解析一次，env 注入保证测试隔离。 */
+export async function uiPreferencesGet(ctx) {
+  const { res, context } = ctx
+  const target = defaultUiPreferencesPath(context.env ?? process.env)
+  const { preferences } = readUiPreferences(target)
+  return sendJson(res, 200, { ok: true, preferences, path: target })
+}
+
+export async function uiPreferencesPut(ctx) {
+  const { res, request, context } = ctx
+  const target = defaultUiPreferencesPath(context.env ?? process.env)
+  const result = await writeUiSkin(target, request.skin)
+  if (!result.ok) return sendError(res, result.code === 'INVALID_SKIN' ? API_ERROR_CODES.INVALID_ENTRY : API_ERROR_CODES.WRITE_PROTOCOL_IO_FAILED, result.message)
+  return sendJson(res, 200, { ok: true, preferences: result.preferences, path: target })
+}
+
 export async function dirCreate(ctx) {
   const { res, request, allowlist } = ctx
   const authorized = authorizeRoot(allowlist, request.root)
@@ -492,6 +510,8 @@ export const handlers = {
   briefPut,
   uiStateGet,
   uiStatePut,
+  uiPreferencesGet,
+  uiPreferencesPut,
   dirCreate,
   filesGet,
   artifactsGet,

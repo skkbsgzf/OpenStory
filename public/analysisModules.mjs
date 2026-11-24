@@ -6,7 +6,7 @@
  *   work    ＝ 看整部作品（故事源「图表」形态承载，正文页也可选装同一份结果）
  *
  * 硬约束：
- *   · 本文件是纯数据 + 纯函数：模块定义里不碰 DOM、不读全局 state、不写 localStorage；
+ *   · 本文件是纯数据 + 纯函数：模块定义里不碰 DOM、不读全局 state、不写任何浏览器存储；
  *     需要状态（dismissed/activePara/图表实例…）由调用方经 `view` 传入。
  *   · 零第三方依赖、无静态 import：章节模块通过 context.analyze 注入引擎，
  *     缺失时才惰性 `import('./analysis.mjs')`（保持与 analysis.mjs 的松耦合）。

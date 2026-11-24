@@ -411,6 +411,41 @@ check('S3.3', 'S3', '统一组件约定类在样式表有定义（surface-card/r
   convClasses.filter((c) => !missingConv.includes(c)).map((c) => grepLine('public/index.html', new RegExp(`(\\.${c}|--${c})`))).filter(Boolean),
   missingConv.length ? `缺：${missingConv.join(', ')}` : '')
 
+// S3.4 OS-158 前端零浏览器存储：public/**（js/mjs/html）不许出现任何浏览器存储 API 字面，
+// 注释也算命中（否则「文档说不用、代码却在用」会蒙混过关）。设置只有一份，在磁盘上；
+// 皮肤这类机器级偏好落服务端 ui-preferences.json，界面态落库内 .pinax/ui-state.json。
+const BROWSER_STORE = /localStorage|sessionStorage|indexedDB|document\.cookie|caches\.open|CacheStorage|serviceWorker/giu
+function walkPublic(dir, prefix) {
+  const out = []
+  for (const name of readdirSync(dir)) {
+    const full = join(dir, name)
+    const rel = `${prefix}/${name}`
+    const st = statSync(full)
+    if (st.isDirectory()) out.push(...walkPublic(full, rel))
+    else if (/\.(js|mjs|html)$/iu.test(name)) {
+      const src = readFileSync(full, 'utf-8')
+      const hits = [...src.matchAll(BROWSER_STORE)].map((m) => {
+        const line = src.slice(0, m.index).split('\n').length
+        return `${rel}:${line} ${m[0]}`
+      })
+      if (hits.length) out.push(...hits)
+    }
+  }
+  return out
+}
+const storeHits = walkPublic(join(REPO, 'public'), 'public')
+check('S3.4', 'S3', `前端零浏览器存储（public/** 扫 ${BROWSER_STORE.source.slice(0, 40)}…；命中 ${storeHits.length} 处，允许清单为空）`,
+  storeHits.length === 0, storeHits.slice(0, 8),
+  storeHits.length ? '浏览器存储按源隔离：换端口就不是同一份设置——全部改落磁盘（皮肤→服务端 ui-preferences.json，界面态→库内 ui-state.json）' : '任何端口打开都是同一份设置')
+
+// S3.5 OS-93c 静态资源 no-store：html/js/css 必须 no-store（迭代密集时旧包会让作者看到老东西）。
+const daemonSrc = readRepo('src/host/daemon.mjs')
+const noStoreLine = grepLine('src/host/daemon.mjs', /cache-control.*no-store/u)
+check('S3.5', 'S3', '静态资源 no-store 断言（html/js/css/mjs 走 no-store，防旧包假象）',
+  !!noStoreLine && /\.(html|js|css|mjs)/u.test(daemonSrc) && !!grepLine('src/host/http.mjs', /'no-store'/u),
+  [noStoreLine, grepLine('src/host/http.mjs', /'no-store'/u)].filter(Boolean),
+  '')
+
 /* ================================================================
  * S4 UX 跳转层级 —— 全局一致性规范（从严）
  * ================================================================ */

@@ -86,7 +86,8 @@ L4 自持层→L2 自有内核 `src/kernel/`→L1 磁盘库；OS-157 起 L2/L3 �
 9. **一切状态落本地文件，浏览器只做内存视图。**
    - 禁止用 `localStorage` / `sessionStorage` / IndexedDB 保存任何**内容性或状态性**数据
      （草稿、偏好、选中项、会话指针、模块开关…）。
-   - 允许的唯一例外：皮肤/字号这类**纯渲染偏好**也只在无库可写时兜底；有库时必须落库。
+   - 皮肤这类**没有库也要生效**的纯渲染偏好落服务端机器级文件（OS-158），不进任何浏览器存储：
+     任何端口打开同一项目读同一份，清缓存不影响；字号等其余偏好一律落库内 `ui-state`。
    - 判据：**关掉浏览器、换一台机器、清缓存后，重新打开库必须完全复原。** 不能复原＝违规。
 
 10. **落盘位置固定，不得散落。** 全部在库根内的固定位置：
@@ -100,6 +101,7 @@ L4 自持层→L2 自有内核 `src/kernel/`→L1 磁盘库；OS-157 起 L2/L3 �
    | 每一版修改的 diff 与日志 | `<库>/.pinax/log/<模块>/<yyyy-mm>.jsonl` |
    | 旧版原文备份（二进制快照） | 同目录 `.history/<file>.bak-<stamp>`（现有机制，保留；OS-137 起滚动保留：每文件配额 50 份＋日锚，绝不删最新，删除留痕 `.pinax/log/history-prune/`） |
    | 本机凭据/模型端点 | `%LOCALAPPDATA%/PinaxNext/openstory/agent-config.json`（含密钥，不入库） |
+   | 机器级界面偏好（皮肤，无库也生效） | `%LOCALAPPDATA%/PinaxNext/openstory/ui-preferences.json`（OS-158，不入库；任何端口共用一份） |
 
 11. **每一次修改都必须有 diff + log，且可被模块自检索。**
     - 写操作一律经 `src/protocol/changelog.mjs` 的 `recordChange()`：自动算 unified diff、

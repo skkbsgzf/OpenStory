@@ -61,3 +61,16 @@
 ## 施工回报（编排器自动归档）
 
 ## 验收记录（主 agent 填）
+
+**结论：通过。2026-11-24 由接手 agent 施工＋验收。**
+
+- 状态：已提交（提交号见看板）；测试 592 例（590 过 / 0 挂 / 2 跳，较基线 586 增 6）；门禁 21 过 / 0 挂 / 0 警（较基线 19 增 S3.4 / S3.5）；app.js 12,466 行（不增）；架构统计已回写（端点 101→103）。
+- **服务端落盘**：新增 `src/services/uiPreferences.mjs`——皮肤落 `%LOCALAPPDATA%/PinaxNext/openstory/ui-preferences.json`（与 agent-config 同院），路径只此一处解析、env 注入隔离；新增 `GET/PUT /api/ui-preferences` 两端（system 域，契约 101→103），无库也可读写、原子写、非法 id 400。
+- **前端**：`setSkin()` 写改走 PUT（失败不影响本次生效）；`bootStyles()` 读改走 GET；启动改 `;(async () => { await bootStyles(); boot() })()`——皮肤先于首屏 render 取到，杜绝闪一下（app.js 是普通 defer 脚本，不能用顶层 await，故用 IIFE 包裹）。无关键节点新增，行数靠合并注释回收，仍 12,466。
+- **注释清账**：工单点名的 6 处＋另 5 处（共 11 处 app.js 注释）＋`analysisModules.mjs:9` 一处，字面 `localStorage` 全清，语义按「库内 ui-state / 服务端 ui-preferences」改写。
+- **门禁新增**：S3.4 前端零浏览器存储（递归扫 public/** 的 js/mjs/html，命中 `localStorage|sessionStorage|indexedDB|document.cookie|caches.open|CacheStorage|serviceWorker` 即红，注释也算命中，允许清单空）；S3.5 静态资源 no-store 断言（补 OS-93c 口径，daemon 静态资源与 sendJson 均 no-store）。
+- **反证**：临时在 `public/app.js` 追加一行 `localStorage.setItem(...)`，S3.4 命中 1 处、门禁 19 过 / 2 挂；删掉后 21/0/0。已按要求贴输出并还原。
+- **冒烟**：临时 LOCALAPPDATA 起 daemon（端口 18807，不碰真机），PUT `skin:ink` → 磁盘 `ui-preferences.json` 内容为 `{"skin":"ink"}` → GET 两次均为 `ink`。证明皮肤唯一真源在服务端磁盘，浏览器源（端口/缓存）不再影响设置。
+- **文档**：AGENTS.md 第 9/10 条改口径并补落盘表一行；`docs/UX-STRUCTURE.md` 页签状态改指库内 ui-state；ARCHITECTURE.md 生成段回写。
+
+**LIMITATIONS**：未做真浏览器双端口目视冒烟——环境无浏览器自动化，改以服务端磁盘唯一真源的 HTTP 冒烟等价验证（结论一致：换端口/清缓存不影响）。按作者立宪，浏览器端「不闪一下」已在启动顺序上保证（await bootStyles 先于 boot 的 render），但未做逐帧目视确认。
