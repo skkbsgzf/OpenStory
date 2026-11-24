@@ -12,7 +12,10 @@
 ## 目标
 
 段 B 收尾：`core/` 与 `vendor/` 从仓里消失，vendor 纪律整体退役，`pinaxAdapter` 解散，Host API 定稿 `@2`（五键），
-**错误码去掉 `PINAX_` 前缀**（作者裁定 C），补互认金样与出处声明。
+**错误码去掉 `PINAX_` 前缀**（作者裁定 C），补出处声明。
+
+**验收标准（作者 2026-11-24 裁定）**：本轮看的是 **OpenStory 内部代码质量的一次大提升**，不是「用 Pinax 去验 OpenStory」。
+互认夹具因此是可选项、不是验收项；既有的金样测试（`decoupleStep2`／`decoupleStep3`）照旧不许动——它们护的是作者既有库的落盘格式。
 
 ## 动工前必读
 
@@ -51,10 +54,11 @@
 删除：`core/`（`VENDORED.md`＋`.vendored-manifest.json`）、`vendor/`、`scripts/vendor-{core,deduce,drift}.mjs`、`test/vendorDrift.test.mjs`；
 `package.json` 删 `vendor:check` 脚本；`PUBLISHING.md` 的 VENDORED 段改为「出处见 README 致谢与 `docs/kernel-provenance.md`」。
 
-### 6. 互认金样
-新增 `test/kernelInterop.test.mjs`：
-- 若 `test/fixtures/pinax-desktop/` **已存在**（作者用 Pinax 桌面端产出）→ 按设计稿 §7.3 写：sha256 与 `PROVENANCE.json` 对照、读得进、写得出、字段逐项相等、**测试一律先 cp 到 mkdtemp 再写**；
-- 若**尚不存在** → 写一个「等夹具」的显式失败测试（`assert.fail('夹具未就位：见 docs/kernel-provenance.md 的抓取清单')`），**不许用 `skip: !env` 的软跳**；同时把抓取清单落进 `docs/kernel-provenance.md`（作者按清单抓一次即转绿）。
+### 6. 互认夹具（可选，不是验收项）
+- **不新增任何会失败、会卡门禁的「等夹具」测试。**
+- `docs/kernel-provenance.md` 里留一节「如需与 Pinax 桌面端互认，如何抓夹具」（照设计稿 §7.2 的三件与放置位置写成清单）。
+- 只有当 `test/fixtures/pinax-desktop/` **已经存在**时，才按设计稿 §7.3 加 `test/kernelInterop.test.mjs`（先 cp 到 mkdtemp 再写）；不存在就不建这个测试文件。
+- 新增 `test/kernelIdentity.test.mjs`：内核身份常量 `openstory-kernel@1` 存在且被 Host API 导出；`src/kernel/` 的公开面逐键锁定（防之后悄悄长出新的耦合）。
 
 ### 7. 门禁演变（S2.4 → S2.4'）
 `tools/acceptance/acceptance.mjs`：把「内核唯一进口是 adapter」改成「`src/**` 里不许出现 `core/pinax` 字样、`src/kernel/` 是唯一内核实现」；`isProtocolPath` 补 `src/kernel/index.mjs` 若存在。
@@ -72,12 +76,13 @@
 
 ## 验收
 
-- `node --test test/*.test.mjs` 全绿（当前 598 例；本单会删 `vendorDrift` 16 例、增互认与身份测试——**删除只许是工单点名的那些**，报告里逐个说明）。
+- `node --test test/*.test.mjs` 全绿（当前 598 例；本单会删 `vendorDrift` 16 例、增身份测试——**删除只许是工单点名的那些**，报告里逐个说明）。
 - `node tools/acceptance/acceptance.mjs` 全绿（19 项；S2.4' 的措辞变化要说明）。
 - `node scripts/arch-stats.mjs --check` 通过（**收尾必做**：`core/` 消失后分层表会变）。
 - `core/`、`vendor/` 目录不存在；`grep -rn "core/pinax\|PINAX_" src` 为空（`docs/` 的对照表旧码列除外）。
+- **既有金样照绿且未被改动**：`test/decoupleStep2.test.mjs`、`test/decoupleStep3.test.mjs`（`git diff` 里不许出现对它们断言的放宽；码值随裁定 C 改名属合法更新，逐处说明）。
 - 水浒 10/10、新建 13/13（主 agent 会复跑）。
-- 报告里给出：25 条错误码对照表、`grep` 证据、Host API 五键 SNAPSHOT、互认金样的当前状态（已绿／等夹具）。
+- 报告里给出：25 条错误码对照表、`grep` 证据、Host API 五键 SNAPSHOT、互认夹具是否存在（存在才加测试）。
 
 ## 纪律
 
