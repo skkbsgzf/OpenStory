@@ -184,6 +184,7 @@ const state = {
   libraries: [],
   warnings: [],
   preferencesPath: '',
+  pinaxImport: null,
   kindFilter: '全部',
   current: null,
   view: 'libraries',
@@ -735,7 +736,7 @@ function libraryHtml() {
           <button class="btn-primary" data-action="flow-create">＋新建库</button>
           <button class="btn-ghost" data-action="flow-import">导入稿件</button>
         </div>
-        <div class="hint">库清单：${esc(state.preferencesPath || '%LOCALAPPDATA%\\OpenStory\\next-preferences.json')}</div>
+        <div class="hint">库清单：${esc(state.preferencesPath || '%LOCALAPPDATA%\\OpenStory\\libraries.json')}</div>
       </div>`
     : `<div class="filter">${filters}</div><div class="cards">${cards}</div>`
 
@@ -4231,16 +4232,20 @@ function settingsSyncSectionHtml() {
 
 function settingsDataSectionHtml() {
   const paths = [
-    { label: '库清单', path: state.preferencesPath || '%LOCALAPPDATA%\\OpenStory\\next-preferences.json' },
+    { label: '库清单', path: state.preferencesPath || '%LOCALAPPDATA%\\OpenStory\\libraries.json' },
     { label: 'Agent 配置', path: agent.configPath || '%LOCALAPPDATA%\\OpenStory\\openstory\\agent-config.json' },
     { label: '运行时套件货架', path: state.settings.userDir || '%LOCALAPPDATA%\\OpenStory\\openstory\\runtimes' },
     { label: '风格包货架', path: (state.stylesDirs || [])[0] || '%LOCALAPPDATA%\\OpenStory\\openstory\\styles' }
   ]
+  const importSection = settingsAggregation?.pinaxImportSectionHtml
+    ? settingsAggregation.pinaxImportSectionHtml({ scan: state.pinaxImport, esc })
+    : ''
   return `<div class="step">
     <h3>本机路径</h3>
     ${paths.map((item) => `<div class="kv-line"><span class="k">${esc(item.label)}</span><button class="v kv-path" data-action="reveal-path" data-path="${esc(item.path)}" title="在资源管理器里打开">${esc(item.path)}</button></div>`).join(String())}
     ${warningsHtml(state.warnings)}
-  </div>`
+  </div>
+  ${importSection}`
 }
 
 function settingsAboutSectionHtml() {
@@ -7074,6 +7079,43 @@ async function refreshLibraries() {
     state.warnings = Array.isArray(payload.warnings) ? payload.warnings : []
     state.preferencesPath = text(payload.preferencesPath)
   } catch { /* 保住旧清单 */ }
+}
+
+/* OS-167：旧 Pinax 清单只读预览＋勾选导入。选中态留宿主，HTML 构造在 views/settingsAggregation.mjs。 */
+async function scanPinaxList() {
+  try {
+    const payload = await api('/api/library/pinax-list')
+    const libraries = Array.isArray(payload.libraries) ? payload.libraries : []
+    state.pinaxImport = {
+      ...payload,
+      libraries,
+      selected: libraries.filter((item) => item?.ok === true).map((item) => item.path),
+      result: null
+    }
+  } catch (error) {
+    state.error = `${error?.code ? `${error.code} · ` : ''}${text(error?.message || error)}`
+  }
+  render()
+}
+
+async function applyPinaxImport() {
+  const scan = state.pinaxImport
+  if (!scan) return
+  const inputs = document.querySelectorAll('[data-pinax-path]:checked')
+  const paths = [...inputs].map((el) => el.dataset.pinaxPath).filter(Boolean)
+  if (!paths.length) {
+    state.error = '先勾选体检通过的库再导入'
+    render()
+    return
+  }
+  try {
+    const result = await api('/api/library/pinax-import', { method: 'POST', body: JSON.stringify({ paths }) })
+    await refreshLibraries()
+    state.pinaxImport = { ...scan, selected: paths, result }
+  } catch (error) {
+    state.error = `${error?.code ? `${error.code} · ` : ''}${text(error?.message || error)}`
+  }
+  render()
 }
 
 /* ---------- 业务页扩展（OS-8：动态页签＋目录工作面＋推演页）----------
@@ -10412,6 +10454,10 @@ document.addEventListener('click', (event) => {
     render()
   } else if (action === 'reveal-path') {
     revealNativePath(target.dataset.path || '')
+  } else if (action === 'pinax-import-scan') {
+    scanPinaxList()
+  } else if (action === 'pinax-import-apply') {
+    applyPinaxImport()
   } else if (action === 'fsb-go') {
     loadFsBrowse(target.dataset.path || '')
   } else if (action === 'fsb-jump') {

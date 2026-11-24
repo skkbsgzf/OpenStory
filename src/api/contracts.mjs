@@ -2,7 +2,7 @@
  * OpenStory API 契约（OS-2）——纯数据＋纯函数，零依赖。
  *
  * 这份文件是 daemon 与工作台的**唯一契约源**（OS-130 契约分域）：端点形状按域切片在
- * contracts/<域>.mjs——library/chapters/fact/reference/agent/plugins/system 七域，逐字迁入、
+ * contracts/<域>.mjs——library/chapters/fact/reference/agent/plugins/system/exchange 八域，逐字迁入、
  * 纯数据零依赖；本文件 import 各域→组装 ENDPOINTS→原 export 形状一个不变，
  * daemon.mjs 与全部测试无感。改形状＝改对应域分片，两端一起跟。
  * 校验函数不 import node:path / node:fs，任何环境（浏览器、Node、测试）都能直接载入。
@@ -56,7 +56,7 @@ export const API_ERROR_CODES = Object.freeze({
   AGENT_RUNTIME_FIXTURE: 'AGENT_RUNTIME_FIXTURE'
 })
 
-/** 101 个端点的形状合同（OS-130 起按域分片，这里聚合；`path` 不含 query，query 字段在 request.query 里单列）。 */
+/** 当前端点的形状合同（OS-130 起按域分片，这里聚合；`path` 不含 query，query 字段在 request.query 里单列）。 */
 export const ENDPOINTS = Object.freeze({
   ...libraryEndpoints,
   ...chaptersEndpoints,

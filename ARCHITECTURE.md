@@ -32,18 +32,18 @@
 <!-- arch-stats:start -->
 | 层 | 目录 | 文件数 | 行数 |
 |---|---|---:|---:|
-| L7 前端 | `public/`（含 `views/`） | 23 | 21,219 |
-| L6 契约层 | `src/api/contracts/` | 9 | 1,440 |
-| L5 宿主层 | `src/host/` | 7 | 1,724 |
-| L4 自持层 | `src/{modules,services,protocol}/` | 73 | 15,849 |
+| L7 前端 | `public/`（含 `views/`） | 23 | 21,317 |
+| L6 契约层 | `src/api/contracts/` | 9 | 1,465 |
+| L5 宿主层 | `src/host/` | 7 | 1,684 |
+| L4 自持层 | `src/{modules,services,protocol}/` | 74 | 16,112 |
 | L2 自有内核 | `src/kernel/` | 11 | 1,871 |
 | L1 磁盘库 | 库＝文件夹（无代码） | — | — |
 
 | 附加指标 | 实测 |
 |---|---:|
-| `public/app.js` 行数 | 11,840 |
-| 契约端点数（`method:` 计数） | 105 |
-| 测试文件数（`test/*.test.mjs`） | 85 |
+| `public/app.js` 行数 | 11,886 |
+| 契约端点数（`method:` 计数） | 107 |
+| 测试文件数（`test/*.test.mjs`） | 86 |
 <!-- arch-stats:end -->
 
 ```
@@ -183,7 +183,7 @@ OS-123/124 解耦后，建库/导入/章节号解析全部自持，不再 vendor
   （`node:` 前缀）、`src/protocol/**`（Host API：index.mjs 七命名空间＋叶子件）、自己模块
   目录内文件；模块间禁止直接 import（门禁 S2.1，静态 from 与动态 import() 都扫）。
   内核能力只从协议层 `fact` 命名空间取（经 L2 公开面五键转出，模块层不直引内核实现）；
-  **插件只准 import `src/protocol/index.mjs`**。豁免唯一且显式点名：
+  **插件只准 import `src/protocol/index.mjs`**。OS-166/167 新增两个叶子件：`courtyard.mjs`（本机院子唯一解析源）与 `libraryManifest.mjs`（自持库清单读写＋旧清单只读导入），模块层可直引。豁免唯一且显式点名：
   roleplayEngine→public/analysis.mjs（纯函数 AI 味分析，台账见 src/protocol/README.md）。
 
 ### L2 src/kernel/（自有内核，openstory-kernel@1）
@@ -228,6 +228,7 @@ llmPort 规范/兼容形态见 [docs/deduce-llm-port.md](./docs/deduce-llm-port.
 | `.pinax/{drafts,log,ui-state.json,proposals,state}` | 草稿 / 模块日志（append-only jsonl） / 界面状态 / 提案 |
 | `.openstory/{deduce,brief.json,agent-picks.json}` | 引擎会话状态 / 项目简报 / Agent 选择链 |
 | `<同目录>/.history/` | 每版写前备份（二进制快照）；OS-137 起滚动保留——每原文件最新 `OPENSTORY_HISTORY_KEEP`（缺省 50）份＋每个自然日的最后一份（日锚），最新一份绝不删，删除留痕 `.pinax/log/history-prune/<yyyy-mm>.jsonl` |
+| `%LOCALAPPDATA%/OpenStory/libraries.json`（不入库） | OS-167 自持库清单：`{schemaVersion,libraries:[{path,name,addedAt,source}]}`，source 只取 `openstory`／`imported-pinax`；root 白名单只认这里，旧 Pinax 清单只在设置页勾选导入、绝不写回 |
 | `%LOCALAPPDATA%/OpenStory/openstory/`（不入库） | agent-config.json（凭据）、daemon.lock（进程治理）、suites/styles/runtimes 本机货架 |
 | `%LOCALAPPDATA%/PinaxNext/`（不入库，冻结） | 旧院，只归 Pinax 桌面端；OS-166 首启只从此处一次性拷贝到新院，不迁移、不删除、不改写 |
 

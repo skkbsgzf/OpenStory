@@ -42,7 +42,7 @@ async function makeFixture() {
     ],
     terms: [{ name: '青浦渡口', definition: '故事发生地。' }]
   }), 'utf-8')
-  const preferencesPath = join(base, 'next-preferences.json')
+  const preferencesPath = join(base, 'libraries.json')
   await writeFile(preferencesPath, JSON.stringify({
     recentProjects: [{ path: root, name: '夹具库', at: '2026-11-15T00:00:00.000Z' }]
   }), 'utf-8')

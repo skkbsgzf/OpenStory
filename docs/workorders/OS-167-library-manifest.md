@@ -7,7 +7,7 @@
 | 依赖 | OS-166 |
 | 允许改动 | `src/**`、`public/**`、`test/**`、`tools/**`、`docs/**`、`ARCHITECTURE.md`、`AGENTS.md`、`README.md` |
 | 风险 | **高**（库清单是 root 授权的来源；弄错会让作者打不开库） |
-| 状态 | 待派 |
+| 状态 | ✅ 已验收（2026-11-24） |
 
 ## 目标
 
@@ -53,4 +53,48 @@ OpenStory 的库清单自持（`libraries.json` 在新院里），不再直接�
 
 ## 施工回报（编排器自动归档）
 
+- 新解析源：`src/protocol/libraryManifest.mjs`（`libraries.json` 读写、旧清单只读扫描/勾选导入），
+  `src/host/authorize.mjs` 退成薄封装：root 白名单读新清单，上屏形状仍经契约层 `normalizeLibraries`
+  归一化（`kind/count/at` 保底），`--root=` 显式授权原样保留。
+- 读优先级：显式 `preferencesPath` ＞ `OPENSTORY_PREFERENCES` ＞ 新院 `libraries.json` ＞ 空清单＋warning。
+  `PINAX_OS_PREFERENCES` 不再参与解析；旧 `{recentProjects}` 形状只在显式路径上兼容读并标 `legacy:true`，
+  产品路径永不隐式指向旧清单。
+- 写通道：`src/modules/library/libraryManage.mjs` 的 `registerLibrary` 改走 `writeLibraryManifest`，
+  只写 `{schemaVersion,libraries:[{path,name,addedAt,source}]}`，`source=openstory`；
+  遇旧形状/坏档拒绝且不覆盖。`writeLibraryManifest` 对 `next-preferences.json` 文件名硬拒。
+- 新端点（library 域，2 个，契约 105→107）：
+  - `GET /api/library/pinax-list` → `pinaxListGet`：只读旧院清单，逐体检（目录存在？有 `.pinax/project.json`？），非法项带 reason。
+  - `POST /api/library/pinax-import` → `pinaxListImport`：`{paths}` 勾选后写新清单，`source=imported-pinax`；已登记路径不重复写，旧院零改写。
+  - 两端登记在 `src/modules/library/module.manifest.json`（模块独占），契约 errors 含 `MODULE_DISABLED`。
+- 设置页：数据节加「导入 Pinax 清单」——路径提示改 `libraries.json`；纯视图 `pinaxImportSectionHtml`
+  放 `public/views/settingsAggregation.mjs`（零 import／零 DOM／零存储），app.js 只留取数、勾选与提交。
+- 文档：`ARCHITECTURE.md` 数据位置表与协议叶子清单、`AGENTS.md` 第 10 条、`README.md` 三处
+  （边界 1／数据位置／仓库地图）、`src/protocol/README.md`、`docs/LEGACY-ITEMS.md` 同步；
+  统一写明「互认靠库内 `.pinax/project.json`，不靠本机清单」。
+- 测试：`test/libraryManifest.test.mjs` 8 例（空环境/写读往返/坏档不覆盖/三项体检/勾选导入/
+  旧环境变量不回落/`--root` 不依赖清单＋拒写旧名/纯视图）；`test/moduleCoverage.test.mjs` 端点数
+  105→107 合法更新；建库夹具 `next-preferences.json`→`libraries.json`，原断言强度不变。
+
 ## 验收记录（主 agent 填）
+
+- **专项测试**：`node --test test/libraryManifest.test.mjs` → **8/8 通过**。
+- **全量测试**：`node --test test/*.test.mjs` → 650 顶层项／**678 tests，676 pass，0 fail，2 skipped**
+  （OS-166 基线 670 例，本单净增 8 例）。
+- **验收门禁**：`node tools/acceptance/acceptance.mjs` → **23 过／0 挂／0 警**；
+  S2.7 自动跟随为 14 模块／core 4／端点 107 ＝ 独占 43＋宿主 64／无归属 0。
+- **架构统计**：`npm run arch:stats` 回写——前端 23 文件 21,317 行；宿主 7 文件 1,684 行；
+  自持层 74 文件 16,112 行；`app.js` 11,886 行；契约 107 端点；测试 86 文件。
+- **导入演练**（临时 `LOCALAPPDATA`，真实院/真库未触碰）：
+  - 扫描结果三项：`正常库 → 可导入`；`已搬走的库 → 目录不存在`；`无工程库 → 没有 .pinax/project.json`。
+  - 界面数据：合法项 `checked`，两项非法 `disabled`；来源路径如实显示在设置页。
+  - 提交 `{paths:[正常库, 已搬走的库, 无工程库]}` → `ok=true, imported=1, rejected=2`，
+    拒绝原因 `["目录不存在","没有 .pinax/project.json"]`。
+  - 结果清单：`{schemaVersion:1, libraries:[{path:<临时>/正常库, name:"正常库",
+    addedAt:"2026-11-20T00:00:00.000Z", source:"imported-pinax"}]}`；
+    `old-unchanged=true`，重复导入不新增条目。
+- **grep `next-preferences` 剩余命中**：仅 ① 导入逻辑与拒写旧名的常量/提示（`src/protocol/libraryManifest.mjs`、
+  `src/api/contracts/library.mjs`、`src/modules/library/libraryManage.mjs`），② 显式兼容读/导入的专项测试
+  （`test/contracts.test.mjs`、`test/courtyard.test.mjs`、`test/libraryManifest.test.mjs`），
+  ③ 历史 workorder/plan 归档。**产品默认路径与 root 白名单零命中**。
+- **纪律核对**：未碰真实 `%LOCALAPPDATA%` 与作者真库；未启动/未杀 daemon 进程；未动 `.zcode/`；
+  临时探针执行后删除；既有测试无删除、无 skip、无放宽断言。

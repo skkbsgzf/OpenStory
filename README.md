@@ -19,7 +19,7 @@
 
 ## 三条边界
 
-1. **数据真源在磁盘**：库＝文件夹（`.pinax` 兼容形态）；OpenStory 不自建数据库，与 Pinax（Electron 壳）共用同一份文件资产——两个壳，一份稿子。
+1. **数据真源在磁盘**：库＝文件夹（`.pinax` 兼容形态）；OpenStory 不自建数据库，与 Pinax（Electron 壳）共用同一份文件资产——两个壳，一份稿子。互认靠库内 `.pinax/project.json`，**不靠本机清单**；本机清单只决定 daemon 敢碰哪些 root。
 2. **daemon 只监听 127.0.0.1**：不做 HTTPS/隧道/多用户；凭据只存本机（配置读写走掩码＋`__KEEP__`），响应只回掩码。
 3. **插件不常驻**：套件/运行时按声明加载，停用＝规则退回内置默认（值保留）。
 
@@ -28,6 +28,11 @@
 旧院 `%LOCALAPPDATA%/PinaxNext/` 冻结给 Pinax 桌面端：首启只**一次性拷贝**到新院并留
 `.migrated-from-pinaxnext.json` 标记（跳 `*.tmp-*` 与 `daemon.lock`），不迁移、不删除、不改写。
 所有路径只从 `src/protocol/courtyard.mjs` 解析，`src/host/courtyard.mjs` 是宿主层唯一门面。
+
+**库清单在哪（OS-167）**：`%LOCALAPPDATA%/OpenStory/libraries.json`，形状
+`{ schemaVersion, libraries: [{ path, name, addedAt, source }] }`，`source` 只取 `openstory`／
+`imported-pinax`。daemon 的 root 白名单只认这份清单（或启动时的 `--root=` 显式授权）；
+旧院 `next-preferences.json` 是只读导入源，设置页逐个体检后勾选导入，绝不写回。
 
 ## 快速开始
 
@@ -72,7 +77,7 @@ L1  磁盘库                     文件即真相（.pinax 兼容，与 Pinax �
 | `src/host/daemon.mjs` / `src/host/mcp.mjs` | 启动入口（OS-159：实现文件自带直跑判定，仓根不再放垫片） |
 | `src/host/` | daemon（端点契约分派＋进程治理）＋ MCP server（24 工具，零依赖 stdio；`npm run mcp`） |
 | `src/api/` | 契约层 `contracts.mjs` ＋ `contracts/` 八域分片（OS-130 起分域，OS-162 加 `exchange`，纯数据，两端共享） |
-| `src/protocol/` | 文件与协议层：chapters / changelog / versionGate / plugins / agentEvents / factGuard / dependencyGraph / hostWrite / libState |
+| `src/protocol/` | 文件与协议层：chapters / changelog / versionGate / plugins / agentEvents / factGuard / dependencyGraph / hostWrite / libState / courtyard（OS-166 本机院子唯一解析） / libraryManifest（OS-167 自持库清单＋旧清单只读导入） |
 | `src/kernel/` | 自有内核（`openstory-kernel@1`：管道件＋fact 链＋enrich，公开面 `index.mjs`；出处与文件对应见 [docs/kernel-provenance.md](./docs/kernel-provenance.md)） |
 | `src/modules/` | 域模块与工作面插件：14 份 `module.manifest.json`（`openstory-module@1`）——核心四个 chapters / worldbook / script / roleplay（`core:true` 恒启用、不可停用），普通插件 analysis / comfyui / kb / habits / storysource / artifacts / exchange，宿主域登记 agentbar / deduce / library（零端点零页签）；另外 library/（建库/导入自持，OS-123/124 fork 点，`.pinax/project.json` 与 Pinax 桌面端双向兼容）、deduce/（推演）、roleplay/（扮演调度＋四层提示词）、worldbook/（参考索引）、agentbar/（Agent 存储）。端点归属 105/105 有主，见 `ARCHITECTURE.md`「模块插件清单」 |
 | `src/services/` | 外围服务：kb*（知识库）、embedding-server、cli-bridge/dsh-*/runtimes（模型驱动）、suites/stylePacks/style-check/skills/genres（货架装载）、jobCenter / nativePicker / comfyEngine / syncCheck / enrichEngine |

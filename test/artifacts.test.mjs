@@ -31,7 +31,7 @@ async function makeFixture() {
   await writeFile(join(root, '正文', '.history', '001-雨停.md.bak-2026-11-15T10-00-00-000Z'), '雨到傍晚才停。（旧版）', 'utf-8')
   await writeFile(join(root, '正文', '.history', '002-渡口.md.deleted-2026-11-15T11-00-00-000Z'), '雾从水面漫上来。（被删）', 'utf-8')
   await writeFile(join(root, '图片.png'), 'binary', 'utf-8')
-  const preferencesPath = join(base, 'next-preferences.json')
+  const preferencesPath = join(base, 'libraries.json')
   await writeFile(preferencesPath, JSON.stringify({
     recentProjects: [{ path: root, name: '夹具库', at: '2026-11-15T00:00:00.000Z' }]
   }), 'utf-8')

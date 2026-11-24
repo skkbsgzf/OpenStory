@@ -35,7 +35,7 @@ async function makeLibrary() {
   await mkdir(join(root, '正文'), { recursive: true })
   await writeFile(join(root, '.pinax', 'ui-state.json'), '{}', 'utf-8')
   await writeFile(join(root, '正文', '001-风雪山神庙.md'), '# 第一章\n林冲推门而入。', 'utf-8')
-  const preferencesPath = join(base, 'next-preferences.json')
+  const preferencesPath = join(base, 'libraries.json')
   await writeFile(preferencesPath, JSON.stringify({ recentProjects: [{ path: root, name: '夹具库' }] }), 'utf-8')
   return { base, root, preferencesPath }
 }

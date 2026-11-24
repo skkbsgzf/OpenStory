@@ -34,7 +34,7 @@ export const libraryEndpoints = {
   libraryCreate: {
     method: 'POST',
     path: '/api/library/create',
-    // primaryCarrier 缺省＝空壳（needsPrimary:true）。成功即登记进库清单（next-preferences.json）。
+    // primaryCarrier 缺省＝空壳（needsPrimary:true）。成功即登记进自持清单（新院 libraries.json）。
     request: { body: { path: 'string', name: 'string', primaryCarrier: 'string?' } },
     response: {
       ok: 'true',
@@ -72,5 +72,30 @@ export const libraryEndpoints = {
     request: { body: { root: 'string', primaryCarrier: 'string', expectedRevision: 'integer?' } },
     response: { ok: 'true', document: 'object', enabled: 'array?' },
     errors: ['NO_LIBRARY', 'INVALID_ENTRY', 'NOT_FOUND', 'REVISION_MISMATCH', 'WRITE_PROTOCOL_IO_FAILED']
+  },
+
+  pinaxListGet: {
+    method: 'GET',
+    path: '/api/library/pinax-list',
+    // OS-167：只读旧院 next-preferences.json，逐个体检（目录在？有 .pinax/project.json？），不写任何文件。
+    request: { query: {} },
+    response: { ok: 'true', source: 'string?', libraries: 'array', warnings: 'array' },
+    errors: ['MODULE_DISABLED']
+  },
+
+  pinaxListImport: {
+    method: 'POST',
+    path: '/api/library/pinax-import',
+    // 作者勾选确认后写入新院 libraries.json（source=imported-pinax）；绝不写回 Pinax 清单。
+    request: { body: { paths: 'array' } },
+    response: {
+      ok: 'true',
+      source: 'string?',
+      imported: 'array',
+      rejected: 'array',
+      warnings: 'array',
+      preferencesPath: 'string'
+    },
+    errors: ['MODULE_DISABLED', 'INVALID_ENTRY', 'WRITE_PROTOCOL_IO_FAILED']
   },
 }

@@ -2,17 +2,21 @@
  * root 授权与路径安全（OS-141 daemon 拆分）——daemon 与 handler 共用的纯函数层。
  *
  * 三件事：
- *   · 库清单：读 %LOCALAPPDATA%/OpenStory/next-preferences.json（与 Electron 库管理器同一份数据），
- *     坏档/缺档不拦启动，按空清单＋warning 回；
+ *   · 库清单：OS-167 起读 OpenStory 自持的 %LOCALAPPDATA%/OpenStory/libraries.json；
+ *     旧 Pinax 清单不再隐式读取，只在设置页显式导入；坏档/缺档按空清单＋warning 回；
  *   · root 白名单：库清单 ＋ 启动时 `--root=` 显式授权——作者指定了哪个库，daemon 才敢碰哪个库；
  *   · 路径安全：相对路径 resolve 后必须落在 root 内（照 S2 的路径逃逸拒收写法），
  *     `.pinax/` 元数据目录默认禁入（只归 Electron 内核写）。
  * 全仓只此一份定义；handler 一律从这里 import，不许复制。
  */
-import { readFileSync, realpathSync } from 'node:fs'
-import { isAbsolute, join, relative, resolve, sep } from 'node:path'
-import { API_ERROR_CODES, isPlainObject, normalizeLibraries } from '../api/contracts.mjs'
-import { courtyardPath } from './courtyard.mjs'
+import { realpathSync } from 'node:fs'
+import { isAbsolute, relative, resolve, sep } from 'node:path'
+import { API_ERROR_CODES, normalizeLibraries } from '../api/contracts.mjs'
+import {
+  defaultLibraryManifestPath,
+  readLibraryManifest,
+  resolveLibraryManifestPath
+} from '../protocol/libraryManifest.mjs'
 
 export function text(value) {
   return String(value ?? '')
@@ -24,73 +28,29 @@ export const METADATA_DIR = '.pinax'
 /** 库内不许当页签目录的名字：元数据与备份目录。 */
 export const RESERVED_LIB_DIRS = new Set([METADATA_DIR, '.history', '.openstory', 'node_modules'])
 
-/** 与 Electron 库管理器同一份数据：%LOCALAPPDATA%/OpenStory/next-preferences.json。 */
+/** 新院自持库清单路径（保留旧函数名给 CLI/测试调用点，语义已换）。 */
 export function defaultPreferencesPath(env = process.env) {
-  return courtyardPath(env, 'next-preferences.json')
+  return defaultLibraryManifestPath(env)
 }
 
-/** 旧环境变量名（品牌前缀时代）：双读兼容一个大版本。拼接写法避免误读为错误码前缀。 */
-const LEGACY_PREFERENCES_ENV = ['PINAX', 'OS', 'PREFERENCES'].join('_')
-let legacyPreferencesWarned = false
-
-/** 偏好文件路径：新名 OPENSTORY_PREFERENCES 优先，旧名仍认；命中旧名每进程打一次 deprecation 日志。 */
+/** 解析清单路径：显式 preferencesPath ＞ OPENSTORY_PREFERENCES ＞ 新院 libraries.json。旧环境变量不再参与。 */
 export function resolvePreferencesEnv(env = process.env) {
-  const current = text(env.OPENSTORY_PREFERENCES).trim()
-  if (current) return current
-  const legacy = text(env[LEGACY_PREFERENCES_ENV]).trim()
-  if (legacy) {
-    if (!legacyPreferencesWarned) {
-      legacyPreferencesWarned = true
-      console.warn(`[deprecation] 环境变量 ${LEGACY_PREFERENCES_ENV} 已改名为 OPENSTORY_PREFERENCES；旧名仍兼容一个大版本，请尽快更新调用方。`)
-    }
-    return legacy
-  }
-  return ''
+  return resolveLibraryManifestPath({ env })
 }
 
 /**
- * 读库清单。坏档/缺档不拦启动：按空清单回，并记一条 warning 让工作台摆空态。
- * `recentProjects` 真实形状只保底 path/name/at；kind/count 缺了补默认值。
+ * 读库清单（OS-167：新院 libraries.json 为真源）。坏档/缺档不拦启动：
+ * 按空清单回并记 warning；显式传旧形状文件时兼容读，但标 legacy:true 且永不写回。
  */
 export function loadLibraries({ preferencesPath, env = process.env } = {}) {
-  const target = text(preferencesPath || resolvePreferencesEnv(env) || defaultPreferencesPath(env)).trim()
-  const warnings = []
-  if (!target) {
-    return {
-      libraries: [],
-      warnings: [{ code: 'PREFERENCES_PATH_UNKNOWN', message: '找不到 LOCALAPPDATA，无法定位 next-preferences.json' }],
-      preferencesPath: ''
-    }
-  }
-  let raw
-  try {
-    raw = readFileSync(target, 'utf-8')
-  } catch (error) {
-    warnings.push({
-      code: error?.code === 'ENOENT' ? 'PREFERENCES_MISSING' : 'PREFERENCES_UNREADABLE',
-      path: target,
-      message: error?.code === 'ENOENT'
-        ? '库清单文件还不存在：先在 Pinax 里打开一个库'
-        : `库清单文件读不了：${text(error?.message || error)}`
-    })
-    return { libraries: [], warnings, preferencesPath: target }
-  }
-  let document
-  try {
-    document = JSON.parse(raw)
-  } catch (error) {
-    warnings.push({ code: 'PREFERENCES_CORRUPT', path: target, message: `库清单不是有效 JSON：${text(error?.message || error)}` })
-    return { libraries: [], warnings, preferencesPath: target }
-  }
-  if (!isPlainObject(document) || !Array.isArray(document.recentProjects)) {
-    warnings.push({ code: 'PREFERENCES_SHAPE', path: target, message: '库清单缺少 recentProjects 数组' })
-    return { libraries: [], warnings, preferencesPath: target }
-  }
-  const normalized = normalizeLibraries(document.recentProjects)
+  const read = readLibraryManifest({ preferencesPath, env })
+  // 上屏形状继续走契约层归一化（kind/count/at 保底），与旧口径等价；source 留在清单文件里。
+  const normalized = normalizeLibraries(read.libraries)
   return {
     libraries: normalized.libraries,
-    warnings: [...warnings, ...normalized.warnings],
-    preferencesPath: target
+    warnings: [...read.warnings, ...normalized.warnings],
+    preferencesPath: read.path,
+    legacy: read.legacy
   }
 }
 

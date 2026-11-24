@@ -150,7 +150,7 @@ describe('三套聚合', () => {
       runtimesDirs: [kits],
       suitesDirs: [],
       skillsDirs: [],
-      preferencesPath: join(root, 'next-preferences.json'),
+      preferencesPath: join(root, 'libraries.json'),
       env: { ...process.env, LOCALAPPDATA: root },
       logger: { log() {} }
     })

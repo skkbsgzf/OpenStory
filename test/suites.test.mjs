@@ -43,7 +43,7 @@ async function makeFixture() {
   const base = await mkdtemp(join(tmpdir(), 'openstory-os15-'))
   const root = join(base, '夹具库')
   await mkdir(join(root, '正文'), { recursive: true })
-  const preferencesPath = join(base, 'next-preferences.json')
+  const preferencesPath = join(base, 'libraries.json')
   await writeFile(preferencesPath, JSON.stringify({
     recentProjects: [{ path: root, name: '夹具库', at: '2026-11-15T00:00:00.000Z' }]
   }), 'utf-8')

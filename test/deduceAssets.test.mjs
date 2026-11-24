@@ -25,7 +25,7 @@ async function makeFixture() {
     entries: [],
     revision: 1
   }), 'utf-8')
-  const preferencesPath = join(base, 'next-preferences.json')
+  const preferencesPath = join(base, 'libraries.json')
   await writeFile(preferencesPath, JSON.stringify({
     recentProjects: [{ path: root, name: '素材夹具库', at: '2026-11-18T00:00:00.000Z' }]
   }), 'utf-8')

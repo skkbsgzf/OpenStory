@@ -59,7 +59,7 @@ function makeRes() {
 function makeContext(fixtureDir) {
   return {
     port: 0,
-    preferencesPath: join(fixtureDir, 'OpenStory', 'next-preferences.json'),
+    preferencesPath: join(fixtureDir, 'OpenStory', 'libraries.json'),
     extraRoots: [],
     defaultRoot: '',
     agentConfigPath: join(fixtureDir, 'OpenStory', 'openstory', 'agent-config.json'),

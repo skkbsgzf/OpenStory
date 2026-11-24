@@ -41,7 +41,7 @@ test('a) 模块清单：src/modules/ 下每个目录都有合法 manifest，core
   assert.equal(report.manifestIds.length - report.coreIds.length, 10)
 })
 
-test('b) 端点覆盖：105 个 handler 键 100% 有归属或宿主白名单理由', () => {
+test('b) 端点覆盖：107 个 handler 键 100% 有归属或宿主白名单理由', () => {
   const claimed = MODULE_MANIFESTS.flatMap((manifest) => manifest.endpoints)
   assert.equal(report.uncoveredEndpoints.length, 0, `无归属端点：${report.uncoveredEndpoints.join('、')}`)
   assert.equal(claimed.length + report.hostEndpointCount, Object.keys(HANDLERS).length + claimed.filter((id) => hostOwnedEndpointIds().has(id)).length,
@@ -61,8 +61,8 @@ test('b) 端点覆盖：105 个 handler 键 100% 有归属或宿主白名单理�
       assert.ok(!hostOwnedEndpointIds().has(endpoint), `核心端点 ${endpoint} 不该在宿主白名单`)
     }
   }
-  assert.equal(report.endpointCount, 105)
-  assert.equal(report.claimedEndpointCount + report.hostEndpointCount, 105)
+  assert.equal(report.endpointCount, 107)
+  assert.equal(report.claimedEndpointCount + report.hostEndpointCount, 107)
 })
 
 test('c) 页签覆盖：每个未退场页签归属模块或宿主保留（带理由）', () => {

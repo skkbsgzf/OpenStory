@@ -319,8 +319,8 @@ check('S2.7', 'S2', `模块覆盖面（${moduleCov.manifestIds.length} 模块／
 
 // S2.3 契约驱动架构：daemon 经 endpointFor() 契约分派 + validateResponse() 契约校验
 // OS-130 契约分域后，端点形状按域切片在 contracts/<域>.mjs——计数＝contracts.mjs＋contracts/*.mjs 合计
-// OS-140：契约层在 src/api/（聚合入口＋七域分片）
-// OS-141：daemon 拆分后端点行为迁到 src/api/handlers/ 七域文件——响应校验（validateResponse）
+// OS-140：契约层在 src/api/（聚合入口＋八域分片）
+// OS-141：daemon 拆分后端点行为迁到 src/api/handlers/ 八域文件——响应校验（validateResponse）
 // 跟着实现走，证据行改读 handlers；路由分派（endpointFor）仍在 daemon。
 const contractFiles = ['src/api/contracts.mjs',
   ...readdirSync(join(REPO, 'src/api/contracts')).filter((f) => f.endsWith('.mjs')).sort().map((f) => `src/api/contracts/${f}`)]

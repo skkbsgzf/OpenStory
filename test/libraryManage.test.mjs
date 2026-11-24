@@ -27,7 +27,7 @@ async function makeFixture() {
   const base = await mkdtemp(join(tmpdir(), 'openstory-os7-'))
   const parent = join(base, '写作')
   await mkdir(parent, { recursive: true })
-  const preferencesPath = join(base, 'next-preferences.json')
+  const preferencesPath = join(base, 'libraries.json')
   const source = join(parent, '旧稿')
   await mkdir(join(source, '正文'), { recursive: true })
   await mkdir(join(source, '大纲'), { recursive: true })
@@ -47,17 +47,17 @@ test('登记：追加去重；清单缺失从零起；坏档拒绝且绝不覆�
     assert.equal(first.ok, true)
     assert.equal(first.duplicate, false)
     const doc = JSON.parse(await readFile(preferencesPath, 'utf-8'))
-    assert.equal(doc.recentProjects.length, 1)
-    assert.equal(doc.recentProjects[0].name, '长夜')
+    assert.equal(doc.libraries.length, 1)
+    assert.equal(doc.libraries[0].name, '长夜')
 
     const dupe = await registerLibrary(preferencesPath, join(parent, '长夜'), '改名也没用')
     assert.equal(dupe.duplicate, true)
     const doc2 = JSON.parse(await readFile(preferencesPath, 'utf-8'))
-    assert.equal(doc2.recentProjects.length, 1, '重复路径不重复登记')
+    assert.equal(doc2.libraries.length, 1, '重复路径不重复登记')
 
     await registerLibrary(preferencesPath, join(parent, '别的'), '别的')
     const doc3 = JSON.parse(await readFile(preferencesPath, 'utf-8'))
-    assert.equal(doc3.recentProjects.length, 2)
+    assert.equal(doc3.libraries.length, 2)
 
     await writeFile(preferencesPath, '{ broken', 'utf-8')
     const corrupt = await registerLibrary(preferencesPath, join(parent, '再来'), '再来')
@@ -88,7 +88,7 @@ test('建库：novel 主模块全链；重复路径拒绝；非绝对路径拒�
       assert.ok(!dirs.includes(retired), `新库不该再建退场目录 ${retired}`)
     }
     const prefs = JSON.parse(await readFile(preferencesPath, 'utf-8'))
-    assert.equal(prefs.recentProjects[0].name, '长夜')
+    assert.equal(prefs.libraries[0].name, '长夜')
 
     const dupe = await createLibrary({ path: join(parent, '长夜'), name: '长夜', primaryCarrier: 'pinax.carrier.novel', preferencesPath })
     assert.equal(dupe.ok, false, '目标目录非空拒绝')

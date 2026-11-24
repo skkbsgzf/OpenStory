@@ -218,20 +218,16 @@ test('库清单读取：真实形状（只有 path/name/at）也能上屏', asyn
   }
 })
 
-test('偏好环境变量双读：新名优先，旧名仍认并打一次 deprecation 日志（OS-157）', async () => {
+test('偏好环境变量（OS-167）：只认 OPENSTORY_PREFERENCES，旧 PINAX_OS_PREFERENCES 不回落', async () => {
   const { base, preferencesPath } = await makeFixture()
   const legacyName = ['PINAX', 'OS', 'PREFERENCES'].join('_')
-  const originalWarn = console.warn
-  const warnings = []
-  console.warn = (message) => warnings.push(String(message))
   try {
     assert.equal(loadLibraries({ env: { OPENSTORY_PREFERENCES: preferencesPath, [legacyName]: base } }).preferencesPath, preferencesPath, '新名优先')
-    assert.equal(loadLibraries({ env: { [legacyName]: preferencesPath } }).preferencesPath, preferencesPath, '旧名兼容')
-    assert.equal(warnings.length, 1, '旧名只打一次 deprecation 日志')
-    assert.match(warnings[0], /deprecation/)
-    assert.equal(loadLibraries({ env: {} }).preferencesPath, '', '两名都没有时按空路径回')
+    const fallback = loadLibraries({ env: { LOCALAPPDATA: base, APPDATA: '', [legacyName]: preferencesPath } })
+    assert.equal(fallback.preferencesPath.replaceAll('\\', '/'), join(base, 'OpenStory', 'libraries.json').replaceAll('\\', '/'), '旧名不参与解析')
+    assert.equal(fallback.libraries.length, 0, '旧清单不会被偷偷读进来')
+    assert.equal(loadLibraries({ env: {} }).preferencesPath, '', '没有 LOCALAPPDATA 时按空路径回')
   } finally {
-    console.warn = originalWarn
     await rm(base, { recursive: true, force: true })
   }
 })
@@ -298,7 +294,7 @@ test('CLI：端口/root 解析与非法端口回落', () => {
 test('默认库清单路径：跟随 LOCALAPPDATA，找不到给空串', () => {
   assert.equal(
     defaultPreferencesPath({ LOCALAPPDATA: 'C:\\Users\\x\\AppData\\Local' }).replaceAll('\\', '/'),
-    'C:/Users/x/AppData/Local/OpenStory/next-preferences.json'
+    'C:/Users/x/AppData/Local/OpenStory/libraries.json'
   )
   assert.equal(defaultPreferencesPath({}), '')
 })

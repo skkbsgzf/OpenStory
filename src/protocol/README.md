@@ -42,6 +42,7 @@
 | `chapters.mjs` 等 | 各协议件本体（index.mjs 聚合它们的导出） | 协议层内部与 API/宿主层 |
 | `factDomain.mjs` | fact 域原语＋`buildFactPack` 的**只 re-export** 转供面（实现真源 `src/kernel/fact/domain/index.mjs`／`src/kernel/fact/factPack.mjs`） | 推演引擎（`src/modules/deduce/engine/`）——模块不许直引 `src/kernel/**`（S2.1），这是唯一不开口子的取数路径（OS-155） |
 | `courtyard.mjs` | 本机院子唯一路径来源：`courtyardBase/Root/Path`、`ensureCourtyard`、`legacyCourtyardPath`；首启只拷贝旧院（跳 `*.tmp-*`/`daemon.lock`）并留迁移标记（OS-166） | 模块层与 services 层的本机路径解析（agentStore/kbAdapter/genres/nativePicker/runtimes/skills/stylePacks/suites/systemPrompt/uiPreferences）；`src/host/courtyard.mjs` 只做原样转供 |
+| `libraryManifest.mjs` | 自持库清单（OS-167）：`libraries.json` 读写＋旧 Pinax `next-preferences.json` 只读扫描/勾选导入；`source=openstory\|imported-pinax`，绝不写回旧清单 | 宿主 `authorize.mjs` 的 root 白名单源、library 模块的登记与两个导入端点；互认仍靠库内 `.pinax/project.json` |
 
 ## 版本约定
 

@@ -53,7 +53,7 @@ async function makeLibrary(base) {
   await writeFile(join(root, '拆解', '坏档.json'), '{ not json', 'utf-8')
   // 旁路档：没有 entries 不是坏档，静默跳过。
   await writeFile(join(root, '拆解', '拆解汇总.json'), JSON.stringify({ note: '聚合产物' }), 'utf-8')
-  const preferencesPath = join(base, 'next-preferences.json')
+  const preferencesPath = join(base, 'libraries.json')
   await writeFile(preferencesPath, JSON.stringify({ recentProjects: [{ path: root, name: '条目库' }] }), 'utf-8')
   return { root, preferencesPath }
 }
@@ -154,7 +154,7 @@ test('fact/entries：库里还没有拆解条目＝FACT_EMPTY（专用空态码�
   try {
     const root = join(base, '空库')
     await mkdir(join(root, '正文'), { recursive: true })
-    const preferencesPath = join(base, 'next-preferences.json')
+    const preferencesPath = join(base, 'libraries.json')
     await writeFile(preferencesPath, JSON.stringify({ recentProjects: [{ path: root, name: '空库' }] }), 'utf-8')
     const daemon = await startDaemon({ port: 0, preferencesPath, env: { ...process.env, LOCALAPPDATA: base }, logger: { log() {} } })
     try {
@@ -183,7 +183,7 @@ test('fact/entries：有档但全部读不出来＝FACT_UNREADABLE（坏档不�
     // 两种坏法：JSON 坏、形状坏——都要在 details 里逐本报出来
     await writeFile(join(root, '拆解', '碎档.json'), '{ not json', 'utf-8')
     await writeFile(join(root, '拆解', '形状档.json'), JSON.stringify({ book: { id: 'x' }, entries: 'nope' }), 'utf-8')
-    const preferencesPath = join(base, 'next-preferences.json')
+    const preferencesPath = join(base, 'libraries.json')
     await writeFile(preferencesPath, JSON.stringify({ recentProjects: [{ path: root, name: '坏档库' }] }), 'utf-8')
     const daemon = await startDaemon({ port: 0, preferencesPath, env: { ...process.env, LOCALAPPDATA: base }, logger: { log() {} } })
     try {

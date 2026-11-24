@@ -20,7 +20,7 @@ import { startDaemon } from '../src/host/daemon.mjs'
 async function makeEnv() {
   const base = await mkdtemp(join(tmpdir(), 'openstory-config-'))
   const configPath = join(base, 'agent-config.json')
-  const preferencesPath = join(base, 'next-preferences.json')
+  const preferencesPath = join(base, 'libraries.json')
   await writeFile(preferencesPath, JSON.stringify({ recentProjects: [] }), 'utf-8')
   const daemon = await startDaemon({ port: 0, preferencesPath, agentConfigPath: configPath, logger: { log() {} } })
   const origin = `http://127.0.0.1:${daemon.port}`

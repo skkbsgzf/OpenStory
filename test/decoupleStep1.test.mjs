@@ -59,7 +59,7 @@ async function makeTarget(base) {
     path: join(parent, '长夜'),
     name: '长夜',
     primaryCarrier: 'pinax.carrier.novel',
-    preferencesPath: join(base, 'next-preferences.json')
+    preferencesPath: join(base, 'libraries.json')
   })
   assert.equal(created.ok, true, `夹具建库失败：${JSON.stringify(created)}`)
   return resolve(created.root)

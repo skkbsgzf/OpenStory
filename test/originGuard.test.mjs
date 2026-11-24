@@ -54,7 +54,7 @@ function rawSocketRequest(port, requestText) {
 
 async function makeEnv() {
   const base = await mkdtemp(join(tmpdir(), 'openstory-origin-'))
-  const preferencesPath = join(base, 'next-preferences.json')
+  const preferencesPath = join(base, 'libraries.json')
   await writeFile(preferencesPath, JSON.stringify({ recentProjects: [] }), 'utf-8')
   const daemon = await startDaemon({
     port: 0,

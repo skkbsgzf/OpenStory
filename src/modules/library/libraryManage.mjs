@@ -10,13 +10,18 @@
  *   · 人话：projectDoc.mjs 的 describeOpenFailure/validateLibraryName/folderName
  *     （纯函数无 Vue，A-5 四类失败与 Electron 同一份口径）。
  *
- * 偏好文件纪律：next-preferences.json 只做「读→内存追加/去重→原子写回」；
- * 读不了/坏档＝拒绝登记并如实报，绝不覆盖重写作者电子侧的库清单。
+ * 库清单纪律（OS-167）：只读写 OpenStory 自持的 `libraries.json`（`{schemaVersion,libraries}`）；
+ * 旧院 `next-preferences.json` 只读、只在设置页显式导入，绝不写回。
+ * 读不了/坏档＝拒绝登记并如实报，绝不覆盖重写。
  */
 import { existsSync, statSync } from 'node:fs'
-import { mkdir, readdir, readFile } from 'node:fs/promises'
-import { dirname, isAbsolute, resolve } from 'node:path'
-import { atomicWriteFile } from '../../protocol/hostWrite.mjs'
+import { readdir } from 'node:fs/promises'
+import { isAbsolute, resolve } from 'node:path'
+import {
+  LIBRARY_SOURCES,
+  readLibraryManifest,
+  writeLibraryManifest
+} from '../../protocol/libraryManifest.mjs'
 import {
   createRegistry,
   createCarrierRegistry,
@@ -61,47 +66,39 @@ export const PRIMARY_CHOICES = Object.freeze([
   { id: 'pinax.carrier.script', title: '剧本', detail: '剧本/ 人物/ 场景/ 大纲/… 骨架' }
 ])
 
-/* ---------- 偏好文件登记 ---------- */
+/* ---------- 库清单登记（OS-167：自持 libraries.json） ---------- */
 
 function sameLibraryPath(a, b) {
   return text(a).replace(/[\\/]+$/u, '').toLowerCase() === text(b).replace(/[\\/]+$/u, '').toLowerCase()
 }
 
 /**
- * 把新库追加进库清单（与 Electron 同一份文件）。已登记＝原样返回 duplicate:true，不重写；
- * 清单文件不存在＝从 {recentProjects:[]} 起一份；坏档＝拒绝（绝不覆盖重写）。
+ * 把新库追加进 OpenStory 自持清单。已登记＝duplicate:true 不重写；
+ * 清单不存在＝从 `{schemaVersion,libraries:[]}` 起一份；旧形状/坏档＝拒绝登记（绝不覆盖重写）。
  */
 export async function registerLibrary(preferencesPath, root, name) {
   const target = text(preferencesPath).trim()
   if (!target) return { ok: false, code: 'INVALID_ENTRY', message: '没有可写的库清单路径（preferencesPath 为空）' }
-  let document = { recentProjects: [] }
-  let existed = false
-  try {
-    document = JSON.parse(await readFile(target, 'utf-8'))
-    existed = true
-  } catch (error) {
-    if (error?.code !== 'ENOENT') {
-      return { ok: false, code: 'INVALID_ENTRY', message: `库清单读不了/不是合法 JSON，拒绝登记（不覆盖重写）：${text(error?.message || error)}` }
-    }
+  const current = readLibraryManifest({ preferencesPath: target })
+  if (current.legacy) {
+    return { ok: false, code: 'INVALID_ENTRY', message: '旧 Pinax 清单只读：请在设置页导入到 OpenStory 库清单后再建库' }
   }
-  if (!document || typeof document !== 'object' || !Array.isArray(document.recentProjects)) {
-    return { ok: false, code: 'INVALID_ENTRY', message: '库清单形状不对（缺 recentProjects 数组），拒绝登记（不覆盖重写）' }
+  if (current.warnings.some((w) => w.code === 'PREFERENCES_CORRUPT' || w.code === 'PREFERENCES_SHAPE' || w.code === 'PREFERENCES_UNREADABLE')) {
+    return { ok: false, code: 'INVALID_ENTRY', message: `库清单读不了/不是合法 JSON，拒绝登记（不覆盖重写）：${current.warnings[0].message}` }
   }
-  const existing = document.recentProjects.find((item) => item && sameLibraryPath(item.path, root))
-  if (existing) {
-    return { ok: true, duplicate: true, existed, libraries: document.recentProjects }
+  const existed = current.path === target && current.libraries.length > 0
+  if (current.libraries.some((item) => sameLibraryPath(item.path, root))) {
+    return { ok: true, duplicate: true, existed, libraries: current.libraries }
   }
   const record = {
     path: resolve(text(root)),
     name: text(name).trim() || folderName(root),
-    kind: '未分类',
-    count: 0,
-    at: new Date().toISOString()
+    addedAt: new Date().toISOString(),
+    source: LIBRARY_SOURCES.openstory
   }
-  const recentProjects = [record, ...document.recentProjects]
-  await mkdir(dirname(target), { recursive: true })
-  await atomicWriteFile(target, JSON.stringify({ ...document, recentProjects }, null, 2))
-  return { ok: true, duplicate: false, existed, libraries: recentProjects }
+  const written = await writeLibraryManifest(target, [record, ...current.libraries])
+  if (!written.ok) return written
+  return { ok: true, duplicate: false, existed, libraries: written.libraries }
 }
 
 /* ---------- 内核失败 → OpenStory 契约失败 ---------- */

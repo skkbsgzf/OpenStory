@@ -21,7 +21,7 @@ async function makeLibrary() {
   const root = join(base, '夹具库')
   await mkdir(join(root, '.pinax'), { recursive: true })
   await mkdir(join(root, '习惯'), { recursive: true })
-  const preferencesPath = join(base, 'next-preferences.json')
+  const preferencesPath = join(base, 'libraries.json')
   await writeFile(preferencesPath, JSON.stringify({ recentProjects: [{ path: root, name: '夹具库' }] }), 'utf-8')
   await writeFile(join(root, '习惯', 'habits.json'), JSON.stringify({
     schema: 'openstory.habits/v1', tone: 'direct', style: '白描',

@@ -46,7 +46,7 @@ async function boot({ prose = null } = {}) {
   await writeFile(join(root, '拆解', 'book-1.json'), JSON.stringify({
     book: { id: 'book-1', title: '夹具书' }, entries: ENTRIES, revision: 1
   }), 'utf-8')
-  const preferencesPath = join(base, 'next-preferences.json')
+  const preferencesPath = join(base, 'libraries.json')
   await writeFile(preferencesPath, JSON.stringify({ recentProjects: [{ path: root, name: '夹具库' }] }), 'utf-8')
   // 无模型用例：agentConfigPath 指向不存在的文件——不吃本机真实配置
   const agentConfigPath = join(base, 'agent-config.json')

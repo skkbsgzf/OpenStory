@@ -11,6 +11,7 @@
 | **G7 数据源归一：统一成 fact（合并路线）**——fact.data（v3/legacy v2）是唯一事实 schema；pedia/v1（NovelPedia）视为同源同质；OpenStory↔NovelPedia 导入导出一律走 fact.data/v3。 | 【已裁定 2026-11-23：统一成 fact】 | `docs/adr/0001-fact-schema-unification.md`。OS-162 已落地薄适配器＋导入/导出端点（共用 fact 写通道，非第二套写逻辑）；唯一仍开放项＝**拿 NovelPedia 真实数据跑一次导出→导入回环复验**，见【作者动作】 |
 | **模块闸库路径（OS-144 遗留，OS-165 审结）**——曾担心停用时拿不到库根、退回 daemon 默认库或清单第一条。 | 【已审结 2026-11-24：无残留】 | 41 个模块独占端点的契约 `request` **全部带 root**（脚本审计＋`test/moduleCoverage.test.mjs` 钉死），daemon 的模块闸优先取已授权的请求 root；MCP 分析工具不显式给 root 就完全不判定，绝不回落清单；`moduleHooks` 均由调用方传 root。`daemon.moduleGateRoot` 的「默认库＞第一条」只是无库上下文的老调用兜底，对独占端点不可达。无待办，不入档 |
 | **旧院路径冻结（OS-166）**——品牌分家后不再有第二处 `join(base, 'PinaxNext', …)`。 | 【已裁定 2026-11-24：只拷贝不删除】 | `%LOCALAPPDATA%/PinaxNext/` 原样留给 Pinax 桌面端；`src/protocol/courtyard.mjs`（宿主门面 `src/host/courtyard.mjs`）是唯一解析源，首启一次性拷贝到 `%LOCALAPPDATA%/OpenStory/` 并写迁移标记，跳 `*.tmp-*`/`daemon.lock`。旧路径只留在历史文档与迁移常量里，产品代码零直拼（`test/courtyard.test.mjs`＋门禁 S2.1 护栏）。无待办，不入档 |
+| **库清单分家（OS-167）**——`next-preferences.json` 不再是 OpenStory 的 root 授权来源。 | 【已裁定 2026-11-24：只读导入、不写回】 | 新院 `libraries.json` 是自持清单（`{schemaVersion,libraries:[{path,name,addedAt,source}]}`）；`OPENSTORY_PREFERENCES` 是唯一路径环境变量，旧 `PINAX_OS_PREFERENCES` 不回落。设置页 `/api/library/pinax-list` 逐个体检旧清单，`/api/library/pinax-import` 按勾选写新清单。互认靠库内 `.pinax/project.json`，不靠任何本机清单。无待办，不入档 |
 
 ## 【作者动作】——需要作者在真实环境验证一次
 

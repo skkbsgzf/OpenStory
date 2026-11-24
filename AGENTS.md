@@ -104,6 +104,7 @@ L4 自持层→L2 自有内核 `src/kernel/`→L1 磁盘库；OS-157 起 L2/L3 �
    | 本机凭据/模型端点 | `%LOCALAPPDATA%/OpenStory/openstory/agent-config.json`（含密钥，不入库） |
    | 机器级界面偏好（皮肤，无库也生效） | `%LOCALAPPDATA%/OpenStory/openstory/ui-preferences.json`（OS-158，不入库；任何端口共用一份） |
    | 旧院（冻结，OpenStory 不读不写不删） | `%LOCALAPPDATA%/PinaxNext/`（OS-166 起只作为 Pinax 桌面端的院；首启一次性**拷贝**到新院并留 `.migrated-from-pinaxnext.json` 标记，绝不迁移/删除旧院） |
+   | 本机库清单（root 白名单来源） | `%LOCALAPPDATA%/OpenStory/libraries.json`（OS-167：`{schemaVersion,libraries:[{path,name,addedAt,source}]}`；`source=openstory\|imported-pinax`。旧 Pinax 清单只读导入，不写回；互认靠库内 `.pinax/project.json`，不靠本机清单） |
 
 11. **每一次修改都必须有 diff + log，且可被模块自检索。**
     - 写操作一律经 `src/protocol/changelog.mjs` 的 `recordChange()`：自动算 unified diff、

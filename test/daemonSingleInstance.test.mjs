@@ -232,7 +232,7 @@ test('CLI 全链：双开友好退出 0＋「已在运行」；杀掉后锁陈�
 test('健康端点（内嵌 startDaemon）：免 root 授权，未授权 root 也能探活', async () => {
   const { startDaemon } = await import('../src/host/daemon.mjs')
   const base = mkdtempSync(join(tmpdir(), 'openstory-os127-health-'))
-  const preferencesPath = join(base, 'next-preferences.json')
+  const preferencesPath = join(base, 'libraries.json')
   writeFileSync(preferencesPath, JSON.stringify({ recentProjects: [] }), 'utf-8')
   const daemon = await startDaemon({ port: 0, preferencesPath, logger: { log() {} } })
   try {

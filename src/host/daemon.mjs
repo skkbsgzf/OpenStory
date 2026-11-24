@@ -4,8 +4,8 @@
  *
  * 四件事：
  *   1) 静态托管 `openstory/public/`（index.html ＋ app.js）＋套件资产（OS-95）；
- *   2) 文件绑定 API（库 / 条目 / 正文 / wiki）——端点行为在 src/api/handlers/ 七域文件
- *      （OS-141 拆分：与 contracts/ 七域一一对应，src/api/registry.mjs 合成一张表），
+ *   2) 文件绑定 API（库 / 条目 / 正文 / wiki）——端点行为在 src/api/handlers/ 八域文件
+ *      （OS-141 拆分：与 contracts/ 八域一一对应，src/api/registry.mjs 合成一张表），
  *      读走 S1 `factFileStore`，写走 hostWrite/chapterWrite（本文件不重写任何写协议）；
  *   3) Agent 通道（OS-4）：会话 JSONL（`agentStore.mjs`）＋ OpenAI 兼容上游流式转发
  *      （实现在 handlers/agent.mjs）；端点/模型/key 只存 daemon 本机配置，任何响应不回显完整 key；
@@ -19,7 +19,7 @@
  *   · 只绑 127.0.0.1（不监外网，对齐 OpenDesign sidecar）；不做 HTTPS/隧道/多用户。
  *     OS-136 来源防护四层闸：Host（全局）／Origin／Sec-Fetch-Site（/api）只认本机回环，
  *     带 body 必须 application/json——作者浏览器里的任意网页都写不进本机 daemon。
- *   · `root` 必须命中库清单（`%LOCALAPPDATA%/OpenStory/next-preferences.json` 的 recentProjects）
+ *   · `root` 必须命中库清单（`%LOCALAPPDATA%/OpenStory/libraries.json` 的 recentProjects）
  *     或启动时显式 `--root=` 授权；文件路径 resolve 后必须落在 root 内（照 S2 的路径逃逸拒收写法）。
  *   · 正文写入不做 revision 闸（v1 边界）：OpenStory 与 Electron 同时写同一库时，只有写前
  *     `.history/<file>.bak-<时间戳>` 这层粗保护。真正的冲突保护归后续写协议接入。
@@ -577,7 +577,7 @@ export function parseArgs(argv = []) {
 export function main(argv = []) {
   const options = parseArgs(argv)
   if (options.help) {
-    console.log('用法：node src/host/daemon.mjs [--port=8807] [--root=<库路径>] [--preferences=<next-preferences.json>]')
+    console.log('用法：node src/host/daemon.mjs [--port=8807] [--root=<库路径>] [--preferences=<libraries.json>]')
     process.exit(0)
   }
   /* OS-127 单实例闸（启动序列最前面，对标 @open-design/sidecar 最小集）：

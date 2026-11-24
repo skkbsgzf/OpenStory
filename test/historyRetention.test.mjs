@@ -129,7 +129,7 @@ test('集成：临时库连写 60 次（配额 5）——份数有界、最新�
   const yesterday = new Date(Date.now() - 26 * 60 * 60 * 1000)
   await utimes(anchorAbs, yesterday, yesterday)
 
-  const preferencesPath = join(base, 'next-preferences.json')
+  const preferencesPath = join(base, 'libraries.json')
   await writeFile(preferencesPath, JSON.stringify({
     recentProjects: [{ path: root, name: '夹具库', at: new Date().toISOString() }]
   }), 'utf-8')

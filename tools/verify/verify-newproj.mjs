@@ -2,7 +2,7 @@
  * 新建项目验证（OS-107 第三项）：从零新建 / 半成品导入，确认都不出问题。
  * 全程临时目录，不碰作者真库；结束从库清单摘除测试库。
  *
- * 关键认知：daemon 三条硬边界——root 必须命中库清单（next-preferences.json 的
+ * 关键认知：daemon 三条硬边界——root 必须命中库清单（libraries.json 的
  * recentProjects）或 --root= 授权。所以「半成品库」也必须先走 libraryCreate 登记，
  * 再往里塞不规整文件——这才是真实用户路径（导入稿件 / 新建库都会登记）。
  */
@@ -90,12 +90,12 @@ try {
   results.filter((r) => !r.ok).forEach((r) => console.log('  ✗ ' + r.n + ' — ' + r.d))
 } finally {
   try {
-    const prefsPath = process.env.LOCALAPPDATA + '/OpenStory/next-preferences.json'
+    const prefsPath = process.env.LOCALAPPDATA + '/OpenStory/libraries.json'
     const prefs = JSON.parse(await readFile(prefsPath, 'utf-8'))
-    const before = (prefs.recentProjects || []).length
-    prefs.recentProjects = (prefs.recentProjects || []).filter((p) => !created.some((c) => p.path === c))
+    const before = (prefs.libraries || []).length
+    prefs.libraries = (prefs.libraries || []).filter((p) => !created.some((c) => p.path === c))
     await wf(prefsPath, JSON.stringify(prefs, null, 2), 'utf-8')
-    console.log(`\n（已从库清单摘除 ${before - prefs.recentProjects.length} 个测试库）`)
+    console.log(`\n（已从库清单摘除 ${before - prefs.libraries.length} 个测试库）`)
   } catch (e) { console.log('\n（摘除失败）', e.message) }
   await rm(base, { recursive: true, force: true })
   console.log('（临时目录已清理）')

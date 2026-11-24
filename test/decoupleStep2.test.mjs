@@ -188,7 +188,7 @@ test('libraryManage.createLibrary 走本仓 projectDoc 链，建出的库与内�
       path: join(base, '长夜'),
       name: '长夜',
       primaryCarrier: 'pinax.carrier.novel',
-      preferencesPath: join(base, 'next-preferences.json')
+      preferencesPath: join(base, 'libraries.json')
     })
     assert.equal(created.ok, true, `createLibrary 失败：${JSON.stringify(created.error ?? created)}`)
     const g = GOLDEN.novel

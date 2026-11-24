@@ -36,7 +36,7 @@ test('daemon：停用后 /api/artifacts 409 MODULE_DISABLED，启用恢复', asy
   await mkdir(join(root, '.pinax'), { recursive: true })
   await mkdir(join(root, '正文'), { recursive: true })
   await writeFile(join(root, '正文', 'ch1.md'), '正文', 'utf-8')
-  const preferencesPath = join(base, 'next-preferences.json')
+  const preferencesPath = join(base, 'libraries.json')
   await writeFile(preferencesPath, JSON.stringify({ recentProjects: [{ path: root, name: '夹具库' }] }), 'utf-8')
   const writeState = (enabled) => writeFile(join(root, '.pinax', 'ui-state.json'),
     JSON.stringify({ modules: { enabled: { artifacts: enabled } } }), 'utf-8')

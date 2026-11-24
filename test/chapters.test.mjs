@@ -32,7 +32,7 @@ async function makeFixture() {
   await writeFile(join(root, '正文', '第3章 归港.md'), '船靠岸时灯全亮了。', 'utf-8')
   await writeFile(join(root, '正文', '随手记.md'), '不是章节', 'utf-8')
   await writeFile(join(root, '大纲', '总大纲.md'), '三幕。', 'utf-8')
-  const preferencesPath = join(base, 'next-preferences.json')
+  const preferencesPath = join(base, 'libraries.json')
   await writeFile(preferencesPath, JSON.stringify({
     recentProjects: [{ path: root, name: '夹具库', at: '2026-11-15T00:00:00.000Z' }]
   }), 'utf-8')
