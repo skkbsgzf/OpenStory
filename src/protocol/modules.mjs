@@ -65,7 +65,7 @@ export function validateModuleManifest(raw, { dirName = '' } = {}) {
   if (dirName && id !== dirName) errors.push(`id（${id}）必须与目录名（${dirName}）一致`)
   if (!text(raw.name).trim()) errors.push('缺 name')
   if (!VERSION_RE.test(text(raw.version).trim())) errors.push('version 必须是三段数字（如 0.1.0）')
-  if (typeof raw.core !== 'boolean') errors.push('core 必须是布尔值（本批三个模块都是 false）')
+  if (typeof raw.core !== 'boolean') errors.push('core 必须是布尔值（true＝核心不可停用，false＝普通模块）')
   const endpoints = raw.endpoints
   if (!Array.isArray(endpoints)) {
     errors.push('endpoints 必须是数组')
@@ -173,6 +173,9 @@ const loaded = loadModuleManifests()
 export const MODULE_MANIFESTS = Object.freeze(loaded.manifests)
 export const MODULE_MANIFEST_WARNINGS = Object.freeze(loaded.warnings)
 export const MODULE_IDS = Object.freeze(MODULE_MANIFESTS.map((manifest) => manifest.id))
+/** OS-163：核心模块（core:true）——恒启用、不可停用（chapters/worldbook/script/roleplay 四个）。 */
+export const CORE_MODULE_IDS = Object.freeze(MODULE_MANIFESTS.filter((manifest) => manifest.core).map((manifest) => manifest.id))
+export function isCoreModule(id) { return CORE_MODULE_IDS.includes(id) }
 
 /** endpointId → 独占它的模块 id。共用端点不登记，因此不在这张表里。 */
 export const MODULE_ENDPOINT_OWNERS = Object.freeze(Object.fromEntries(
@@ -203,6 +206,7 @@ function rawEnabled(state, id) {
 export async function isModuleEnabled(root, id) {
   if (!root) return true
   if (!moduleManifest(id)) return true // 未知 id 不是插件，不拦
+  if (isCoreModule(id)) return true // OS-163：核心模块恒启用——ui-state 里即便写成 false 也不生效
   try {
     const { state } = await readUiState(root)
     return rawEnabled(state ?? {}, id) !== false

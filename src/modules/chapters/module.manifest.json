@@ -1,0 +1,22 @@
+{
+  "spec": "openstory-module@1",
+  "id": "chapters",
+  "name": "正文",
+  "version": "0.1.0",
+  "core": true,
+  "description": "正文工作面（核心模块，core:true——永远启用、不可停用）：独占 chapterGet / chapterPut / chaptersGet / chaptersCreate / chaptersRename / chapterDelete / draftGet。changeLog* 属宿主的跨模块修改痕迹（OS-89 立宪），不归本模块。写入必经 writeChapterWithBackup（原子写＋.history＋修改痕迹），编辑/研究可改，不另设批准动作。",
+  "endpoints": [
+    "chapterGet",
+    "chapterPut",
+    "chaptersGet",
+    "chaptersCreate",
+    "chaptersRename",
+    "chapterDelete",
+    "draftGet"
+  ],
+  "pages": [
+    { "id": "write", "label": "正文", "slot": "tab" }
+  ],
+  "settings": [],
+  "settingsHint": "正文是核心工作面，不可停用也没有可调参数：章节在「正文」页签里写，落盘与版本历史走同一条写协议。"
+}

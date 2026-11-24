@@ -142,9 +142,12 @@ export function aggregateSettings({ kernel = KERNEL_SETTINGS, modules = [], enab
     .filter((manifest) => isPlainObject(manifest) && text(manifest.id).trim())
     .map((manifest) => {
       const id = text(manifest.id).trim()
-      const on = enabledMap[id] !== false
+      // OS-163：核心模块恒启用、不可停用（ui-state 里写成 false 也不生效）
+      const core = manifest.core === true
+      const on = core || enabledMap[id] !== false
       return {
         id,
+        core,
         name: text(manifest.name).trim() || id,
         description: text(manifest.description).trim(),
         // OS-146：真配置在别处时的指路（hint 一句话＋jump 设置页区块 id）；没有就空
@@ -287,7 +290,10 @@ export function renderSettingsModules(aggregation, deps = {}) {
   const group = (aggregation?.groups ?? []).find((item) => item.id === 'modules')
   if (!group) return ''
   const cards = (group.modules ?? []).map((module) => {
-    const toggle = `<label class="cfg-switch"><input type="checkbox" data-action="plugin-module-toggle" data-module-id="${esc(module.id)}"${module.enabled ? ' checked' : ''}><span>启用「${esc(module.name)}」</span></label>`
+    // OS-163：核心模块的启停开关锁死（checked + disabled），旁边挂「核心模块」徽标。
+    const toggle = module.core
+      ? `<label class="cfg-switch"><input type="checkbox" checked disabled data-module-id="${esc(module.id)}"><span>启用「${esc(module.name)}」</span></label><span class="pill">核心模块</span>`
+      : `<label class="cfg-switch"><input type="checkbox" data-action="plugin-module-toggle" data-module-id="${esc(module.id)}"${module.enabled ? ' checked' : ''}><span>启用「${esc(module.name)}」</span></label>`
     // 指路行（OS-146）：真配置在 agent-config / kb-config 之类的宿主位置，这里只说明去哪找
     const pointer = text(module.settingsHint)
       ? `<div class="row"><span class="cfg-note">${esc(module.settingsHint)}</span>${text(module.settingsJump)

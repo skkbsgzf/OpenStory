@@ -7,7 +7,7 @@
 | 依赖 | OS-161、OS-162 |
 | 允许改动 | `src/**`、`public/**`、`test/**`、`tools/**`、`docs/**`、`ARCHITECTURE.md`、`AGENTS.md` |
 | 风险 | 中（核心写面；`app.js` 要净下降） |
-| 状态 | 待派 |
+| 状态 | 已验收（2026-11-24） |
 
 ## 目标
 
@@ -64,3 +64,13 @@
 ## 施工回报（编排器自动归档）
 
 ## 验收记录（主 agent 填）
+
+- **两个 manifest 落地**：`src/modules/chapters/module.manifest.json`（`core:true`，独占 `chapterGet` / `chapterPut` / `chaptersGet` / `chaptersCreate` / `chaptersRename` / `chapterDelete` / `draftGet`；`changeLog*` 明确不归它）与 `src/modules/script/module.manifest.json`（`core:true`，零独占端点，如实登记借用 chapters 通道）。`src/protocol/modules.mjs` 新增 `CORE_MODULE_IDS` / `isCoreModule`，`isModuleEnabled` 对核心模块短路返回 true（ui-state 写 false 不生效）。
+- **证据① 恒启用**：`test/coreModules.test.mjs` 把扁平键＋嵌套键同时写成 false，`isModuleEnabled(root, 'chapters'/'script')` 仍 true，七个独占端点的 `isModuleDisabledFor` 全为 null；同一份 state 下普通模块 habits 仍按 false 停用（对照）。
+- **证据② 拒写**：`uiStatePut` 只拒绝「核心模块＝false」这一种键（扁平与嵌套都拦），返回 409 `MODULE_CORE`；契约 `uiStatePut.errors` 登记该码，`src/host/http.mjs` 的 `STATUS_BY_CODE` 补 `MODULE_CORE: 409`；普通模块停用键与其它 ui-state 键照旧写入并落盘。设置页 `renderSettingsModules` 把核心开关渲染成 `checked disabled` 并挂「核心模块」徽标，`aggregateSettings` 对 core 恒 `enabled:true`。
+- **证据③ 页签恒在**：`TAB_REGISTRY` 的 write/script 显式声明 `module: chapters/script` 与 `moduleCore:true`（新字段，不改页签级 `core`；registry 仍零 import）；`moduleVisible` 对 `moduleCore` 短路放行。显式启用集合传空集时正文与剧本页签仍在， habits 照常消失；dirScan 分支同样恒在。`test/tabRegistry.test.mjs` 快照与对拍 34/34 全绿，缺省页签 diff 为空。
+- **证据④ 端点恒通**：ui-state 写 false 后起真实 daemon，`GET /api/chapters?dir=正文` 与 `GET /api/chapter?file=正文/001-风雪山神庙.md` 均 200 且正文可读。
+- **写入路径收敛前后对照**：正文**内容**写入通道——开工前 1 条（`writeChapterWithBackup`：原子写＋`.history`＋修改痕迹），6 个调用点（`handlers/chapters.mjs` 2、`handlers/agent.mjs` 1、`handlers/fact.mjs` 1、`handlers/reference.mjs` 2）；统一后仍是这 1 条 / 6 处，**没有新增第二套写逻辑、没有加第二道批准动作**。元数据通道 `createChapter`（建空文件）／`renameChapter`（保号改名）／`deleteChapter`（挪 `.history`）沿用既有，不算内容写入；剧本无独立写通道，与正文共用 `/api/chapter`。
+- **视图迁出（app.js 净下降）**：新增 `public/views/scriptViews.mjs`（零 import / 零 DOM / 零存储），迁出 `scriptPrefsFrom` / `scriptBlockToRaw` / `scriptCastHtml` / `scriptViewHtml` 四个纯函数，app.js 留薄壳注入 `text/esc/state/refModulesHtml` 等；`scriptToFactFlow` 因读 state、调 api、操作 DOM 留在 app.js（工单「起定时器/操作 DOM 的留宿主」）。app.js **12,310 → 12,242，净降 68 行**。`VIEW_RENDERERS` 注册名未变（剧本仍走 `dirViewHtml` → `scriptViewHtml` 分支）。
+- **测试**：新增 `test/scriptViews.test.mjs`（7 例：设置项/三类剧本块金样/人物卡/页面金样/分支/纯度/薄壳）与 `test/coreModules.test.mjs`（6 例：manifest/四证据/设置页）；`test/modulePlugins.test.mjs` 的「全模块非核心」按批次等价加强为「core 标记与核心清单严格一致」，核心端点不得登记不可达的 `MODULE_DISABLED`，`chapterGet` 归属从 null 改为核心模块 chapters；强度不减。全量 **638 例（636 过 / 2 跳 / 0 挂）**，较 OS-162 的 625 例只增不减。
+- **门禁与统计**：`node tools/acceptance/acceptance.mjs` **22 过 / 0 挂 / 0 警**；`npm run arch:stats` 已回写 `ARCHITECTURE.md`（`public/` 21 文件 21,098 行，`app.js` 12,242，端点 105，测试 80 文件）。新增/修改的每个文件均过 `node --check`；夹具全在系统临时目录，未碰作者真库。

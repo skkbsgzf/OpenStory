@@ -240,7 +240,7 @@ export const systemEndpoints = {
     // 整对象合并写（浅合并，undefined 不覆盖）。原子写 + .history 备份。
     request: { body: { root: 'string', state: 'object' } },
     response: { ok: 'true', state: 'object', backup: 'string?' },
-    errors: ['NO_LIBRARY', 'INVALID_ENTRY', 'WRITE_PROTOCOL_IO_FAILED']
+    errors: ['NO_LIBRARY', 'INVALID_ENTRY', 'WRITE_PROTOCOL_IO_FAILED', 'MODULE_CORE']
   },
 
   uiPreferencesGet: {

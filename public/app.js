@@ -155,9 +155,15 @@ const settingsAggregationReady = import('./views/settingsAggregation.mjs').then(
 let workbenchViews = null
 const workbenchViewsReady = import('./views/workbenchViews.mjs').then((mod) => { workbenchViews = mod; return mod })
   .catch((error) => { console.error('[views] 工作面视图模块加载失败', error); return null })
+/* OS-163：剧本纯视图（views/scriptViews.mjs）——剧本页/人物卡/块转源码的设置项规范化住这里 */
+let scriptViews = null
+const scriptViewsReady = import('./views/scriptViews.mjs').then((mod) => { scriptViews = mod; return mod })
+  .catch((error) => { console.error('[views] 剧本视图模块加载失败', error); return null })
 /* OS-161：前端模块 id 清单（与各模块目录的 module.manifest.json 对齐；后端 manifest 装载结果在此镜像，
    页签可见性只按这张表 × moduleOn(id) 判定，新增模块须同步这里一行）。 */
-const MODULE_IDS = ['analysis', 'comfyui', 'kb', 'habits', 'storysource', 'artifacts', 'exchange']
+const MODULE_IDS = ['analysis', 'comfyui', 'kb', 'habits', 'storysource', 'artifacts', 'exchange', 'chapters', 'script']
+// OS-163：核心模块恒启用（与后端 isModuleEnabled 的 core 分支同口径）——UI 不因 ui-state 的 false 隐藏核心页签。
+const CORE_MODULE_IDS = ['chapters', 'script']
 
 /* OS-149：运行时货架过滤（views/runtimeShelf.mjs）——fixture 套件不进作者可见列表；纯函数在 views/，这里只接线 */
 let runtimeShelf = null
@@ -889,31 +895,9 @@ function blockHtmlToMd(blockEl) {
   return text.split('\n').map((line) => line.trimEnd()).join('\n').trim()
 }
 
-/** 剧本块 HTML → 剧本文本（OS-76：与 blockHtmlToMd 同职责，但保留剧本标记）。
- * 按 data-sc-kind 重建：幕 `# 标题`、场景 `*〔…〕*`、台词 `**名**（提示）：说白`。 */
+/** 剧本块 HTML → 剧本文本（OS-163：本体迁 views/scriptViews.mjs，这里只注入 text 后转交）。 */
 function scriptBlockToRaw(blockEl) {
-  // data-sc-kind 渲染在内层块（.sc-line/.sc-act/…）上，不在 doc-block 外层——
-  // 先读外层（兼容），再从内层找；两处都没有才算 action。
-  const inner = blockEl.querySelector('[data-sc-kind]')
-  const kind = blockEl.dataset.scKind || inner?.dataset.scKind || ''
-  const raw = blockEl.dataset.raw || ''
-  // contenteditable 里 innerText 会受浏览器排版影响；优先用 textContent（不含渲染空白差异）
-  const plain = (el) => text(el?.textContent ?? '').replace(/\s+/gu, ' ').trim()
-  if (kind === 'act') return `# ${plain(blockEl) || raw.replace(/^#\s+/u, '')}`
-  if (kind === 'stage') return `*〔${plain(blockEl) || raw.replace(/^\*?[〔【\[]/u, '').replace(/[〕】\]]\*?$/u, '')}〕*`
-  if (kind === 'line') {
-    const who = plain(blockEl.querySelector('.sc-who'))
-    const hint = plain(blockEl.querySelector('.sc-hint')).replace(/^[（(]|[）)]$/gu, '')
-    const said = plain(blockEl.querySelector('.sc-said'))
-    // 结构被浏览器重组（span 丢了）时，用 data-raw 反解出 who/hint 兜底
-    if (who && said !== undefined) return `**${who}**${hint ? `（${hint}）` : ''}：${said}`
-    if (raw) {
-      const m = /^\*\*([^*]+)\*\*\s*(?:[（(]([^）)]*)[）)])?\s*[:：]\s*([\s\S]*)$/u.exec(raw)
-      if (m) return `**${m[1].trim()}**${m[2] ? `（${m[2].trim()}）` : ''}：${plain(blockEl) || m[3]}`
-    }
-    return plain(blockEl)
-  }
-  return plain(blockEl) || raw
+  return scriptViews.scriptBlockToRaw(blockEl, { text })
 }
 
 /** 剧本块保存：与 commitDocBlock 同构，只是块转源码和保存目标换掉。 */
@@ -3424,11 +3408,7 @@ const WORKBENCH_MODULES = Object.freeze([
  *   castColors   —— 角色专属颜色
  */
 function scriptPrefs() {
-  const raw = uiGet('scriptPrefs', {})
-  return {
-    autoFormat: raw?.autoFormat !== false,   // 默认开
-    castColors: raw?.castColors !== false    // 默认开
-  }
+  return scriptViews.scriptPrefsFrom(uiGet('scriptPrefs', {}))
 }
 
 function setScriptPref(name, value) {
@@ -6017,17 +5997,12 @@ const SCRIPT_REF_MODULES = Object.freeze([
   { id: 'changelog', label: '本模块修改', hint: '每次保存的 diff 与时间', render: () => moduleLogHtml('剧本', { title: '剧本修改记录' }), badge: () => String(moduleLogOf('剧本')?.entries?.length ?? 0) }
 ])
 
-/** 剧本出场人物卡：从角色台词里统计谁说了多少句。 */
+/** 剧本出场人物卡（OS-163：本体迁 views/scriptViews.mjs，这里取数后转交）。 */
 function scriptCastHtml() {
   const work = dirWork('剧本')
   const mod = state.scriptModule
   if (!mod?.splitScriptBlocks || !work?.text) return '<div class="nav-empty">还没有内容</div>'
-  const blocks = mod.splitScriptBlocks(work.text).filter((b) => b.kind === 'line' && b.who)
-  const counts = new Map()
-  for (const b of blocks) counts.set(b.who, (counts.get(b.who) || 0) + 1)
-  if (!counts.size) return '<div class="nav-empty">还没有台词</div>'
-  return [...counts.entries()].sort((a, b) => b[1] - a[1])
-    .map(([who, n]) => `<div class="cast-row"><span class="cast-name">${esc(who)}</span><span class="cast-n">${n} 句</span></div>`).join('')
+  return scriptViews.scriptCastHtml({ blocks: mod.splitScriptBlocks(work.text), esc })
 }
 
 const REF_MODULES = Object.freeze([
@@ -8390,70 +8365,23 @@ async function mountStorySourceChart() {
   }
 }
 
-/** 剧本页（OS-75）：与小说同构的「逐块实时编辑」，但按剧本格式渲染。
- * 数据通道不变（/api/files + /api/chapter）——剧本就是 剧本/NNN-标题.md。 */
+/** 剧本页（OS-75；OS-163 本体迁 views/scriptViews.mjs）：这里取 state 后转交纯视图。 */
 function scriptViewHtml() {
   const dir = '剧本'
   const work = dirWork(dir)
-  const label = DIR_LABELS[dir] || dir
-  const sc = work.loaded && state.scriptModule?.scriptStats ? state.scriptModule.scriptStats(work.text) : null
-  const meta = sc
-    ? `<span class="b">${sc.acts} 幕</span><span class="docline-sep">·</span><span>${sc.scenes} 场</span><span class="docline-sep">·</span><span>${sc.lines} 句台词</span><span class="docline-sep">·</span><span id="dir-chars">${sc.chars} 字</span>${sc.cast.length ? `<span class="docline-sep">·</span><span class="count">出场：${esc(sc.cast.join('、'))}</span>` : ''}`
-    : `<span id="dir-chars">${work.text.length} 字</span>`
-  // OS-76：与正文页同构——逐块 contenteditable + data-start/end/raw 偏移，
-  // 保存走同一套 commitDocBlock（只是渲染器换成剧本版式）。
-  // 文件列表像正文页章节列表一样放左栏，不再占顶部横栏。
-  const body = work.loaded
-    ? renderScriptDocBody(work.text)
-    : `<div class="empty-state"><h2>${esc(label)}</h2><p>还没有剧本——左侧新建一个，或选已有文件。</p></div>`
-  const fileRows = work.files.map((item) => `<button class="ch-row${item.file === work.file ? ' on' : ''}" data-dirfile-pick="${esc(item.file)}" title="${esc(item.file)}">
-      <span class="no">${esc(String(item.name || '').slice(0, 2))}</span>
-      <span class="tt">${esc(String(item.name || '').replace(/\.md$/u, ''))}</span>
-      <span class="sz">${formatBytes(item.size)}</span>
-    </button>`).join('')
-  return `<div class="doc-workspace doc-workspace-sticky">
-    <header class="doc-head doc-head-immersive">
-      <div class="docline">
-        <span class="kick">${esc(state.current.name)}</span>
-        <span class="docline-sep">·</span>
-        <span class="chap-no">${esc(label)}</span>
-        <span class="docline-sep">·</span>
-        ${meta}
-        <span class="sp"></span>
-        <span class="doc-autosave" id="doc-autosave"></span>
-        <button class="doc-drawer-btn" data-action="refcol-toggle" title="左侧栏（文件/人物/图谱）" aria-label="左侧栏">
-          <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><rect x="2.5" y="2.5" width="11" height="11" rx="1.6" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M2.5 6h11M2.5 10h11" stroke="currentColor" stroke-width="1.4"/></svg>
-        </button>
-        <button class="doc-drawer-btn" data-action="analyze-toggle" title="分析本剧" aria-label="分析"${moduleOn('analysis') ? '' : ' hidden'}><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><circle cx="8" cy="8" r="5.4" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M8 2.6A5.4 5.4 0 0 1 13.4 8H8z" fill="currentColor"/></svg></button>
-        <button class="doc-icon" data-action="script-more" title="剧本设置（自动排版 / 角色配色 / 互转）" aria-label="剧本设置">
-          <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><circle cx="3.4" cy="8" r="1.35" fill="currentColor"/><circle cx="8" cy="8" r="1.35" fill="currentColor"/><circle cx="12.6" cy="8" r="1.35" fill="currentColor"/></svg>
-        </button>
-      </div>
-      <div class="doc-title-row">
-        <h1 class="doc-title">${esc(work.file ? work.file.split('/').pop().replace(/\.md$/u, '') : label)}</h1>
-        ${work.savedAt ? `<span class="saved-chip">已保存 · ${esc(formatAt(work.savedAt))}</span>` : ''}
-      </div>
-    </header>
-    <div class="chapter-grid">
-    <aside class="ref-col sc-side" id="ref-col">
-      ${refModulesHtml({ modules: SCRIPT_REF_MODULES, prepend: `<section class="ref-mod">
-        <div class="ref-mod-head"><span class="rm-toggle">剧本<span class="count">${work.files.length}</span></span></div>
-        <div class="sc-file-list">
-          ${fileRows || '<div class="nav-empty">还没有剧本</div>'}
-          <div class="sc-new-row">
-            <input class="file-input" id="dirfile-new-name" placeholder="新剧本.md" value="">
-            <button class="btn-ghost" data-action="dirfile-new">新建</button>
-          </div>
-        </div>
-      </section>` })}
-    </aside>
-      ${flowError(work.error)}
-      <div class="doc-scroll" id="doc-scroll">
-        <div class="chapter-editor-col">${work.loading && !work.loaded ? '<div class="loading">正在读取…</div>' : body}</div>
-      </div>
-      <aside class="analyze-panel" id="analyze-panel"></aside>
-    </div>
-  </div>`
+  return scriptViews.scriptViewHtml({
+    currentName: state.current.name,
+    dir,
+    label: DIR_LABELS[dir] || dir,
+    work,
+    stats: state.scriptModule?.scriptStats ? (source) => state.scriptModule.scriptStats(source) : null,
+    body: work.loaded ? renderScriptDocBody(work.text) : '',
+    modules: SCRIPT_REF_MODULES,
+    refModulesHtml,
+    flowError,
+    esc, formatAt, formatBytes,
+    analysisOn: moduleOn('analysis')
+  })
 }
 
 /** 角色专属色（OS-78）：跟随「设置 · 剧本 · 角色配色」开关。关掉＝纯墨色。 */
@@ -9971,7 +9899,7 @@ function deduceAgentHtml() {
 /* ---------- 数据加载 ---------- */
 
 async function boot() {
-  await Promise.all([registryReady, runtimeShelfReady, workbenchViewsReady]) // OS-143/149/161：注册表、运行时货架、工作面视图先就位（首帧起页签全部由注册表驱动）
+  await Promise.all([registryReady, runtimeShelfReady, workbenchViewsReady, scriptViewsReady]) // OS-143/149/161/163：注册表、运行时货架、工作面/剧本视图先就位（首帧起页签全部由注册表驱动）
   applyTypography()   // OS-91：无库时也先套默认字号档，避免首帧跳变
   applyAgentCollapse() // OS-103
   // 运行时清单与 config 一起拉：chip 要能显示「DSH 原生」这类具体名字，不能等进设置页才加载
@@ -11919,7 +11847,7 @@ function uiGet(key, fallback = null) {
   return key in mem.values ? mem.values[key] : fallback
 }
 /** OS-144 模块插件判定（前端唯一入口）：ui-state `modules.enabled.<id>`（扁平键优先，缺省启用）。 */
-function moduleOn(id) { const flat = uiGet(`modules.enabled.${id}`, null); if (flat !== null) return flat !== false; const nested = uiGet('modules', null); if (nested && nested.enabled && Object.prototype.hasOwnProperty.call(nested.enabled, id)) return nested.enabled[id] !== false; return true }
+function moduleOn(id) { if (CORE_MODULE_IDS.includes(id)) return true; const flat = uiGet(`modules.enabled.${id}`, null); if (flat !== null) return flat !== false; const nested = uiGet('modules', null); if (nested && nested.enabled && Object.prototype.hasOwnProperty.call(nested.enabled, id)) return nested.enabled[id] !== false; return true }
 
 /** 防抖落库：短时间内多次设置只写一次。 */
 let uiFlushTimer = null

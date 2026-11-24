@@ -44,6 +44,7 @@ import {
 import { runDshStdio, dshModelSelection } from '../../services/dsh-cli.mjs'
 import { listArtifacts, listLibraryFiles } from '../../modules/library/inventory.mjs'
 import { readUiState, writeUiState } from '../../protocol/libState.mjs'
+import { CORE_MODULE_IDS } from '../../protocol/modules.mjs'
 import { atomicWriteFile } from '../../protocol/hostWrite.mjs'
 import { defaultUiPreferencesPath, readUiPreferences, writeUiSkin } from '../../services/uiPreferences.mjs'
 
@@ -274,6 +275,14 @@ export async function uiStatePut(ctx) {
   const { res, request, allowlist } = ctx
   const authorized = authorizeRoot(allowlist, request.root)
   if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
+  // OS-163：核心模块（core:true）不可停用——只拒绝这一个键，其余状态照旧写。
+  const next = request.state
+  const coreKeys = CORE_MODULE_IDS.map((id) => `modules.enabled.${id}`)
+  const nested = next?.modules?.enabled
+  const denied = coreKeys.filter((key) => next?.[key] === false)
+    .concat(CORE_MODULE_IDS.filter((id) => nested && Object.prototype.hasOwnProperty.call(nested, id) && nested[id] === false).map((id) => `modules.enabled.${id}`))
+  if (denied.length) return sendError(res, API_ERROR_CODES.MODULE_CORE,
+    `核心模块不可停用：${[...new Set(denied)].join('、')}`, { modules: [...new Set(denied)] })
   const result = await writeUiState(authorized.root, request.state)
   if (!result.ok) return sendError(res, result.code ?? API_ERROR_CODES.INVALID_ENTRY, result.message)
   return sendJson(res, 200, { ok: true, state: result.state, ...(result.backup ? { backup: result.backup } : {}) })

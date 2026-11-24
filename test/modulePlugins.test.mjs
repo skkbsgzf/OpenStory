@@ -21,8 +21,10 @@ import { fileURLToPath } from 'node:url'
 import { ENDPOINTS } from '../src/api/contracts.mjs'
 import { HANDLERS, ENDPOINT_MODULES, HANDLER_MODULE_SOURCES } from '../src/api/registry.mjs'
 import {
+  CORE_MODULE_IDS,
   MODULE_MANIFESTS,
   MODULE_SPEC,
+  isCoreModule,
   isModuleEnabled,
   isModuleDisabledFor,
   moduleOfEndpoint,
@@ -90,10 +92,14 @@ test('模块 manifest：普通模块都过形状校验，spec/id/core 口径统�
     const checked = validateModuleManifest(manifest, { dirName: manifest.id })
     assert.equal(checked.ok, true, `${manifest.id} 应过校验：${checked.errors?.join('；')}`)
     assert.equal(manifest.spec, MODULE_SPEC)
-    assert.equal(manifest.core, false)
+    // OS-163：核心两枚（chapters/script）恒启用；其余仍一律非核心。原「全非核心」断言按批次
+    // 等价加强为「core 标记与核心清单严格一致」，强度不减（普通模块仍必须 false）。
+    assert.equal(manifest.core, CORE_MODULE_IDS.includes(manifest.id), `${manifest.id} 的 core 标记与核心清单不一致`)
     for (const endpoint of manifest.endpoints) {
       assert.ok(Object.prototype.hasOwnProperty.call(ENDPOINTS, endpoint), `${manifest.id} 声明的端点不存在：${endpoint}`)
-      assert.ok(ENDPOINTS[endpoint].errors.includes('MODULE_DISABLED'), `${endpoint} 的契约 errors 应登记 MODULE_DISABLED`)
+      // 核心模块不可停用 → MODULE_DISABLED 不可达，端点契约不应登记该码。
+      if (manifest.core) assert.ok(!ENDPOINTS[endpoint].errors.includes('MODULE_DISABLED'), `核心端点 ${endpoint} 不该登记不可达的 MODULE_DISABLED`)
+      else assert.ok(ENDPOINTS[endpoint].errors.includes('MODULE_DISABLED'), `${endpoint} 的契约 errors 应登记 MODULE_DISABLED`)
     }
   }
   // 坏 manifest 会被校验拦住（不是静默放过）
@@ -108,7 +114,10 @@ test('端点归属：只登记独占端点，共用端点没有归属', () => {
   assert.equal(moduleOfEndpoint('visionDescribe'), 'comfyui')
   // 共用端点：任何模块停用都不该影响
   assert.equal(moduleOfEndpoint('factCurveGet'), null)
-  assert.equal(moduleOfEndpoint('chapterGet'), null)
+  // OS-163：chapterGet 归核心模块 chapters 独占；核心恒启用，原「任何模块停用都不影响它」
+  // 的语义不变——只是从「无归属」升级为「归属不可停用者」（强度不减）。
+  assert.equal(moduleOfEndpoint('chapterGet'), 'chapters')
+  assert.equal(isCoreModule(moduleOfEndpoint('chapterGet')), true)
   // 分析没有 daemon 端点（纯本地引擎），表里不该硬塞
   assert.equal(ENDPOINT_MODULES.analysis, undefined)
   // OS-161 起模块清单按批扩大：断言改为「与 manifest 装载结果一致」的动态等价加强——

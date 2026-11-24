@@ -47,6 +47,7 @@ export const API_ERROR_CODES = Object.freeze({
   UNSUPPORTED_MEDIA_TYPE: 'UNSUPPORTED_MEDIA_TYPE',
   // 模块插件（OS-144）：独占端点所属模块被作者停用——数据与值保留，重新启用即恢复
   MODULE_DISABLED: 'MODULE_DISABLED',
+  MODULE_CORE: 'MODULE_CORE', // OS-163：核心模块不可停用（写 ui-state 时拒）
   // 故事源（OS-150a）：库里还没有任何拆解条目——合法空态，不是坏档
   FACT_EMPTY: 'FACT_EMPTY',
   // 故事源（OS-150b）：拆解/ 下有档，但一本都读不出来——坏档不是空态，别让页面摆「还没有」

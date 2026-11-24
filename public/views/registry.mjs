@@ -225,13 +225,14 @@ export const TAB_REGISTRY = Object.freeze([
   // OS-12：页签首格固定＝产物中心（产出物＋多版本＋历史）；「库」上移顶栏。
   { id: 'artifacts', kind: 'fixed', core: true, module: 'artifacts', view: 'artifacts', ...tabNaming('artifacts'), icon: '产', render: 'artifactsHtml', panel: true, closable: true, scope: 'library' },
   // OS-19：正文走 libDirs 判断——体裁声明后（如短故事）没有 正文/ 目录就不出。
-  { id: 'write', kind: 'fixed', core: true, view: 'write', ...tabNaming('chapters'), icon: '章', render: 'writeHtml', panel: true, closable: true, scope: 'library',
+  // OS-163：正文归核心模块 chapters；moduleCore 只表达「模块级不可停用」，与本表的页签级 core 是两回事。
+  { id: 'write', kind: 'fixed', core: true, module: 'chapters', moduleCore: true, view: 'write', ...tabNaming('chapters'), icon: '章', render: 'writeHtml', panel: true, closable: true, scope: 'library',
     visibleWhen: (ctx) => !ctx.brief || ctx.hasDir(namingEntry('chapters').dir) },
   // 目录型组插入点：从这里到下一个非 dirScan 条目之间，全部按「磁盘目录 × 词表」扫描物化。
   // OS-44：参考目录走专门的笔记系统页，页签名「世界书」；「＋」面板里仍叫「参考」。
   { id: 'reference', kind: 'fixed', core: true, view: 'reference', ...tabNaming('reference'), dirScan: true, icon: '世', render: 'referencePageHtml', closable: true, scope: 'library' },
   // OS-75：剧本页 fork 正文页（dir:剧本 视图，剧本版式渲染）。
-  { id: 'script', kind: 'fixed', core: true, view: 'dir:剧本', ...tabNaming('script'), dirScan: true, icon: '剧', render: 'dirViewHtml', closable: true, scope: 'library' },
+  { id: 'script', kind: 'fixed', core: true, module: 'script', moduleCore: true, view: 'dir:剧本', ...tabNaming('script'), dirScan: true, icon: '剧', render: 'dirViewHtml', closable: true, scope: 'library' },
   // OS-48：拆解目录承载故事源（fact 链可视化）——目录名不动，页签改叫故事源。
   { id: 'storySource', kind: 'fixed', core: true, module: 'storysource', view: 'dir:拆解', ...tabNaming('storysource'), dirScan: true, icon: '故', render: 'dirViewHtml', closable: true, scope: 'library' },
   // OS-59：习惯——规则类内容归 habits.json，专页承载。
@@ -273,6 +274,9 @@ function orderIndexOf(dir) {
  *  旧快照与所有不带该字段的调用点一个字不改；给了就只认显式启用的模块（Set / 数组 / 对象）。 */
 function moduleVisible(entry, modulesEnabled) {
   if (!entry.module) return true
+  // OS-163：模块级 core:true 的页签恒在——即便 ctx 给了只含普通模块的显式启用集合也不裁掉。
+  // 这里是注册表自持的标记（zero-import 约束不允许 import 后端 modules 协议）。
+  if (entry.moduleCore === true) return true
   if (modulesEnabled === undefined || modulesEnabled === null) return true
   if (modulesEnabled instanceof Set) return modulesEnabled.has(entry.module)
   if (Array.isArray(modulesEnabled)) return modulesEnabled.includes(entry.module)
