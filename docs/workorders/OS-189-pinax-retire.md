@@ -191,3 +191,14 @@ src/protocol/libraryUpgrade.mjs:207:        || (Array.isArray(document?.carriers
 src/protocol/libraryUpgrade.mjs:399:    const match = /^pinaxRelationExtensions(\s*:)/u.exec(lines[index])
 src/protocol/libraryUpgrade.mjs:411:/** OS-188a：把库内 `.pina
 ```
+
+## 验收记录（监督线，2026-11-25）
+
+- 提交 `3763589`。全量 812／810 过／2 条件跳过／0 挂；验收门禁 27／0／0；数字锚与架构统计一致；隔离 e2e 水浒＋新建全绿。
+- 逐处核对退役：
+  - 产品代码里 `LEGACY_TMP_PREFIX`、`LEGACY_COURTYARD_DIR`、`MIGRATION_MARKER`、`recentProjects`、`imported-pinax`、`LEGACY_MANIFEST_FILE` 全部为 0 命中；`grep -rni pinax src public genres skills suites package.json` 29 处全部属于「一次性升级器」或「出处注释」两类。
+  - `LICENSE` 第 9–11 行改为事实陈述，版权行、使用范围、免责声明与条款未动。
+  - 谱系门禁的整文件豁免已取消，改成单文件 `UPGRADE_FILE` ＋逐行 `PROVENANCE_LINES`。
+- 反向守卫测试逐条在册：旧院在时新院空、旧院逐字节不变、无标记、无迁移日志（`test/courtyard.test.mjs`）；旧清单形状回空清单＋警告（`test/libraryManifest.test.mjs` 9 例）；源带旧运行态目录被拒且提示不露旧名（`test/decoupleStep1.test.mjs`）；运行时不再清旧临时前缀、旧残留原样保留（`test/kernelPlumber.test.mjs`）；`.openstory` 路径拒收（`test/files.test.mjs`）。
+- 测试未被放宽：被删用例都对应被退役的功能，且各配了新守卫（courtyard 8→5 例：迁出 4 条迁移用例、补 1 条「旧院不被克隆」）。
+- 结论：**已验收**。遗留（不阻塞）：`textUtil.mjs:6` 注释仍说「经协议层叶子转供」，OS-193 会一并清掉。

@@ -107,3 +107,15 @@ LIMITATIONS:
 - 探针 B1 中 `ui-state.lastFile: '参考/人物/a.md'` 保持原样：它不是既有 path-key 集合中的键，本次任务未要求扩展该集合，属预期行为而非漏改。
 - 未改动 `test/os172Naming.test.mjs` 与 `tools/verify/verify-os172-naming.mjs`（虽在允许范围）：现有谱系门禁已通过，旧键边界断言落在 `naming.test.mjs`。
 ```
+
+## 验收记录（监督线，2026-11-25）
+
+- 提交 `135a346`。工作树干净；全量 812／810 过／2 条件跳过／0 挂；验收门禁 27／0／0；数字锚与架构统计一致；隔离 e2e 水浒＋新建全绿。
+- 监督线探针（临时夹具库，直接调 `upgradeLibrary`）实测：
+  - `推演/素材/a.png` → `扮演/素材/a.png`；`扮演/推演/素材/b.png` 原样；对象键同规则。
+  - `世界书/参考/人物/a.md` 原样（嵌套同名段不再被误伤）。
+  - 旧键 `pinaxRelationExtensions` 在条目 frontmatter 里被抬升为 `relationExtensions`，正文逐字节不变。
+  - `.pinax-tmp-abc` 归档进 `.history/upgrade-<时间戳>/tmp-residue/`，报告 `tmpResidue` 有记录。
+  - 坏 JSON 进 `report.skipped`（文件、行号、原因）。
+- 反向核对：旧键只在 `libraryUpgrade.mjs` 与出处注释里出现（`grep -rni pinax src public` 29 处，逐处属于这两类）。
+- 结论：**已验收**。
