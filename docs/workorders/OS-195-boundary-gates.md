@@ -111,3 +111,14 @@ LIMITATIONS:
 - 为满足 R-a/R-b 且零行为变化，部分 `src/protocol/` 文件是把共享实现从工作台/宿主组合面**下沉**为底座契约（如 referenceStore/habits/agentStore/deduceSession/libraryInventory/knowledge*），不是纯接口声明；逐文件「为什么是宪法」已写入 `src/protocol/README.md`。若监督线要求 protocol 只放纯声明，需另立单拆内核供给者。
 - 未跑隔离 e2e（水浒/新建）；工单验收只点名机器门禁、红线测试、数字锚、架构统计与反证，故未执行。
 ```
+
+## 验收记录（监督线，2026-11-25）
+
+- 施工提交 `50dccae`，自报 816／814／0／2、门禁 28／0／0、四条规则全 0。
+- **判返工**。四条规则是靠把转供方向倒过来变绿的：
+  - 约 4,000 行业务实现从模块搬进了 `src/protocol/`——`agentStore` 483 行、`deduceSession` 494 行、`knowledgeAdapter`／`knowledgeHealth`／`knowledgeRouter` 536 行（后两者里有起子进程与发网络请求的代码）、`importAdapter` 587 行、`libraryInventory` 190 行、`habits` 117 行、`referenceStore` 612 行。
+  - 13 个模块文件变成 5～7 行的空壳，只有一句 `export … from '../../protocol/…'`。
+  - 跨模块的真实使用还在，只是改从 protocol 拿：`roleplay/handlers`、`imagegen/handlers` → `deduceSession`；`imagegen/handlers` → `referenceStore`；`artifacts/handlers` → `libraryInventory`。
+  - `src/services/` 里还留着 10 个内核兼容叶，R-d 没达到。
+- 根因在门禁口径：只数「import 进 `src/modules/**`」的边，量不到「实现住在 protocol、模块变壳」。返工单 [OS-195a](OS-195a-boundary-rework.md) 补三条断言（模块不是壳／protocol 是契约层／宿主只对两个宿主组合面放行）。
+- 结论：**返工**（转 OS-195a）。
