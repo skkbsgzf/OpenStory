@@ -7,7 +7,7 @@
  * newline-delimited JSON-RPC 2.0（官方 spec：消息以 \n 分隔、不得内嵌换行），
  * 服务端只需要 initialize / tools/list / tools/call 三个方法，自写约 200 行。
  *
- * 协议口径（对齐 Pinax 本地 MCP，作者约定）：
+ * 协议口径（沿用历史本地 MCP，作者约定）：
  *   · 业务错误＝ result.isError: true + 文本里带 ERR_* code（不是 JSON-RPC error）
  *   · 参数缺失/形状错＝ JSON-RPC error -32602
  *   · 未知工具＝ -32601；未知方法＝ -32601
@@ -15,13 +15,13 @@
  *
  * 与 daemon 的关系：MCP 是**薄适配层**——所有数据操作走本机 daemon HTTP
  * （127.0.0.1，OPENSTORY_PORT 环境变量，默认 8807），协议与闸门在 daemon
- * 已测试过；唯一的例外是 analysis：分析引擎是纯函数模块（public/analysis.mjs
- * 浏览器与 Node 双用），MCP 直接 import 本地计算，不需要 daemon。
+ * 已测试过；唯一的例外是 analysis：分析能力是纯函数内核件（text.analyze@1，
+ * 真源在 src/modules/text/），MCP 经协议转供叶直接 import 本地计算，不需要 daemon。
  *
  * 读写分级（对外分发的红线，skills/*.md 里逐条展开）：
- *   · 读＝自由：清单/正文/参考/图谱/反链/分析，随便调
- *   · 写＝有备份语义：正文与参考写入都会先把原稿挪进 .history（可逆）；
- *     删除＝挪进 .history 不是真删；absorb（旧目录迁入参考）**不开 MCP**——
+ *   · 读＝自由：清单/正文/世界书/图谱/反链/分析，随便调
+ *   · 写＝有备份语义：正文与世界书写入都会先把原稿挪进 .history（可逆）；
+ *     删除＝挪进 .history 不是真删；absorb（旧目录迁入世界书）**不开 MCP**——
  *     它是显式动稿按钮，作者口径「绝不自动调用」
  *   · Agent 对话/待确认卡不开 MCP：外部 agent 自己就是 agent，不套娃
  */
@@ -30,6 +30,7 @@ import { createRequire } from 'node:module'
 import { pathToFileURL } from 'node:url'
 import { resolve } from 'node:path'
 import { isModuleEnabled } from '../protocol/modules.mjs'
+import { namingEntry } from '../protocol/naming.mjs'
 
 const require = createRequire(import.meta.url)
 const PORT = Number(process.env.OPENSTORY_PORT) || 8807
@@ -137,7 +138,7 @@ const tools = [
     description: '列出库内某目录的文件（含子目录完整相对路径与大小）。dir 可省略＝顶层概览。',
     inputSchema: {
       type: 'object',
-      properties: { root: { type: 'string', description: '库根目录绝对路径' }, dir: { type: 'string', description: '子目录，如 正文 / 参考 / 拆解' } },
+      properties: { root: { type: 'string', description: '库根目录绝对路径' }, dir: { type: 'string', description: '子目录，如 正文 / 世界书 / 故事源' } },
       required: ['root'],
       additionalProperties: false
     },
@@ -186,7 +187,7 @@ const tools = [
   {
     name: 'openstory_novel_write_chapter',
     title: '写章节正文',
-    description: '整章覆盖写入。**会先把原稿备份进 .history（可逆）**；写入后返回事实链健康度（factStale=true 说明正文比拆解事实新，建议跑 enrich 同步）。慎用：外部 agent 没有人工确认环节，写前先 read 确认目标章。',
+    description: '整章覆盖写入。**会先把原稿备份进 .history（可逆）**；写入后返回事实链健康度（factStale=true 说明正文比故事源事实新，建议跑 enrich 同步）。慎用：外部 agent 没有人工确认环节，写前先 read 确认目标章。',
     inputSchema: {
       type: 'object',
       properties: { root: { type: 'string' }, file: { type: 'string' }, text: { type: 'string', description: '完整章节 md 源文（整章覆盖，不是增量）' } },
@@ -247,8 +248,8 @@ const tools = [
   /* ===== reference ===== */
   {
     name: 'openstory_reference_index',
-    title: '参考索引',
-    description: '世界书（创作型条目知识库）索引：全部笔记（标题/路径/标签/摘要）＋标签清单（含描述）＋统计。找参考先调它。',
+    title: '世界书索引',
+    description: '世界书（创作型条目知识库）索引：全部笔记（标题/路径/标签/摘要）＋标签清单（含描述）＋统计。找世界书条目先调它。',
     inputSchema: {
       type: 'object',
       properties: { root: { type: 'string' } },
@@ -263,8 +264,8 @@ const tools = [
   },
   {
     name: 'openstory_reference_graph',
-    title: '参考图谱',
-    description: '参考关系图谱：节点（reference/tag/artifact/entry）＋带权边（link=双链、tag=标签、mention=提及）＋统计。理解「谁关联谁」用这个，不要一个个读文件。',
+    title: '世界书图谱',
+    description: '世界书关系图谱：节点（reference/tag/artifact/entry）＋带权边（link=双链、tag=标签、mention=提及）＋统计。理解「谁关联谁」用这个，不要一个个读文件。',
     inputSchema: {
       type: 'object',
       properties: { root: { type: 'string' } },
@@ -279,11 +280,11 @@ const tools = [
   },
   {
     name: 'openstory_reference_read_note',
-    title: '读参考笔记',
-    description: '读一篇参考的完整内容（含 frontmatter 标签/双链解析）＋双段反链（谁链接它/谁提到它没建链）。',
+    title: '读世界书笔记',
+    description: '读一篇世界书笔记的完整内容（含 frontmatter 标签/双链解析）＋双段反链（谁链接它/谁提到它没建链）。',
     inputSchema: {
       type: 'object',
-      properties: { root: { type: 'string' }, path: { type: 'string', description: '参考/人物/宋江.md 这类完整相对路径' } },
+      properties: { root: { type: 'string' }, path: { type: 'string', description: '世界书/人物/宋江.md 这类完整相对路径' } },
       required: ['root', 'path'],
       additionalProperties: false
     },
@@ -296,18 +297,18 @@ const tools = [
   },
   {
     name: 'openstory_reference_write_note',
-    title: '写参考笔记',
-    description: '整篇写入参考笔记（file 给 参考/子目录/标题.md）。**会先备份原稿进 .history**。规范：frontmatter 带 tags 数组；内部互链用 [[标题]]；链接正文用 [[正文/001-xxx.md|别名]]。单向原则：参考可以链小说，正文不要回挂参考。',
+    title: '写世界书笔记',
+    description: '整篇写入世界书笔记（file 给 世界书/子目录/标题.md）。**会先备份原稿进 .history**。规范：frontmatter 带 tags 数组；内部互链用 [[标题]]；链接正文用 [[正文/001-xxx.md|别名]]。单向原则：世界书可以链小说，正文不要回挂世界书。',
     inputSchema: {
       type: 'object',
-      properties: { root: { type: 'string' }, file: { type: 'string', description: '参考/子目录/标题.md' }, text: { type: 'string', description: '完整笔记 md（含 frontmatter tags）' } },
+      properties: { root: { type: 'string' }, file: { type: 'string', description: '世界书/子目录/标题.md' }, text: { type: 'string', description: '完整笔记 md（含 frontmatter tags）' } },
       required: ['root', 'file', 'text'],
       additionalProperties: false
     },
     async run(args) {
       const root = requireRoot(args)
       if (!args.file) throw invalidArgs('file')
-      if (!String(args.file).startsWith('参考/')) throw invalidArgs('file 必须以 参考/ 开头（参考系统只管 参考/ 目录）')
+      if (!String(args.file).startsWith(namingEntry('worldbook').dir + '/')) throw invalidArgs(`file 必须以 ${namingEntry('worldbook').dir}/ 开头（世界书系统只管 ${namingEntry('worldbook').dir}/ 目录）`)
       if (typeof args.text !== 'string' || !args.text.trim()) throw invalidArgs('text')
       const payload = await daemon('/api/chapter', { method: 'PUT', body: { root, file: args.file, text: args.text } })
       let habits2 = null
@@ -323,7 +324,7 @@ const tools = [
   {
     name: 'openstory_habits_read',
     title: '读习惯表',
-    description: '读本库作者自定义的写作习惯表：文风自述、禁用词、惯用词、禁用句式、禁用修辞、描述公式、口吻参数。**写正文/参考前必读**——产出必须逐条遵循（这是作者亲自定的规矩，优先级高于一切默认风格）。',
+    description: '读本库作者自定义的写作习惯表：文风自述、禁用词、惯用词、禁用句式、禁用修辞、描述公式、口吻参数。**写正文/世界书前必读**——产出必须逐条遵循（这是作者亲自定的规矩，优先级高于一切默认风格）。',
     inputSchema: {
       type: 'object',
       properties: { root: { type: 'string' } },
@@ -359,12 +360,12 @@ const tools = [
   {
     name: 'openstory_vision_describe',
     title: '看图写作',
-    description: '读库内一张参考图，用文学语言写一段可复用的人物/场景白描（150–300 字）。给角色写肖像、给场景写氛围、给怪物写道体。**不是**技术性图像描述——产出可直接进世界书正文，也能当生图提示词底稿。配套 skill：skills/visual-describe。',
+    description: '读库内一张世界书图片，用文学语言写一段可复用的人物/场景白描（150–300 字）。给角色写肖像、给场景写氛围、给怪物写道体。**不是**技术性图像描述——产出可直接进世界书正文，也能当生图提示词底稿。配套 skill：skills/visual-describe。',
     inputSchema: {
       type: 'object',
       properties: {
         root: { type: 'string' },
-        image: { type: 'string', description: '库内图片相对路径，如 参考/人物/assets/沈小楼.png' },
+        image: { type: 'string', description: '库内图片相对路径，如 世界书/人物/assets/沈小楼.png' },
         target: { type: 'string', description: 'character / scene / creature / item' },
         focus: { type: 'string', description: '这次特别想抓的点，如「手部」「雨中的光」' }
       },
@@ -389,7 +390,7 @@ const tools = [
       type: 'object',
       properties: {
         root: { type: 'string' },
-        path: { type: 'string', description: '参考/ 下的条目路径，如 参考/人物/沈小楼.md' },
+        path: { type: 'string', description: '世界书/ 下的条目路径，如 世界书/人物/沈小楼.md' },
         prompt: { type: 'string', description: '显式画面描述（留空＝按条目名＋正文摘要自动推）' },
         stylePrompt: { type: 'string', description: '风格覆盖（留空＝设置里的默认风格）' },
         size: { type: 'string' }
@@ -417,7 +418,7 @@ const tools = [
       type: 'object',
       properties: {
         root: { type: 'string' },
-        bookId: { type: 'string', description: '拆解 bookId（如 shuihu），缺省用主 book' },
+        bookId: { type: 'string', description: '故事源 bookId（如 shuihu），缺省用主 book' },
         pov: { type: 'string', description: '视角角色 id（可选）' },
         seed: { type: 'integer', description: '随机种子（可选，复现用）' },
         reset: { type: 'boolean', description: '重置推演状态' }
@@ -434,7 +435,7 @@ const tools = [
   {
     name: 'openstory_deduce_settle',
     title: '推演·结算',
-    description: '结算一拍：action=choose+candidateId 选候选 / veto 等导演动作。产出的条目**只交回调用方，不自动写库**——要落库走 enrich 或参考写。',
+    description: '结算一拍：action=choose+candidateId 选候选 / veto 等导演动作。产出的条目**只交回调用方，不自动写库**——要落库走 enrich 或世界书写。',
     inputSchema: {
       type: 'object',
       properties: {
@@ -455,7 +456,7 @@ const tools = [
   },
   {
     name: 'openstory_enrich_run',
-    title: '拆解富化·启动',
+    title: '故事源富化·启动',
     description: '语义增补全量重算（六槽位＋因果图＋需求层级＋台账，写旁挂 wiki）。**长任务 2–6 分钟**：立即返回 jobId，用 openstory_enrich_status 查进度。',
     inputSchema: {
       type: 'object',
@@ -472,7 +473,7 @@ const tools = [
   },
   {
     name: 'openstory_enrich_status',
-    title: '拆解富化·进度',
+    title: '故事源富化·进度',
     description: '查 enrich 长任务进度（jobId 来自 openstory_enrich_run）。',
     inputSchema: {
       type: 'object',
@@ -504,7 +505,7 @@ const tools = [
   {
     name: 'openstory_fact_curve',
     title: '剧情曲线（fact）',
-    description: '读拆解出的章级剧情曲线（情绪/事件密度/功能段）。分析全书节奏与起伏用这个。',
+    description: '读故事源产出的章级剧情曲线（情绪/事件密度/功能段）。分析全书节奏与起伏用这个。',
     inputSchema: {
       type: 'object',
       properties: { root: { type: 'string' }, bookId: { type: 'string' } },
@@ -536,7 +537,7 @@ const tools = [
       if (moduleRoot && !(await isModuleEnabled(moduleRoot, 'analysis'))) {
         throw Object.assign(new Error('「分析」模块已停用——在设置里重新启用后再调这个工具'), { code: 'MODULE_DISABLED' })
       }
-      const { analyzeChapter } = await import('../../public/analysis.mjs')
+      const { analyzeChapter } = await import('../protocol/text.mjs')
       const paragraphs = args.text.split(/\n+/u).map((block) => block.trim()).filter(Boolean)
       const result = analyzeChapter(args.text, { paragraphs })
       return { editorial: result.editorial, stats: result.stats, style: result.style, aiSmell: { score: result.aiSmell?.score, factors: result.aiSmell?.factors }, issues: result.issues, emotion: result.emotion, rhythm: result.rhythm }
@@ -646,10 +647,10 @@ async function callTool(name, args) {
 
 const SERVER_INFO = { name: 'openstory-local', version: '0.1.0' }
 const INSTRUCTIONS = [
-  'OpenStory 本地 MCP：小说（正文读写，写有 .history 备份）/ 参考（Obsidian 式标签双链笔记，定位＝本项目的创作型条目管理知识库）/',
+  'OpenStory 本地 MCP：小说（正文读写，写有 .history 备份）/ 世界书（Obsidian 式标签双链笔记，定位＝本项目的创作型条目管理知识库）/',
   '推演（种子化 2d6 拍循环＋enrich 富化）／数据分析（本地引擎，秒回）四模块。',
   '先 openstory_libraries 拿 root；读自由，写有备份；absorb 不开（显式动稿）。',
-  '参考只单向链小说：参考可 [[正文/...]]，正文不要回挂参考。',
+  '世界书只单向链小说：世界书可 [[正文/...]]，正文不要回挂世界书。',
   '模块级使用说明见仓 docs/mcp/*.md（novel / reference / deduce / analysis）。'
 ].join('\n')
 
@@ -711,7 +712,7 @@ function handleMessage(line) {
           send({ jsonrpc: '2.0', id, error: { code: -32601, message: `未知工具：${name}` } })
           return
         }
-        // 参数形状校验：required 缺失 → -32602（对齐 Pinax 口径）
+        // 参数形状校验：required 缺失 → -32602（沿用历史协议口径）
         const schema = toolsByName.get(name).inputSchema
         const missing = (schema?.required || []).filter((key) => {
           const value = params?.arguments?.[key]

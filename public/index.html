@@ -165,8 +165,8 @@ input, textarea, select { font: inherit; color: inherit; }
    整体收掉（display:none，不是折叠轨道），工作台拿回全部宽度，
    避免「两条 Agent 栏」；独立打开时行为不变。纯渲染分支，不落任何状态。 */
 html.os-embed .agent-col { display: none; }
-/* 题材工作面内部左栏（OS-45）：章节树 / 参考图谱 / 参考摘要。
-   它属于「小说/参考」这类题材页自己的布局，属于二等公民的内部结构；
+/* 题材工作面内部左栏（OS-45）：章节树 / 世界书图谱 / 世界书摘要。
+   它属于「小说/世界书」这类题材页自己的布局，属于二等公民的内部结构；
    Agent 始终在最外层最左，不参与题材页的布局。 */
 /* 类纸（OS-47）：左右侧模块＝无边框软卡片，堆叠留缝，不画框线
    OS-48：左栏是**浮层附庸**，绝对定位脱离正文流——正文纸面永远按窗口居中，
@@ -179,7 +179,7 @@ html.os-embed .agent-col { display: none; }
 
 /* ── OS-89：模块修改日志卡（左栏「本模块修改」）────────────────────
    作者立宪：每个模块加载时自己检索自己的 log，并如实呈现。
-   一行一次修改：时间 / 动作 / 文件 / 字数变化；数据源 .pinax/log/<模块>/*.jsonl */
+   一行一次修改：时间 / 动作 / 文件 / 字数变化；数据源 .openstory/log/<模块>/*.jsonl */
 .modlog { display: flex; flex-direction: column; }
 .modlog-head { display: flex; align-items: center; gap: var(--ui-gap-xs); padding: var(--ui-gap-xs) var(--ui-gap-md) var(--ui-gap-2xs); font-size: var(--ui-fs-sm); font-weight: 600; color: var(--ink-2); }
 .modlog-head .count { margin-left: auto; font-size: var(--ui-fs-2xs); font-weight: 400; color: var(--meta); }
@@ -230,19 +230,19 @@ button.modlog-row:focus-visible { outline: 2px solid var(--accent); outline-offs
 .ct-row.on { background: var(--accent-soft); color: var(--ink); }
 .ct-row .no { font-family: var(--mono); font-size: var(--ui-fs-2xs); color: var(--meta); }
 .ct-row .tt { font-size: var(--ui-fs-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* 参考图谱画布 */
+/* 世界书图谱画布 */
 .graph-box { position: relative; width: 100%; height: 190px; border-radius: var(--radius); background: transparent; overflow: hidden; }
 .graph-box canvas { display: block; width: 100%; height: 100%; cursor: grab; }
 .graph-box.dragging canvas { cursor: grabbing; }
 .graph-legend { display: flex; flex-wrap: wrap; gap: var(--ui-gap-sm); margin-top: var(--ui-gap-xs); font-size: var(--ui-fs-2xs); color: var(--meta); }
 .graph-legend i { display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: var(--ui-gap-3xs); vertical-align: 1px; }
 .graph-hint { margin-top: var(--ui-gap-2xs); font-size: var(--ui-fs-2xs); color: var(--meta); }
-/* 参考摘要 */
+/* 世界书摘要 */
 .ref-summary { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.7; font-size: var(--ui-fs-sm); color: var(--ink-2); max-height: 260px; overflow-y: auto; }
 .ref-summary-ops { display: flex; gap: var(--ui-gap-xs); margin-top: var(--ui-gap-xs); }
 .ref-summary-ops button { font-size: var(--ui-fs-xs); color: var(--muted); border: 1px solid var(--line); border-radius: var(--pill); padding: calc(1px * var(--ui-scale)) var(--ui-gap-md); }
 .ref-summary-ops button:hover { border-color: var(--ink); color: var(--ink); }
-/* 参考页（OS-48）：侧栏导航 / 主区（视图制：笔记 / 关系图谱）/ 反链 */
+/* 世界书页（OS-48）：侧栏导航 / 主区（视图制：笔记 / 关系图谱）/ 反链 */
 .ref-page { display: flex; flex-direction: column; gap: var(--ui-gap-md); }
 .ref-toolbar { display: flex; align-items: center; gap: var(--ui-gap-md); }
 .ref-toolbar h1 { margin: 0; font-size: var(--ui-fs-2xl); }
@@ -378,7 +378,7 @@ button.modlog-row:focus-visible { outline: 2px solid var(--accent); outline-offs
 .ref-detail-backlinks { border-top: 1px solid var(--hair); padding-top: var(--ui-gap-md); }
 .ref-detail-backlinks h4 { margin: 0 0 8px; font-size: var(--ui-fs-md); }
 .ref-detail-backlinks .bl-row { max-width: 720px; }
-/* 参考笔记实时编辑区（OS-53）：与正文同款逐块 contenteditable， serif 排版随正文偏好 */
+/* 世界书笔记实时编辑区（OS-53）：与正文同款逐块 contenteditable， serif 排版随正文偏好 */
 .ref-doc { max-width: 860px; }
 .ref-prose { font-family: var(--serif); font-size: var(--doc-font-size, 16px); line-height: var(--doc-line-height, 1.9); color: var(--ink-2); }
 .ref-prose p { margin: 0 0 var(--doc-para-gap, 1em); text-indent: var(--doc-indent, 0); }
@@ -408,7 +408,7 @@ button.modlog-row:focus-visible { outline: 2px solid var(--accent); outline-offs
 .bl-row b { font-size: var(--ui-fs-sm); color: var(--ink-2); }
 .bl-row span { font-size: var(--ui-fs-2xs); color: var(--meta); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bl-sec.unlinked { margin-top: var(--ui-gap-md); }
-/* 双链样式（正文与参考共用） */
+/* 双链样式（正文与世界书共用） */
 .wl { color: var(--accent); text-decoration: none; border-bottom: 1px dashed color-mix(in srgb, var(--accent) 50%, transparent); cursor: pointer; }
 .wl:hover { border-bottom-style: solid; }
 .wl.embed { border-bottom-style: dotted; }
@@ -634,7 +634,7 @@ button.modlog-row:focus-visible { outline: 2px solid var(--accent); outline-offs
    原实现三个控件各写各的（9.5/11.5/12px 三档字号、宽度 52/58 两种、只有 fc-input 有内边距），
    且 align-items:baseline 让 number input 与文字基线错位（作者实测截图）。
    现在统一走控件令牌 + 居中对齐 + 数字框固定宽度。 */
-/* 拆解词条分组（OS-103） */
+/* 故事源词条分组（OS-103） */
 .nav-sub { font-size: 10.5px; font-weight: 600; color: var(--ink-2); padding: 6px 8px 3px;
   border-bottom: 1px dashed var(--hair); margin-bottom: 2px; }
 .nav-row.entry .tag-name { font-size: 12px; }
@@ -844,7 +844,7 @@ button.modlog-row:focus-visible { outline: 2px solid var(--accent); outline-offs
 .tab-pick .tp-check { width: 12px; flex: 0 0 12px; color: var(--accent); font-size: var(--ui-fs-xs); }
 .tab-pick b { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tab-pick .tp-note { margin-left: auto; font-size: var(--ui-fs-2xs); color: var(--meta); white-space: nowrap; flex: 0 0 auto; }
-/* OS-84：已退场旧目录（还压着旧稿）——降级标记，提示该迁去参考/习惯 */
+/* OS-84：已退场旧目录（还压着旧稿）——降级标记，提示该迁去世界书/习惯 */
 .tab-pick .tp-note.is-retired { color: var(--warn-ink); }
 .filter { display: flex; gap: var(--ui-gap-xl); border-bottom: 1px solid var(--hair); margin: var(--ui-gap-xl) 0 6px; flex-wrap: wrap; }
 .filter .f { padding: var(--ui-gap-md) var(--ui-gap-3xs); color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -1px; }
@@ -1012,7 +1012,7 @@ input[type="checkbox"], input[type="radio"] {
 .chapter-rows { max-height: 220px; overflow-y: auto; }
 .chapter-editor-col { min-width: 0; }
 
-/* ── 设置页＋产物中心（OS-11）────────────────────────────── */
+/* ── 设置页＋产物（OS-11）────────────────────────────── */
 .kv-line {
   display: grid; grid-template-columns: 170px minmax(0, 1fr);
   gap: var(--ui-gap-md); padding: var(--ui-row-py) 0;
@@ -1472,7 +1472,7 @@ html[data-doc-auto-gap="off"] .doc-paper p { margin-bottom: 0; }
    ① 纸面可读下限 --doc-read-min（320px）：--doc-max 不许再往下缩；实在放不下时
       让 .doc-scroll 横向滚，禁止把正文压成一字一行。
    ② ≤1000px：左右浮层不再用内边距「让位」（248px ＋ 300px 同时让位会把 675px
-      面板的正文挤到几十像素）——回到纯覆盖抽屉，用页头「参考资料 / 分析本章」
+      面板的正文挤到几十像素）——回到纯覆盖抽屉，用页头「世界书 / 分析本章」
       开合；≥1001px 才保留 OS-88 的结构性让位。
    ③ 窄面板降档：--content-px 16px（≤720px 再降到 12px）；侧栏抽屉按 72vw~86vw 收；
       页签只横滚不换行；页头标题降一档，避免窄栏里挤爆。 */
@@ -1488,7 +1488,7 @@ html[data-doc-auto-gap="off"] .doc-paper p { margin-bottom: 0; }
   }
   /* 兜底：连 320px 都放不下时允许横向滚，别把字挤成竖排 */
   .doc-workspace-sticky .doc-scroll { overflow-x: auto; }
-  /* 窄面板下参考资料左栏默认收起（抽屉），点页头「参考资料」才盖出来 */
+  /* 窄面板下世界书左栏默认收起（抽屉），点页头「世界书」才盖出来 */
   .doc-workspace-sticky.is-narrow-ref-closed .ref-col { display: none; }
   .doc-workspace-sticky .ref-col { width: min(248px, 78vw); }
   .doc-workspace-sticky .analyze-panel { width: min(300px, 86vw); }
@@ -2202,7 +2202,7 @@ html[data-doc-auto-gap="off"] .doc-block { margin-bottom: 0; }
 .fl-caret { color: var(--accent); animation: blink 1s steps(1) infinite; }
 /* 序章消息 */
 .fl-msg-prologue .fl-prose { background: color-mix(in srgb, var(--bg) 86%, transparent); }
-/* 事实待确认卡（OS-82 回填闭环）：结算产物 → 写入拆解前的最后一道闸 */
+/* 事实待确认卡（OS-82 回填闭环）：结算产物 → 写入故事源前的最后一道闸 */
 .ded-factcard { background: color-mix(in srgb, var(--accent) 8%, color-mix(in srgb, var(--bg) 92%, transparent));
   border: 1px dashed color-mix(in srgb, var(--accent) 40%, transparent); border-radius: var(--radius);
   padding: var(--ui-gap-md) var(--ui-gap-lg) calc(13px * var(--ui-scale)); backdrop-filter: blur(8px); }
@@ -2395,7 +2395,7 @@ border-left: 2px solid var(--accent); padding: var(--ui-gap-xs) var(--ui-gap-md)
 .ded-sess-del:hover { color: var(--danger); border-color: var(--danger); }
 .ded-sess-new { width: 100%; }
 .ded-image-ops { display: flex; gap: var(--ui-gap-sm); justify-content: flex-end; margin-top: var(--ui-gap-xs); }
-/* 拆解知识化视图（OS-66）：fact 链的可读呈现 */
+/* 故事源知识化视图（OS-66）：fact 链的可读呈现 */
 .fv-wrap { max-width: 880px; display: flex; flex-direction: column; gap: var(--ui-gap-lg); }
 .fv-card { background: var(--surface-card); border-radius: var(--radius-md); padding: var(--ui-gap-lg) var(--ui-gap-lg); box-shadow: var(--shadow-card); }
 .fv-card-head { display: flex; align-items: baseline; gap: var(--ui-gap-sm); margin-bottom: var(--ui-gap-md); flex-wrap: wrap; }
@@ -2692,7 +2692,7 @@ border-left: 2px solid var(--accent); padding: var(--ui-gap-xs) var(--ui-gap-md)
 
   <div class="main">
     <!-- Agent 列（一等公民，OS-45 归位最左）：会话 JSONL 在 daemon 侧，凭据只存本机配置。
-         小说/参考这些题材是右侧工作台里的模块，不占 Agent 的位置。 -->
+         小说/世界书这些题材是右侧工作台里的模块，不占 Agent 的位置。 -->
     <aside class="agent-col" id="agent-col">
       <div class="agent-head">
         <span class="agent-avatar">P</span><span class="agent-name">Pi-Agent</span>
@@ -2745,7 +2745,7 @@ border-left: 2px solid var(--accent); padding: var(--ui-gap-xs) var(--ui-gap-md)
       </div>
     </aside>
 
-    <!-- 中栏：题材工作台（正文/参考/产物…都放这里） -->
+    <!-- 中栏：题材工作台（正文/世界书/产物…都放这里） -->
     <main class="center" id="center">
       <div class="tabs" id="tabs"></div>
       <div class="content" id="view"><div class="loading">正在读取库清单…</div></div>

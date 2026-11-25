@@ -27,11 +27,11 @@ test('ui-state：首次读取＝空对象，不是错误', async () => {
   } finally { await cleanup() }
 })
 
-test('ui-state：写入后落 .pinax/ui-state.json，重新打开能复原（第 8 条）', async () => {
+test('ui-state：写入后落 .openstory/ui-state.json，重新打开能复原（第 8 条）', async () => {
   const { root, cleanup } = await fixture()
   try {
     await writeUiState(root, { tabHidden: ['dir:剧本'], skin: 'dark' })
-    const abs = join(root, '.pinax', 'ui-state.json')
+    const abs = join(root, '.openstory', 'ui-state.json')
     assert.equal(existsSync(abs), true, '桌面文件必须真实存在')
     const onDisk = JSON.parse(await readFile(abs, 'utf-8'))
     assert.deepEqual(onDisk.tabHidden, ['dir:剧本'])
@@ -70,7 +70,7 @@ test('ui-state：写前备份到 .history', async () => {
     await writeUiState(root, { v: 1 })
     const res = await writeUiState(root, { v: 2 })
     assert.ok(res.backup, '应返回备份路径')
-    assert.equal(existsSync(join(root, '.pinax', '.history')), true)
+    assert.equal(existsSync(join(root, '.openstory', '.history')), true)
   } finally { await cleanup() }
 })
 
@@ -78,7 +78,7 @@ test('ui-state：坏档不阻断界面（回空状态，原文件保留）', asy
   const { root, cleanup } = await fixture()
   try {
     await writeUiState(root, { v: 1 })
-    const abs = join(root, '.pinax', 'ui-state.json')
+    const abs = join(root, '.openstory', 'ui-state.json')
     const { writeFile } = await import('node:fs/promises')
     await writeFile(abs, '{ 这不是 json', 'utf-8')
     const res = await readUiState(root)
@@ -88,7 +88,7 @@ test('ui-state：坏档不阻断界面（回空状态，原文件保留）', asy
   } finally { await cleanup() }
 })
 
-test('draft：存草稿落 .pinax/drafts/<module>/<id>.json（第 11 条）', async () => {
+test('draft：存草稿落 .openstory/drafts/<module>/<id>.json（第 11 条）', async () => {
   const { root, cleanup } = await fixture()
   try {
     const res = await saveDraft(root, { module: '正文', id: '001', text: '还没保存的段落' })
@@ -104,8 +104,8 @@ test('draft：存草稿落 .pinax/drafts/<module>/<id>.json（第 11 条）', as
 test('draft：读回单份草稿', async () => {
   const { root, cleanup } = await fixture()
   try {
-    await saveDraft(root, { module: '推演', id: 'r14', text: '第十四拍的正文', meta: { round: 14 } })
-    const res = await loadDraft(root, '推演', 'r14')
+    await saveDraft(root, { module: '扮演', id: 'r14', text: '第十四拍的正文', meta: { round: 14 } })
+    const res = await loadDraft(root, '扮演', 'r14')
     assert.equal(res.draft.text, '第十四拍的正文')
     assert.equal(res.draft.meta.round, 14)
   } finally { await cleanup() }
@@ -132,13 +132,13 @@ test('draft：列某模块全部草稿（新→旧）', async () => {
   } finally { await cleanup() }
 })
 
-test('draft：模块隔离——正文的草稿不会出现在推演', async () => {
+test('draft：模块隔离——正文的草稿不会出现在扮演', async () => {
   const { root, cleanup } = await fixture()
   try {
     await saveDraft(root, { module: '正文', id: 'a', text: 'A' })
-    await saveDraft(root, { module: '推演', id: 'b', text: 'B' })
+    await saveDraft(root, { module: '扮演', id: 'b', text: 'B' })
     const body = await listDrafts(root, '正文')
-    const deduce = await listDrafts(root, '推演')
+    const deduce = await listDrafts(root, '扮演')
     assert.equal(body.drafts.length, 1)
     assert.equal(deduce.drafts.length, 1)
     assert.equal(body.drafts[0].id, 'a')

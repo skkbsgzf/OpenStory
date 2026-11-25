@@ -7,7 +7,7 @@
 | 依赖 | 无（**必须最先做**：它是前两批关闭与上 CI 的前提） |
 | 允许改动 | `test/**`、`tools/acceptance/**`、`docs/**`、`AGENTS.md`、`ARCHITECTURE.md` |
 | 风险 | 低 |
-| 状态 | 待派 |
+| 状态 | 已验收（2026-11-25 主 agent 独立复跑通过，待提交后回填提交号） |
 
 通用规则见 [`COMMON-RULES.md`](COMMON-RULES.md)。
 
@@ -47,4 +47,27 @@
 
 ## 施工回报（编排器自动归档）
 
+CHANGED:
+- `test/kb-router.test.mjs`：改用临时 `LOCALAPPDATA` 夹具，不再读真实 kb-config。
+- `test/dshBridge.test.mjs`：显式构造临时 DSH_HOME/profile/runtime；缺夹具时带守卫原因 skip。
+- `test/embeddingPaths.test.mjs`：只断言路径推导，不依赖真实模型下载物。
+- `test/sampleConfig.test.mjs`：daemon 健康轮询预算 60×200ms → 90×200ms，业务断言不变。
+- `test/{agent,browseRoot,contracts,styles,suites}.test.mjs`：本机路径样例改为中性夹具路径。
+- `tools/acceptance/acceptance.mjs`：新增 S1.6，扫描 `test/**` 本机绝对路径，允许清单为空。
+- `AGENTS.md`、`docs/ACCEPTANCE.md`、`docs/PUBLISHING.md`、`docs/plan/final-audit.md`、`docs/plan/workorder-system-20261124.md`：同步测试纪律与 24 项门禁口径。
+
+VERIFIED:
+- 主 agent 用 Node 直接构造临时 `LOCALAPPDATA/APPDATA/USERPROFILE/HOME/DSH_HOME`，并从 PATH 移除 npm 全局目录里的 dsh/codebuddy，保留 Windows 系统命令。
+- 干净环境 `node --test "test/*.test.mjs"` 连跑两轮：均 682 tests / 680 pass / 0 fail / 2 skip。
+- 正式 `node tools/acceptance/acceptance.mjs`：24 过 / 0 挂 / 0 警。
+- S1.6 反证：临时写入 `C:/Users/x` 后门禁为 23 过 / 1 挂，删除后恢复 24/24。
+- `node tools/arch-stats.mjs --check`：通过；全部改动 `.mjs` 通过 `node --check`。
+
+LIMITATIONS:
+- 未改产品代码；两条 skip 分别为作者真夹具库缺失与 Windows 平台不适用 posix 权限现场。
+- 尚未创建 git 提交，提交号待回填。
+
 ## 验收记录（主 agent 填）
+
+- 2026-11-25：主 agent 独立审查 diff，确认无产品代码改动、无业务断言放宽；干净环境两轮、正式门禁、反证与架构统计均通过。
+- 结论：实现与验证通过，待提交后转为「已验收」并回填提交号。

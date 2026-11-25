@@ -27,7 +27,7 @@ after(async () => {
 describe('defaultBrowseRoot / browseMemoryPath', () => {
   it('默认根＝用户目录下的 OpenStory（始终是那个，不跟上次逛到哪）', async () => {
     const { defaultBrowseRoot } = await import('../src/host/daemon.mjs')
-    assert.equal(defaultBrowseRoot({ USERPROFILE: 'C:\\Users\\x' }), join('C:\\Users\\x', 'OpenStory'))
+    assert.equal(defaultBrowseRoot({ USERPROFILE: 'X:\\fixture-home' }), join('X:\\fixture-home', 'OpenStory'))
   })
 
   it('没有 USERPROFILE 时退 HOME；都没有则为空（不瞎猜路径）', async () => {

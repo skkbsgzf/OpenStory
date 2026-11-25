@@ -10,7 +10,12 @@ import { mkdtemp, mkdir, writeFile, rm, readFile, writeFile as wf } from 'node:f
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-const BASE = 'http://127.0.0.1:8807'
+const BASE = process.env.OPENSTORY_BASE || 'http://127.0.0.1:8807'
+const PREFERENCES_PATH = process.env.OPENSTORY_TEST_PREFERENCES_PATH || ''
+if (!PREFERENCES_PATH) {
+  console.error('请由临时 e2e 运行器设置 OPENSTORY_TEST_PREFERENCES_PATH；本脚本不读写真实库清单。')
+  process.exit(2)
+}
 const post = async (p, body) => {
   const r = await fetch(BASE + p, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
   return { status: r.status, data: await r.json().catch(() => null) }
@@ -35,7 +40,7 @@ try {
   console.log('=== A. 从零新建 ===')
   const rootA = join(base, '零起点库')
   await mkdir(rootA, { recursive: true })
-  const createA = await post('/api/library/create', { path: rootA, name: '零起点库', primaryCarrier: 'pinax.carrier.novel' })
+  const createA = await post('/api/library/create', { path: rootA, name: '零起点库', primaryCarrier: 'openstory.carrier.novel' })
   created.push(rootA)
   check('A1 新建库（自动登记）', createA.data?.ok, createA.data?.ok ? 'ok' : (createA.data?.error?.message || '失败'))
 
@@ -47,15 +52,15 @@ try {
     check('A3 写正文', w.data?.ok, w.data?.ok ? 'ok' : w.data?.error?.message)
   }
 
-  await mkdir(join(rootA, '参考', '人物'), { recursive: true })
-  await writeFile(join(rootA, '参考', '人物', '主角.md'), '---\ntags: [人物]\ntitle: 主角\nfirstChapter: 1\n---\n\n# 主角\n\n一个刚醒来的男人。\n', 'utf-8')
+  await mkdir(join(rootA, '世界书', '人物'), { recursive: true })
+  await writeFile(join(rootA, '世界书', '人物', '主角.md'), '---\ntags: [人物]\ntitle: 主角\nfirstChapter: 1\n---\n\n# 主角\n\n一个刚醒来的男人。\n', 'utf-8')
   const refA = await get('/api/reference?root=' + enc(rootA))
   check('A4 世界书笔记可读', refA.data?.ok && (refA.data.notes || []).length === 1, `${refA.data?.notes?.length ?? 0} 篇 · fc=${refA.data?.notes?.[0]?.firstChapter}`)
 
   const entriesA = await get('/api/fact/entries?root=' + enc(rootA))
-  check('A5 无拆解时事实条目有明确响应', entriesA.data?.ok === false && entriesA.data?.error?.code === 'FACT_EMPTY', entriesA.data?.ok ? '空清单' : `明确报 ${entriesA.data?.error?.code}`)
+  check('A5 无故事源时事实条目有明确响应', entriesA.data?.ok === false && entriesA.data?.error?.code === 'FACT_EMPTY', entriesA.data?.ok ? '空清单' : `明确报 ${entriesA.data?.error?.code}`)
   const curveA = await get('/api/fact/curve?root=' + enc(rootA))
-  check('A6 无拆解时曲线优雅', curveA.data?.ok !== undefined, curveA.data?.ok ? 'ok' : curveA.data?.error?.code)
+  check('A6 无故事源时曲线优雅', curveA.data?.ok !== undefined, curveA.data?.ok ? 'ok' : curveA.data?.error?.code)
   const graphA = await get('/api/reference/graph?root=' + enc(rootA))
   check('A7 图谱不炸', graphA.status === 200 && graphA.data?.ok, `${graphA.data?.nodes?.length ?? 0} 节点`)
   const sessionsA = await get('/api/deduce/sessions?root=' + enc(rootA))
@@ -65,14 +70,14 @@ try {
   console.log('\n=== B. 半成品（登记后塞不规整文件）===')
   const rootB = join(base, '半成品库')
   await mkdir(rootB, { recursive: true })
-  const createB = await post('/api/library/create', { path: rootB, name: '半成品库', primaryCarrier: 'pinax.carrier.novel' })
+  const createB = await post('/api/library/create', { path: rootB, name: '半成品库', primaryCarrier: 'openstory.carrier.novel' })
   created.push(rootB)
   check('B0 半成品库登记', createB.data?.ok, createB.data?.ok ? 'ok' : (createB.data?.error?.message || '失败'))
 
   await mkdir(join(rootB, '正文'), { recursive: true })
   await writeFile(join(rootB, '正文', '001-无元数据章.md'), '纯文本，没有任何 frontmatter 和标题层级。\n\n第二段。', 'utf-8')
-  await mkdir(join(rootB, '参考'), { recursive: true })
-  await writeFile(join(rootB, '参考', '裸笔记.md'), '没有 frontmatter 的笔记。\n\n带 #标签 和 [[裸笔记]]。', 'utf-8')
+  await mkdir(join(rootB, '世界书'), { recursive: true })
+  await writeFile(join(rootB, '世界书', '裸笔记.md'), '没有 frontmatter 的笔记。\n\n带 #标签 和 [[裸笔记]]。', 'utf-8')
 
   const chaptersB = await get('/api/chapters?root=' + enc(rootB) + '&dir=' + enc('正文'))
   check('B1 无 frontmatter 章节可解析', chaptersB.data?.ok && (chaptersB.data.chapters || []).length === 1, `${chaptersB.data?.chapters?.[0]?.file ?? '无'}`)
@@ -82,19 +87,19 @@ try {
   check('B3 半成品图谱不炸', graphB.status === 200 && graphB.data?.ok, `${graphB.data?.nodes?.length ?? 0} 节点`)
 
   const openingB = await post('/api/roleplay/opening', { root: rootB, pov: '主角' })
-  check('B4 无拆解库扮演明确报错', openingB.data?.ok === false && !!openingB.data?.error?.code, openingB.data?.error?.code || '（意外成功）')
+  check('B4 无故事源库扮演明确报错', openingB.data?.ok === false && !!openingB.data?.error?.code, openingB.data?.error?.code || '（意外成功）')
 
   console.log('\n=== 汇总 ===')
   const ok = results.filter((r) => r.ok).length
   console.log(`${ok}/${results.length} 通过`)
   results.filter((r) => !r.ok).forEach((r) => console.log('  ✗ ' + r.n + ' — ' + r.d))
+  if (results.some((r) => !r.ok)) process.exitCode = 1
 } finally {
   try {
-    const prefsPath = process.env.LOCALAPPDATA + '/OpenStory/libraries.json'
-    const prefs = JSON.parse(await readFile(prefsPath, 'utf-8'))
+    const prefs = JSON.parse(await readFile(PREFERENCES_PATH, 'utf-8'))
     const before = (prefs.libraries || []).length
     prefs.libraries = (prefs.libraries || []).filter((p) => !created.some((c) => p.path === c))
-    await wf(prefsPath, JSON.stringify(prefs, null, 2), 'utf-8')
+    await wf(PREFERENCES_PATH, JSON.stringify(prefs, null, 2), 'utf-8')
     console.log(`\n（已从库清单摘除 ${before - prefs.libraries.length} 个测试库）`)
   } catch (e) { console.log('\n（摘除失败）', e.message) }
   await rm(base, { recursive: true, force: true })

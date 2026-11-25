@@ -7,14 +7,24 @@ import { mkdir } from 'node:fs/promises'
 import { API_ERROR_CODES, isPlainObject } from '../contracts.mjs'
 import { sendError, sendJson, text } from '../../host/http.mjs'
 import { authorizeRoot } from '../../host/authorize.mjs'
-import { factStore } from '../../kernel/index.mjs'
+import { resolveFactCapability } from '../../host/capabilityBindings.mjs'
 import { atomicWriteFile } from '../../protocol/hostWrite.mjs'
 import { recordChange } from '../../protocol/changelog.mjs'
-import { LOG_MODULES } from '../../protocol/naming.mjs'
-import { pediaToFactEntry, factEntryToPedia } from '../../modules/exchange/pediaAdapter.mjs'
+import { LOG_MODULES, namingEntry } from '../../protocol/naming.mjs'
+import { pediaToFactEntry, factEntryToPedia } from '../../protocol/pediaAdapter.mjs'
 import { writeFactEntries } from '../../services/factImportWrite.mjs'
 
 const FORMATS = new Set(['pedia/v1', 'jsonl'])
+const EXCHANGE_DIR = namingEntry('exchange').dir
+
+async function factCapabilityOrError(res, root) {
+  const resolved = await resolveFactCapability(root, 'fact.store')
+  if (!resolved.ok) {
+    sendError(res, API_ERROR_CODES.PLUGIN_DEGRADED, resolved.message, resolved.details)
+    return null
+  }
+  return resolved.capability
+}
 
 /** 解析导入文本：JSONL 逐行；pedia/v1 支持单对象或数组。 */
 function parseInput(format, raw) {
@@ -75,8 +85,10 @@ export async function exchangeImport(ctx) {
   }
 
   // 写：与 factEntriesImport 共用同一写入函数（原子写＋revision＋幂等＋wiki＋日志）
+  const factStore = await factCapabilityOrError(res, authorized.root)
+  if (!factStore) return null
   const written = await writeFactEntries({
-    root: authorized.root, bookId, entries: adapted,
+    root: authorized.root, bookId, entries: adapted, factStore,
     operationId: `pedia-import-${bookId}-${Date.now().toString(36)}`
   })
   if (!written.ok) return sendError(res, API_ERROR_CODES[written.code] ?? written.code, written.message, written.details)
@@ -96,11 +108,13 @@ export async function exchangeExport(ctx) {
   if (!FORMATS.has(format)) return sendError(res, API_ERROR_CODES.INVALID_ENTRY, `format 只许 ${[...FORMATS].join('/')}`)
 
   // 经既有 fact 读通道取条目（不另开读口）
+  const factStore = await factCapabilityOrError(res, authorized.root)
+  if (!factStore) return null
   const store = factStore.createFactFileStore({ root: authorized.root })
   const listed = await store.list({})
   if (!listed.ok) return sendError(res, listed.code ?? API_ERROR_CODES.INVALID_ENTRY, listed.message)
   const entries = (listed.entries ?? []).filter((entry) => text(entry.bookId ?? entry.book?.id) === bookId || !entry.bookId)
-  if (!entries.length) return sendError(res, API_ERROR_CODES.NOT_FOUND, `拆解里没有这本书的条目：${bookId}`)
+  if (!entries.length) return sendError(res, API_ERROR_CODES.NOT_FOUND, `故事源里没有这本书的条目：${bookId}`)
 
   const projected = []
   const lostSet = new Set()
@@ -115,13 +129,13 @@ export async function exchangeExport(ctx) {
 
   let file = ''
   if (request.save === true) {
-    const rel = `导出/${bookId}-pedia.${format === 'jsonl' ? 'jsonl' : 'json'}`
+    const rel = `${EXCHANGE_DIR}/${bookId}-pedia.${format === 'jsonl' ? 'jsonl' : 'json'}`
     const path = join(authorized.root, rel)
     try {
-      await mkdir(join(authorized.root, '导出'), { recursive: true })
+      await mkdir(join(authorized.root, EXCHANGE_DIR), { recursive: true })
       await atomicWriteFile(path, body)
       await recordChange({
-        root: authorized.root, module: LOG_MODULES.storysource, file: rel,
+        root: authorized.root, module: LOG_MODULES.exchange, file: rel,
         op: 'create', before: '', after: body, actor: 'author'
       }).catch(() => {})
       file = rel

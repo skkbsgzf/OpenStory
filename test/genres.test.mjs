@@ -27,7 +27,7 @@ import { startDaemon } from '../src/host/daemon.mjs'
 async function makeFixture() {
   const base = await mkdtemp(join(tmpdir(), 'openstory-os19-'))
   const root = join(base, '夹具库')
-  for (const dir of ['正文', '大纲', '世界书', '构思', '资料', '约束', '拆解']) {
+  for (const dir of ['正文', '大纲', '世界书', '构思', '资料', '约束', '故事源']) {
     await mkdir(join(root, dir), { recursive: true })
   }
   await writeFile(join(root, '正文', '001-雨停.md'), '雨到傍晚才停。', 'utf-8')
@@ -56,7 +56,7 @@ test('体裁规整：六类内置全部合规；primary 三类；短故事不分
   const longSerial = genres.find((genre) => genre.id === 'long-serial')
   assert.equal(longSerial.length.divideBy, 'chapter')
   assert.ok(longSerial.length.perUnit.min > 0)
-  assert.ok(longSerial.requiredCarriers.includes('pinax.carrier.worldbook'), '长篇必需世界书')
+  assert.ok(longSerial.requiredCarriers.includes('openstory.carrier.worldbook'), '长篇必需世界书')
   assert.equal(longSerial.structure.chapterHook, true)
 
   const drama = genres.find((genre) => genre.id === 'short-drama')

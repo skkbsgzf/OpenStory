@@ -3,7 +3,7 @@
   "id": "comicdrama",
   "name": "漫剧套件",
   "version": "0.2.0",
-  "vendor": "Pinax 官方",
+  "vendor": "skkbsgzf",
   "description": "漫剧创作的业务套件：自带独立设置页（分镜画幅/网格密度）。分镜板等业务能力随漫剧业务页上线。",
   "domains": ["漫剧"],
   "capabilities": {

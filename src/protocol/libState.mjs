@@ -16,14 +16,14 @@ import { existsSync } from 'node:fs'
 import { copyFile, mkdir, readdir, readFile, unlink } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { recordChange } from './changelog.mjs'
-import { LOG_MODULES } from './naming.mjs' // OS-148：日志模块名只从命名表取
+import { LOG_MODULES, namingEntry } from './naming.mjs'
 import { atomicWriteFile } from './hostWrite.mjs'
 
 const text = (value) => String(value ?? '')
 
 /** 库内固定位置（AGENTS.md 第 9 条表）。 */
-export const UI_STATE_PATH = '.pinax/ui-state.json'
-export const DRAFT_DIR = '.pinax/drafts'
+export const UI_STATE_PATH = `${namingEntry('libraryStorage').metadataDir}/ui-state.json`
+export const DRAFT_DIR = `${namingEntry('libraryStorage').metadataDir}/drafts`
 
 /** 模块名归一：防路径穿越。 */
 export function safeModule(raw) {

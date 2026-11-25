@@ -6,10 +6,10 @@
  *     都要自己检索一遍跟自己相关的一些 log。」
  *
  * 设计：
- *   · 存储＝`<库>/.pinax/log/<模块>/<yyyy-mm>.jsonl`，append-only，一行一记录。
+ *   · 存储＝`<库>/.openstory/log/<模块>/<yyyy-mm>.jsonl`，append-only，一行一记录。
  *     按月分文件，避免单文件无限增长；同一次会话的连续修改天然按时间排序。
  *   · diff＝unified 格式（自带上下文行），自己实现（不引依赖，零 npm 构建约束）。
- *   · 模块维度＝调用方自己报（'正文' / '参考' / '推演' / '习惯' …），
+ *   · 模块维度＝调用方自己报（'正文' / '世界书' / '扮演' / '习惯' …），
  *     这样才能「每个模块只取自己的 log」，不用全库扫。
  *   · 只记文本类稿件；二进制（图片/音频）记 hash 与字节数，diff 字段留空。
  *
@@ -19,11 +19,12 @@ import { createHash } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { appendFile, mkdir, readdir, readFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
+import { namingEntry } from './naming.mjs'
 
 const text = (value) => String(value ?? '')
 
 /** 日志根目录（库内固定位置，见 AGENTS.md 表）。 */
-export const LOG_DIR = '.pinax/log'
+export const LOG_DIR = `${namingEntry('libraryStorage').metadataDir}/log`
 
 /** 单条 diff 最大字符数——超出截断并标记，避免整本替换把日志撑爆。 */
 const MAX_DIFF_CHARS = 20000
@@ -135,7 +136,7 @@ export function logFilePath(module, now = new Date()) {
  *
  * @param {object} opts
  * @param {string} opts.root            库根（绝对路径）
- * @param {string} opts.module          模块名（正文/参考/推演/习惯…）
+ * @param {string} opts.module          模块名（正文/世界书/扮演/习惯…）
  * @param {string} opts.file            库内相对路径
  * @param {string} opts.op              'create' | 'update' | 'delete' | 'move' | 'adopt'…
  * @param {string} [opts.before]        修改前内容（创建时为空串）
@@ -145,7 +146,7 @@ export function logFilePath(module, now = new Date()) {
  * @returns {Promise<{ok:boolean, record?:object, path?:string, code?:string, message?:string}>}
  */
 export async function recordChange({
-  root, module, file, op = 'update', before = '', after = '', actor = 'author', meta = null, backup = ''
+  root, module, file, op = 'update', before = '', after = '', actor = 'author', meta = null, backup = '', now = new Date()
 } = {}) {
   if (!root || !file) return { ok: false, code: 'INVALID_ENTRY', message: 'recordChange 需要 root 与 file' }
   const beforeText = text(before)
@@ -165,7 +166,6 @@ export async function recordChange({
     diffTruncated = true
   }
 
-  const now = new Date()
   const record = {
     at: now.toISOString(),
     module: safeModuleName(module),

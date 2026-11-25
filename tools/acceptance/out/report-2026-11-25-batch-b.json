@@ -1,0 +1,302 @@
+{
+  "schema": "openstory.acceptance/v1",
+  "generatedAt": "2026-11-24T20:01:55.974Z",
+  "standards": [
+    "S0 布局",
+    "S1 Agentic",
+    "S2 可插拔",
+    "S3 前端一致性",
+    "S4 UX 跳转层级"
+  ],
+  "summary": {
+    "pass": 27,
+    "fail": 0,
+    "warn": 0
+  },
+  "checks": [
+    {
+      "id": "S0.1",
+      "standard": "S0",
+      "name": "根目录白名单（文件 7 项＋目录 17 项；实测 27 条目，越界 0）",
+      "verdict": "PASS",
+      "note": "根目录零散落 .mjs，文档全在 docs/",
+      "evidence": []
+    },
+    {
+      "id": "S0.2",
+      "standard": "S0",
+      "name": "架构文档数字与实测一致（tools/arch-stats.mjs --check 逐字比对生成段）",
+      "verdict": "PASS",
+      "note": "",
+      "evidence": [
+        "tools/acceptance/acceptance.mjs:103",
+        "✓ ARCHITECTURE.md 生成段与实测一致（14 行数据）"
+      ]
+    },
+    {
+      "id": "S1.1",
+      "standard": "S1",
+      "name": "MCP 工具覆盖模块面（共 24 个工具，4 模块组）",
+      "verdict": "PASS",
+      "note": "各模块组均有读+写工具",
+      "evidence": [
+        "src/host/mcp.mjs:126",
+        "src/host/mcp.mjs:136",
+        "src/host/mcp.mjs:154",
+        "src/host/mcp.mjs:170"
+      ]
+    },
+    {
+      "id": "S1.2",
+      "standard": "S1",
+      "name": "docs/mcp 对外文档同步（OVERVIEW 声称 —，实际 24）",
+      "verdict": "PASS",
+      "note": "",
+      "evidence": [
+        "docs/mcp/analysis.md",
+        "docs/mcp/deduce.md",
+        "docs/mcp/novel.md",
+        "docs/mcp/OVERVIEW.md",
+        "docs/mcp/reference.md"
+      ]
+    },
+    {
+      "id": "S1.3",
+      "standard": "S1",
+      "name": "skills/ 知识库包完整（31 包）",
+      "verdict": "PASS",
+      "note": "全部包有 SKILL.md",
+      "evidence": []
+    },
+    {
+      "id": "S1.4",
+      "standard": "S1",
+      "name": "dsh native runtime 适配件齐全（dsh-cli 一次一进程型已注册）",
+      "verdict": "PASS",
+      "note": "dsh-cli 型（一次一进程）就位",
+      "evidence": [
+        "src/services/dsh-cli.mjs:25",
+        "src/services/dsh-bridge.mjs:27",
+        "src/services/cli-bridge.mjs:16",
+        "src/services/runtimes.mjs:25",
+        "src/services/runtimes.mjs:57"
+      ]
+    },
+    {
+      "id": "S1.5",
+      "standard": "S1",
+      "name": "外部 CLI 派发器就位（Qoder 子 agent 模式）",
+      "verdict": "PASS",
+      "note": "",
+      "evidence": [
+        ".zcode/qoder-agent.mjs:12",
+        ".zcode/run-gate.mjs:5"
+      ]
+    },
+    {
+      "id": "S1.6",
+      "standard": "S1",
+      "name": "测试不依赖本机环境（test/** 扫本机绝对路径，命中 0 处，允许清单为空）",
+      "verdict": "PASS",
+      "note": "测试夹具一律临时注入，换机器/清缓存仍全绿",
+      "evidence": []
+    },
+    {
+      "id": "S2.1",
+      "standard": "S2",
+      "name": "模块纪律：src/modules/** 只引 node 内置/protocol/**/模块内文件（31 个模块文件）；清单模块零直接耦合",
+      "verdict": "PASS",
+      "note": "三类来源＋一条显式豁免（roleplayEngine→public/analysis.mjs）；内核能力只经协议层 fact 命名空间取",
+      "evidence": []
+    },
+    {
+      "id": "S2.2",
+      "standard": "S2",
+      "name": "前端模块互不 import（自动扫描 public/*.mjs＋views/*.mjs 共 21 个；合法边按条登记）",
+      "verdict": "PASS",
+      "note": "",
+      "evidence": []
+    },
+    {
+      "id": "S2.6",
+      "standard": "S2",
+      "name": "前端豁免按边登记且真实存在（3 条实边；登记 全部有效）",
+      "verdict": "PASS",
+      "note": "每条豁免都有边有理由",
+      "evidence": []
+    },
+    {
+      "id": "S2.7",
+      "standard": "S2",
+      "name": "模块覆盖面（14 模块／core 0／内核 1＋工作台 11＋宿主面 2／端点 105 ＝ 独占 41＋宿主 64／无归属 0）",
+      "verdict": "PASS",
+      "note": "五项口径与 moduleCoverage.test.mjs 共用；白名单每组带理由，新增端点无归属即红",
+      "evidence": [
+        "src/modules 目录 14 个，manifest 14 份",
+        "core: 无",
+        "内置来源异常：无",
+        "端点 105：模块独占 41＋宿主白名单 64"
+      ]
+    },
+    {
+      "id": "S2.8",
+      "standard": "S2",
+      "name": "文档数字锚与实测一致（测试／端点／宿主域端点／app.js 行数＋只降不升上限）",
+      "verdict": "PASS",
+      "note": "",
+      "evidence": [
+        "tools/number-anchors.mjs:134",
+        "✓ 数字锚一致：750 例／门禁 27／端点 105／宿主域 0／app.js 11835≤11886 行"
+      ]
+    },
+    {
+      "id": "S2.3",
+      "standard": "S2",
+      "name": "契约驱动架构（contracts 105 端点；daemon 契约分派+响应校验）",
+      "verdict": "PASS",
+      "note": "契约表是模块间调用的唯一底座；新增端点必须先进 contracts（域分片）",
+      "evidence": [
+        "src/api/contracts/agent.mjs:12",
+        "src/host/daemon.mjs:317",
+        "src/api/handlers/system.mjs:65"
+      ]
+    },
+    {
+      "id": "S2.4",
+      "standard": "S2",
+      "name": "S2.4' 内核实现唯一（116 个 src/ 模块＋垫片；src/** 无 core/ 路径说明符）",
+      "verdict": "PASS",
+      "note": "core/ 进口面为零（OS-157 全树自持）；内核实现只在 src/kernel/，公开面 index.mjs 五键（factStore/enrich/ok/fail/writeFileAtomic）",
+      "evidence": [
+        "src/kernel/index.mjs:24",
+        "src/kernel/errors.mjs:8"
+      ]
+    },
+    {
+      "id": "S2.5",
+      "standard": "S2",
+      "name": "命名真源表一致（21 概念；页签 9 条回表／日志模块 9 个登表）",
+      "verdict": "PASS",
+      "note": "页签/日志两层都从 NAMING_TABLE 取名（后端经 src/protocol/naming.mjs 只 re-export）",
+      "evidence": [
+        "public/views/registry.mjs:72"
+      ]
+    },
+    {
+      "id": "S2.9",
+      "standard": "S2",
+      "name": "OS-172 显示名＝入口名＝磁盘目录名＝日志模块名（21 概念）",
+      "verdict": "PASS",
+      "note": "模块清单、页签、命名表与日志模块四向一致",
+      "evidence": []
+    },
+    {
+      "id": "S2.10",
+      "standard": "S2",
+      "name": "OS-172 产品谱系名与作者身份（扫描 210 文件）",
+      "verdict": "PASS",
+      "note": "仅保留迁移兼容、旧院隔离与核心理出",
+      "evidence": []
+    },
+    {
+      "id": "S3.1",
+      "standard": "S3",
+      "name": "语义令牌覆盖率（令牌定义区外裸色值 8 处）",
+      "verdict": "PASS",
+      "note": "裸色值应进 :root 令牌（OpenDesign 口径：tokens.css 单一真源）",
+      "evidence": [
+        "public/index.html:615 #2e7d32",
+        "public/index.html:1327 #ddd",
+        "public/index.html:2134 #fff",
+        "public/index.html:2135 #171624",
+        "public/index.html:2145 #fff",
+        "public/index.html:2147 #fff",
+        "public/index.html:2302 #fff",
+        "public/index.html:2319 #fff"
+      ]
+    },
+    {
+      "id": "S3.2",
+      "standard": "S3",
+      "name": "侧栏=浮层（正文恒居中，OS-48 宪法）",
+      "verdict": "PASS",
+      "note": "",
+      "evidence": [
+        "public/index.html:175"
+      ]
+    },
+    {
+      "id": "S3.3",
+      "standard": "S3",
+      "name": "统一组件约定类在样式表有定义（surface-card/rm-toggle/rm-x/shadow-card）",
+      "verdict": "PASS",
+      "note": "",
+      "evidence": [
+        "public/index.html:34",
+        "public/index.html:217",
+        "public/index.html:223",
+        "public/index.html:40"
+      ]
+    },
+    {
+      "id": "S3.4",
+      "standard": "S3",
+      "name": "前端零浏览器存储（public/** 扫 localStorage|sessionStorage|indexedDB|do…；命中 0 处，允许清单为空）",
+      "verdict": "PASS",
+      "note": "任何端口打开都是同一份设置",
+      "evidence": []
+    },
+    {
+      "id": "S3.5",
+      "standard": "S3",
+      "name": "静态资源 no-store 断言（html/js/css/mjs 走 no-store，防旧包假象）",
+      "verdict": "PASS",
+      "note": "",
+      "evidence": [
+        "src/host/daemon.mjs:303",
+        "src/host/http.mjs:61"
+      ]
+    },
+    {
+      "id": "S3.6",
+      "standard": "S3",
+      "name": "样例库洁净（git ls-files samples/ 共 62 文件；日志/历史/临时/凭据/本机路径 0 容忍）",
+      "verdict": "PASS",
+      "note": "样例库只带稿件与运行态配置，无噪声",
+      "evidence": []
+    },
+    {
+      "id": "S4.1",
+      "standard": "S4",
+      "name": "核心模块页签顶栏可达（产物/正文/世界书/剧本/故事源/扮演；注册表 core:true 共 6 条）",
+      "verdict": "PASS",
+      "note": "页签名/渲染注册名/作用域三项均由注册表实测",
+      "evidence": [
+        "public/views/registry.mjs「产物」→ render:artifactsHtml",
+        "public/views/registry.mjs「正文」→ render:writeHtml",
+        "public/views/registry.mjs「世界书」→ render:referencePageHtml",
+        "public/views/registry.mjs「剧本」→ render:dirViewHtml",
+        "public/views/registry.mjs「故事源」→ render:dirViewHtml",
+        "public/views/registry.mjs「扮演」→ render:deduceHtml"
+      ]
+    },
+    {
+      "id": "S4.2",
+      "standard": "S4",
+      "name": "官方关闭按钮统一（rm-x 引用 1 处；旁路 close 类 0 处）",
+      "verdict": "PASS",
+      "note": "关闭走 rm-x + page-close 两级约定",
+      "evidence": []
+    },
+    {
+      "id": "S4.3",
+      "standard": "S4",
+      "name": "UX 结构清单文档存在（docs/UX-STRUCTURE.md：页签/子页签/入口层级）",
+      "verdict": "PASS",
+      "note": "",
+      "evidence": [
+        "docs/UX-STRUCTURE.md"
+      ]
+    }
+  ]
+}

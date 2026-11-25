@@ -4,7 +4,7 @@
  */
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { analyzeChapter, splitSentences } from '../public/analysis.mjs'
+import { analyzeChapter, splitSentences } from '../src/protocol/text.mjs'
 
 const SAMPLE = `# 第一章 雨停
 
@@ -76,7 +76,7 @@ test('确定性：同输入两次结果一致（纯计算无随机）', () => {
 })
 
 test('编辑 verdict 层（OS-56）：等长段→节奏太平的人话结论＋可定位段落', async () => {
-  const { analyzeChapter } = await import('../public/analysis.mjs')
+  const { analyzeChapter } = await import('../src/protocol/text.mjs')
   const flat = ['一字一句一段从容不迫。', '一字一句一段从容不迫。', '一字一句一段从容不迫。', '一字一句一段从容不迫。'].join('\n\n')
   const r = analyzeChapter(flat)
   assert.ok(r.editorial, '缺 editorial')
@@ -88,7 +88,7 @@ test('编辑 verdict 层（OS-56）：等长段→节奏太平的人话结论＋
 })
 
 test('编辑 verdict 层：对白过少、套话清单、干净章的亮点与总评', async () => {
-  const { analyzeChapter } = await import('../public/analysis.mjs')
+  const { analyzeChapter } = await import('../src/protocol/text.mjs')
   const dirty = ['他不禁笑了。', '这一切仿佛宛如犹如一场梦。', '叙述一。', '叙述二。', '叙述三。', '叙述四。'].join('\n\n')
   const r = analyzeChapter(dirty)
   assert.ok(r.editorial.problems.some((p) => p.verdict.includes('套话')), '套话没进人话结论')

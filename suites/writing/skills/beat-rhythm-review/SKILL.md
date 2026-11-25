@@ -2,7 +2,7 @@
 name: beat-rhythm-review
 description: 章内拍节奏审——检查拍密度、钩子间隔与情绪曲线是否读得动
 version: 0.1.0
-vendor: Pinax 官方
+vendor: skkbsgzf
 category: review
 genres: ["*"]
 ---

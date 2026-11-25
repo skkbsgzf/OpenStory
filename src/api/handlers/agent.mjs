@@ -31,7 +31,7 @@ import {
   renameSession,
   snapshotsMatch,
   updateCard
-} from '../../modules/agentbar/agentStore.mjs'
+} from '../../protocol/agentStore.mjs'
 import { loadConfigV2, saveConfigV2, configPublicLegacy, configTextBlock } from '../../services/agentConfig.mjs'
 import { resolveChatUpstream } from '../../services/chatUpstream.mjs'
 import { systemPromptFor } from '../../services/systemPrompt.mjs'
@@ -41,7 +41,7 @@ import { runCliChat } from '../../services/cli-bridge.mjs'
 import { runDshStdio } from '../../services/dsh-cli.mjs'
 import { projectLegacyFrame } from '../../protocol/agentEvents.mjs'
 import { habitLint } from '../../host/moduleHooks.mjs'
-import { writeChapterWithBackup } from '../../protocol/chapterWrite.mjs'
+import { resolveProseCapability } from '../../host/capabilityBindings.mjs'
 import { readAgentPicks, writeAgentPicks } from '../../services/skills.mjs'
 
 export async function agentConfigGet(ctx) {
@@ -731,7 +731,9 @@ export async function agentCardAdopt(ctx) {
       `这段产物命中了你的习惯表：${habitHits.map((hit) => hit.message).join('；')}。确认仍要采纳？`,
       { habitHits, needsConfirm: true, file: card.file })
   }
-  const written = await writeChapterWithBackup(root, card.file, card.text)
+  const proseResult = await resolveProseCapability(root)
+  if (!proseResult.ok) return sendError(res, API_ERROR_CODES.PLUGIN_DEGRADED, proseResult.message, proseResult.details)
+  const written = await proseResult.capability.writeChapterWithBackup(root, card.file, card.text)
   if (!written.ok) return sendError(res, written.code, written.message, written.details)
   const updated = await updateCard(context.agentSessionsDir, root, request.sessionId, request.id, {
     state: 'adopted',

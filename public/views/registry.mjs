@@ -21,7 +21,7 @@
  *                 ＝动态目录页签组的插入点（固定页签组之后、扮演之前）
  *     render      渲染函数**注册名**（app.js 侧 VIEW_RENDERERS 映射持有函数本体；本表只存
  *                 名字，绝不 import app.js——依赖方向永远是壳→表）
- *     panelLabel? 「＋增加页签」面板里的显示名（参考在页签栏叫「世界书」、面板里叫「参考」）
+ *     panelLabel? 「＋增加页签」面板里的显示名（默认与页签名一致）
  *     readonly?   只读页签（页签上挂「只读」牌）
  *     panel?      出现在「＋增加页签」面板的「常用」区（产物/正文/扮演）
  *     scope?      go() 的视图作用域：'library' 要先打开库 ｜ 'global' 全局页 ｜ 'flow' 建库流程页
@@ -33,7 +33,7 @@
  *   · 纯数据＋纯函数：零 import、不碰 DOM、不读全局 state、不写任何存储；
  *   · 既有裁定逐项钉在本表里，改行为＝改表＝可测试：
  *       OS-8/36  动态页签＋「＋增加页签」；OS-12 产物首格固定；OS-19 体裁裁剪（excludedPages）；
- *       OS-32    设置是可关闭页签；OS-44/48 参考目录承载世界书、拆解目录承载故事源；
+ *       OS-32    设置是可关闭页签；OS-44/48 起目录正名为世界书、故事源；旧名只作迁移输入；
  *       OS-59    习惯走 habits.json 专页；OS-75 剧本走 dir:剧本 专渲染；
  *       OS-84/86 大纲/构思/资料/约束退场（无条件过滤，注册表里留档）；OS-88 只留三载体；
  *       OS-92    词表外目录不出页签（词表＝本表，没条目就没页签）；
@@ -72,33 +72,33 @@
 export const NAMING_TABLE = Object.freeze([
   { id: 'chapters', dir: '正文', tab: '正文', logModule: '正文', contract: 'chapters', mcpPrefix: 'openstory_novel_',
     note: '章节正文；写盘走 /api/chapter（chapters 域）' },
-  // OS-44：参考目录承载世界书——目录叫「参考」、页签叫「世界书」、「＋」面板里还叫「参考」。
-  { id: 'reference', dir: '参考', tab: '世界书', panelLabel: '参考', dirLabel: null, logModule: '参考', contract: 'reference', mcpPrefix: 'openstory_reference_',
-    graphLabel: '世界书图谱', summaryLabel: '世界书摘要',
-    note: 'G8b 已定案：磁盘目录名「参考」冻结，页签名「世界书」；左/右栏图谱与摘要一律取 graphLabel/summaryLabel' },
-  { id: 'worldbook', dir: '世界书', tab: null, dirTab: false, dirLabel: '世界书', contract: null,
-    note: '磁盘骨架目录；页签由 reference 承载（OS-44），自身不是页签条目' },
+  { id: 'worldbook', dir: '世界书', tab: '世界书', panelLabel: '世界书', logModule: '世界书', contract: 'reference', mcpPrefix: 'openstory_reference_',
+    note: '世界书显示名、页签名、磁盘目录名与日志模块名一致' },
   { id: 'script', dir: '剧本', tab: '剧本', logModule: '剧本', contract: 'chapters',
     note: '剧本就是 剧本/NNN-标题.md，写盘与正文同走 chapters 域；无独占 MCP 工具' },
-  // OS-48/G8d：拆解目录承载故事源（Fact 链可视化）——目录名不动，页签改叫故事源。
-  { id: 'storysource', dir: '拆解', tab: '故事源', logModule: '拆解', dirLogModule: '故事源', contract: 'fact', mcpPrefix: 'openstory_fact_curve',
-    note: '按目录推断的日志名历史实况是「故事源」（moduleOfPath），与显式传的「拆解」并存——不迁移既有库' },
-  // OS-86/100：扮演＝推演全形态同一壳；推演/ 是会话与素材目录，页签不按目录扫描。
-  { id: 'roleplay', dir: '推演', tab: '扮演', dirTab: false, dirLabel: null, logModule: '推演', contract: 'fact', mcpPrefix: 'openstory_deduce_',
+  { id: 'storysource', dir: '故事源', tab: '故事源', logModule: '故事源', contract: 'fact', mcpPrefix: 'openstory_fact_curve',
+    note: '故事源显示名、页签名、磁盘目录名与日志模块名一致' },
+  // OS-86/100：扮演＝推演全形态同一壳；扮演/ 是会话与素材目录，页签不按目录扫描。
+  { id: 'roleplay', dir: '扮演', tab: '扮演', dirTab: false, dirLabel: null, logModule: '扮演', contract: 'fact', mcpPrefix: 'openstory_deduce_',
     note: '目录只存会话/导出/素材，页签「扮演」由视图驱动' },
   // OS-59：习惯——规则类内容归 habits.json，专页承载。
   { id: 'habits', dir: '习惯', tab: '习惯', panelLabel: '习惯', dirLabel: null, logModule: '习惯', contract: 'system', mcpPrefix: 'openstory_habits_' },
   // OS-89：日志只读页签；/api/log* 端点在 chapters 域。
   { id: 'log', dir: '日志', tab: '日志', readonly: true, contract: 'chapters',
     note: '只读页签；日志由 changelog 写入，自身不再写变更日志' },
-  // OS-12：产物中心（产出物＋多版本＋历史）。
-  { id: 'artifacts', tab: '产物', contract: 'system', note: '产物中心：/api/artifacts 盘点＋/api/chapter 预览与恢复' },
+  // OS-12：产物（产出物＋多版本＋历史）。
+  { id: 'artifacts', tab: '产物', contract: 'system', note: '产物：/api/artifacts 盘点＋/api/chapter 预览与恢复' },
   // OS-32：设置页签（主题字号/模块开关/凭据入口）。
   { id: 'settings', tab: '设置', contract: 'system', note: '/api/config 与 /api/ui-state' },
-  { id: 'uiState', logModule: '界面状态', contract: 'system', note: '库内界面状态 .pinax/ui-state.json（页签/模块开关/字号档）' },
+  { id: 'uiState', logModule: '界面状态', contract: 'system', note: '库内界面状态 .openstory/ui-state.json（页签/模块开关/字号档）' },
+  { id: 'libraryStorage', metadataDir: '.openstory', projectSpec: 'openstory-project@4', carrierPrefix: 'openstory.carrier.',
+    wikiSchema: 'openstory-wiki-derived@2', tempPrefix: '.openstory-tmp-',
+    note: '库标记与运行态的 OpenStory 自有谱系名；旧库由 libraryUpgrade 一次性迁移' },
   { id: 'libraries', contract: 'library', mcpPrefix: 'openstory_libraries', note: '库管理（顶栏入口，非页签）' },
+  { id: 'exchange', dir: '导入导出', dirTab: false, dirLabel: null, logModule: '导入导出', contract: 'exchange', note: '顶栏导入导出入口与导出文件的落盘目录同名' },
+  { id: 'libraryUpgrade', logModule: '库升级', note: '旧库一次性升级的结构变更日志' },
   { id: 'analysis', contract: null, mcpPrefix: 'openstory_analysis_chapter', note: '右栏分析卡片＋MCP 本地计算，不经 daemon 端点' },
-  { id: 'enrich', logModule: '拆解', contract: 'fact', mcpPrefix: 'openstory_enrich_', note: '语义增补写旁挂 wiki，变更记在「拆解」日志' },
+  { id: 'enrich', logModule: '故事源', contract: 'fact', mcpPrefix: 'openstory_enrich_', note: '语义增补写旁挂 wiki，变更记在「故事源」日志' },
   { id: 'vision', contract: 'system', mcpPrefix: 'openstory_vision_describe', note: '识图：/api/vision/describe' },
   { id: 'imagegen', contract: 'reference', mcpPrefix: 'openstory_image_generate', note: '生图落条目的 assets/，端点 /api/reference/image' },
   { id: 'kb', contract: 'system', note: '知识库三件套（/api/kb/*）' },
@@ -109,7 +109,7 @@ export const NAMING_TABLE = Object.freeze([
 /** 每行补齐七列主体列（缺省 null），列序固定——表要被测试与门禁逐列核对，不许有的行缺列。 */
 function namingRow(raw) {
   const row = { id: raw.id }
-  for (const key of ['dir', 'tab', 'panelLabel', 'logModule', 'dirLogModule', 'contract', 'mcpPrefix']) {
+  for (const key of ['dir', 'tab', 'panelLabel', 'logModule', 'dirLogModule', 'contract', 'mcpPrefix', 'metadataDir', 'projectSpec', 'carrierPrefix', 'wikiSchema', 'tempPrefix']) {
     row[key] = raw[key] ?? null
   }
   if ('dirLabel' in raw) row.dirLabel = raw.dirLabel
@@ -168,7 +168,7 @@ function dirLabelOf(row) {
  * OS-88（作者裁定）：demo 只做三种载体——长篇、短篇、剧本。**只保留有真实实现的标签**，
  * 其余（素材/漫画/视频/体验/联机/文档/人物/场景/大纲/构思/资料/约束）一律不进词表：
  * 它们没有专属页面，点进去只是一个裸 textarea，等于凭空许诺。
- * 已实现的真实页面：正文 / 世界书(参考载体) / 剧本 / 习惯 / 故事源(拆解) / 推演 / 日志(只读)。
+ * 已实现的真实页面：正文 / 世界书 / 剧本 / 习惯 / 故事源 / 扮演 / 日志(只读)。
  */
 export const DIR_LABELS = Object.freeze(Object.fromEntries(
   NAMING_TABLE
@@ -193,16 +193,16 @@ export const PAGE_TO_DIR_LOCAL = Object.freeze({
 })
 
 /**
- * 默认收起种子（OS-48）：大纲/构思/资料/约束的定位已被「参考」覆盖，
+ * 默认收起种子（OS-48）：大纲/构思/资料/约束的定位已被「世界书」覆盖，
  * 作者没表过态（键不存在）时默认不出这四个页签。
  * 只作种子不落盘——作者一旦在「＋」里勾回或再收起，以作者的选择为准。
  */
 export const DEFAULT_HIDDEN_TABS = Object.freeze(['dir:大纲', 'dir:构思', 'dir:资料', 'dir:约束'])
 
 /**
- * OS-84：已退场的旧目录（作者裁定：定位已被「参考」「习惯」覆盖，标签不再进「增加页签」面板）。
- *   · 大纲/构思/资料 → 内容迁进「参考」（referenceStore.ABSORBABLE_DIRS，参考页有迁入入口）
- *   · 约束 → 规则类内容归「习惯」(habits.json)，OS-59 起不再迁入参考
+ * OS-84：已退场的旧目录（作者裁定：定位已被「世界书」「习惯」覆盖，标签不再进「增加页签」面板）。
+ *   · 大纲/构思/资料 → 内容迁进「世界书」（referenceStore.ABSORBABLE_DIRS，世界书页有迁入入口）
+ *   · 约束 → 规则类内容归「习惯」(habits.json)，OS-59 起不再迁入世界书
  * 退场只影响**入口**：目录空着就彻底不出现；还有文件的只降级为「旧·待迁」露出，
  * 保证老库里的稿子不会因为标签下架变成 UI 里再也打不开的死文件。
  */
@@ -223,20 +223,16 @@ function tabNaming(id) {
 }
 
 export const TAB_REGISTRY = Object.freeze([
-  // OS-12：页签首格固定＝产物中心（产出物＋多版本＋历史）；「库」上移顶栏。
+  // OS-12：页签首格固定＝产物（产出物＋多版本＋历史）；「库」上移顶栏。
   { id: 'artifacts', kind: 'fixed', core: true, module: 'artifacts', view: 'artifacts', ...tabNaming('artifacts'), icon: '产', render: 'artifactsHtml', panel: true, closable: true, scope: 'library' },
   // OS-19：正文走 libDirs 判断——体裁声明后（如短故事）没有 正文/ 目录就不出。
-  // OS-163：正文归核心模块 chapters；moduleCore 只表达「模块级不可停用」，与本表的页签级 core 是两回事。
-  { id: 'write', kind: 'fixed', core: true, module: 'chapters', moduleCore: true, view: 'write', ...tabNaming('chapters'), icon: '章', render: 'writeHtml', panel: true, closable: true, scope: 'library',
+  { id: 'write', kind: 'fixed', core: true, module: 'chapters', view: 'write', ...tabNaming('chapters'), icon: '章', render: 'writeHtml', panel: true, closable: true, scope: 'library',
     visibleWhen: (ctx) => !ctx.brief || ctx.hasDir(namingEntry('chapters').dir) },
   // 目录型组插入点：从这里到下一个非 dirScan 条目之间，全部按「磁盘目录 × 词表」扫描物化。
-  // OS-44：参考目录走专门的笔记系统页，页签名「世界书」；「＋」面板里仍叫「参考」。
-  // OS-164：世界书归核心模块 worldbook（moduleCore＝模块级不可停用，与页签级 core 是两回事）。
-  { id: 'reference', kind: 'fixed', core: true, module: 'worldbook', moduleCore: true, view: 'reference', ...tabNaming('reference'), dirScan: true, icon: '世', render: 'referencePageHtml', closable: true, scope: 'library' },
+  { id: 'reference', kind: 'fixed', core: true, module: 'worldbook', view: 'reference', ...tabNaming('worldbook'), dirScan: true, icon: '世', render: 'referencePageHtml', closable: true, scope: 'library' },
   // OS-75：剧本页 fork 正文页（dir:剧本 视图，剧本版式渲染）。
-  { id: 'script', kind: 'fixed', core: true, module: 'script', moduleCore: true, view: 'dir:剧本', ...tabNaming('script'), dirScan: true, icon: '剧', render: 'dirViewHtml', closable: true, scope: 'library' },
-  // OS-48：拆解目录承载故事源（fact 链可视化）——目录名不动，页签改叫故事源。
-  { id: 'storySource', kind: 'fixed', core: true, module: 'storysource', view: 'dir:拆解', ...tabNaming('storysource'), dirScan: true, icon: '故', render: 'dirViewHtml', closable: true, scope: 'library' },
+  { id: 'script', kind: 'fixed', core: true, module: 'script', view: 'dir:剧本', ...tabNaming('script'), dirScan: true, icon: '剧', render: 'dirViewHtml', closable: true, scope: 'library' },
+  { id: 'storySource', kind: 'fixed', core: true, module: 'storysource', view: `dir:${namingEntry('storysource').dir}`, ...tabNaming('storysource'), dirScan: true, icon: '故', render: 'dirViewHtml', closable: true, scope: 'library' },
   // OS-59：习惯——规则类内容归 habits.json，专页承载。
   { id: 'habits', kind: 'dir', module: 'habits', view: 'habits', ...tabNaming('habits'), dirScan: true, icon: '习', render: 'habitsViewHtml', closable: true, scope: 'library' },
   // OS-89：日志只读页签（模块修改痕迹的自检索载体）。
@@ -244,14 +240,13 @@ export const TAB_REGISTRY = Object.freeze([
   // ── 已退场目录（OS-84/86，作者裁定）：注册表里留档＋无条件过滤，双保险。──
   // OS-86：已退场的旧目录彻底不出现——不管磁盘上还在不在、有多少篇。
   // 作者口径：没被官方认证的标签就是要消失，不做「旧·待迁」降级露出；
-  // 内容清理走一次性迁移（大纲/构思/资料→参考，约束→习惯＋参考存档）。
+  // 内容清理走一次性迁移（大纲/构思/资料→世界书，约束→习惯＋世界书存档）。
   { id: 'retired-outline', kind: 'dir', view: 'dir:大纲', dir: '大纲', dirScan: true, label: '大纲', retired: true },
   { id: 'retired-brainstorm', kind: 'dir', view: 'dir:构思', dir: '构思', dirScan: true, label: '构思', retired: true },
   { id: 'retired-material', kind: 'dir', view: 'dir:资料', dir: '资料', dirScan: true, label: '资料', retired: true },
   { id: 'retired-constraint', kind: 'dir', view: 'dir:约束', dir: '约束', dirScan: true, label: '约束', retired: true },
   // OS-86/100：扮演——推演全形态（叙事流/剧情树/Agent）同一壳，页签名「扮演」。
-  // OS-164：扮演归核心模块 roleplay；moduleCore 恒可见，显式启用集合再窄也不裁。
-  { id: 'deduce', kind: 'fixed', core: true, module: 'roleplay', moduleCore: true, view: 'deduce', ...tabNaming('roleplay'), icon: '扮', render: 'deduceHtml', panel: true, closable: true, scope: 'library' },
+  { id: 'deduce', kind: 'fixed', core: true, module: 'roleplay', view: 'deduce', ...tabNaming('roleplay'), icon: '扮', render: 'deduceHtml', panel: true, closable: true, scope: 'library' },
   // OS-32：设置是可关闭页签——跟正文/产物同级，打开才出现，× 关掉回到原页。
   { id: 'settings', kind: 'fixed', view: 'settings', ...tabNaming('settings'), icon: '设', render: 'settingsHtml', closable: true, scope: 'global',
     visibleWhen: (ctx) => Boolean(ctx.settingsOpen) },
@@ -277,9 +272,6 @@ function orderIndexOf(dir) {
  *  旧快照与所有不带该字段的调用点一个字不改；给了就只认显式启用的模块（Set / 数组 / 对象）。 */
 function moduleVisible(entry, modulesEnabled) {
   if (!entry.module) return true
-  // OS-163：模块级 core:true 的页签恒在——即便 ctx 给了只含普通模块的显式启用集合也不裁掉。
-  // 这里是注册表自持的标记（zero-import 约束不允许 import 后端 modules 协议）。
-  if (entry.moduleCore === true) return true
   if (modulesEnabled === undefined || modulesEnabled === null) return true
   if (modulesEnabled instanceof Set) return modulesEnabled.has(entry.module)
   if (Array.isArray(modulesEnabled)) return modulesEnabled.includes(entry.module)
@@ -392,7 +384,7 @@ export function isKnownDir(dir, registry = TAB_REGISTRY) {
   return dirTabEntry(dir, registry) !== null
 }
 
-/** 「＋」面板里目录型页签的显示名（参考在页签栏叫「世界书」、面板里叫「参考」）。 */
+/** 「＋」面板里目录型页签的显示名（优先取命名表 panelLabel，缺省与页签名一致）。 */
 export function dirPanelLabel(dir, registry = TAB_REGISTRY) {
   const entry = listOf(registry).find((item) => item.dir === dir && !item.retired)
   return entry?.panelLabel || entry?.label || dir
@@ -415,6 +407,7 @@ export function creatableDirNames(libDirs, registry = TAB_REGISTRY) {
     .filter((dir) => Boolean(DIR_LABELS[dir]))
     .filter((dir) => !onDisk.has(dir))
     .filter((dir) => !RETIRED_DIRS.includes(dir))
-    .filter((dir) => dir !== '正文' && dir !== '世界书' && dir !== '拆解' && dir !== '人物' && dir !== '场景')
+    .filter((dir) => !['chapters', 'worldbook', 'storysource'].includes(namingEntryForDir(dir)?.id))
+    .filter((dir) => dir !== '人物' && dir !== '场景')
     .map((dir) => ({ dir, label: DIR_LABELS[dir] }))
 }

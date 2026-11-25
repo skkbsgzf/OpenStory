@@ -24,8 +24,8 @@ genres/<genre-id>.json          ← 内置（随仓）
   "tier": "primary",                       // primary｜extended（仅影响前端默认排序/推荐）
   "summary": "一句话人话说明",
   "deliverables": ["novel"],               // 允许多种：novel｜script｜comic｜game
-  "requiredCarriers": ["pinax.carrier.novel"],          // 必需模块（决定建库主载体与页签）
-  "optionalCarriers": ["pinax.carrier.notes"],          // 可选模块（默认不建，作者可加）
+  "requiredCarriers": ["openstory.carrier.novel"],          // 必需模块（决定建库主载体与页签）
+  "optionalCarriers": ["openstory.carrier.notes"],          // 可选模块（默认不建，作者可加）
   "excludedPages": ["worldbook", "wiki"],               // 明确不出的页签（短故事不要世界书/wiki）
   "length": {
     "unit": "chars",                       // chars｜episodes｜minutes
@@ -52,7 +52,7 @@ genres/<genre-id>.json          ← 内置（随仓）
 
 - `id` `[\w-]{1,40}`；`schemaVersion` 精确匹配（不做半懂兼容）；
 - `deliverables` 只收 `novel/script/comic/game`；
-- `requiredCarriers` 必须是已知载体 id（`pinax.carrier.*`）；
+- `requiredCarriers` 必须是已知载体 id（`openstory.carrier.*`）；
 - `length.unit` 与 `divideBy` 联动：`divideBy:"chapter"` 时 `perUnit` 必须给区间；
 - 缺字段＝用宿主缺省（`length` 缺省不分章、`agentPolicy` 缺省不额外注入）。
 

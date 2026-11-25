@@ -2,7 +2,7 @@
 name: storyboard-craft
 description: 影视分镜技法——SOTA 技法清单（DeepSeek v4.1-flash 蒸馏，2026-11-16）
 version: 0.1.0
-vendor: OpenStory
+vendor: skkbsgzf
 category: craft
 genres: ["feature-film", "tv-series", "short-drama"]
 ---

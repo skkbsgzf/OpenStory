@@ -22,7 +22,7 @@ function esc(value) {
 test('manifest：artifacts 非核心，独占 artifactsGet，契约登记 MODULE_DISABLED', () => {
   const manifest = moduleManifest('artifacts')
   assert.ok(manifest)
-  assert.equal(manifest.core, false)
+  assert.equal(Object.prototype.hasOwnProperty.call(manifest, 'core'), false)
   assert.deepEqual(manifest.endpoints, ['artifactsGet'])
   assert.equal(moduleOfEndpoint('artifactsGet'), 'artifacts')
   assert.ok(ENDPOINTS.artifactsGet.errors.includes('MODULE_DISABLED'))
@@ -33,12 +33,12 @@ test('manifest：artifacts 非核心，独占 artifactsGet，契约登记 MODULE
 test('daemon：停用后 /api/artifacts 409 MODULE_DISABLED，启用恢复', async () => {
   const base = await mkdtemp(join(tmpdir(), 'os161-artifacts-'))
   const root = join(base, '夹具库')
-  await mkdir(join(root, '.pinax'), { recursive: true })
+  await mkdir(join(root, '.openstory'), { recursive: true })
   await mkdir(join(root, '正文'), { recursive: true })
   await writeFile(join(root, '正文', 'ch1.md'), '正文', 'utf-8')
   const preferencesPath = join(base, 'libraries.json')
   await writeFile(preferencesPath, JSON.stringify({ recentProjects: [{ path: root, name: '夹具库' }] }), 'utf-8')
-  const writeState = (enabled) => writeFile(join(root, '.pinax', 'ui-state.json'),
+  const writeState = (enabled) => writeFile(join(root, '.openstory', 'ui-state.json'),
     JSON.stringify({ modules: { enabled: { artifacts: enabled } } }), 'utf-8')
   await writeState(false)
   assert.equal(await isModuleDisabledFor('artifactsGet', root), 'artifacts')
@@ -63,7 +63,7 @@ test('daemon：停用后 /api/artifacts 409 MODULE_DISABLED，启用恢复', asy
 test('页签归属：artifacts 停用后产物页签消失', () => {
   const ctx = { current: { path: '/lib' }, libDirs: [], brief: null, briefGenre: null, settingsOpen: false }
   assert.ok(computeTabDefs(ctx).map((d) => d.view).includes('artifacts'))
-  const disabled = computeTabDefs({ ...ctx, modulesEnabled: { artifacts: false } }).map((d) => d.view)
+  const disabled = computeTabDefs({ ...ctx, modulesEnabled: { artifacts: false, chapters: true } }).map((d) => d.view)
   assert.ok(!disabled.includes('artifacts'))
   assert.ok(disabled.includes('write'), '其他页签不受影响')
 })
@@ -79,7 +79,7 @@ test('artifactsHtml 金样：纯函数固定夹具 → 稳定 HTML，无副作�
     formatAt: (t) => String(t), flowError: (m) => (m ? `<div class="error-box">${esc(m)}</div>` : ''), esc
   }
   const html = artifactsHtml({ current: { name: '夹具库' }, inventory, ...tools })
-  assert.match(html, /产物中心/u)
+  assert.match(html, /<h1>产物<\/h1>/u)
   assert.match(html, /data-action="artifact-preview"/u)
   assert.match(html, /ch1\.md/u)
   assert.equal(html, artifactsHtml({ current: { name: '夹具库' }, inventory, ...tools }))

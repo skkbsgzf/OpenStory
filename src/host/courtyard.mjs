@@ -1,9 +1,9 @@
 /**
  * 本机院子唯一对外门面（OS-166 / G10a＋G10c）。
  *
- * 实现落在 `src/protocol/courtyard.mjs`：协议层是模块层唯一可引的底层面（门禁 S2.1），
- * 本文件只做原样转供，宿主层与测试夹具仍从这一个路径取院子 API。
+ * 实现落在 `src/modules/storage/courtyard.mjs`，由 storage.roots 能力持有；
+ * 本文件只做宿主兼容转供，不复制路径规则。
  * 新院＝%LOCALAPPDATA%/OpenStory/；旧院＝%LOCALAPPDATA%/PinaxNext/，
  * **原样保留给 Pinax 桌面端，永不删除、永不改写**。
  */
-export * from '../protocol/courtyard.mjs'
+export * from '../modules/storage/courtyard.mjs'

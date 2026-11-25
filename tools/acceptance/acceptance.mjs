@@ -26,9 +26,11 @@ import { fileURLToPath } from 'node:url'
 import { NAMING_TABLE, TAB_REGISTRY, LOG_MODULES, computeTabDefs, viewScope } from '../../public/views/registry.mjs'
 // OS-150b：S2.1/S2.2 共用同一份说明符扫描器（静态 from／动态 import()／副作用 import／单双引号）。
 // 两份正则必分叉——分叉面就是漏检面（analysisModules.mjs 的惰性 import 曾被整段放过）。
-import { scanImportSpecs, resolveSpec, auditPublicEdges } from './importScan.mjs'
+import { scanImportSpecs, auditPublicEdges } from './importScan.mjs'
+import { auditCapabilityRoutes, auditBaseBoundary, auditTransferDuplication } from './capabilityBoundaries.mjs'
 // OS-165/G5d：模块覆盖面与 test/moduleCoverage.test.mjs 共用一份口径（端点/页签归属与宿主白名单理由）。
 import { coverageReport } from './moduleCoverage.mjs'
+import { auditLineageNames, auditNamingConsistency } from '../verify/verify-os172-naming.mjs'
 
 const REPO = pathResolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
 
@@ -62,7 +64,7 @@ function grepLine(rel, re) {
   return null
 }
 
-/* OS-140：src/ 树扫描器（递归收集 .mjs，带内容）＋相对说明符 → 仓内路径解析器 */
+/* OS-140/C6：src/ 树扫描器（递归收集 .mjs/.js，带内容）＋相对说明符 → 仓内路径解析器 */
 function walkMjs(dir, prefix) {
   const out = []
   for (const name of readdirSync(dir)) {
@@ -70,7 +72,7 @@ function walkMjs(dir, prefix) {
     const rel = `${prefix}/${name}`
     const st = statSync(full)
     if (st.isDirectory()) out.push(...walkMjs(full, rel))
-    else if (name.endsWith('.mjs')) out.push({ rel, src: readFileSync(full, 'utf-8') })
+    else if (/\.(?:mjs|js)$/u.test(name)) out.push({ rel, src: readFileSync(full, 'utf-8') })
   }
   return out
 }
@@ -84,7 +86,7 @@ console.log('\n── S0 布局 ──')
 // S0.1 根目录白名单（OS-159 收紧）：根目录下的文件与目录必须落在清单里，多一个都红。
 // 入口不再放仓根垫片——`node src/host/daemon.mjs` / `node src/host/mcp.mjs` 直跑实现文件。
 const ROOT_FILES = new Set(['AGENTS.md', 'ARCHITECTURE.md', 'LICENSE', 'README.md', 'package.json', 'package-lock.json', '.gitignore'])
-const ROOT_DIRS = new Set(['src', 'public', 'test', 'tools', 'docs', 'samples', 'suites', 'runtimes', 'styles', 'genres', 'skills', 'design-system', '.zcode', '.ua', '.cache', 'node_modules'])
+const ROOT_DIRS = new Set(['src', 'public', 'test', 'tools', 'docs', 'samples', 'suites', 'runtimes', 'styles', 'genres', 'skills', 'design-system', '.github', '.zcode', '.ua', '.cache', 'node_modules'])
 const rootEntries = readdirSync(REPO).sort()
 const rootStrays = rootEntries.filter((name) => {
   if (ROOT_FILES.has(name) || ROOT_DIRS.has(name)) return false
@@ -182,93 +184,49 @@ const cliMissing = cliDispatch.filter((f) => !exists(f))
 check('S1.5', 'S1', '外部 CLI 派发器就位（Qoder 子 agent 模式）',
   cliMissing.length === 0, cliDispatch.filter((f) => exists(f)).map((f) => lineOf(f, 'spawn')), cliMissing.length ? `缺 ${cliMissing.join(', ')}` : '')
 
+// S1.6 OS-169：测试不许依赖本机环境——扫 test/** 的本机绝对路径，允许清单为空。
+// 正向/反斜杠两种写法都算（源码里 `C:\\Users\\` 是两个反斜杠字面，正则用 `\\+` 一并覆盖）；
+// 注释也算命中——否则「文档说不用、代码里藏着」会蒙混过关（与 S3.4 同一口径）。
+const LOCAL_ABS_RE = /C:\/Users\/|C:\\+Users\\+|\/Users\/|\/home\//gu
+function walkTestSources(dir, prefix = '') {
+  const out = []
+  for (const name of readdirSync(dir)) {
+    const full = join(dir, name)
+    const rel = prefix ? `${prefix}/${name}` : name
+    const st = statSync(full)
+    if (st.isDirectory()) out.push(...walkTestSources(full, rel))
+    else if (/\.(mjs|js)$/u.test(name)) out.push({ rel: `test/${rel}`, src: readFileSync(full, 'utf-8') })
+  }
+  return out
+}
+const localAbsHits = []
+for (const { rel, src } of walkTestSources(join(REPO, 'test'))) {
+  for (const m of src.matchAll(LOCAL_ABS_RE)) {
+    localAbsHits.push(`${rel}:${src.slice(0, m.index).split('\n').length} ${m[0]}`)
+  }
+}
+check('S1.6', 'S1', `测试不依赖本机环境（test/** 扫本机绝对路径，命中 ${localAbsHits.length} 处，允许清单为空）`,
+  localAbsHits.length === 0, localAbsHits.slice(0, 8),
+  localAbsHits.length ? `本机绝对路径：${localAbsHits.slice(0, 4).join(', ')}——用临时 LOCALAPPDATA 夹具或路径推导断言替代` : '测试夹具一律临时注入，换机器/清缓存仍全绿')
+
 /* ================================================================
  * S2 可插拔 —— 模块不耦合，只经底层接口协议
  * ================================================================ */
 console.log('\n── S2 可插拔 ──')
 
-// S2.1 扫 src/ 树的 import 图（OS-159 起仓根零垫片，入口实现文件本就在 src/host/ 内，覆盖面只增不减）
+// S2.1 C6 能力路由：源码面自动枚举，模块只许 node/protocol/本模块/已声明套件资源；
+// API、服务与底座消费模块只能走 protocol 或能力句柄。兼容转供按“源文件→目标目录”逐条登记，
+// 转供叶同时接受复制实现审计；静态 from/export、动态 import() 与副作用 import 全扫。
 const srcMjs = walkMjs(join(REPO, 'src'), 'src')
 const scanned = srcMjs
-const imports = {}
-const importEvidence = {}
-for (const { rel, src } of scanned) {
-  imports[rel] = []
-  importEvidence[rel] = []
-  for (const { spec, line } of scanImportSpecs(src)) {
-    if (!/^\.{1,2}\//u.test(spec) || !spec.endsWith('.mjs')) continue
-    const dep = resolveSpec(rel, spec)
-    imports[rel].push(dep)
-    importEvidence[rel].push(`${rel}:${line} '${spec}'`)
-  }
-}
-// 模块纪律两套口径合取（OS-142 Host API 升格；都过才算过，只紧不松）：
-// ① 新口径（主，路径规则）：src/modules/** 的 import 只许三类——
-//      node 内置模块（node: 前缀裸说明符）、src/protocol/**（Host API：index.mjs 七命名空间
-//      入口＋各叶子转供件）、自己所在模块目录内的文件（模块内部组合）。
-//    扫描覆盖静态 from 与动态 import()、含 .js 相对说明符；node 内置必须带 node: 前缀。
-// ② 旧口径（保留）：清单模块（含 services 件与 factGuard）互不耦合，只许引协议层与
-//    KERNEL_ALLOW 内部边——旧白名单面继续受保护，防止 services 层退化。
-// 豁免唯一且显式点名（不许静默放过；台账在 src/protocol/README.md）：
-//    roleplayEngine → public/analysis.mjs：纯函数「AI 味」分析（浏览器侧同源实现），
-//    下沉 protocol 留后续批次。
-const MODULE_RULE_EXEMPT = new Set([
-  'src/modules/roleplay/roleplayEngine.mjs -> public/analysis.mjs'
-])
-const moduleRuleViolations = []
-for (const { rel, src } of srcMjs.filter((f) => f.rel.startsWith('src/modules/'))) {
-  const modDir = `${rel.slice(0, rel.lastIndexOf('/'))}/`
-  for (const { spec, line } of scanImportSpecs(src)) {
-    if (spec.startsWith('node:')) continue // ① node 内置模块
-    if (spec.startsWith('./') || spec.startsWith('../')) {
-      const dep = resolveSpec(rel, spec)
-      if (dep.startsWith('src/protocol/')) continue // ② Host API 协议层
-      if (dep.startsWith(modDir)) continue // ③ 模块内部组合
-      if (MODULE_RULE_EXEMPT.has(`${rel} -> ${dep}`)) continue // 显式点名豁免
-      moduleRuleViolations.push(`${rel}:${line} '${spec}'`)
-    } else {
-      moduleRuleViolations.push(`${rel}:${line} 裸说明符 '${spec}'（模块只许 node: 前缀内置）`)
-    }
-  }
-}
-// 旧口径：协议层从文件名白名单改为路径规则（src/protocol/** 全量＋两份既有底层件）——
-// 白名单面只增不减：原七个文件全在覆盖内，新增协议件自动入列。
-const isProtocolPath = (rel) => rel.startsWith('src/protocol/') || rel === 'src/api/contracts.mjs' || rel === 'src/kernel/index.mjs' // 底层接口协议层（src/protocol/**＝OS-142 Host API 全家：index.mjs 七命名空间入口＋chapters 正文协议＋chapterNumber 章节号＋chapterWrite 写备份＋changelog 变更日志＋versionGate 版本闸＋plugins 货架聚合＋dependencyGraph 依赖图＋factGuard fact 守卫＋hostWrite 宿主写协议（OS-138 原子写收敛）＋libState 库内状态＋kernelPlumber/authorize/apiErrors/upstream/worldbookContract 五个转供叶子；api/contracts.mjs＝端点契约；kernel/index.mjs＝OS-157 起内核公开面唯一出口，见 S2.4'）
-const KERNEL_ALLOW = new Set([
-  // OS-79：deduceNarrative 是推演引擎的内部子模块（只做叙事上下文拼装，纯函数），
-  // 不是平等功能模块——引擎引它属于内部组合，不是跨模块耦合（OS-142 起同属新口径③）。
-  'src/modules/deduce/deduceEngine.mjs -> src/modules/deduce/deduceNarrative.mjs',
-  // OS-155：推演链归扮演模块后，engine/index.mjs 是同一模块目录内的出口（八个引擎件的
-  // 组合面）——deduceEngine 引它同属模块内部组合（新口径③已放行；此处让旧口径②同口径）。
-  'src/modules/deduce/deduceEngine.mjs -> src/modules/deduce/engine/index.mjs'
-])
-const MODULES = [
-  'src/modules/deduce/deduceEngine.mjs', 'src/modules/deduce/deduceSession.mjs', 'src/modules/worldbook/referenceStore.mjs', 'src/services/enrichEngine.mjs',
-  'src/protocol/factGuard.mjs', 'src/modules/kb/kbRouter.mjs', 'src/modules/kb/kbAdapter.mjs', 'src/modules/kb/kbHealth.mjs', 'src/services/style-check.mjs', 'src/services/stylePacks.mjs', 'src/services/skills.mjs', 'src/services/genres.mjs'
-]
-const crossEdges = []
-for (const mod of MODULES) {
-  for (const dep of imports[mod] || []) {
-    if (dep === mod) continue
-    if (isProtocolPath(dep)) continue
-    if (dep.startsWith('src/kernel/')) continue // 自有内核＝底层（S2.4'），不算模块耦合
-    const tag = `${mod} -> ${dep}`
-    if (!KERNEL_ALLOW.has(tag)) crossEdges.push(tag)
-  }
-}
-check('S2.1', 'S2', `模块纪律：src/modules/** 只引 node 内置/protocol/**/模块内文件（${srcMjs.filter((f) => f.rel.startsWith('src/modules/')).length} 个模块文件）；清单模块零直接耦合`,
-  moduleRuleViolations.length === 0 && crossEdges.length === 0,
-  [
-    ...moduleRuleViolations.slice(0, 4),
-    ...crossEdges.slice(0, 3).map((e) => {
-      const [mod, dep] = e.split(' -> ')
-      const ev = (importEvidence[mod] || []).find((s) => s.includes(dep))
-      return ev || lineOf(mod, dep)
-    })
-  ].filter(Boolean),
-  moduleRuleViolations.length || crossEdges.length
-    ? `违规：${[...moduleRuleViolations, ...crossEdges].join('; ')}`
-    : '三类来源＋一条显式豁免（roleplayEngine→public/analysis.mjs）；内核能力只经协议层 fact 命名空间取')
+const routeViolations = auditCapabilityRoutes(srcMjs)
+const transferDuplicates = auditTransferDuplication(srcMjs)
+const routeEvidence = [...routeViolations, ...transferDuplicates]
+  .map((item) => `${item.from}:${item.line} -> ${item.to}：${item.reason}`)
+check('S2.1', 'S2', `能力路由边界（${srcMjs.length} 个 src 源文件；跨层直引 ${routeViolations.length}；转供复制 ${transferDuplicates.length}）`,
+  routeViolations.length === 0 && transferDuplicates.length === 0,
+  routeEvidence.slice(0, 6),
+  routeEvidence.length ? `违规：${[...routeViolations, ...transferDuplicates].slice(0, 4).map((item) => `${item.from}→${item.to}`).join('; ')}` : '模块经协议/能力句柄消费；兼容转供叶只转供、不复制实现')
 
 // S2.2 前端模块隔离（public/*.mjs 只共享渲染协议）
 // OS-143：页签注册表 views/registry.mjs 纳入扫描面——它是纯数据＋纯函数（零 import），
@@ -301,21 +259,66 @@ check('S2.6', 'S2', `前端豁免按边登记且真实存在（${publicEdgeCount
   publicEdgeAudit.stale.map((row) => `PUBLIC_EDGE_ALLOW: ${row.edge}${row.reason ? '（仓里无此边）' : '（缺理由）'}`),
   publicEdgeAudit.stale.length ? `豁免表失效：${publicEdgeAudit.stale.map((row) => row.edge).join('; ')}` : '每条豁免都有边有理由')
 
-// S2.7 OS-165/G5d 模块覆盖面：清单全合法、core 恰好四枚、端点/页签 100% 有归属或宿主白名单理由。
-// 与 test/moduleCoverage.test.mjs 共用 coverageReport()，门禁与测试不会口径分叉。
+// S2.7 C6 能力归属：manifest 按 stage C 校验；kernel 只声明能力且零端点/UI，workbench
+// 必须 entry/requires/slots；端点不重复独占；能力图干净；全部动态 entry 真实 activate，
+// 返回贡献逐项回查 manifest 与统一实现注册表。与 moduleCoverage.test.mjs 共用静态口径。
 const moduleCov = coverageReport()
-check('S2.7', 'S2', `模块覆盖面（${moduleCov.manifestIds.length} 模块／core ${moduleCov.coreIds.length}／端点 ${moduleCov.endpointCount} ＝ 独占 ${moduleCov.claimedEndpointCount}＋宿主 ${moduleCov.hostEndpointCount}／无归属 ${moduleCov.uncoveredEndpoints.length + moduleCov.uncoveredTabs.length}）`,
-  moduleCov.noManifest.length === 0 && moduleCov.manifestIssues.length === 0
-    && moduleCov.coreIds.length === 4 && moduleCov.manifestIds.length === moduleCov.moduleDirs.length
+let activationAudit = { ok: false, activated: 0, issues: ['动态激活审计未运行'] }
+try {
+  const out = execFileSync(process.execPath, ['tools/acceptance/checkModuleActivation.mjs'], {
+    cwd: REPO, encoding: 'utf-8', timeout: 60_000, maxBuffer: 8 * 1024 * 1024
+  })
+  activationAudit = JSON.parse(out)
+} catch (error) {
+  // 子进程发现激活/贡献错误时会输出完整 JSON 并非零退出；保留真实 activated 计数，
+  // 不能把“已激活 20 项但校验失败”误显示成“动态激活 0”。
+  const out = String(error.stdout || '')
+  try {
+    activationAudit = JSON.parse(out)
+  } catch {
+    activationAudit = {
+      ok: false, activated: 0,
+      issues: [String(out || error.stderr || error.message || '').trim() || '动态激活审计失败']
+    }
+  }
+}
+const ownershipIssues = [
+  ...moduleCov.noManifest, ...moduleCov.manifestIssues, ...moduleCov.kernelUiIssues,
+  ...moduleCov.workbenchContractIssues, ...moduleCov.endpointOwnerIssues,
+  ...moduleCov.capabilityGraphIssues, ...activationAudit.issues
+]
+check('S2.7', 'S2', `能力归属（${moduleCov.manifestIds.length} 模块＝内核 ${moduleCov.sourceGroups.kernel.length}＋工作台 ${moduleCov.sourceGroups.workbench.length}＋宿主 ${moduleCov.sourceGroups['host-composition'].length}；动态激活 ${activationAudit.activated}；端点 ${moduleCov.endpointCount}＝独占 ${moduleCov.claimedEndpointCount}＋宿主 ${moduleCov.hostEndpointCount}）`,
+  ownershipIssues.length === 0 && moduleCov.coreFieldOwners.length === 0
+    && moduleCov.sourceIssues.length === 0 && moduleCov.manifestIds.length === moduleCov.moduleDirs.length
     && moduleCov.uncoveredEndpoints.length === 0 && moduleCov.uncoveredTabs.length === 0,
   [
-    `src/modules 目录 ${moduleCov.moduleDirs.length} 个，manifest ${moduleCov.manifestIds.length} 份`,
-    `core: ${moduleCov.coreIds.join(' / ')}`,
-    `端点 ${moduleCov.endpointCount}：模块独占 ${moduleCov.claimedEndpointCount}＋宿主白名单 ${moduleCov.hostEndpointCount}`,
-    ...moduleCov.uncoveredEndpoints.slice(0, 4).map((id) => `无归属端点：${id}`),
-    ...moduleCov.uncoveredTabs.map((id) => `无归属页签：${id}`)
+    ...ownershipIssues.slice(0, 6),
+    `内核 UI/端点：${moduleCov.kernelUiIssues.join('/') || '无'}`,
+    `工作台契约缺口：${moduleCov.workbenchContractIssues.join('/') || '无'}`,
+    `端点覆盖：${moduleCov.endpointCount - moduleCov.uncoveredEndpoints.length}/${moduleCov.endpointCount}`
   ],
-  '四项口径与 moduleCoverage.test.mjs 共用；白名单每组带理由，新增端点无归属即红')
+  ownershipIssues.length ? `违规：${ownershipIssues.slice(0, 4).join('; ')}` : 'stage C、能力图、统一注册与动态贡献全部通过；端点/页签均有归属')
+
+// S2.8 OS-170：测试数／端点数／宿主域端点数／app.js 物理行与文档、机器锚、实测三方一致。
+// app.js 上限锚只降不升；数字锚工具会真实复跑 node --test，避免拿旧汇总冒充当前值。
+let numberAnchorsOk = false
+let numberAnchorsEvidence = []
+try {
+  const out = execFileSync(process.execPath, ['tools/number-anchors.mjs', '--check'], {
+    cwd: REPO,
+    encoding: 'utf-8',
+    timeout: 300_000,
+    maxBuffer: 32 * 1024 * 1024
+  })
+  numberAnchorsOk = true
+  numberAnchorsEvidence = [lineOf('tools/number-anchors.mjs', 'export function auditAnchors'), out.trim().split('\n')[0]]
+} catch (error) {
+  const detail = String(error.stdout || error.stderr || error.message || '').trim().split('\n').slice(0, 8)
+  numberAnchorsEvidence = [`tools/number-anchors.mjs --check 退出码 ${error.status ?? '?'}`, ...detail]
+}
+check('S2.8', 'S2', '文档数字锚与实测一致（测试／端点／宿主域端点／app.js 行数＋只降不升上限）',
+  numberAnchorsOk, numberAnchorsEvidence,
+  numberAnchorsOk ? '' : '数字漂移或 app.js 超上限——跑 node tools/number-anchors.mjs 回写并修正文档')
 
 // S2.3 契约驱动架构：daemon 经 endpointFor() 契约分派 + validateResponse() 契约校验
 // OS-130 契约分域后，端点形状按域切片在 contracts/<域>.mjs——计数＝contracts.mjs＋contracts/*.mjs 合计
@@ -333,23 +336,26 @@ check('S2.3', 'S2', `契约驱动架构（contracts ${contractCount} 端点；da
   [lineOf(firstSlice, 'method:'), endpointForUse, validateRespUse].filter(Boolean),
   '契约表是模块间调用的唯一底座；新增端点必须先进 contracts（域分片）')
 
-// S2.4' 内核实现唯一（OS-157 退役原 S2.4）：core/ 与 vendor/ 已整体撤除，adapter 已解散——
-// 本条收敛为一行：src/** 与仓根两个垫片不得出现 'core/' 路径说明符（静态 from 与动态 import()
-// 都算），且内核实现只在 src/kernel/（公开面 index.mjs＋身份 identity.mjs＋错误码 errors.mjs）。
-// 这是一条防陈旧 import 回潮的零成本规则；KERNEL_GATEWAY_ALLOW／adapterCoreUse／gatewayRogue
-// 随 adapter 解散一并删除。test/*.test.mjs 等测试文件不在扫描范围。
-const coreImportRe = /(?:from\s+|import\(\s*)['"](?:\.{1,2}\/)+(core\/[^'"]+)['"]/g
-const coreViolators = []
-for (const { rel, src } of scanned) {
-  for (const m of src.matchAll(coreImportRe)) coreViolators.push(`${rel} -> ${m[1]}`)
-}
+// S2.4' C6 底座边界：进程/网络、装载器、契约壳、物理写管道与命名属于底座。
+// src/kernel 不得反向引协议/模块；host 不得直取模块实现（能力句柄组合根与显式纯转供叶除外）；
+// core/vendor 路径与第二份 writeFileAtomic 实现零容忍。公开面/身份/错误码仍必须在位。
+const baseViolations = auditBaseBoundary(scanned)
 const kernelSurfaceOk = exists('src/kernel/index.mjs') && exists('src/kernel/identity.mjs') && exists('src/kernel/errors.mjs')
-check('S2.4', 'S2', `S2.4' 内核实现唯一（${scanned.length} 个 src/ 模块＋垫片；src/** 无 core/ 路径说明符）`,
-  kernelSurfaceOk && coreViolators.length === 0,
-  [...coreViolators.slice(0, 4), lineOf('src/kernel/index.mjs', 'export const factStore'), lineOf('src/kernel/errors.mjs', 'export const KERNEL_ERROR_CODES')].filter(Boolean),
-  coreViolators.length || !kernelSurfaceOk
-    ? `违规进口：${coreViolators.join('; ')}——core/、vendor/ 已退役（OS-157），内核实现只在 src/kernel/，公开面 src/kernel/index.mjs`
-    : 'core/ 进口面为零（OS-157 全树自持）；内核实现只在 src/kernel/，公开面 index.mjs 五键（factStore/enrich/ok/fail/writeFileAtomic）')
+  && exists('src/host/baseCapabilities.mjs') && exists('src/protocol/hostWrite.mjs')
+const baseCapabilitiesSrc = exists('src/host/baseCapabilities.mjs') ? readRepo('src/host/baseCapabilities.mjs') : ''
+const baseHandleOk = ['base.process', 'base.loader', 'base.contract', 'base.write', 'base.naming']
+  .every((id) => baseCapabilitiesSrc.includes(`'${id}'`))
+check('S2.4', 'S2', `S2.4' 底座边界（${scanned.length} 个 src 源文件；越界 ${baseViolations.length}）`,
+  kernelSurfaceOk && baseHandleOk && baseViolations.length === 0,
+  [
+    ...baseViolations.slice(0, 5).map((item) => `${item.from}:${item.line} -> ${item.to}：${item.reason}`),
+    lineOf('src/host/baseCapabilities.mjs', 'baseCapabilities'),
+    lineOf('src/protocol/hostWrite.mjs', 'writeFileAtomic'),
+    lineOf('src/kernel/index.mjs', 'export const factStore')
+  ].filter(Boolean),
+  baseViolations.length || !kernelSurfaceOk || !baseHandleOk
+    ? `违规：${baseViolations.slice(0, 4).map((item) => `${item.from}→${item.to}`).join('; ')}——底座不得反向依赖模块，内核不得依赖协议，写实现只留内核`
+    : '五个底座句柄齐备；内核管道件与模块/协议隔离，物理原子写只有内核一份实现')
 
 // S2.5 命名真源表一致（OS-148/G8a·G8d）：五层名字只从 public/views/registry.mjs 的
 // NAMING_TABLE 取。跑两条：① 页签条目逐条回表（dir/label/panelLabel 相等）；
@@ -390,6 +396,16 @@ check('S2.5', 'S2',
   tabNamingMiss.length || logModuleMiss.length
     ? `页签层/日志层有名字没走命名表：${[...tabNamingMiss, ...logModuleMiss].join(', ')}`
     : '页签/日志两层都从 NAMING_TABLE 取名（后端经 src/protocol/naming.mjs 只 re-export）')
+
+const fourNameAudit = auditNamingConsistency()
+check('S2.9', 'S2', `OS-172 显示名＝入口名＝磁盘目录名＝日志模块名（${fourNameAudit.concepts} 概念）`,
+  fourNameAudit.ok, fourNameAudit.violations.slice(0, 6),
+  fourNameAudit.ok ? '模块清单、页签、命名表与日志模块四向一致' : fourNameAudit.violations.join('; '))
+
+const lineageAudit = auditLineageNames()
+check('S2.10', 'S2', `OS-172 产品谱系名与作者身份（扫描 ${lineageAudit.scanned} 文件）`,
+  lineageAudit.ok, lineageAudit.violations.slice(0, 6),
+  lineageAudit.ok ? '仅保留迁移兼容、旧院隔离与核心理出' : `${lineageAudit.violations.length} 处陈旧谱系名或身份声明`)
 
 console.log('\n── S3 前端一致性 ──')
 
@@ -440,7 +456,7 @@ check('S3.3', 'S3', '统一组件约定类在样式表有定义（surface-card/r
 
 // S3.4 OS-158 前端零浏览器存储：public/**（js/mjs/html）不许出现任何浏览器存储 API 字面，
 // 注释也算命中（否则「文档说不用、代码却在用」会蒙混过关）。设置只有一份，在磁盘上；
-// 皮肤这类机器级偏好落服务端 ui-preferences.json，界面态落库内 .pinax/ui-state.json。
+// 皮肤这类机器级偏好落服务端 ui-preferences.json，界面态落库内 .openstory/ui-state.json。
 const BROWSER_STORE = /localStorage|sessionStorage|indexedDB|document\.cookie|caches\.open|CacheStorage|serviceWorker/giu
 function walkPublic(dir, prefix) {
   const out = []
@@ -479,10 +495,10 @@ let sampleFiles = []
 try {
   // core.quotepath=false：中文路径默认被 git 转成 "\346\260\264…" 带引号的转义串，
   // 会让 debug.log$ 这类尾部匹配失效（反证实测踩过）——要拿真实路径原文。
-  sampleFiles = execFileSync('git', ['-c', 'core.quotepath=false', 'ls-files', 'samples/'], { cwd: REPO, encoding: 'utf-8' })
+  sampleFiles = execFileSync('git', ['-c', 'core.quotepath=false', 'ls-files', '--cached', '--others', '--exclude-standard', 'samples/'], { cwd: REPO, encoding: 'utf-8' })
     .split('\n').map((line) => line.trim()).filter(Boolean)
 } catch { /* git 不可用就按空清单，下面会红 */ }
-const DIRTY_SAMPLE = /(?:^|\/)(\.history|\.pinax\/log)\/|(?:^|[\\/])(?:debug|error|access)\.log$|\.tmp-[^/]+$|sk-[A-Za-z0-9_-]{8,}|Bearer\s+\S+|token=[^&\s]+|[A-Za-z]:\\Users\\|D:\\Projects\\/u
+const DIRTY_SAMPLE = /(?:^|\/)(\.history|\.openstory\/log)\/|(?:^|[\\/])(?:debug|error|access)\.log$|\.tmp-[^/]+$|sk-[A-Za-z0-9_-]{8,}|Bearer\s+\S+|token=[^&\s]+|[A-Za-z]:\\Users\\|D:\\Projects\\/u
 const dirtySamples = sampleFiles.filter((rel) => DIRTY_SAMPLE.test(rel) || (() => {
   try { return DIRTY_SAMPLE.test(readRepo(rel)) } catch { return false }
 })())
@@ -504,7 +520,7 @@ const appJs = readRepo('public/app.js')
 const stripJsComments = (src) => src.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/\/\/[^\n]*/g, ' ')
 const coreEntries = TAB_REGISTRY.filter((entry) => entry.core === true && !entry.retired)
 const coreLabels = coreEntries.map((entry) => entry.label)
-const tabBarCtx = { current: { path: '验收锚点' }, libDirs: ['正文', '参考', '世界书', '剧本', '拆解', '日志'], brief: null, briefGenre: null, settingsOpen: true }
+const tabBarCtx = { current: { path: '验收锚点' }, libDirs: NAMING_TABLE.filter((entry) => entry.dir).map((entry) => entry.dir), brief: null, briefGenre: null, settingsOpen: true }
 const tabBarLabels = new Set(computeTabDefs(tabBarCtx).map((def) => def.label))
 // app.js 的 VIEW_RENDERERS 是速记对象（键＝值）；只认块内的裸标识符 token
 const rendererBlock = stripJsComments((appJs.match(/const VIEW_RENDERERS = \{([\s\S]*?)\}/) || [])[1] || '')

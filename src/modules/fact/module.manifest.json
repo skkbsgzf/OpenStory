@@ -1,0 +1,20 @@
+{
+  "spec": "openstory-module@2",
+  "id": "fact",
+  "name": "事实内核",
+  "version": "1.0.0",
+  "builtin": true,
+  "description": "故事源事实仓储、事实包投影与只读富化的唯一能力供给者；fact.data/v3 与 wiki 派生格式不随插件装卸改变。",
+  "class": "kernel",
+  "entry": "index.mjs",
+  "requires": [
+    { "id": "base.write", "min": 1 },
+    { "id": "base.naming", "min": 1 }
+  ],
+  "capabilities": [
+    { "id": "fact.store", "version": 3, "golden": "fact-store-v3" },
+    { "id": "fact.pack", "version": 1, "golden": "fact-pack-v1" },
+    { "id": "fact.enrich", "version": 1, "golden": "fact-enrich-v1" }
+  ],
+  "endpoints": []
+}

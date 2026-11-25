@@ -1,226 +1,661 @@
-/**
- * 工作面模块插件（OS-144 / G5a）——manifest 声明、端点归属、停用语义的唯一真源。
- *
- * 与业务套件（`openstory-suite@2`，src/services/suites.mjs）同构但不是一回事：
- *   · 套件＝「写作规则/设置」的非常驻插件，停用＝规则退回默认；
- *   · 模块＝「工作面」本身（分析 / 生图识图 / 知识库），停用＝入口消失、独占端点回
- *     MODULE_DISABLED，但**值与数据保留**，重新启用即恢复。
- *
- * 目录形状（src/modules/<id>/module.manifest.json，OS-140 六目录宪法）：
- *   { spec:'openstory-module@1', id, name, version, core:false, endpoints:[…], pages:[…], settings:[…],
- *     settingsHint?, settingsJump? }
- *   · endpoints 列的是**该模块独占**的端点 id——多方共用的端点（如 fact 读端点）不登记，
- *     停用某个模块绝不能让共用端点失效；
- *   · pages/settings 是前端入口声明（页面自己用 ui-state 判定显隐，本文件是数据底）。
- *   · settingsHint/settingsJump（OS-146）：模块的**真配置不在设置页**时用来指路——
- *     hint 是一句「真配置在…」，jump 是设置页的目标区块 id（如 engines）。只指路，
- *     不在设置页摆第二份输入框（没有消费者的设置项一律不留）。
- *
- * 启停状态复用库内 ui-state 通道（`.pinax/ui-state.json`）：
- *   `modules.enabled.<id>`（缺省 true；兼容扁平键写法）。停用只写这一个开关，
- *   不删任何稿件/配置；重新启用读到的还是原值。
- *
- * 唯一判定入口＝`isModuleEnabled(root, id)`。daemon 路由、MCP 工具、扮演 AI 味闸
- * 一律调它（或包了它的 `isModuleDisabledFor`），不许各自读文件另写一套。
- *
- * 两层插拔互不覆盖（OS-144 第 4 条）：
- *   · 卡片级：右栏分析面板里每个分析模块的勾选（ui-state `analyzeEnabled`，旧机制）；
- *   · 整模块级：本文件管的 `modules.enabled.<id>`。
- *   整模块停用＝入口整个不出现；重新启用后卡片级勾选原样回来（两层各存各的键）。
- */
+import { createHash } from 'node:crypto'
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { dirname, join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { readUiState } from './libState.mjs'
+import { BASE_GRAPH } from './baseCapabilities.mjs'
+import { buildCapabilitySnapshot, capabilityStartupReport, moduleDegradation, readModuleEnabled } from './capabilityGraph.mjs'
+import { HOST_COMPOSITION_IDS, isHostComposition, moduleRole } from './moduleIdentity.mjs'
+import { isRegisteredSlot } from './slots.mjs'
 
-export const MODULE_SPEC = 'openstory-module@1'
-const MODULES_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'modules')
+export { HOST_COMPOSITION_IDS, isHostComposition, moduleRole } from './moduleIdentity.mjs'
+export { SLOT_IDS, SLOT_REGISTRY, SLOT_SPEC, isRegisteredSlot, slotEntry, slotPlacements } from './slots.mjs'
+
+export {
+  buildCapabilitySnapshot,
+  capabilityStartupReport,
+  deriveModuleStateChange,
+  moduleDegradation,
+  readModuleEnabled,
+  readSuiteEnabled
+} from './capabilityGraph.mjs'
+
+export const MODULE_SPEC = 'openstory-module@2'
+export const LEGACY_MODULE_SPEC = 'openstory-module@1'
+export const MODULES_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'modules')
+
 const ID_RE = /^[a-z][a-z0-9-]{1,39}$/u
+const CAPABILITY_RE = /^[a-z][a-z0-9-]*\.[a-z][a-z0-9-]*$/u
 const VERSION_RE = /^\d+\.\d+\.\d+$/u
-/** OS-145：settings 字段口径与业务套件一致（key 允许点号分段，如 image.comfyUrl）。 */
 const SETTING_KEY_RE = /^[\w.]{1,40}$/u
 const SETTING_TYPES = new Set(['string', 'number', 'boolean', 'select'])
-
-/** ui-state 里的启停键（扁平写法；嵌套写法 `{ modules: { enabled } }` 也认）。 */
-export function moduleStateKey(id) {
-  return `modules.enabled.${id}`
-}
+const CLASSES = new Set(['kernel', 'workbench', 'suite'])
+const SUPPLIES = new Set(['skill', 'deduce-rule', 'media-workflow', 'resource', 'runtime', 'bundle'])
+const RESOURCE_KINDS = new Set(['style', 'genre'])
+const COMMON_FIELDS = new Set([
+  'spec', 'id', 'name', 'version', 'class', 'builtin', 'description', 'entry',
+  'minOpenStoryVersion', 'capabilities', 'requires', 'optionalRequires', 'overrides',
+  'migrations', 'endpoints', 'pages', 'slots', 'settings', 'settingsHint',
+  'settingsJump', 'supplies', 'entries', 'resourceKind', 'appliesTo', 'deps'
+])
+const FORBIDDEN = Object.freeze({
+  kernel: ['pages', 'slots', 'settings', 'settingsHint', 'settingsJump', 'supplies', 'entries', 'resourceKind', 'appliesTo', 'deps'],
+  workbench: ['capabilities', 'migrations', 'supplies', 'entries', 'resourceKind', 'appliesTo', 'deps'],
+  suite: ['entry', 'capabilities', 'requires', 'optionalRequires', 'migrations', 'endpoints', 'pages', 'slots', 'settingsHint', 'settingsJump']
+})
+const BUILTIN_CLASSES = Object.freeze({
+  analysis: 'workbench',
+  artifacts: 'workbench',
+  chapters: 'workbench',
+  comfyui: 'workbench',
+  exchange: 'workbench',
+  habits: 'workbench',
+  kb: 'workbench',
+  roleplay: 'workbench',
+  script: 'workbench',
+  storysource: 'workbench',
+  worldbook: 'workbench',
+  deduce: 'kernel'
+})
+const BUILTIN_PENDING_CLASSES = new Set(HOST_COMPOSITION_IDS)
+const TRANSITION_NOTICES = new Set(['MODULE_CLASS_INCOMPLETE'])
+const SPLIT_PENDING = Object.freeze({
+  analysis: '纯分析引擎后续拆入 text kernel',
+  chapters: '写协议后续拆入 prose kernel',
+  comfyui: '执行器后续拆入 media kernel',
+  kb: 'embedding 后续拆入 agent.runtime',
+  roleplay: '引擎与默认规则后续拆入 deduce/套件'
+})
 
 function text(value) {
   return String(value ?? '')
 }
 
-/**
- * manifest 形状校验（纯函数，测试与装载共用）。
- * @returns {{ ok:boolean, errors:string[], manifest?:object }}
- */
-export function validateModuleManifest(raw, { dirName = '' } = {}) {
-  const errors = []
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
-    return { ok: false, errors: ['manifest 必须是对象'] }
+function plainObject(value) {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+}
+
+function positiveInt(value) {
+  return Number.isInteger(value) && value > 0
+}
+
+function frozenItems(items, normalize) {
+  return Object.freeze(items.map((item) => Object.freeze(normalize(item))))
+}
+
+function stringList(value) {
+  return Array.isArray(value) ? value : []
+}
+
+function validateStrings(errors, raw, key, { required = false } = {}) {
+  const list = raw[key]
+  if (list === undefined && !required) return []
+  if (!Array.isArray(list)) {
+    errors.push(`${key} 必须是数组`)
+    return []
   }
-  if (text(raw.spec) !== MODULE_SPEC) errors.push(`spec 必须是 ${MODULE_SPEC}`)
+  const seen = new Set()
+  const values = []
+  list.forEach((item, index) => {
+    const value = text(item).trim()
+    if (!value) errors.push(`${key}[${index}] 不能为空`)
+    else if (seen.has(value)) errors.push(`${key} 重复：${value}`)
+    else { seen.add(value); values.push(value) }
+  })
+  return values
+}
+
+function validateRanges(errors, raw, key) {
+  const list = raw[key]
+  if (list === undefined) return []
+  if (!Array.isArray(list)) {
+    errors.push(`${key} 必须是数组`)
+    return []
+  }
+  const seen = new Set()
+  return list.map((item, index) => {
+    if (!plainObject(item)) {
+      errors.push(`${key}[${index}] 必须是对象`)
+      return null
+    }
+    const id = text(item.id).trim()
+    if (!CAPABILITY_RE.test(id)) errors.push(`${key}[${index}].id 非法：${id}`)
+    if (!positiveInt(item.min)) errors.push(`${key}[${index}].min 必须是正整数`)
+    if (item.maxExclusive !== undefined && (!positiveInt(item.maxExclusive) || item.maxExclusive <= item.min)) {
+      errors.push(`${key}[${index}].maxExclusive 必须大于 min`)
+    }
+    if (seen.has(id)) errors.push(`${key} 重复能力：${id}`)
+    seen.add(id)
+    return { id, min: item.min, ...(item.maxExclusive !== undefined ? { maxExclusive: item.maxExclusive } : {}) }
+  }).filter(Boolean)
+}
+
+function validateCapabilities(errors, raw) {
+  const list = raw.capabilities
+  if (list === undefined) return []
+  if (!Array.isArray(list)) {
+    errors.push('capabilities 必须是数组')
+    return []
+  }
+  const seen = new Set()
+  return list.map((item, index) => {
+    if (!plainObject(item)) {
+      errors.push(`capabilities[${index}] 必须是对象`)
+      return null
+    }
+    const id = text(item.id).trim()
+    if (!CAPABILITY_RE.test(id)) errors.push(`capabilities[${index}].id 非法：${id}`)
+    if (!positiveInt(item.version)) errors.push(`capabilities[${index}].version 必须是正整数`)
+    if (item.golden !== undefined && (typeof item.golden !== 'string' || !item.golden.trim())) {
+      errors.push(`capabilities[${index}].golden 给了就必须是非空字符串`)
+    }
+    if (seen.has(id)) errors.push(`capabilities 重复能力：${id}`)
+    seen.add(id)
+    return { id, version: item.version, ...(item.golden !== undefined ? { golden: item.golden.trim() } : {}) }
+  }).filter(Boolean)
+}
+
+function validateSettings(errors, raw) {
+  const list = raw.settings
+  if (list === undefined) return []
+  if (!Array.isArray(list)) {
+    errors.push('settings 必须是数组')
+    return []
+  }
+  return list.map((setting, index) => {
+    if (!plainObject(setting)) {
+      errors.push(`settings[${index}] 必须是对象`)
+      return null
+    }
+    const key = text(setting.key ?? setting.id).trim()
+    if (!SETTING_KEY_RE.test(key)) {
+      errors.push(`settings[${index}] key 非法：${key}`)
+      return null
+    }
+    const type = text(setting.type).trim()
+    if (!SETTING_TYPES.has(type)) {
+      errors.push(`settings[${index}]（${key}）type 非法（string/number/boolean/select）`)
+      return null
+    }
+    if (!text(setting.label).trim()) errors.push(`settings[${index}]（${key}）缺 label`)
+    if (type === 'select') {
+      const options = Array.isArray(setting.options) ? setting.options.map((option) => text(option)) : []
+      if (options.length === 0) errors.push(`settings[${index}]（${key}）select 缺 options`)
+      else if (setting.default !== undefined && !options.includes(text(setting.default))) {
+        errors.push(`settings[${index}]（${key}）的 default 不在 options 里`)
+      }
+    }
+    if (type === 'boolean' && setting.default !== undefined && typeof setting.default !== 'boolean') {
+      errors.push(`settings[${index}]（${key}）boolean 的 default 必须是布尔值`)
+    }
+    if (type === 'number' && setting.default !== undefined && !Number.isFinite(setting.default)) {
+      errors.push(`settings[${index}]（${key}）number 的 default 必须是数字`)
+    }
+    if (type === 'string' && setting.default !== undefined && typeof setting.default !== 'string') {
+      errors.push(`settings[${index}]（${key}）string 的 default 必须是字符串`)
+    }
+    return { ...setting, key }
+  }).filter(Boolean)
+}
+
+function validatePages(errors, raw, legacy) {
+  const list = raw.pages
+  if (list === undefined) return []
+  if (!Array.isArray(list)) {
+    errors.push('pages 必须是数组')
+    return []
+  }
+  const seen = new Set()
+  return list.map((page, index) => {
+    if (!plainObject(page)) {
+      errors.push(`pages[${index}] 必须是对象`)
+      return null
+    }
+    const id = text(page.id ?? page.key).trim()
+    if (!id) errors.push(`pages[${index}] 缺 id`)
+    if (!text(page.label).trim()) errors.push(`pages[${index}] 缺 label`)
+    if (seen.has(id)) errors.push(`pages 重复：${id}`)
+    seen.add(id)
+    if (!legacy) {
+      const extra = Object.keys(page).filter((key) => !['id', 'label'].includes(key))
+      if (extra.length) errors.push(`pages[${index}] 只允许 id/label，非法字段：${extra.join(',')}`)
+      return { id, label: text(page.label).trim() }
+    }
+    return { ...page, id, label: text(page.label).trim() }
+  }).filter(Boolean)
+}
+
+function validateSlots(errors, raw, pages) {
+  const list = raw.slots
+  if (list === undefined) return []
+  if (!Array.isArray(list)) {
+    errors.push('slots 必须是数组')
+    return []
+  }
+  const pageIds = new Set(pages.map((page) => page.id))
+  const seen = new Set()
+  return list.map((item, index) => {
+    if (!plainObject(item)) {
+      errors.push(`slots[${index}] 必须是对象`)
+      return null
+    }
+    const extra = Object.keys(item).filter((key) => !['slot', 'page'].includes(key))
+    if (extra.length) errors.push(`slots[${index}] 非法字段：${extra.join(',')}`)
+    const slot = text(item.slot).trim()
+    const page = text(item.page).trim()
+    if (!isRegisteredSlot(slot)) errors.push(`slots[${index}].slot 未注册：${slot}`)
+    if (!pageIds.has(page)) errors.push(`slots[${index}].page 不存在：${page}`)
+    const key = `${slot}:${page}`
+    if (seen.has(key)) errors.push(`slots 重复：${key}`)
+    seen.add(key)
+    return { slot, page }
+  }).filter(Boolean)
+}
+
+function validateOverrides(errors, raw, klass) {
+  const list = raw.overrides
+  if (list === undefined) return []
+  if (!Array.isArray(list)) {
+    errors.push('overrides 必须是数组')
+    return []
+  }
+  const allowedType = { kernel: 'capability', workbench: 'surface', suite: 'resource' }[klass]
+  return list.map((item, index) => {
+    if (!plainObject(item)) {
+      errors.push(`overrides[${index}] 必须是对象`)
+      return null
+    }
+    if (allowedType && item.type !== allowedType) errors.push(`overrides[${index}].type 必须是 ${allowedType}`)
+    if (!text(item.target).trim()) errors.push(`overrides[${index}] 缺 target`)
+    if (!positiveInt(item.from)) errors.push(`overrides[${index}].from 必须是正整数`)
+    return { type: item.type, target: text(item.target).trim(), from: item.from }
+  }).filter(Boolean)
+}
+
+function validateMigrations(errors, raw) {
+  const list = raw.migrations
+  if (list === undefined) return []
+  if (!Array.isArray(list)) {
+    errors.push('migrations 必须是数组')
+    return []
+  }
+  return list.map((item, index) => {
+    if (!plainObject(item)) {
+      errors.push(`migrations[${index}] 必须是对象`)
+      return null
+    }
+    if (!CAPABILITY_RE.test(text(item.capability).trim())) errors.push(`migrations[${index}].capability 非法`)
+    if (!positiveInt(item.from) || !positiveInt(item.to) || item.to !== item.from + 1) {
+      errors.push(`migrations[${index}] 必须从 from 单向迁到 from+1`)
+    }
+    if (typeof item.entry !== 'string' || !item.entry.trim()) errors.push(`migrations[${index}] 缺 entry`)
+    return { capability: text(item.capability).trim(), from: item.from, to: item.to, entry: item.entry.trim() }
+  }).filter(Boolean)
+}
+
+function validateSuite(errors, raw) {
+  const supplies = stringList(raw.supplies).map((item) => text(item).trim())
+  supplies.forEach((item, index) => {
+    if (!SUPPLIES.has(item)) errors.push(`supplies[${index}] 非法：${item}`)
+  })
+  if (new Set(supplies).size !== supplies.length) errors.push('supplies 重复')
+  const entries = raw.entries
+  if (entries !== undefined && !plainObject(entries)) errors.push('entries 必须是对象')
+  if (plainObject(entries)) {
+    for (const supply of supplies) {
+      if (typeof entries[supply] !== 'string' || !entries[supply].trim()) errors.push(`entries 缺 ${supply}`)
+    }
+    for (const key of Object.keys(entries)) {
+      if (!supplies.includes(key)) errors.push(`entries 含未声明供给：${key}`)
+    }
+  }
+  if (supplies.includes('resource') && !RESOURCE_KINDS.has(raw.resourceKind)) {
+    errors.push('resource 供给必须声明 resourceKind=style|genre')
+  }
+  if (raw.resourceKind !== undefined && !RESOURCE_KINDS.has(raw.resourceKind)) errors.push('resourceKind 非法')
+  const deps = stringList(raw.deps).map((item) => text(item).trim())
+  if (deps.some((item) => !item)) errors.push('deps 不能有空项')
+  return { supplies, entries, deps }
+}
+
+export function validateModuleManifest(raw, { dirName = '', stage = 'B' } = {}) {
+  const errors = []
+  const warnings = []
+  if (!plainObject(raw)) return { ok: false, errors: ['manifest 必须是对象'], warnings }
+  const legacy = raw.spec === LEGACY_MODULE_SPEC
+  if (!legacy && raw.spec !== MODULE_SPEC) errors.push(`spec 必须是 ${LEGACY_MODULE_SPEC} 或 ${MODULE_SPEC}`)
   const id = text(raw.id).trim()
   if (!ID_RE.test(id)) errors.push('id 非法（小写字母开头，只许 a-z 0-9 -，≤40 字）')
   if (dirName && id !== dirName) errors.push(`id（${id}）必须与目录名（${dirName}）一致`)
   if (!text(raw.name).trim()) errors.push('缺 name')
   if (!VERSION_RE.test(text(raw.version).trim())) errors.push('version 必须是三段数字（如 0.1.0）')
-  if (typeof raw.core !== 'boolean') errors.push('core 必须是布尔值（true＝核心不可停用，false＝普通模块）')
-  const endpoints = raw.endpoints
-  if (!Array.isArray(endpoints)) {
-    errors.push('endpoints 必须是数组')
-  } else {
-    const seen = new Set()
-    for (const endpoint of endpoints) {
-      const value = text(endpoint).trim()
-      if (!value) { errors.push('endpoints 里有空项'); continue }
-      if (seen.has(value)) { errors.push(`endpoints 重复：${value}`); continue }
-      seen.add(value)
+
+  if (!legacy) {
+    for (const key of Object.keys(raw)) {
+      if (!COMMON_FIELDS.has(key)) errors.push(`未声明字段：${key}`)
+    }
+    if (raw.class !== undefined && !CLASSES.has(raw.class)) errors.push('class 只允许 kernel/workbench/suite')
+    if (raw.builtin !== undefined && typeof raw.builtin !== 'boolean') errors.push('builtin 必须是布尔值')
+    if (raw.core !== undefined) errors.push('core 已退役：工作台启停一律由 ui-state 与能力图判定')
+    if (raw.class === undefined) warnings.push('MODULE_CLASS_INCOMPLETE')
+    if (raw.minOpenStoryVersion !== undefined && !VERSION_RE.test(text(raw.minOpenStoryVersion).trim())) {
+      warnings.push('MIN_VERSION_INVALID')
+    }
+  } else if (typeof raw.core !== 'boolean') {
+    errors.push('core 必须是布尔值')
+  }
+
+  const klass = raw.class
+  if (klass && FORBIDDEN[klass]) {
+    for (const key of FORBIDDEN[klass]) {
+      if (Object.prototype.hasOwnProperty.call(raw, key)) errors.push(`${klass} 禁止字段：${key}`)
     }
   }
-  for (const key of ['pages', 'settings']) {
-    const list = raw[key]
-    if (!Array.isArray(list)) { errors.push(`${key} 必须是数组`); continue }
-    list.forEach((item, index) => {
-      if (!item || typeof item !== 'object' || Array.isArray(item)) errors.push(`${key}[${index}] 必须是对象`)
-      else if (!text(item.id ?? item.key).trim()) errors.push(`${key}[${index}] 缺 id/key`)
-    })
+  if (!klass && !legacy) {
+    const classFields = isHostComposition(id)
+      ? ['capabilities', 'overrides', 'migrations', 'slots', 'supplies', 'entries', 'resourceKind', 'appliesTo', 'deps']
+      : ['entry', 'capabilities', 'requires', 'optionalRequires', 'overrides', 'migrations', 'slots', 'supplies', 'entries', 'resourceKind', 'appliesTo', 'deps']
+    for (const key of classFields) {
+      if (Object.prototype.hasOwnProperty.call(raw, key)) errors.push(`缺 class 时不能声明 ${key}`)
+    }
   }
-  // OS-145：settings 升级为可渲染声明，字段口径对齐业务套件（openstory-suite@2）：
-  // { key, label, type:'string'|'number'|'boolean'|'select', default?, options? }。
-  // 值落库内 ui-state（modules.settings.<id>.<key>），不看这里的 default 是否等于现值。
-  if (Array.isArray(raw.settings)) {
-    raw.settings.forEach((setting, index) => {
-      if (!setting || typeof setting !== 'object' || Array.isArray(setting)) return
-      const settingKey = text(setting.key ?? setting.id).trim()
-      if (settingKey && !SETTING_KEY_RE.test(settingKey)) { errors.push(`settings[${index}] key 非法：${settingKey}`); return }
-      const type = text(setting.type).trim()
-      if (!SETTING_TYPES.has(type)) { errors.push(`settings[${index}]（${settingKey}）type 非法（string/number/boolean/select）`); return }
-      if (!text(setting.label).trim()) errors.push(`settings[${index}]（${settingKey}）缺 label`)
-      if (type === 'select') {
-        const options = Array.isArray(setting.options) ? setting.options.map((option) => text(option)) : []
-        if (options.length === 0) errors.push(`settings[${index}]（${settingKey}）select 缺 options`)
-        else if (setting.default !== undefined && !options.includes(text(setting.default))) {
-          errors.push(`settings[${index}]（${settingKey}）的 default 不在 options 里`)
-        }
-      }
-      if (type === 'boolean' && setting.default !== undefined && typeof setting.default !== 'boolean') {
-        errors.push(`settings[${index}]（${settingKey}）boolean 的 default 必须是布尔值`)
-      }
-      if (type === 'number' && setting.default !== undefined && !Number.isFinite(setting.default)) {
-        errors.push(`settings[${index}]（${settingKey}）number 的 default 必须是数字`)
-      }
-      if (type === 'string' && setting.default !== undefined && typeof setting.default !== 'string') {
-        errors.push(`settings[${index}]（${settingKey}）string 的 default 必须是字符串`)
-      }
-    })
+
+  const endpoints = validateStrings(errors, raw, 'endpoints', { required: legacy })
+  const pages = validatePages(errors, raw, legacy)
+  if (legacy && !Array.isArray(raw.pages)) errors.push('pages 必须是数组')
+  const slots = validateSlots(errors, raw, pages)
+  const settings = validateSettings(errors, raw)
+  if (legacy && !Array.isArray(raw.settings)) errors.push('settings 必须是数组')
+  for (const key of ['settingsHint', 'settingsJump']) {
+    if (raw[key] !== undefined && (typeof raw[key] !== 'string' || !raw[key].trim())) {
+      errors.push(`${key} 给了就必须是非空字符串`)
+    }
   }
-  if (errors.length) return { ok: false, errors }
-  // OS-146：可选的指路字段（真配置在别处时用）。给了就必须是非空字符串——空串等于没写。
-  if (raw.settingsHint !== undefined && (typeof raw.settingsHint !== 'string' || !raw.settingsHint.trim())) {
-    errors.push('settingsHint 给了就必须是非空字符串')
+
+  const capabilities = validateCapabilities(errors, raw)
+  const requires = validateRanges(errors, raw, 'requires')
+  const optionalRequires = validateRanges(errors, raw, 'optionalRequires')
+  const appliesTo = validateRanges(errors, raw, 'appliesTo')
+  const overrides = validateOverrides(errors, raw, klass)
+  const migrations = validateMigrations(errors, raw)
+  const suite = validateSuite(errors, raw)
+
+  if (stage === 'C') {
+    if (klass === 'kernel') {
+      if (typeof raw.entry !== 'string' || !raw.entry.trim()) errors.push('kernel 必须声明 entry')
+      if (!Array.isArray(raw.capabilities) || raw.capabilities.length < 1) errors.push('kernel capabilities 必须 ≥1')
+    }
+    if (klass === 'workbench') {
+      if (typeof raw.entry !== 'string' || !raw.entry.trim()) errors.push('workbench 必须声明 entry')
+      if (!Array.isArray(raw.requires) || raw.requires.length < 1) errors.push('workbench requires 必须 ≥1')
+      if (!Array.isArray(raw.slots) || raw.slots.length < 1) errors.push('workbench slots 必须 ≥1')
+    }
+    if (klass === 'suite') {
+      if (!Array.isArray(raw.supplies) || raw.supplies.length < 1) errors.push('suite supplies 必须 ≥1')
+      if (!plainObject(raw.entries)) errors.push('suite 必须声明 entries')
+      if (!Array.isArray(raw.appliesTo) || raw.appliesTo.length < 1) errors.push('suite appliesTo 必须 ≥1')
+      if (suite.supplies.includes('bundle') && suite.deps.length < 1) errors.push('bundle deps 必须 ≥1')
+    }
+    if (isHostComposition(id)) {
+      if (typeof raw.entry !== 'string' || !raw.entry.trim()) errors.push('宿主组合面必须声明 entry')
+      if (!Array.isArray(raw.requires) || raw.requires.length < 1) errors.push('宿主组合面 requires 必须 ≥1')
+    } else if (!klass) errors.push('C 批起 class 必填')
+    if (Object.prototype.hasOwnProperty.call(raw, 'core')) errors.push('C 批起禁止 core')
   }
-  if (raw.settingsJump !== undefined && (typeof raw.settingsJump !== 'string' || !raw.settingsJump.trim())) {
-    errors.push('settingsJump 给了就必须是非空字符串（设置页区块 id）')
-  }
-  if (errors.length) return { ok: false, errors }
+
+  if (errors.length) return { ok: false, errors, warnings }
   const manifest = {
-    spec: MODULE_SPEC,
+    spec: raw.spec,
     id,
     name: text(raw.name).trim(),
     version: text(raw.version).trim(),
-    core: raw.core,
     description: text(raw.description).trim(),
-    endpoints: Object.freeze(raw.endpoints.map((endpoint) => text(endpoint).trim())),
-    pages: Object.freeze(raw.pages.map((page) => Object.freeze({ ...page, id: text(page.id ?? page.key).trim() }))),
-    settings: Object.freeze(raw.settings.map((setting) => Object.freeze({ ...setting, key: text(setting.key ?? setting.id).trim() })))
+    endpoints: Object.freeze(endpoints),
+    pages: Object.freeze(pages),
+    settings: Object.freeze(settings)
   }
-  // 没写就不带这两个键（校验结果本身也要能再喂回校验——空串会被当成「给了但空」）
+  if (!legacy) {
+    if (klass) manifest.class = klass
+    if (raw.builtin !== undefined) manifest.builtin = raw.builtin
+    if (raw.entry !== undefined) manifest.entry = raw.entry.trim()
+    if (raw.minOpenStoryVersion !== undefined && VERSION_RE.test(text(raw.minOpenStoryVersion).trim())) {
+      manifest.minOpenStoryVersion = raw.minOpenStoryVersion.trim()
+    }
+    if (raw.slots !== undefined) manifest.slots = Object.freeze(slots)
+    if (klass === 'kernel' || klass === 'workbench' || isHostComposition(id)) {
+      manifest.requires = Object.freeze(requires)
+      manifest.optionalRequires = Object.freeze(optionalRequires)
+    }
+    if (klass === 'kernel' || klass === 'workbench') manifest.overrides = Object.freeze(overrides)
+    if (klass === 'kernel') {
+      manifest.capabilities = Object.freeze(capabilities)
+      manifest.migrations = Object.freeze(migrations)
+      delete manifest.pages
+      delete manifest.settings
+    }
+    if (klass === 'suite') {
+      manifest.supplies = Object.freeze(suite.supplies)
+      manifest.entries = Object.freeze({ ...suite.entries })
+      manifest.appliesTo = Object.freeze(appliesTo)
+      manifest.deps = Object.freeze(suite.deps)
+      manifest.overrides = Object.freeze(overrides)
+      if (raw.resourceKind !== undefined) manifest.resourceKind = raw.resourceKind
+      delete manifest.endpoints
+      delete manifest.pages
+    }
+  }
   if (raw.settingsHint !== undefined) manifest.settingsHint = raw.settingsHint.trim()
   if (raw.settingsJump !== undefined) manifest.settingsJump = raw.settingsJump.trim()
-  return { ok: true, errors, manifest: Object.freeze(manifest) }
+  return { ok: true, errors, warnings, manifest: Object.freeze(manifest), incomplete: !legacy && !klass }
 }
 
-/** 扫描 src/modules/<id>/module.manifest.json（无 manifest 的目录＝普通模块，静默跳过）。 */
-export function loadModuleManifests(dir = MODULES_DIR) {
+export function migrateModuleManifest(raw, { dirName = '', builtin = true } = {}) {
+  if (!plainObject(raw)) return { ok: false, errors: ['manifest 必须是对象'], warnings: [] }
+  if (raw.spec === MODULE_SPEC) {
+    const checked = validateModuleManifest(raw, { dirName })
+    const warnings = isHostComposition(raw.id)
+      ? checked.warnings.filter((code) => code !== 'MODULE_CLASS_INCOMPLETE')
+      : checked.warnings
+    return {
+      ...checked,
+      warnings,
+      notices: isHostComposition(raw.id) ? ['MODULE_HOST_COMPOSITION'] : [],
+      changed: false,
+      report: {
+        id: text(raw.id),
+        inferredClass: raw.class ?? null,
+        role: moduleRole(raw),
+        hostComposition: isHostComposition(raw.id),
+        splitPending: SPLIT_PENDING[raw.id] ?? ''
+      }
+    }
+  }
+  if (raw.spec !== LEGACY_MODULE_SPEC) return { ok: false, errors: ['只接受 openstory-module@1 → @2'], warnings: [] }
+  const id = text(raw.id).trim()
+  if (!Object.prototype.hasOwnProperty.call(BUILTIN_CLASSES, id) && !BUILTIN_PENDING_CLASSES.has(id)) {
+    return { ok: false, errors: [`未知内置模块 ${id || dirName}：不得自动推断 class`], warnings: [] }
+  }
+  const klass = BUILTIN_CLASSES[id]
+  const pages = Array.isArray(raw.pages) ? raw.pages.map((page) => ({ id: text(page.id ?? page.key).trim(), label: text(page.label).trim() })) : []
+  const slots = Array.isArray(raw.pages)
+    ? raw.pages.filter((page) => text(page.slot).trim()).map((page) => ({ slot: text(page.slot).trim(), page: text(page.id ?? page.key).trim() }))
+    : []
+  const candidate = {
+    spec: MODULE_SPEC,
+    id,
+    name: raw.name,
+    version: raw.version,
+    builtin,
+    description: text(raw.description).trim()
+  }
+  if (klass === 'kernel') {
+    candidate.class = klass
+    candidate.endpoints = Array.isArray(raw.endpoints) ? raw.endpoints : []
+  } else {
+    candidate.endpoints = Array.isArray(raw.endpoints) ? raw.endpoints : []
+    candidate.pages = pages
+    candidate.settings = Array.isArray(raw.settings) ? raw.settings : []
+    if (klass === 'workbench') {
+      candidate.class = klass
+      candidate.slots = slots
+    }
+  }
+  const droppedFields = []
+  if (klass === 'kernel') {
+    for (const key of ['settingsHint', 'settingsJump']) {
+      if (raw[key] !== undefined) droppedFields.push(key)
+    }
+  } else {
+    if (raw.settingsHint !== undefined) candidate.settingsHint = raw.settingsHint
+    if (raw.settingsJump !== undefined) candidate.settingsJump = raw.settingsJump
+  }
+  const checked = validateModuleManifest(candidate, { dirName })
+  if (!checked.ok) return checked
+  const warnings = isHostComposition(id)
+    ? checked.warnings.filter((code) => code !== 'MODULE_CLASS_INCOMPLETE')
+    : checked.warnings
+  return {
+    ...checked,
+    warnings: raw.core !== undefined ? [...warnings, 'MODULE_CORE_DEPRECATED'] : warnings,
+    notices: isHostComposition(id) ? ['MODULE_HOST_COMPOSITION'] : [],
+    changed: true,
+    candidate,
+    report: {
+      id,
+      inferredClass: klass ?? null,
+      role: moduleRole({ id, class: klass }),
+      hostComposition: isHostComposition(id),
+      splitPending: SPLIT_PENDING[id] ?? '',
+      coreDeprecated: raw.core !== undefined,
+      droppedFields
+    }
+  }
+}
+
+export function loadModuleManifests(dir = MODULES_DIR, { stage = 'B' } = {}) {
   const manifests = []
+  const sources = []
   const warnings = []
-  if (!existsSync(dir)) return { manifests, warnings }
+  const notices = []
+  if (!existsSync(dir)) return { manifests, sources, warnings, notices }
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     if (!entry.isDirectory() || entry.name.startsWith('.')) continue
     const manifestPath = join(dir, entry.name, 'module.manifest.json')
     if (!existsSync(manifestPath)) continue
+    let rawText = ''
     let raw = null
     try {
-      raw = JSON.parse(readFileSync(manifestPath, 'utf-8'))
+      rawText = readFileSync(manifestPath, 'utf-8')
+      raw = JSON.parse(rawText)
     } catch (error) {
       warnings.push({ code: 'MODULE_MANIFEST_UNREADABLE', id: entry.name, message: `manifest 读不了：${entry.name}（${text(error?.message || error)}）` })
       continue
     }
-    const checked = validateModuleManifest(raw, { dirName: entry.name })
-    if (!checked.ok) {
-      warnings.push({ code: 'MODULE_MANIFEST_INVALID', id: entry.name, message: `${entry.name}：${checked.errors.join('；')}` })
+    const checked = validateModuleManifest(raw, { dirName: entry.name, stage })
+    const sourceMismatch = raw?.builtin === false
+    if (!checked.ok || sourceMismatch) {
+      const errors = sourceMismatch ? [...checked.errors, '内置目录中的 manifest 不得声明 builtin:false'] : checked.errors
+      warnings.push({ code: 'MODULE_MANIFEST_INVALID', id: entry.name, message: `${entry.name}：${errors.join('；')}` })
       continue
     }
     manifests.push(checked.manifest)
+    sources.push(Object.freeze({
+      id: entry.name,
+      source: 'builtin',
+      sourceDir: relative(join(MODULES_DIR, '..', '..'), dir).replaceAll('\\', '/') + `/${entry.name}`,
+      manifestSha256: createHash('sha256').update(rawText).digest('hex'),
+      role: moduleRole(checked.manifest)
+    }))
+    if (isHostComposition(entry.name)) {
+      notices.push({ code: 'MODULE_HOST_COMPOSITION', id: entry.name, message: `${entry.name}：宿主组合面登记，不随工作台启停` })
+      continue
+    }
+    for (const code of checked.warnings) {
+      const target = TRANSITION_NOTICES.has(code) ? notices : warnings
+      target.push({ code, id: entry.name, message: `${entry.name}：${code}` })
+    }
   }
   manifests.sort((left, right) => left.id.localeCompare(right.id))
-  return { manifests, warnings }
+  sources.sort((left, right) => left.id.localeCompare(right.id))
+  return { manifests, sources, warnings, notices }
 }
 
-const loaded = loadModuleManifests()
-/** 全部模块 manifest（只读）。 */
-export const MODULE_MANIFESTS = Object.freeze(loaded.manifests)
-export const MODULE_MANIFEST_WARNINGS = Object.freeze(loaded.warnings)
-export const MODULE_IDS = Object.freeze(MODULE_MANIFESTS.map((manifest) => manifest.id))
-/** OS-163：核心模块（core:true）——恒启用、不可停用（chapters/worldbook/script/roleplay 四个）。 */
-export const CORE_MODULE_IDS = Object.freeze(MODULE_MANIFESTS.filter((manifest) => manifest.core).map((manifest) => manifest.id))
-export function isCoreModule(id) { return CORE_MODULE_IDS.includes(id) }
+export { BASE_CAPABILITIES, BASE_GRAPH, BASE_REQUIRES } from './baseCapabilities.mjs'
 
-/** endpointId → 独占它的模块 id。共用端点不登记，因此不在这张表里。 */
+const loaded = loadModuleManifests(MODULES_DIR, { stage: 'C' })
+export const MODULE_MANIFESTS = Object.freeze(loaded.manifests)
+export const MODULE_SOURCES = Object.freeze(loaded.sources)
+export const MODULE_MANIFEST_WARNINGS = Object.freeze(loaded.warnings)
+export const MODULE_MANIFEST_NOTICES = Object.freeze(loaded.notices)
+export const MODULE_SOURCE_GROUPS = Object.freeze(Object.fromEntries(
+  ['kernel', 'workbench', 'suite', 'host-composition', 'unclassified'].map((role) => [
+    role,
+    Object.freeze(MODULE_SOURCES.filter((source) => source.role === role).map((source) => source.id))
+  ])
+))
+export const CAPABILITY_SNAPSHOT = buildCapabilitySnapshot({
+  manifests: MODULE_MANIFESTS,
+  base: BASE_GRAPH,
+  warnings: MODULE_MANIFEST_WARNINGS
+})
+export const CAPABILITY_STARTUP_REPORT = capabilityStartupReport(CAPABILITY_SNAPSHOT)
+export const MODULE_IDS = Object.freeze(MODULE_MANIFESTS.map((manifest) => manifest.id))
+
 export const MODULE_ENDPOINT_OWNERS = Object.freeze(Object.fromEntries(
-  MODULE_MANIFESTS.flatMap((manifest) => manifest.endpoints.map((endpoint) => [endpoint, manifest.id]))
+  MODULE_MANIFESTS.flatMap((manifest) => (manifest.endpoints ?? []).map((endpoint) => [endpoint, manifest.id]))
 ))
 
 export function moduleManifest(id) {
   return MODULE_MANIFESTS.find((manifest) => manifest.id === id) ?? null
 }
 
-/** 端点归属：没有任何模块独占＝null（共用端点，停用任何模块都不受影响）。 */
+export function moduleSource(id) {
+  return MODULE_SOURCES.find((source) => source.id === id) ?? null
+}
+
 export function moduleOfEndpoint(endpointId) {
   return MODULE_ENDPOINT_OWNERS[endpointId] ?? null
 }
 
-function rawEnabled(state, id) {
-  const key = moduleStateKey(id)
-  if (state && Object.prototype.hasOwnProperty.call(state, key)) return state[key]
-  const nested = state?.modules?.enabled
-  if (nested && typeof nested === 'object' && Object.prototype.hasOwnProperty.call(nested, id)) return nested[id]
-  return undefined
+export function moduleStateKey(id) {
+  return `modules.enabled.${id}`
 }
 
-/**
- * 启停判定的**唯一入口**：模块是否启用（缺省 true）。
- * 没有库根（库清单页 / 未授权 root）时按启用处理——停用状态是库内概念。
- */
 export async function isModuleEnabled(root, id) {
-  if (!root) return true
-  if (!moduleManifest(id)) return true // 未知 id 不是插件，不拦
-  if (isCoreModule(id)) return true // OS-163：核心模块恒启用——ui-state 里即便写成 false 也不生效
+  if (!root || isHostComposition(id)) return true
+  if (!moduleManifest(id)) return true
   try {
     const { state } = await readUiState(root)
-    return rawEnabled(state ?? {}, id) !== false
+    return readModuleEnabled(state ?? {}, id)
   } catch {
-    return true // 读不到状态≠停用（坏档不阻断工作面）
+    return true
   }
 }
 
-/**
- * 端点级闸：该端点被某模块独占且该模块在 root 下停用 → 返回模块 id，否则 null。
- * 共用端点（未登记归属）永远返回 null。
- */
 export async function isModuleDisabledFor(endpointId, root) {
   const moduleId = moduleOfEndpoint(endpointId)
   if (!moduleId) return null
   return (await isModuleEnabled(root, moduleId)) ? null : moduleId
+}
+
+export async function capabilitySnapshotFor(root) {
+  if (!root) return CAPABILITY_SNAPSHOT
+  try {
+    const { state } = await readUiState(root)
+    return buildCapabilitySnapshot({ manifests: MODULE_MANIFESTS, state, base: BASE_GRAPH })
+  } catch {
+    return CAPABILITY_SNAPSHOT
+  }
+}
+
+export async function moduleDegradationFor(endpointId, root) {
+  const moduleId = moduleOfEndpoint(endpointId)
+  if (!moduleId || !root || !(await isModuleEnabled(root, moduleId))) return null
+  try {
+    const snapshot = await capabilitySnapshotFor(root)
+    const degraded = moduleDegradation(snapshot, moduleId)
+    return degraded ? { ...degraded, endpoint: endpointId } : null
+  } catch {
+    return null
+  }
 }

@@ -209,7 +209,7 @@ export function ssTraceHtml(entry, layout, ss, { graph, esc, text }) {
     : ''
   const radiateBody = `${graphLine}<div class="ss-radiate">
       <button data-ss-radiate="chart">剧情曲线<span class="sub">切到图表形态，看这条所在章的张力与密度</span></button>
-      <button data-ss-radiate="deduce">推演事实包<span class="sub">推演按 layer 读取拆解条目，往下一拍</span></button>
+      <button data-ss-radiate="deduce">推演事实包<span class="sub">推演按 layer 读取故事源条目，往下一拍</span></button>
       <button data-ss-radiate="analysis">正文分析<span class="sub">跳正文页，分析面板按章看写作问题</span></button>
     </div>`
 
@@ -258,7 +258,7 @@ export function ssChartFallbackHtml(layout, chart, message, { esc }) {
 }
 
 
-/* ---------- 产物中心（artifacts，OS-161）纯视图 ---------- */
+/* ---------- 产物（artifacts，OS-161）纯视图 ---------- */
 
 export function artifactsHtml({ current, inventory, groupLabel, formatBytes, formatAt, flowError, esc }) {
   if (!current) return needLibraryHtml()
@@ -298,8 +298,8 @@ export function artifactsHtml({ current, inventory, groupLabel, formatBytes, for
       </div>`
     : `<div class="step artifact-preview"><h3><span class="no">→</span>预览</h3><div class="empty-state" style="margin:20px auto"><p>点左侧任意文件预览；历史与已删除档可整版恢复（当前内容会先自动备份）。</p></div></div>`
   return `<div class="doc-head">
-      <div class="kick">${esc(current.name)} / 产物中心</div>
-      <h1>产物中心</h1>
+      <div class="kick">${esc(current.name)} / 产物</div>
+      <h1>产物</h1>
       <div class="doc-meta">
         <span class="b">产出物＋版本历史</span>
         <span>${inventory.groups.length} 组</span>

@@ -1,14 +1,26 @@
 {
-  "spec": "openstory-module@1",
+  "spec": "openstory-module@2",
   "id": "script",
   "name": "剧本",
   "version": "0.1.0",
-  "core": true,
-  "description": "剧本工作面（核心模块，core:true——永远启用、不可停用）：剧本文件走 chapters 的 chapter 通道，本身没有独占端点。共享通道 chapterGet / chapterPut / chaptersGet 属宿主；剧本↔fact 互转走 public/scriptFact.mjs 与既有的 fact 写协议，不另开写口。",
+  "builtin": true,
+  "description": "剧本工作面：剧本文件走 chapters 的 chapter 通道，本身没有独占端点。共享通道 chapterGet / chapterPut / chaptersGet 属宿主；剧本↔fact 互转走 public/scriptFact.mjs 与既有的 fact 写协议，不另开写口。",
   "endpoints": [],
   "pages": [
-    { "id": "script", "label": "剧本", "slot": "tab" }
+    {
+      "id": "script",
+      "label": "剧本"
+    }
   ],
   "settings": [],
-  "settingsHint": "剧本是核心工作面，不可停用也没有可调参数：剧本是 剧本/ 目录下的 .md，写盘与正文同走 chapter 通道；格式互转在剧本页里做。"
+  "class": "workbench",
+  "entry": "index.mjs",
+  "requires": [{ "id": "prose.write", "min": 1 }, { "id": "fact.store", "min": 3 }],
+  "slots": [
+    {
+      "slot": "tab",
+      "page": "script"
+    }
+  ],
+  "settingsHint": "剧本是 剧本/ 目录下的 .md，写盘与正文同走 chapter 通道；格式互转在剧本页里做，停用不删除剧本文件。"
 }

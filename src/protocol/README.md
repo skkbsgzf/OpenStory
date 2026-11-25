@@ -4,6 +4,8 @@
 版本字面量 `host-api@2`（`src/protocol/index.mjs` 的 `HOST_API_VERSION`；`@2` ＝ OS-155 删除
 `fact.deduce`（推演端子归扮演模块）、OS-157 再删 `fact.projectImport`／`fact.projectMeta`
 （回归库管理模块内组合）——协议层不依赖产品模块，五键在段末定稿）。
+OS-172 起磁盘运行态、目录与谱系名归 OpenStory；旧格式只在 `libraryUpgrade.mjs` 作一次性迁移输入，
+不建立跨仓互认或长期双读。
 
 ## 谁准 import 什么
 
@@ -20,7 +22,7 @@
 |---|---|---|---|
 | `fact` | `src/kernel/index.mjs` 五键公开面 | enrich（度量）、factStore（fact 存储）、fail/ok（内核响应封装）、writeFileAtomic（原子写原件）。**推演端子/项目合同/整目录导入均不在其中**（OS-155/157 起分别归扮演模块与库管理模块） | writeFactFile/writeFileAtomic 落盘；读全部只读 |
 | `prose` | chapters.mjs＋chapterWrite.mjs | 正文 `NNN-标题.md` 协议：list/create/rename/delete＋writeChapterWithBackup＋.history 保留策略 | create/rename/delete/write 落盘；.history 备份；changelog 留痕 |
-| `changelog` | changelog.mjs | 库内唯一修改留痕通道：recordChange＋readLog/readChange 等（diff＋月度 jsonl） | recordChange 落盘 `.pinax/log/<模块>/<yyyy-mm>.jsonl`；读只读 |
+| `changelog` | changelog.mjs | 库内唯一修改留痕通道：recordChange＋readLog/readChange 等（diff＋月度 jsonl） | recordChange 落盘 `.openstory/log/<模块>/<yyyy-mm>.jsonl`；读只读 |
 | `jobs` | services/jobCenter.mjs | 任务中心：submit/get/list/cancel/clearSettled/activeCount/subscribe | **不落盘**（进程内，重启即清） |
 | `events` | agentEvents.mjs | AG-UI canonical 事件模型＋SSE 帧投影：encodeForAgui/projectLegacyFrame＋类型词表 | **不落盘**（纯内存编码） |
 | `plugins` | plugins.mjs＋versionGate.mjs＋dependencyGraph.mjs | 三层货架能力声明：只读聚合/详情/健康度＋宿主版本闸＋套件依赖闭包 | 只读（suiteStatePath 读停用状态，不写） |
@@ -37,12 +39,15 @@
 | `upstream.mjs` | 上游模型通道：chatCompleteViaUpstream/resolveUpstreamSafe/resolveChatUpstream | 模块层（turnProse） |
 | `worldbookContract.mjs` | 世界书文件契约 `parseWorldbookEntryFile`（实现在世界书模块，本体不直引） | textUtil；护栏测试直引实现本体 |
 | `chapterNumber.mjs` | 章节号解析纯函数（OS-157 从 textUtil 上移） | chapters.mjs；textUtil 经此转出 |
-| `modules.mjs` | 模块插件（OS-144）：manifest 装载/形状校验、端点归属 `MODULE_ENDPOINT_OWNERS`、启停唯一入口 `isModuleEnabled` / `isModuleDisabledFor`（ui-state `modules.enabled.<id>`） | daemon 路由停用闸、MCP 分析工具、API handler（扮演 AI 味闸） |
-| `naming.mjs` | 五层命名单一真源（OS-148）：`NAMING_TABLE` / `LOG_MODULES` / `namingEntry` / `logModuleForDir`（目录→日志模块名）/ `PAGE_TO_DIR_LOCAL`（页签名→目录名，OS-150a 起 genres 也走这里），**从 `public/views/registry.mjs` 原样 re-export** | 写通道（chapterWrite 的 moduleOfPath）、各模块写日志取 `LOG_MODULES`、推演会话目录名、体裁裁剪（genres.excludedDirNames） |
+| `modules.mjs` | 模块插件（OS-144；B1/B3/B4）：`openstory-module@2` 装载/形状校验、@1 迁移输入、端点归属 `MODULE_ENDPOINT_OWNERS`、启停唯一入口 `isModuleEnabled` / `isModuleDisabledFor`；内置来源记录 `source/sourceDir/manifestSha256/role` | daemon 路由停用闸、MCP 分析工具、API handler、`/api/plugins` 来源报告 |
+| `capabilityGraph.mjs` | B2：不可变能力快照、hard/optional 闭环、capability/surface/resource 冲突、显式覆盖四守卫、套件 appliesTo、候选启停事务与降级投影 | 按库 UI state 写入前校验；daemon 区分主动停用与能力降级 |
+| `capabilityResolver.mjs` | B5：按能力区间解析 provider 的冻结薄代理；句柄绑定单一快照，在途请求不随新图漂移 | 宿主组合根 `src/host/capabilityBindings.mjs`；已打通 `deduce.engine@1` 垂直切片 |
+| `naming.mjs` | 命名单一真源（OS-148；OS-172 收口）：`NAMING_TABLE` / `LOG_MODULES` / `namingEntry` / `logModuleForDir`（目录→日志模块名）/ `PAGE_TO_DIR_LOCAL`（页签名→目录名），**从 `public/views/registry.mjs` 原样 re-export**。前端显示名、页签／入口名、目录名与日志模块名同名；当前正名为 `世界书`、`故事源`、`扮演`、`导入导出`，`产物` 只作页面名；`libraryStorage` 另登记 `.openstory` 与 OpenStory 谱系名 | 写通道（chapterWrite 的 moduleOfPath）、各模块写日志取 `LOG_MODULES`、扮演会话目录名、体裁裁剪（genres.excludedDirNames）与库升级 |
 | `chapters.mjs` 等 | 各协议件本体（index.mjs 聚合它们的导出） | 协议层内部与 API/宿主层 |
 | `factDomain.mjs` | fact 域原语＋`buildFactPack` 的**只 re-export** 转供面（实现真源 `src/kernel/fact/domain/index.mjs`／`src/kernel/fact/factPack.mjs`） | 推演引擎（`src/modules/deduce/engine/`）——模块不许直引 `src/kernel/**`（S2.1），这是唯一不开口子的取数路径（OS-155） |
-| `courtyard.mjs` | 本机院子唯一路径来源：`courtyardBase/Root/Path`、`ensureCourtyard`、`legacyCourtyardPath`；首启只拷贝旧院（跳 `*.tmp-*`/`daemon.lock`）并留迁移标记（OS-166） | 模块层与 services 层的本机路径解析（agentStore/kbAdapter/genres/nativePicker/runtimes/skills/stylePacks/suites/systemPrompt/uiPreferences）；`src/host/courtyard.mjs` 只做原样转供 |
-| `libraryManifest.mjs` | 自持库清单（OS-167）：`libraries.json` 读写＋旧 Pinax `next-preferences.json` 只读扫描/勾选导入；`source=openstory\|imported-pinax`，绝不写回旧清单 | 宿主 `authorize.mjs` 的 root 白名单源、library 模块的登记与两个导入端点；互认仍靠库内 `.pinax/project.json` |
+| `courtyard.mjs` | 本机院子唯一路径来源：`courtyardBase/Root/Path`、`ensureCourtyard`、`legacyCourtyardPath`；首启只一次性拷贝冻结旧院（跳 `*.tmp-*`/`daemon.lock`）并留迁移标记（OS-166），旧院不改写、不删除 | 模块层与 services 层的本机路径解析（agentStore/kbAdapter/genres/nativePicker/runtimes/skills/stylePacks/suites/systemPrompt/uiPreferences）；`src/host/courtyard.mjs` 只做原样转供 |
+| `libraryManifest.mjs` | OpenStory 自持库清单（OS-167）：`libraries.json` 读写；`source=openstory\|imported`，旧 `imported-pinax` 只在兼容输入中归一为 `imported`。不扫描或导入 Pinax 清单，不写回旧 `next-preferences.json` | 宿主 `authorize.mjs` 的 root 白名单源、library 模块登记；OS-172 后 library 零独占端点，库身份靠库内 `.openstory/project.json` |
+| `libraryUpgrade.mjs` | 旧库一次性升级（OS-172）：整库备份、运行态/目录/谱系名/存量路径迁移、冲突加后缀、退役目录留档、journal 回滚与 `upgrade.json` 幂等标记；运行态不双读 | daemon 在模块闸与业务 handler 前对显式授权 root 调 `ensureLibraryUpgraded()`；旧库迁移与测试 |
 
 ## 版本约定
 
@@ -63,7 +68,7 @@
 
 ## 内核接触面（S2.4'）
 
-`src/**` 与仓根两个垫片不得出现 `core/` 路径说明符（防陈旧 import 回潮）；内核实现只在
+`src/**` 与仓根不得出现 `core/` 路径说明符（防陈旧 import 回潮）；内核实现只在
 `src/kernel/**`。`src/protocol/**` 中 `factGuard.mjs` 与 `index.mjs` 直取 `src/kernel/index.mjs`
 公开面，`kernelPlumber.mjs`／`hostWrite.mjs` 直取 `src/kernel/` 管道件——没有单点适配器，
 门禁按这条全树规则判定，不再维护豁免清单。

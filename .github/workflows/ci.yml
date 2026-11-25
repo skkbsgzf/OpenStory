@@ -1,0 +1,56 @@
+name: OpenStory CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  gates:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Run tests twice
+        shell: bash
+        run: |
+          set -o pipefail
+          status=0
+          npm test 2>&1 | tee test-round-1.log || status=1
+          npm test 2>&1 | tee test-round-2.log || status=1
+          exit "$status"
+
+      - name: Run acceptance gate
+        shell: bash
+        run: |
+          set -o pipefail
+          node tools/acceptance/acceptance.mjs 2>&1 | tee acceptance.log
+
+      - name: Check architecture numbers
+        shell: bash
+        run: |
+          set -o pipefail
+          node tools/arch-stats.mjs --check 2>&1 | tee arch-check.log
+
+      - name: Upload gate logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-gate-logs
+          path: |
+            test-round-1.log
+            test-round-2.log
+            acceptance.log
+            arch-check.log
+          retention-days: 7

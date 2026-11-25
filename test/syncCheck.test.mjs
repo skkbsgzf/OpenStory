@@ -44,7 +44,7 @@ test('正文比事实源新 → chaptersNewerThanFact，带人话说明', () => 
   })
   assert.equal(r.chaptersNewerThanFact, true)
   assert.match(r.chaptersNote, /正文最新改动/)
-  assert.match(r.chaptersNote, /拆解可能没跟上/)
+  assert.match(r.chaptersNote, /故事源可能没跟上/)
 })
 
 test('正文比事实源旧 → 不提示', () => {

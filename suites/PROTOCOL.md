@@ -14,7 +14,7 @@ suites/                          ← 内置 openstory/suites/ 或本机 %LOCALAP
     （其他资产随套件自带）
 ```
 
-宿主每次请求现扫货架；**本机目录按 id 覆盖内置**；删目录即下架；`.pinax`/隐藏目录不扫。
+宿主每次请求现扫货架；**本机目录按 id 覆盖内置**；删目录即下架；`.openstory`/隐藏目录不扫。
 
 ## 2. manifest（注册表）
 
@@ -24,7 +24,7 @@ suites/                          ← 内置 openstory/suites/ 或本机 %LOCALAP
   "id": "comicdrama",
   "name": "漫剧套件",
   "version": "0.2.0",
-  "vendor": "Pinax 官方",
+  "vendor": "skkbsgzf",
   "description": "一句话说明",
   "domains": ["漫剧"],
   "capabilities": {

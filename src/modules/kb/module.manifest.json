@@ -1,9 +1,9 @@
 {
-  "spec": "openstory-module@1",
+  "spec": "openstory-module@2",
   "id": "kb",
   "name": "知识库",
   "version": "0.1.0",
-  "core": false,
+  "builtin": true,
   "description": "知识库连接（WeKnora/embedding）：路由、适配与健康三件套。独占端点随停用失效；设置「引擎与存储」里的知识库连接配置区隐去，本机 kb-config 不删。连接参数的真源是本机 kb-config.json（经 /api/kb/config 读写，密钥只回掩码），本模块只报「配置在哪」，不再放第二份输入框（OS-146）。Agent 输入条上的「知识链」灯泡不属于本模块。",
   "endpoints": [
     "kbStatusGet",
@@ -12,9 +12,21 @@
     "kbTest"
   ],
   "pages": [
-    { "id": "kb-settings", "label": "知识库", "slot": "settings" }
+    {
+      "id": "kb-settings",
+      "label": "知识库"
+    }
   ],
   "settings": [],
+  "class": "workbench",
+  "entry": "index.mjs",
+  "requires": [{ "id": "agent.runtime", "min": 1 }],
+  "slots": [
+    {
+      "slot": "settings",
+      "page": "kb-settings"
+    }
+  ],
   "settingsHint": "服务地址、API Key、Space ID 与分库映射都在「设置 · 引擎与存储 · 知识库」里配（真源是本机 kb-config.json，密钥只回掩码）。",
   "settingsJump": "engines"
 }

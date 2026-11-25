@@ -1,17 +1,29 @@
 {
-  "spec": "openstory-module@1",
+  "spec": "openstory-module@2",
   "id": "habits",
   "name": "习惯",
   "version": "0.1.0",
-  "core": false,
+  "builtin": true,
   "description": "写作习惯工作面（习惯/habits.json 专页）：正向惯用词/公式＋负向禁用词/句式/修辞。独占 habitsGet/habitsPut；停用后习惯页签消失、两端点回 MODULE_DISABLED，且写入前的习惯 lint 与 Agent 系统提示词注入都经宿主模块钩子跳过——习惯表本身不删，重新启用即恢复。",
   "endpoints": [
     "habitsGet",
     "habitsPut"
   ],
   "pages": [
-    { "id": "habits", "label": "习惯", "slot": "tab" }
+    {
+      "id": "habits",
+      "label": "习惯"
+    }
   ],
   "settings": [],
+  "class": "workbench",
+  "entry": "index.mjs",
+  "requires": [{ "id": "text.analyze", "min": 1 }],
+  "slots": [
+    {
+      "slot": "tab",
+      "page": "habits"
+    }
+  ],
   "settingsHint": "习惯在库的「习惯」页签里直接编辑（真源是库内 习惯/habits.json）；Agent 成文与右栏分析都读同一份，这里不放第二份输入框。"
 }

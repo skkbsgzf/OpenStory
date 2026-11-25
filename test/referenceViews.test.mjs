@@ -24,7 +24,7 @@ const FACTS = [
 
 test('referenceEntryDetailHtml：金样——词条详情只读展示，缺失给空态', () => {
   const html = referenceEntryDetailHtml('c1', FACTS, { esc })
-  assert.match(html, /拆解词条 · 角色/u)
+  assert.match(html, /故事源词条 · 角色/u)
   assert.match(html, /首次出现在第2章/u)
   assert.match(html, /关键台词/u)
   assert.match(html, /关系/u)
@@ -35,7 +35,7 @@ test('referenceEntryDetailHtml：金样——词条详情只读展示，缺失�
 })
 
 test('referenceEditorHtml：金样——from graph 返回、标签、摘要、图片槽由入参注入', () => {
-  const note = { title: '林冲', path: '参考/角色/林冲.md', text: '---\na: 1\n---\n正文', tags: ['角色'], excerpt: '一段摘要', firstChapter: 3, chars: 42 }
+  const note = { title: '林冲', path: '世界书/角色/林冲.md', text: '---\na: 1\n---\n正文', tags: ['角色'], excerpt: '一段摘要', firstChapter: 3, chars: 42 }
   const html = referenceEditorHtml({ ref: { from: 'graph' }, note, bodySource: '正文', body: '<p>正文</p>', imagesSlot: '<div class="slot">图</div>', esc, text })
   assert.match(html, /data-action="ref-back-graph"/u)
   assert.match(html, /data-ref-tag="角色"/u)

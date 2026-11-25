@@ -47,10 +47,17 @@ export const API_ERROR_CODES = Object.freeze({
   UNSUPPORTED_MEDIA_TYPE: 'UNSUPPORTED_MEDIA_TYPE',
   // 模块插件（OS-144）：独占端点所属模块被作者停用——数据与值保留，重新启用即恢复
   MODULE_DISABLED: 'MODULE_DISABLED',
-  MODULE_CORE: 'MODULE_CORE', // OS-163：核心模块不可停用（写 ui-state 时拒）
-  // 故事源（OS-150a）：库里还没有任何拆解条目——合法空态，不是坏档
+  CAPABILITY_MISSING: 'CAPABILITY_MISSING',
+  CAPABILITY_CONFLICT: 'CAPABILITY_CONFLICT',
+  CAPABILITY_IN_USE: 'CAPABILITY_IN_USE',
+  OVERRIDE_REJECTED: 'OVERRIDE_REJECTED',
+  PLUGIN_DEGRADED: 'PLUGIN_DEGRADED',
+  // 能力迁移（OS-186 / D2）：迁移器失败＝数据面故障，原格式保留、覆盖者禁用
+  MIGRATION_FAILED: 'MIGRATION_FAILED',
+  LIBRARY_UPGRADE_FAILED: 'LIBRARY_UPGRADE_FAILED',
+  // 故事源（OS-150a）：库里还没有任何故事源条目——合法空态，不是坏档
   FACT_EMPTY: 'FACT_EMPTY',
-  // 故事源（OS-150b）：拆解/ 下有档，但一本都读不出来——坏档不是空态，别让页面摆「还没有」
+  // 故事源（OS-150b）：故事源/ 下有档，但一本都读不出来——坏档不是空态，别让页面摆「还没有」
   FACT_UNREADABLE: 'FACT_UNREADABLE',
   // 运行时套件（OS-150b）：fixture 套件是测试夹具/骨架模板，不许被设为激活运行时
   AGENT_RUNTIME_FIXTURE: 'AGENT_RUNTIME_FIXTURE'

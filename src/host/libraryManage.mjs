@@ -1,0 +1,305 @@
+/**
+ * OpenStory 库管理写操作（OS-7）——新建/登记/诊断/修主模块/扫描/导入。
+ *
+ * 复用面（两条壳一个真源）：
+ *   · 建库：projectDoc.mjs（OS-124 解耦②收编为本仓自持；骨架／project.json 合同／
+ *     createProject/initBareProject／载体表与注册表的历史移植出处为 vendor next/{kernel,project,shell}/，
+ *     金样护栏 test/decoupleStep2.test.mjs）；其中库标记读写走模块内组合的 projectMeta；
+ *   · 导入：projectImport.planImport/runImport（模块内组合，转引本仓 importAdapter.mjs——
+ *     OS-123 解耦①收编为本仓自持；承诺：源目录只读、目标只新增不覆盖、认不出的不猜）；
+ *   · 人话：projectDoc.mjs 的 describeOpenFailure/validateLibraryName/folderName
+ *     （纯函数无 Vue，fork 时沿用 A-5 四类失败与 Electron 同一份口径）。
+ *
+ * 库清单纪律（OS-167）：只读写 OpenStory 自持的 `libraries.json`（`{schemaVersion,libraries}`）；
+ * 旧院 `next-preferences.json` 不扫描、不导入、不写回。
+ * 读不了/坏档＝拒绝登记并如实报，绝不覆盖重写。
+ */
+import { existsSync, statSync } from 'node:fs'
+import { readdir } from 'node:fs/promises'
+import { isAbsolute, resolve } from 'node:path'
+import { upgradeLibrary } from '../protocol/libraryUpgrade.mjs'
+import { projectImport } from '../protocol/libraryImport.mjs'
+import { resolveStorageCapability } from './capabilityBindings.mjs'
+import { namingEntry } from '../protocol/naming.mjs'
+
+const CARRIER_PREFIX = namingEntry('libraryStorage').carrierPrefix
+
+async function storageCapability(root, id) {
+  const resolved = await resolveStorageCapability(root, id)
+  if (!resolved.ok) {
+    return { ok: false, code: 'PLUGIN_DEGRADED', message: resolved.message, details: resolved.details }
+  }
+  return { ok: true, capability: resolved.capability }
+}
+
+function text(value) {
+  return String(value ?? '')
+}
+
+/* ---------- 载体注册表（进程内单例） ---------- */
+
+let registryPromise = null
+
+/** 建库/修主模块共用的载体注册表：装载失败如实抛，不造残废注册表。 */
+export function getCarrierRegistry() {
+  if (!registryPromise) {
+    registryPromise = (async () => {
+      const resolved = await storageCapability('', 'storage.scaffold')
+      if (!resolved.ok) throw new Error(resolved.message)
+      const { registry } = await resolved.capability.createCarrierRegistry()
+      return registry
+    })()
+  }
+  return registryPromise
+}
+
+/** 测试钩子：清掉单例（改了货架/环境后重建）。 */
+export function resetCarrierRegistry() {
+  registryPromise = null
+}
+
+/** 主载体选择面（OpenStory v1 内嵌修复只给两大主载体）。 */
+export const PRIMARY_CHOICES = Object.freeze([
+  { id: `${CARRIER_PREFIX}novel`, title: '小说', detail: '正文/ 世界书/ 日志 骨架' },
+  { id: `${CARRIER_PREFIX}script`, title: '剧本', detail: '剧本/ 人物/ 场景/ 世界书/ 日志 骨架' }
+])
+
+/* ---------- 库清单登记（OS-167：自持 libraries.json） ---------- */
+
+function sameLibraryPath(a, b) {
+  return text(a).replace(/[\\/]+$/u, '').toLowerCase() === text(b).replace(/[\\/]+$/u, '').toLowerCase()
+}
+
+/**
+ * 把新库追加进 OpenStory 自持清单。已登记＝duplicate:true 不重写；
+ * 清单不存在＝从 `{schemaVersion,libraries:[]}` 起一份；旧形状/坏档＝拒绝登记（绝不覆盖重写）。
+ */
+export async function registerLibrary(preferencesPath, root, name) {
+  const storage = await storageCapability('', 'library.list')
+  if (!storage.ok) return storage
+  const capability = storage.capability
+  const target = text(preferencesPath).trim()
+  if (!target) return { ok: false, code: 'INVALID_ENTRY', message: '没有可写的库清单路径（preferencesPath 为空）' }
+  const current = capability.readLibraryManifest({ preferencesPath: target })
+  if (current.legacy) {
+    return { ok: false, code: 'INVALID_ENTRY', message: '旧格式清单只读，不会覆盖；请改用 OpenStory 自持库清单' }
+  }
+  if (current.warnings.some((w) => w.code === 'PREFERENCES_CORRUPT' || w.code === 'PREFERENCES_SHAPE' || w.code === 'PREFERENCES_UNREADABLE')) {
+    return { ok: false, code: 'INVALID_ENTRY', message: `库清单读不了/不是合法 JSON，拒绝登记（不覆盖重写）：${current.warnings[0].message}` }
+  }
+  const existed = current.path === target && current.libraries.length > 0
+  if (current.libraries.some((item) => sameLibraryPath(item.path, root))) {
+    return { ok: true, duplicate: true, existed, libraries: current.libraries }
+  }
+  const record = {
+    path: resolve(text(root)),
+    name: text(name).trim() || capability.folderName(root),
+    addedAt: new Date().toISOString(),
+    source: capability.sources().openstory
+  }
+  const written = await capability.writeLibraryManifest(target, [record, ...current.libraries])
+  if (!written.ok) return written
+  return { ok: true, duplicate: false, existed, libraries: written.libraries }
+}
+
+/* ---------- 内核失败 → OpenStory 契约失败 ---------- */
+
+/** 内核码（KERNEL_ERROR_CODES）→ OpenStory 契约码；原文进 message/cause，不吞语义。OS-157 起码值已无前缀。 */
+export function mapManageError(error) {
+  const rawCode = String(error?.code || '')
+  const code = rawCode
+  const message = text(error?.message || error)
+  if (code === 'STALE_REVISION') return { ok: false, code: 'REVISION_MISMATCH', message }
+  if (code === 'PATH_OUTSIDE_PROJECT' || code === 'ERR_SOURCE_PATH' || code === 'ERR_TARGET_PATH') {
+    return { ok: false, code: 'PATH_ESCAPE', message }
+  }
+  if (code === 'ENOENT') return { ok: false, code: 'NOT_FOUND', message }
+  if (code === 'IO_FAILED') return { ok: false, code: 'WRITE_PROTOCOL_IO_FAILED', message }
+  return { ok: false, code: 'INVALID_ENTRY', message, details: rawCode ? { cause: rawCode } : undefined }
+}
+
+/* ---------- 建库 ---------- */
+
+/**
+ * 新建库：主载体给定走 createProject（骨架＋project.json@4＋依赖闭包）；
+ * 缺省走 initBareProject（空壳，needsPrimary:true，停在选主模块那一步）。
+ * 成功即登记进库清单。
+ */
+export async function createLibrary({ path: targetPath, name, primaryCarrier = '', preferencesPath }) {
+  const storage = await storageCapability('', 'storage.scaffold')
+  if (!storage.ok) return storage
+  const capability = storage.capability
+  const nameError = capability.validateLibraryName(name)
+  if (nameError) return { ok: false, code: 'INVALID_ENTRY', message: nameError }
+  const rawPath = text(targetPath).trim()
+  if (!rawPath || !isAbsolute(rawPath)) {
+    return { ok: false, code: 'INVALID_ENTRY', message: '库位置必须是绝对路径（例如 D:\\写作\\长夜）' }
+  }
+  const registry = await getCarrierRegistry()
+  const result = primaryCarrier
+    ? await capability.createProject({ root: rawPath, name: text(name).trim(), primaryCarrier, registry })
+    : await capability.initBareProject({ root: rawPath, name: text(name).trim() })
+  if (!result.ok) {
+    return { ...mapManageError(result.error ?? result), details: { ...(result.error?.details ?? result.details ?? {}), cause: String(result.error?.code ?? '') } }
+  }
+  const registered = await registerLibrary(preferencesPath, result.value.root, text(name).trim())
+  if (!registered.ok) {
+    // 库已建好、登记失败：如实报「建好了但没进清单」，作者重开 daemon 或手动登记都能救。
+    return {
+      ok: false,
+      code: registered.code,
+      message: `库已建成（${result.value.root}），但登记进库清单失败：${registered.message}`
+    }
+  }
+  return {
+    ok: true,
+    root: result.value.root,
+    document: result.value.document,
+    ...(result.value.enabled ? { enabled: result.value.enabled } : {}),
+    needsPrimary: result.value.needsPrimary === true,
+    registered: { duplicate: registered.duplicate === true }
+  }
+}
+
+/* ---------- 诊断 ---------- */
+
+/**
+ * 库形态四件套 → A-5 verdict。verdict.ok＝形态健康（有标记且有主模块）；
+ * 其余按 wizardKit.describeOpenFailure 给人话与修复动作。
+ */
+export async function diagnoseLibrary(root) {
+  const target = resolve(text(root))
+  const storage = await storageCapability(target, 'storage.scaffold')
+  if (!storage.ok) return storage
+  const capability = storage.capability
+  const upgraded = await upgradeLibrary(target)
+  if (!upgraded.ok) return upgraded
+  const shape = { exists: false, dirEmpty: null, hasMetadata: false, project: null }
+  if (upgraded.upgraded) shape.upgrade = upgraded.report
+  let entries = []
+  try {
+    const stats = statSync(target)
+    if (!stats.isDirectory()) {
+      return {
+        ok: true,
+        shape,
+        verdict: { ok: false, title: '这个路径不是文件夹', detail: `${target} 是个文件，不是库目录。`, action: null, actionLabel: null }
+      }
+    }
+    shape.exists = true
+  } catch {
+    return {
+      ok: true,
+      shape,
+      verdict: { ok: false, title: '路径还不存在', detail: `${target} 还没有这个文件夹：新建流会帮你建出来。`, action: 'create-here', actionLabel: '在这里新建库' }
+    }
+  }
+  entries = await readdir(target).catch(() => [])
+  shape.dirEmpty = entries.length === 0
+  shape.hasMetadata = entries.some((name) => name === '.openstory')
+  if (!shape.hasMetadata) {
+    const verdict = capability.describeOpenFailure({}, { hasMetadata: false, dirEmpty: shape.dirEmpty })
+    return { ok: true, shape, verdict: { ...verdict, ok: false } }
+  }
+  const document = await capability.readProjectDocument(target)
+  if (!document.ok) {
+    return {
+      ok: true,
+      shape,
+      verdict: { ok: false, title: '库标记读不了', detail: `.openstory/project.json ${text(document.error?.message || document.error)}`, action: null, actionLabel: null }
+    }
+  }
+  const carriers = document.value.carriers ?? {}
+  shape.project = {
+    spec: text(document.value.spec),
+    kind: text(document.value.kind),
+    name: text(document.value.name),
+    primary: text(carriers.primary),
+    enabled: Array.isArray(carriers.enabled) ? carriers.enabled : []
+  }
+  if (!shape.project.primary) {
+    const verdict = capability.describeOpenFailure({ code: 'PRIMARY_CARRIER_MISSING' }, {})
+    return { ok: true, shape, verdict: { ...verdict, ok: false } }
+  }
+  return {
+    ok: true,
+    shape,
+    verdict: { ok: true, title: '库形态正常', detail: `${shape.project.name || shape.project.kind} · 主模块 ${shape.project.primary}`, action: null, actionLabel: null }
+  }
+}
+
+/* ---------- 缺主模块修复 ---------- */
+
+/** 裸项目 → 设主模块：依赖闭包装不齐＝拒绝（不造空壳）；revision 乐观并发可选。 */
+export async function setPrimaryCarrier({ root, primaryCarrier, expectedRevision }) {
+  const storage = await storageCapability(root, 'storage.scaffold')
+  if (!storage.ok) return storage
+  const capability = storage.capability
+  const registry = await getCarrierRegistry()
+  const primary = registry.get(primaryCarrier)
+  if (!primary) {
+    return { ok: false, code: 'INVALID_ENTRY', message: `主载体插件未安装：${text(primaryCarrier)}` }
+  }
+  const document = await capability.readProjectDocument(root)
+  if (!document.ok) {
+    return { ok: false, code: 'NOT_FOUND', message: `读不到库标记：${text(document.error?.message || document.error)}` }
+  }
+  const projectKind = primary.primary?.projectKind
+  if (!projectKind) {
+    return { ok: false, code: 'INVALID_ENTRY', message: `主载体没有声明项目类型：${text(primaryCarrier)}` }
+  }
+  // 换类型＝换骨架，不是本修复该做的事；裸库（kind 空）才允许连类型一起落。
+  const existingKind = text(document.value.kind).trim()
+  if (existingKind && existingKind !== projectKind) {
+    return { ok: false, code: 'INVALID_ENTRY', message: `这个库的类型是「${existingKind}」，与所选主模块的类型「${projectKind}」不一致：请新建相应类型的库` }
+  }
+  const closure = capability.resolveClosure(registry.manifests(), [primaryCarrier])
+  if (closure.unresolvable.length) {
+    return {
+      ok: false,
+      code: 'INVALID_ENTRY',
+      message: `主载体的依赖闭包装不齐，拒绝设主模块：${closure.unresolvable.join(' / ')}`
+    }
+  }
+  const carriers = capability.nextCarriers(document.value.carriers, {
+    primary: primaryCarrier,
+    enabled: closure.enabled,
+    ...(Number.isSafeInteger(expectedRevision) ? { expectedRevision } : {})
+  })
+  if (!carriers.ok) return mapManageError(carriers.error ?? carriers)
+  const next = { ...document.value, kind: projectKind, carriers: carriers.value }
+  const written = await capability.writeProjectDocument(root, next)
+  if (!written.ok) return mapManageError(written.error ?? written)
+  return { ok: true, document: written.value, enabled: carriers.value.enabled }
+}
+
+/* ---------- 扫描与导入（源目录只读） ---------- */
+
+function assertSourcePath(sourcePath) {
+  const raw = text(sourcePath).trim()
+  if (!raw || !isAbsolute(raw)) {
+    return { ok: false, code: 'INVALID_ENTRY', message: '源目录必须是绝对路径（例如 D:\\旧稿\\长夜）' }
+  }
+  if (!existsSync(raw) || !statSync(raw).isDirectory()) {
+    return { ok: false, code: 'NOT_FOUND', message: `源目录不存在或不是文件夹：${raw}` }
+  }
+  return { ok: true }
+}
+
+/** 导入预览：只生成计划不落盘。root 由 daemon 侧过库清单白名单。 */
+export async function scanLibrary({ root, sourcePath }) {
+  const source = assertSourcePath(sourcePath)
+  if (!source.ok) return source
+  const plan = projectImport.planImport({ sourcePath: text(sourcePath).trim(), targetPath: resolve(text(root)) })
+  if (!plan.ok) return mapManageError(plan.error ?? plan)
+  return { ok: true, plan: plan.value }
+}
+
+/** 执行导入：按计划落盘到目标库的标准目录（只新增不覆盖）。 */
+export async function importLibrary({ root, sourcePath }) {
+  const source = assertSourcePath(sourcePath)
+  if (!source.ok) return source
+  const report = projectImport.runImport({ sourcePath: text(sourcePath).trim(), targetPath: resolve(text(root)) })
+  if (!report.ok) return mapManageError(report.error ?? report)
+  return { ok: true, report: report.value }
+}

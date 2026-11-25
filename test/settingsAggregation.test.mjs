@@ -147,6 +147,25 @@ test('渲染：停用模块整卡带 mp-off 且控件 disabled；启用模块可
   assert.doesNotMatch(html, /data-module-id="comfyui"[^>]*disabled/u, '启用模块照常可编辑')
 })
 
+test('B4 设置页只给工作台启停卡，宿主组合面/内核件/套件不伪装成模块开关', () => {
+  const agg = aggregateSettings({
+    modules: [
+      { id: 'agentbar', name: 'Agent 栏', role: 'host-composition', settings: [] },
+      { id: 'library', name: '库管理', role: 'host-composition', settings: [] },
+      { id: 'deduce', name: '推演引擎', role: 'kernel', settings: [] },
+      { id: 'default-rules', name: '默认规则', role: 'suite', settings: [] },
+      { id: 'habits', name: '习惯', role: 'workbench', settings: [] }
+    ],
+    enabled: { agentbar: false, library: false, deduce: false, habits: true }
+  })
+  assert.deepEqual(agg.groups[1].modules.map((item) => item.id), ['habits'])
+  const html = renderSettingsModules(agg, { esc: (value) => String(value ?? '') })
+  assert.match(html, /data-module-id="habits"/u)
+  for (const id of ['agentbar', 'library', 'deduce', 'default-rules']) {
+    assert.doesNotMatch(html, new RegExp(`data-module-id="${id}"`, 'u'))
+  }
+})
+
 test('settings schema：类型闸只收四种，select 的值必须在 options 里', () => {
   assert.deepEqual(
     normalizeSettingsSchema([
@@ -255,7 +274,7 @@ test('旧键迁移：OS-146 起默认表为空——不再往库里写没有消�
   assert.equal(result.state.image.backend, 'comfyui', '旧数据原样保留，不删不改')
 })
 
-test('三个模块 manifest：settings 声明合法；OS-146 起不再有「改了不生效」的死设置项', () => {
+test('模块 manifest：settings 声明合法；kernel 禁止界面设置，OS-146 死配置不回潮', () => {
   const { manifests, warnings } = loadModuleManifests()
   assert.deepEqual(warnings, [])
   // OS-161 起模块清单按批扩大：已知模块必须全在，新增模块也走下面同一套 settings 校验。
@@ -263,6 +282,11 @@ test('三个模块 manifest：settings 声明合法；OS-146 起不再有「改�
     assert.ok(manifests.some((manifest) => manifest.id === id), `模块 ${id} 必须在清单`)
   }
   for (const manifest of manifests) {
+    if (manifest.class === 'kernel') {
+      assert.equal(Object.hasOwn(manifest, 'settings'), false, `${manifest.id} kernel 禁止界面设置字段`)
+      assert.equal(Object.hasOwn(manifest, 'settingsHint'), false, `${manifest.id} kernel 禁止界面指路字段`)
+      continue
+    }
     assert.ok(Array.isArray(manifest.settings), `${manifest.id} 的 settings 必须是数组`)
     for (const setting of manifest.settings) {
       assert.match(setting.key, /^[\w.]{1,40}$/u)
@@ -282,7 +306,7 @@ test('三个模块 manifest：settings 声明合法；OS-146 起不再有「改�
   // 死配置回归守卫：上一版这 7 个键界面可见但零消费者（生图＝agent-config / 知识库＝kb-config）
   const deadKeys = ['analyze.enabled', 'analyze.deAiThreshold', 'image.backend', 'image.comfyUrl', 'image.comfyWorkflow', 'image.comfyNodeMap', 'kb.baseUrl', 'kb.spaceId', 'kb.autoTest']
   for (const manifest of manifests) {
-    for (const setting of manifest.settings) {
+    for (const setting of manifest.settings ?? []) {
       assert.ok(!deadKeys.includes(setting.key), `${manifest.id}:${setting.key} 是死配置，不许回潮`)
     }
   }

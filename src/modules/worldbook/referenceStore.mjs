@@ -1,36 +1,36 @@
 /**
- * 参考（reference）载体（OS-44）——库内 `参考/` 目录的索引层。
+ * 世界书（reference）载体（OS-44）——库内 `世界书/` 目录的索引层。
  *
  * 设计口径（作者）：
- *   · 大纲/资料/构思/约束 统一为「参考」这一个载体，内置 Obsidian 式标签与双链
- *   · 标签体系是「复杂体系」：一篇参考可打多个标签，标签可自定义并带固定描述
- *   · 参考可关联其他参考，也可单向关联小说/剧本等产物
- *   · 小说与小说之间不构成参考关系——只有「参考 → 产物」这一个方向，
- *     确保参考资料不会反向污染正文的上下文
+ *   · 大纲/资料/构思/约束 统一为「世界书」这一个载体，内置 Obsidian 式标签与双链
+ *   · 标签体系是「复杂体系」：一篇世界书可打多个标签，标签可自定义并带固定描述
+ *   · 世界书可关联其他世界书，也可单向关联小说/剧本等产物
+ *   · 小说与小说之间不构成世界书关系——只有「世界书 → 产物」这一个方向，
+ *     确保世界书资料不会反向污染正文的上下文
  *
- * 为什么条目（拆解/*.json 的 fact）不搬进来：那是 deduceEngine / wikiDerive /
- * fact/curve 的唯一数据源，且没有写入端点。参考只能「链接」到条目，条目保持只读。
+ * 为什么条目（故事源/*.json 的 fact）不搬进来：那是 deduceEngine / wikiDerive /
+ * fact/curve 的唯一数据源，且没有写入端点。世界书只能「链接」到条目，条目保持只读。
  *
  * 索引不落盘：每次按需重建（本机库规模下毫秒级），避免维护两份真相。
  */
 import { existsSync } from 'node:fs'
 import { readdir, readFile, stat } from 'node:fs/promises'
 import { join, relative, sep } from 'node:path'
+import { namingEntry } from '../../protocol/naming.mjs'
 
-export const REFERENCE_DIR = '参考'
+export const REFERENCE_DIR = namingEntry('worldbook').dir
 export const TAG_NOTE_DIR = '标签'
 export const REFERENCE_EXTENSIONS = Object.freeze(['.md', '.markdown', '.txt'])
 
 /**
- * 旧目录迁入参考（OS-48）只认下面这些——动稿的口子必须收窄。
- * OS-164/G8b 裁定：世界书/ 是 Pinax 载体兼容输入，不再是无主旧目录——
- * 从载体导入后它的条目要能 absorb 进真正的笔记目录 参考/（落 参考/世界书/…）。
+ * 旧目录迁入世界书（OS-48）只认下面这些——动稿的口子必须收窄。
+ * 旧版载体目录已在开库时并入世界书，不再作为活目录重复吸收。
  * 日志只读、正文是主载体，仍不在迁移范围。
  */
 // OS-59 口径修正：规则类内容归「习惯」（习惯/habits.json），不再迁入世界书。
 // 所以旧目录里只有「创作型条目」类的才可吸收；约束（写作纪律这类规则）留在原地，
 // 由作者在习惯页签里录入，避免把规则混进世界书这个纯条目库。
-export const ABSORBABLE_DIRS = Object.freeze(['大纲', '构思', '资料', '世界书'])
+export const ABSORBABLE_DIRS = Object.freeze(['大纲', '构思', '资料'])
 
 /** 标签笔记的 frontmatter 标记（`kind: tag` 才算标签定义）。 */
 export const TAG_NOTE_KIND = 'tag'
@@ -86,7 +86,7 @@ export function extractInlineTags(source) {
 
 /**
  * frontmatter 解析（只认最小的 YAML 子集：`key: value`、flow 数组、块状数组）。
- * 不引 yaml 库——本仓零 npm，且参考笔记的 frontmatter 由我们自己写。
+ * 不引 yaml 库——本仓零 npm，且世界书笔记的 frontmatter 由我们自己写。
  */
 /**
  * OS-75：把 frontmatter 对象序列化回 YAML（只支持本仓用到的标量/flow 数组/块数组）。
@@ -227,7 +227,7 @@ async function walk(dir, base, out, depth = 0) {
   }
 }
 
-/** 参考标题：frontmatter.title → 首个 H1 → 文件名去扩展名。 */
+/** 世界书标题：frontmatter.title → 首个 H1 → 文件名去扩展名。 */
 function titleOf(frontmatter, body, relPath) {
   const fromMeta = text(frontmatter?.title).trim()
   if (fromMeta) return fromMeta
@@ -281,7 +281,7 @@ export function notesVisibleAt(notes, currentChapter) {
 }
 
 /**
- * 建参考索引。
+ * 建世界书索引。
  * @returns {Promise<{ok:true, notes:Array, tags:Array, tagNotes:Object, stats:Object}>}
  */
 export async function scanReferences(root, { currentChapter = null } = {}) {
@@ -378,11 +378,11 @@ export async function scanReferences(root, { currentChapter = null } = {}) {
 /**
  * 从索引构图。
  *
- * 单向原则：边只从「参考」出发指向产物。正文里的 `[[某参考]]` 只作为正文的出边，
- * 不会让参考反向拿到正文内容——这是作者要求的「参考不污染正文上下文」。
+ * 单向原则：边只从「世界书」出发指向产物。正文里的 `[[某世界书]]` 只作为正文的出边，
+ * 不会让世界书反向拿到正文内容——这是作者要求的「世界书不污染正文上下文」。
  *
  * 节点 kind：reference / chapter / artifact / entry（只读）/ tag
- * 边权照 Pinax worldbookFileContract 的口径：link=2、mention=min(n,3)、tag=1。
+ * 边权沿用历史 worldbookFileContract 的口径：link=2、mention=min(n,3)、tag=1。
  */
 export function buildReferenceGraph(index, { entries = [] } = {}) {
   const notes = Array.isArray(index?.notes) ? index.notes : []
@@ -407,7 +407,7 @@ export function buildReferenceGraph(index, { entries = [] } = {}) {
     edges.set(key, { a: left, b: right, weight, sources: [src] })
   }
 
-  // 参考节点
+  // 世界书节点
   for (const note of notes) {
     if (note.isTagNote) continue
     ensureNode(note.path, {
@@ -419,7 +419,7 @@ export function buildReferenceGraph(index, { entries = [] } = {}) {
     })
   }
 
-  // 标签节点 + 参考→标签边
+  // 标签节点 + 世界书→标签边
   for (const note of notes) {
     if (note.isTagNote) continue
     for (const tag of note.tags) {
@@ -432,7 +432,7 @@ export function buildReferenceGraph(index, { entries = [] } = {}) {
     }
   }
 
-  // 参考 ↔ 参考（双链）：只在参考之间双向，仍是「参考域内」
+  // 世界书 ↔ 世界书（双链）：只在世界书之间双向，仍是「世界书域内」
   const byTitle = new Map()
   for (const note of notes) {
     if (note.isTagNote) continue
@@ -469,14 +469,14 @@ export function buildReferenceGraph(index, { entries = [] } = {}) {
         addEdge(note.path, path, 'link', 2)
         continue
       }
-      // 参考互链（按标题或相对路径）
+      // 世界书互链（按标题或相对路径）
       const hit = byTitle.get(target) || byTitle.get(target.replace(/\.(?:md|markdown|txt)$/iu, ''))
       if (hit) addEdge(note.path, hit, 'link', 2)
     }
   }
 
-  // OS-104：全部拆解词条入图（不只是被 [[条目:id]] 链接到的）——
-  // 世界书第二来源（enrich/拆解产物）本身就是知识节点，图谱要能看见它们。
+  // OS-104：全部故事源词条入图（不只是被 [[条目:id]] 链接到的）——
+  // 世界书第二来源（enrich/故事源产物）本身就是知识节点，图谱要能看见它们。
   // 同一层的词条之间按 layer 连一条弱边（同域聚合），避免图谱全是孤点。
   {
     const layerBuckets = new Map()
@@ -525,8 +525,8 @@ export function buildReferenceGraph(index, { entries = [] } = {}) {
 }
 
 /**
- * 反链：哪些参考链接到了这篇笔记。
- * 只统计参考域内的入边——正文里的 [[...]] 不参与（单向原则）。
+ * 反链：哪些世界书链接到了这篇笔记。
+ * 只统计世界书域内的入边——正文里的 [[...]] 不参与（单向原则）。
  */
 export function backlinksOf(index, targetPath) {
   const notes = Array.isArray(index?.notes) ? index.notes : []
@@ -554,9 +554,9 @@ export function backlinksOf(index, targetPath) {
   return { linked, unlinked }
 }
 
-/* ---------- 旧目录迁入参考（OS-48）---------- */
+/* ---------- 旧目录迁入世界书（OS-48）---------- */
 
-/** 通用递归列文件（供迁移规划用；参考扫描的 walk 绑死了 参考/ 基目录）。 */
+/** 通用递归列文件（供迁移规划用；世界书扫描的 walk 绑死了 世界书/ 基目录）。 */
 async function walkPlain(dir, base, out, depth, fspImpl) {
   if (depth > 4) return
   let entries
@@ -580,7 +580,7 @@ async function walkPlain(dir, base, out, depth, fspImpl) {
 }
 
 /**
- * 迁移规划（OS-48）：列出「旧目录 → 参考/<原名>/」要搬哪些文件，目标已存在则记 skipped 不覆盖。
+ * 迁移规划（OS-48）：列出「旧目录 → 世界书/<原名>/」要搬哪些文件，目标已存在则记 skipped 不覆盖。
  * 只规划不落盘——真搬运由 daemon 路由编排（原子写目标 + 源文件进 .history），fsImpl 可注入便于单测。
  * @returns {{ ok: boolean, moves: {fromRel,toRel}[], skipped: {path,reason}[], dirs: string[] }}
  */

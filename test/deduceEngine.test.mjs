@@ -4,7 +4,7 @@
  */
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { deducePresent, deduceSettle, deduceStatePath, humanizeFateText, loadEntries } from '../src/modules/deduce/deduceEngine.mjs'
@@ -18,10 +18,10 @@ const ENTRIES = [
 async function makeFixture({ withEntries = true } = {}) {
   const base = await mkdtemp(join(tmpdir(), 'openstory-os29-'))
   const root = join(base, '夹具库')
-  await mkdir(join(root, '拆解'), { recursive: true })
-  await mkdir(join(root, '.pinax'), { recursive: true })
+  await mkdir(join(root, '故事源'), { recursive: true })
+  await mkdir(join(root, '.openstory'), { recursive: true })
   if (withEntries) {
-    await writeFile(join(root, '拆解', 'book-1.json'), JSON.stringify({
+    await writeFile(join(root, '故事源', 'book-1.json'), JSON.stringify({
       book: { id: 'book-1', title: '夹具书' },
       entries: ENTRIES,
       revision: 1
@@ -65,7 +65,7 @@ test('引擎：没有世界观条目＝WORLD_EMPTY 如实报（不伪造开局�
   const { base, root } = await makeFixture()
   try {
     // 覆盖为只有角色条目
-    await writeFile(join(root, '拆解', 'book-1.json'), JSON.stringify({
+    await writeFile(join(root, '故事源', 'book-1.json'), JSON.stringify({
       book: { id: 'book-1', title: '夹具书' },
       entries: [ENTRIES[1]],
       revision: 1
@@ -84,7 +84,7 @@ test('引擎：无条目库如实报缺事实包', async () => {
   try {
     const result = await deducePresent({ root, bookId: 'x' })
     assert.equal(result.ok, false)
-    assert.match(result.message, /拆解条目/)
+    assert.match(result.message, /故事源条目/)
   } finally {
     await rm(base, { recursive: true, force: true })
   }
@@ -117,6 +117,27 @@ test('引擎：结算选择——无会话 404；有会话时选择不抛', asyn
   }
 })
 
+
+test('规则包：会话保存校验后的规则；非法规则在开局前拒绝且不写会话', async () => {
+  const { base, root } = await makeFixture()
+  try {
+    const invalid = await deducePresent({ root, bookId: 'book-1', pov: '林砚', rules: { dice: { count: 0 } } })
+    assert.equal(invalid.ok, false)
+    assert.equal(invalid.code, 'INVALID_ENTRY')
+    const { access } = await import('node:fs/promises')
+    await assert.rejects(access(deduceStatePath(root, 'book-1')))
+    const custom = { dice: { count: 1, sides: 6, successThreshold: 4, label: '1d6' }, limits: { necessity: 2, fate: 1, drama: 2, mixed: 4, minimum: 2 } }
+    const first = await deducePresent({ root, bookId: 'book-1', pov: '林砚', seed: 7, rules: custom })
+    assert.equal(first.ok, true, first.message)
+    const saved = JSON.parse(await readFile(deduceStatePath(root, 'book-1'), 'utf8'))
+    assert.deepEqual(saved.rules, custom)
+    const continued = await deducePresent({ root, bookId: 'book-1', seed: 8 })
+    assert.equal(continued.ok, true, continued.message)
+    assert.ok(continued.candidates.some((candidate) => candidate.source === '命运' && candidate.text.includes('1d6')))
+  } finally {
+    await rm(base, { recursive: true, force: true })
+  }
+})
 
 test('命运候选文案人话化（OS-88）：骰点收尾、结论先行、可复现', () => {
   const ok = humanizeFateText({ a: 6, b: 2, sum: 8, success: true })

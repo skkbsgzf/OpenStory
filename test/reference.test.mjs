@@ -1,12 +1,12 @@
 /**
- * OS-44 参考载体用例（node:test）——标签 tokenizer / wikilink / frontmatter / 图谱边权。
+ * OS-44 世界书载体用例（node:test）——标签 tokenizer / wikilink / frontmatter / 图谱边权。
  *
  * 标签解析严格照 Obsidian 的口径（从本机 obsidian.asar 逆出的正则），
  * 这些用例是那套行为的钉子：谁改坏了，这里先红。
  */
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
@@ -22,11 +22,11 @@ import {
   scanReferences
 } from '../src/modules/worldbook/referenceStore.mjs'
 
-/** 夹具：临时参考库（OS-96 用例）。 */
+/** 夹具：临时世界书库（OS-96 用例）。 */
 async function makeRefRoot() {
   const base = await mkdtemp(join(tmpdir(), 'openstory-os96-'))
   const root = join(base, '夹具库')
-  await mkdir(join(root, '参考'), { recursive: true })
+  await mkdir(join(root, '世界书'), { recursive: true })
   return { base, root }
 }
 
@@ -107,11 +107,11 @@ test('双链：代码块里的不解析', () => {
 
 /* ---------- 图谱 ---------- */
 
-test('图谱：参考→标签边，标签节点按 / 拆层计数', () => {
+test('图谱：世界书→标签边，标签节点按 / 拆层计数', () => {
   const index = {
     notes: [
-      { path: '参考/林砚.md', rel: '林砚.md', title: '林砚', tags: ['人物', '人物/主角'], links: [], excerpt: '', chars: 100 },
-      { path: '参考/渡口.md', rel: '渡口.md', title: '渡口', tags: ['人物'], links: [], excerpt: '', chars: 50 }
+      { path: '世界书/林砚.md', rel: '林砚.md', title: '林砚', tags: ['人物', '人物/主角'], links: [], excerpt: '', chars: 100 },
+      { path: '世界书/渡口.md', rel: '渡口.md', title: '渡口', tags: ['人物'], links: [], excerpt: '', chars: 50 }
     ],
     tags: [],
     tagNotes: {}
@@ -123,10 +123,10 @@ test('图谱：参考→标签边，标签节点按 / 拆层计数', () => {
   assert.equal(graph.edges.filter((edge) => edge.sources.includes('tag')).length, 3)
 })
 
-test('图谱：参考→正文产物是单向边', () => {
+test('图谱：世界书→正文产物是单向边', () => {
   const index = {
     notes: [{
-      path: '参考/渡口钟声.md', rel: '渡口钟声.md', title: '渡口钟声',
+      path: '世界书/渡口钟声.md', rel: '渡口钟声.md', title: '渡口钟声',
       tags: [], links: [{ target: '正文/003-倒带.md' }], excerpt: '', chars: 10
     }],
     tags: [],
@@ -136,7 +136,7 @@ test('图谱：参考→正文产物是单向边', () => {
   const edge = graph.edges.find((item) => item.sources.includes('link'))
   assert.ok(edge, '应该有 link 边')
   // 边是无向存储（a<b 排序），两端要正好是这两个节点，且来源只有一条
-  assert.deepEqual([edge.a, edge.b].sort(), ['参考/渡口钟声.md', '正文/003-倒带.md'].sort())
+  assert.deepEqual([edge.a, edge.b].sort(), ['世界书/渡口钟声.md', '正文/003-倒带.md'].sort())
   assert.equal(edge.sources.length, 1)
   assert.equal(edge.sources[0], 'link')
   // 产物节点是只读的，且没有任何「来自正文」的边源
@@ -148,7 +148,7 @@ test('图谱：参考→正文产物是单向边', () => {
 test('图谱：条目作为只读节点', () => {
   const index = {
     notes: [{
-      path: '参考/林砚身世.md', rel: '林砚身世.md', title: '林砚身世',
+      path: '世界书/林砚身世.md', rel: '林砚身世.md', title: '林砚身世',
       tags: [], links: [{ target: '条目:c1' }], excerpt: '', chars: 10
     }],
     tags: [],
@@ -162,11 +162,11 @@ test('图谱：条目作为只读节点', () => {
   assert.equal(entryNode.label, '林砚')
 })
 
-test('图谱：参考互链按标题匹配', () => {
+test('图谱：世界书互链按标题匹配', () => {
   const index = {
     notes: [
-      { path: '参考/甲.md', rel: '甲.md', title: '甲', tags: [], links: [{ target: '乙' }], excerpt: '', chars: 1 },
-      { path: '参考/乙.md', rel: '乙.md', title: '乙', tags: [], links: [], excerpt: '', chars: 1 }
+      { path: '世界书/甲.md', rel: '甲.md', title: '甲', tags: [], links: [{ target: '乙' }], excerpt: '', chars: 1 },
+      { path: '世界书/乙.md', rel: '乙.md', title: '乙', tags: [], links: [], excerpt: '', chars: 1 }
     ],
     tags: [],
     tagNotes: {}
@@ -174,7 +174,7 @@ test('图谱：参考互链按标题匹配', () => {
   const graph = buildReferenceGraph(index)
   const edge = graph.edges.find((item) => item.sources.includes('link'))
   assert.ok(edge)
-  assert.deepEqual([edge.a, edge.b].sort(), ['参考/乙.md', '参考/甲.md'].sort())
+  assert.deepEqual([edge.a, edge.b].sort(), ['世界书/乙.md', '世界书/甲.md'].sort())
 })
 
 /* ---------- 扫描与反链 ---------- */
@@ -194,11 +194,11 @@ test('扫描：目录不存在时诚实返回 exists:false', async () => {
 test('扫描：读标签/链接/标题/摘要，标签笔记带描述', async () => {
   const base = await mkdtemp(join(tmpdir(), 'openstory-ref-'))
   const root = join(base, '库')
-  await mkdir(join(root, '参考', '人物'), { recursive: true })
-  await mkdir(join(root, '参考', '标签'), { recursive: true })
-  await writeFile(join(root, '参考', '人物', '林砚.md'),
+  await mkdir(join(root, '世界书', '人物'), { recursive: true })
+  await mkdir(join(root, '世界书', '标签'), { recursive: true })
+  await writeFile(join(root, '世界书', '人物', '林砚.md'),
     '---\ntags: [人物]\n---\n\n# 林砚\n\n雾港的摆渡人。 #主主角 见 [[渡口钟声]]\n', 'utf-8')
-  await writeFile(join(root, '参考', '标签', '伏笔.md'),
+  await writeFile(join(root, '世界书', '标签', '伏笔.md'),
     '---\nkind: tag\ntag: 伏笔\ndescription: 埋下但尚未回收的线索\ncolor: amber\n---\n\n', 'utf-8')
   try {
     const index = await scanReferences(root)
@@ -222,13 +222,13 @@ test('扫描：读标签/链接/标题/摘要，标签笔记带描述', async ()
 test('反链：已链接与未链接分段', async () => {
   const base = await mkdtemp(join(tmpdir(), 'openstory-ref-'))
   const root = join(base, '库')
-  await mkdir(join(root, '参考'), { recursive: true })
-  await writeFile(join(root, '参考', '目标.md'), '# 雾港规则\n\n规则正文\n', 'utf-8')
-  await writeFile(join(root, '参考', '甲的笔记.md'), '见 [[雾港规则]] 这条\n', 'utf-8')
-  await writeFile(join(root, '参考', '乙的笔记.md'), '我记得雾港规则里有这一条\n', 'utf-8')
+  await mkdir(join(root, '世界书'), { recursive: true })
+  await writeFile(join(root, '世界书', '目标.md'), '# 雾港规则\n\n规则正文\n', 'utf-8')
+  await writeFile(join(root, '世界书', '甲的笔记.md'), '见 [[雾港规则]] 这条\n', 'utf-8')
+  await writeFile(join(root, '世界书', '乙的笔记.md'), '我记得雾港规则里有这一条\n', 'utf-8')
   try {
     const index = await scanReferences(root)
-    const backlinks = backlinksOf(index, '参考/目标.md')
+    const backlinks = backlinksOf(index, '世界书/目标.md')
     assert.equal(backlinks.linked.length, 1, '甲建了链')
     assert.equal(backlinks.linked[0].title, '甲的笔记')
     assert.equal(backlinks.unlinked.length, 1, '乙只是提到了')
@@ -240,19 +240,19 @@ test('反链：已链接与未链接分段', async () => {
 
 /* ---------- 系统提示：只给链接不给全文（OS-45 作者口径） ---------- */
 
-test('系统提示：参考只暴露路径/标题/标签，正文一个字都不进上下文', async () => {
+test('系统提示：世界书只暴露路径/标题/标签，正文一个字都不进上下文', async () => {
   const { __test } = await import('../src/host/daemon.mjs')
   const base = await mkdtemp(join(tmpdir(), 'openstory-refprompt-'))
   const root = join(base, '库')
-  await mkdir(join(root, '参考'), { recursive: true })
+  await mkdir(join(root, '世界书'), { recursive: true })
   // 独一无二的句子，用来探测是否泄漏
-  await writeFile(join(root, '参考', '渡口钟声.md'),
+  await writeFile(join(root, '世界书', '渡口钟声.md'),
     '---\ntags: [道具, 伏笔]\n---\n\n# 渡口钟声\n\n这是秘密句子XYZQ，钟只在雾起时响。\n', 'utf-8')
   try {
     const bundle = await __test.systemPromptFor(root, [], [], [], { canReadFiles: true })
     const prompt = bundle.prompt
     // ① 路径与标题要给（Agent 靠它去读）
-    assert.ok(prompt.includes('参考/渡口钟声.md'), '要给路径')
+    assert.ok(prompt.includes('世界书/渡口钟声.md'), '要给路径')
     assert.ok(prompt.includes('渡口钟声'), '要给标题')
     assert.ok(prompt.includes('#道具'), '要给标签')
     // ② 正文一个字都不能有（这是作者明确要求：不可全量丢上下文）
@@ -260,7 +260,7 @@ test('系统提示：参考只暴露路径/标题/标签，正文一个字都不
     assert.ok(!prompt.includes('钟只在雾起时响'), '摘要也不能进上下文')
     // ③ 要明确告诉它「自己用工具读」
     assert.match(prompt, /文件读取工具/u)
-    assert.match(prompt, /不要一次读一堆参考/u)
+    assert.match(prompt, /不要一次读一堆世界书/u)
     // ④ 只读约束
     assert.match(prompt, /只能读/u)
   } finally {
@@ -268,26 +268,26 @@ test('系统提示：参考只暴露路径/标题/标签，正文一个字都不
   }
 })
 
-/* ---------- 旧目录迁入参考（OS-48）：规划层单测，真搬运由 daemon 编排 ---------- */
+/* ---------- 旧目录迁入世界书（OS-48）：规划层单测，真搬运由 daemon 编排 ---------- */
 
 test('迁移规划：列文件算目标路径，子目录递归，目标冲突跳过', async () => {
   const base = await mkdtemp(join(tmpdir(), 'openstory-absorb-'))
   const root = join(base, '库')
   await mkdir(join(root, '大纲'), { recursive: true })
   await mkdir(join(root, '资料', '世界书辅助'), { recursive: true })
-  await mkdir(join(root, '参考', '大纲'), { recursive: true })
+  await mkdir(join(root, '世界书', '大纲'), { recursive: true })
   await writeFile(join(root, '大纲', '001-主线.md'), '主线\n', 'utf-8')
   await writeFile(join(root, '大纲', '草稿.txt'), 'txt 也算\n', 'utf-8')
   await writeFile(join(root, '资料', '世界书辅助', '港口.md'), '港口设定\n', 'utf-8')
-  await writeFile(join(root, '参考', '大纲', '001-主线.md'), '已有内容\n', 'utf-8')
+  await writeFile(join(root, '世界书', '大纲', '001-主线.md'), '已有内容\n', 'utf-8')
   try {
     const planned = await absorbLegacyDirs(root, ['大纲', '资料'])
     assert.equal(planned.ok, true)
-    // 大纲/001-主线.md 与参考冲突 → skip；其余照搬（txt 在参考扩展名白名单内）
+    // 大纲/001-主线.md 与世界书冲突 → skip；其余照搬（txt 在世界书扩展名白名单内）
     assert.equal(planned.moves.length, 2)
     const port = planned.moves.find((item) => item.fromRel === '资料/世界书辅助/港口.md')
     assert.ok(port, '子目录文件也要搬')
-    assert.equal(port.toRel, '参考/资料/世界书辅助/港口.md')
+    assert.equal(port.toRel, '世界书/资料/世界书辅助/港口.md')
     assert.ok(planned.moves.some((item) => item.fromRel === '大纲/草稿.txt'))
     assert.equal(planned.skipped.length, 1)
     assert.equal(planned.skipped[0].path, '大纲/001-主线.md')
@@ -306,13 +306,14 @@ test('迁移规划：白名单外的目录一律拒绝（动稿口子收窄）',
     assert.equal(bad.moves.length, 0)
     const none = await absorbLegacyDirs(join(base, '库'), [])
     assert.equal(none.ok, false)
-    // OS-164/G8b 合法更新：世界书/ 从「白名单外」升为 Pinax 载体兼容输入
-    const legacy = join(base, '库', '世界书')
-    await mkdir(legacy, { recursive: true })
-    await writeFile(join(legacy, '林冲.md'), '载体条目\n', 'utf-8')
+    // OS-172：世界书/ 已是正式载体目录，不在旧目录吸收白名单内。
+    const current = join(base, '库', '世界书')
+    await mkdir(current, { recursive: true })
+    await writeFile(join(current, '林冲.md'), '载体条目\n', 'utf-8')
     const planned = await absorbLegacyDirs(join(base, '库'), ['世界书'])
-    assert.equal(planned.ok, true)
-    assert.equal(planned.moves[0].toRel, '参考/世界书/林冲.md')
+    assert.equal(planned.ok, false)
+    assert.deepEqual(planned.moves, [])
+    assert.equal(await readFile(join(current, '林冲.md'), 'utf-8'), '载体条目\n')
   } finally {
     await rm(base, { recursive: true, force: true })
   }
@@ -321,8 +322,8 @@ test('迁移规划：白名单外的目录一律拒绝（动稿口子收窄）',
 test('首次出现章节（OS-96）：firstChapter 解析＋notesVisibleAt 过滤', async () => {
   const { base, root } = await makeRefRoot()
   try {
-    await writeFile(join(root, '参考', '共识.md'), '---\nkind: note\n---\n开篇就成立的世界常识。', 'utf-8')
-    await writeFile(join(root, '参考', '后传.md'), '---\nkind: note\nfirstChapter: 12\n---\n第十二章才发生的事。', 'utf-8')
+    await writeFile(join(root, '世界书', '共识.md'), '---\nkind: note\n---\n开篇就成立的世界常识。', 'utf-8')
+    await writeFile(join(root, '世界书', '后传.md'), '---\nkind: note\nfirstChapter: 12\n---\n第十二章才发生的事。', 'utf-8')
     const index = await scanReferences(root)
     const visible5 = notesVisibleAt(index.notes, 5)
     const visible20 = notesVisibleAt(index.notes, 20)

@@ -5,7 +5,7 @@
  */
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync, existsSync, statSync } from 'node:fs'
+import { readFileSync, existsSync } from 'node:fs'
 import { isAbsolute, join, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { resolveEmbeddingPaths, resolveRepoRoot } from '../src/services/embeddingPaths.mjs'
@@ -21,14 +21,19 @@ test('纯函数：任意仓根 → 缓存目录与 transformers 发行目录，�
   assert.doesNotThrow(() => resolveEmbeddingPaths('Z:/no-such-repo'))
 })
 
-test('真实仓：resolveRepoRoot 指向仓根（package.json 所在目录），解析路径指向仓内真实存在的目录', () => {
+test('真实仓：resolveRepoRoot 指向仓根，路径按仓根推导（不依赖真实下载物）', () => {
+  // OS-169：clean checkout 里 .cache/models 与 @xenova/transformers/dist 都还不存在，
+  // 断言「真实存在」会让没下过模型的机器红——这里只钉路径推导结果，下载物归运行时。
   const repoRoot = resolveRepoRoot()
   assert.equal(existsSync(join(repoRoot, 'package.json')), true)
   const paths = resolveEmbeddingPaths(repoRoot)
+  assert.deepEqual(paths, {
+    cacheDir: join(repoRoot, '.cache', 'models'),
+    transformersDist: join(repoRoot, 'node_modules', '@xenova', 'transformers', 'dist')
+  })
   for (const [name, path] of Object.entries(paths)) {
     assert.equal(path.startsWith(repoRoot + sep), true, `${name} 应在仓内：${path}`)
-    assert.equal(existsSync(path), true, `${name} 应真实存在：${path}`)
-    assert.equal(statSync(path).isDirectory(), true, `${name} 应是目录：${path}`)
+    assert.equal(isAbsolute(path), true, `${name} 应是绝对路径：${path}`)
   }
 })
 

@@ -18,8 +18,8 @@ import { createHash } from 'node:crypto'
 import {
   validateFactEntry,
   isWorldviewEntry
-} from '../src/kernel/fact/domain/schema.js'
-import { stableEntryId, sha1Hex } from '../src/kernel/fact/domain/stableId.js'
+} from '../src/modules/fact/fact/domain/schema.js'
+import { stableEntryId, sha1Hex } from '../src/modules/fact/fact/domain/stableId.js'
 import {
   isActiveAt,
   intersectValidity,
@@ -28,13 +28,13 @@ import {
   validityBounds,
   validityFromSpan,
   validateValidityShape
-} from '../src/kernel/fact/domain/validity.js'
+} from '../src/modules/fact/fact/domain/validity.js'
 import {
   canTransitionStatus,
   validateStatusTransition,
   transitionEntryStatus
-} from '../src/kernel/fact/domain/status.js'
-import * as domain from '../src/kernel/fact/domain/index.mjs'
+} from '../src/modules/fact/fact/domain/status.js'
+import * as domain from '../src/modules/fact/fact/domain/index.mjs'
 
 /* ---------- 三层样本（worldview／character／plot） ---------- */
 

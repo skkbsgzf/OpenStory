@@ -22,8 +22,8 @@ const ENTRY = {
 async function makeLibrary() {
   const base = await mkdtemp(join(tmpdir(), 'os162-exchange-'))
   const root = join(base, '夹具库')
-  await mkdir(join(root, '.pinax'), { recursive: true })
-  await mkdir(join(root, '拆解'), { recursive: true })
+  await mkdir(join(root, '.openstory'), { recursive: true })
+  await mkdir(join(root, '故事源'), { recursive: true })
   const preferencesPath = join(base, 'libraries.json')
   await writeFile(preferencesPath, JSON.stringify({ recentProjects: [{ path: root, name: '夹具库' }] }), 'utf-8')
   return { base, root, preferencesPath }
@@ -43,7 +43,7 @@ async function digest(path) {
 test('导入：dryRun 不落盘；真写核对 fact 文件；重复导入与 factEntriesImport 同幂等/revision 语义', async () => {
   const { base, root, preferencesPath } = await makeLibrary()
   const { daemon, origin, q } = await start(base, preferencesPath, root)
-  const factPath = join(root, '拆解', 'shuihu.json')
+  const factPath = join(root, '故事源', 'shuihu.json')
   const call = (dryRun) => fetch(`${origin}/api/exchange/import`, {
     method: 'POST', headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ root, bookId: 'shuihu', format: 'pedia/v1', text: JSON.stringify(ENTRY), dryRun })
@@ -81,7 +81,7 @@ test('导入：dryRun 不落盘；真写核对 fact 文件；重复导入与 fac
 test('导出：fact→pedia 返回丢失清单，不落盘时 fact 的 mtime 与内容哈希都不变', async () => {
   const { base, root, preferencesPath } = await makeLibrary()
   const { daemon, origin } = await start(base, preferencesPath, root)
-  const factPath = join(root, '拆解', 'shuihu.json')
+  const factPath = join(root, '故事源', 'shuihu.json')
   const beforeHash = await (await fetch(`${origin}/api/exchange/import`, {
     method: 'POST', headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ root, bookId: 'shuihu', format: 'pedia/v1', text: JSON.stringify({
@@ -104,13 +104,13 @@ test('导出：fact→pedia 返回丢失清单，不落盘时 fact 的 mtime 与
   assert.equal(after.mtimeMs, before.mtimeMs, '导出不改 fact mtime')
   assert.equal(await digest(factPath), hashBefore, '导出不改 fact 内容')
 
-  // save=true 存到库内「导出/」，走宿主写协议，fact 仍不动
+  // save=true 存到库内「导入导出/」，走宿主写协议，fact 仍不动
   const saved = await (await fetch(`${origin}/api/exchange/export`, {
     method: 'POST', headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ root, bookId: 'shuihu', format: 'jsonl', save: true })
   })).json()
   assert.equal(saved.ok, true)
-  assert.match(saved.file, /^导出\//u)
+  assert.match(saved.file, /^导入导出\//u)
   assert.ok(await digest(join(root, saved.file)), '导出文件落盘')
   assert.equal(await digest(factPath), hashBefore, '存盘导出也不碰 fact')
   await daemon.close()
@@ -119,7 +119,7 @@ test('导出：fact→pedia 返回丢失清单，不落盘时 fact 的 mtime 与
 
 test('停用：两端点回 MODULE_DISABLED，启用恢复', async () => {
   const { base, root, preferencesPath } = await makeLibrary()
-  await writeFile(join(root, '.pinax', 'ui-state.json'), JSON.stringify({ modules: { enabled: { exchange: false } } }), 'utf-8')
+  await writeFile(join(root, '.openstory', 'ui-state.json'), JSON.stringify({ modules: { enabled: { exchange: false } } }), 'utf-8')
   const { daemon, origin } = await start(base, preferencesPath, root)
   try {
     for (const path of ['exchange/import', 'exchange/export']) {
@@ -130,7 +130,7 @@ test('停用：两端点回 MODULE_DISABLED，启用恢复', async () => {
       assert.equal(res.status, 409)
       assert.equal((await res.json()).error.code, 'MODULE_DISABLED')
     }
-    await writeFile(join(root, '.pinax', 'ui-state.json'), JSON.stringify({ modules: { enabled: { exchange: true } } }), 'utf-8')
+    await writeFile(join(root, '.openstory', 'ui-state.json'), JSON.stringify({ modules: { enabled: { exchange: true } } }), 'utf-8')
     const ok = await (await fetch(`${origin}/api/exchange/import`, {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ root, bookId: 'shuihu', format: 'pedia/v1', text: JSON.stringify(ENTRY), dryRun: true })

@@ -10,13 +10,14 @@
  */
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { mkdir, readFile } from 'node:fs/promises'
-import { dirname, join, resolve } from 'node:path'
+import { basename, dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { atomicWriteFile } from '../protocol/hostWrite.mjs'
 import { loadSkills } from './skills.mjs'
 import { readAppVersion, minVersionGate } from '../protocol/versionGate.mjs'
 import { resolveSuiteDependencies } from '../protocol/dependencyGraph.mjs'
 import { courtyardPath } from '../protocol/courtyard.mjs'
+import { MODULE_SPEC, validateModuleManifest } from '../protocol/modules.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 /** OS-140 布局归一：本模块迁到 src/services/——货架数据目录（suites/）仍在仓根。 */
@@ -80,6 +81,30 @@ function normalizeSettingsSchema(rawSettings, bad) {
 }
 
 const ASSET_ENTRY = /^[\w\u4e00-\u9fff][\w\u4e00-\u9fff. -]{0,60}\.(?:html?|mjs|js|css|json)$/u
+/** module@2 suite 禁带可执行代码（含内联脚本 HTML）——legacy page 模式除外。 */
+const SUITE_EXECUTABLE = /\.(?:mjs|cjs|js|wasm|sh|ps1|bat|cmd)$/iu
+
+function findExecutableInSuite(dir) {
+  let entries = []
+  try {
+    entries = readdirSync(dir, { recursive: true, withFileTypes: true })
+  } catch {
+    return null
+  }
+  for (const item of entries) {
+    if (!item.isFile()) continue
+    const full = join(item.parentPath ?? dir, item.name)
+    if (SUITE_EXECUTABLE.test(item.name)) return full
+    if (/\.html?$/iu.test(item.name)) {
+      try {
+        if (/<script\b/iu.test(readFileSync(full, 'utf8'))) return full
+      } catch {
+        return null
+      }
+    }
+  }
+  return null
+}
 
 /**
  * 服务白名单（OS-129，学 @open-design/plugin-runtime 的 KNOWN_CAPABILITIES）：
@@ -151,11 +176,74 @@ function normalizeCapabilities(raw, dir, bad) {
   return { ok: true, capabilities: caps, ...(warnings.length ? { warnings } : {}) }
 }
 
+/**
+ * D3：套件统一 manifest——`openstory-module@2` class:suite 逐项过同一张矩阵，
+ * 再折叠成货架内部形状（settings 只允许 schema；entries 必须落在套件目录内）。
+ * 仍走 `openstory-suite@1/@2` 的 page 模式属于 legacy 孤岛，不贴新协议标签。
+ */
+function normalizeModuleSuite(raw, { source, dir, appVersion }) {
+  const where = `${source}·${text(dir)}`
+  const bad = (code, message) => ({ ok: false, warning: { code, dir: where, message: `${message}：${where}` } })
+  const suiteDir = resolve(text(dir))
+  const validated = validateModuleManifest(raw, { dirName: basename(suiteDir), stage: 'C' })
+  if (!validated.ok) return bad('SUITE_MODULE_SHAPE', validated.errors.join('；'))
+  const manifest = validated.manifest
+  const extraWarnings = []
+  if (manifest.builtin !== (source === '内置')) {
+    return bad('SUITE_BUILTIN_MISMATCH', `builtin 必须与装载源一致（${source}）`)
+  }
+  const gate = minVersionGate(manifest.minOpenStoryVersion, appVersion ?? readAppVersion(), { prefix: 'SUITE', label: '套件', where })
+  if (gate.skip) return bad('SUITE_MIN_VERSION', gate.message)
+  if (gate.warning) extraWarnings.push(gate.warning)
+  for (const [supply, entry] of Object.entries(manifest.entries)) {
+    const normalized = text(entry).replaceAll('\\', '/').replace(/^\.\//u, '')
+    const segments = normalized.split('/')
+    if (normalized.startsWith('/') || /^[a-zA-Z]:\//u.test(normalized)
+      || segments.some((part) => !part || part === '.' || part === '..')) {
+      return bad('SUITE_ENTRY_INVALID', `entries.${supply} 越出套件目录：${entry}`)
+    }
+    if (!existsSync(join(suiteDir, ...segments))) {
+      return bad('SUITE_ENTRY_MISSING', `entries.${supply} 指向的文件不在套件目录里：${entry}`)
+    }
+  }
+  const executable = findExecutableInSuite(suiteDir)
+  if (executable) {
+    return bad('SUITE_EXECUTABLE_CODE', `套件只许数据与说明，不得携带可执行代码：${executable.slice(suiteDir.length + 1)}`)
+  }
+  const settings = manifest.settings ?? []
+  return {
+    ok: true,
+    suite: {
+      id: manifest.id,
+      name: manifest.name,
+      version: manifest.version,
+      vendor: source === '内置' ? 'OpenStory' : '本机',
+      description: manifest.description,
+      domains: [],
+      ...(manifest.deps.length ? { requires: manifest.deps } : {}),
+      capabilities: {
+        settings: settings.length ? { mode: 'schema', schema: settings } : { mode: 'none' },
+        pages: [],
+        services: []
+      },
+      supplies: manifest.supplies,
+      entries: manifest.entries,
+      appliesTo: manifest.appliesTo,
+      builtin: manifest.builtin,
+      ...(manifest.minOpenStoryVersion ? { minOpenStoryVersion: manifest.minOpenStoryVersion } : {}),
+      source,
+      dir: suiteDir
+    },
+    ...(extraWarnings.length ? { warnings: extraWarnings } : {})
+  }
+}
+
 /** 单套件规整：spec（@2 能力声明／@1 兼容）逐项把门，问题随 warning 报。 */
 export function normalizeSuite(raw, { source, dir, appVersion } = {}) {
   const where = `${source}·${text(dir)}`
   const bad = (code, message) => ({ ok: false, warning: { code, dir: where, message: `${message}：${where}` } })
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return bad('SUITE_SHAPE', 'manifest 不是对象')
+  if (text(raw.spec).trim() === MODULE_SPEC) return normalizeModuleSuite(raw, { source, dir, appVersion })
   const spec = text(raw.schemaVersion).trim()
   if (spec !== SUITE_SPEC && spec !== SUITE_SPEC_LEGACY) {
     return bad('SUITE_SPEC', `schemaVersion 必须是 ${SUITE_SPEC}（或兼容 ${SUITE_SPEC_LEGACY}）`)
@@ -261,6 +349,30 @@ export function loadSuites(dirs = []) {
     for (const suite of scanSuiteDir(dir, source, warnings)) byId.set(suite.id, suite)
   })
   return { suites: [...byId.values()], warnings }
+}
+
+/** 已升格为 module@2 的套件清单（供能力图/装载器消费；legacy page 模式不在内）。 */
+export function loadSuiteCapabilityManifests(dirs = []) {
+  const byId = new Map()
+  dirs.forEach((dir, index) => {
+    for (const suite of scanSuiteDir(dir, index === 0 ? '内置' : '本机', [])) byId.set(suite.id, suite)
+  })
+  return Object.freeze([...byId.values()].filter((suite) => Array.isArray(suite.supplies)).map((suite) => Object.freeze({
+    spec: MODULE_SPEC,
+    id: suite.id,
+    name: suite.name,
+    version: suite.version,
+    class: 'suite',
+    builtin: suite.builtin === true,
+    ...(suite.description ? { description: suite.description } : {}),
+    supplies: Object.freeze([...suite.supplies]),
+    entries: Object.freeze({ ...suite.entries }),
+    appliesTo: Object.freeze(suite.appliesTo.map((item) => Object.freeze({ ...item }))),
+    deps: Object.freeze([...(suite.requires ?? [])]),
+    ...(suite.capabilities.settings.mode === 'schema'
+      ? { settings: Object.freeze(suite.capabilities.settings.schema.map((item) => Object.freeze({ ...item }))) }
+      : {})
+  })))
 }
 
 /* ---------- 套件状态（enabled＋values，库级优先＋机器级缺省）---------- */

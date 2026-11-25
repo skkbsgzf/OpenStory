@@ -23,7 +23,7 @@ function makeLibrary({ withFact = false } = {}) {
   writeFileSync(join(root, '正文', '002-转折.md'), '第二章正文：沈岚决定买房。', 'utf8')
 
   if (withFact) {
-    mkdirSync(join(root, '拆解'), { recursive: true })
+    mkdirSync(join(root, '故事源'), { recursive: true })
     // 真实格式（factFileStore.readFactDir 的口径）：顶层 {book, entries[]}。
     // 早先按 {current:{entries}} 造夹具是错的——那会让 store.list 静默返回空表。
     const dataset = {
@@ -63,7 +63,7 @@ function makeLibrary({ withFact = false } = {}) {
         }
       ]
     }
-    writeFileSync(join(root, '拆解', 'test-book.json'), JSON.stringify(dataset, null, 1), 'utf8')
+    writeFileSync(join(root, '故事源', 'test-book.json'), JSON.stringify(dataset, null, 1), 'utf8')
   }
   return root
 }

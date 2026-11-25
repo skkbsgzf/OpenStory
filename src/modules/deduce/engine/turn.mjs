@@ -10,7 +10,7 @@ import { buildSceneContext } from './sceneContext.mjs'
 import { braidFronts, advanceFront, pendingTriggers, tensionReading, tensionText, tickIdleFronts, touchFront, resolveFront } from './fronts.mjs'
 
 /** 呈现一拍：局面卡（who/where/张力/钩子 四字段简笔）＋ 2–4 个混合候选。 */
-export async function presentTurn({ state, entries, pov, llmPort, seed, seedPrompt, span, extraKnown } = {}) {
+export async function presentTurn({ state, entries, pov, llmPort, seed, seedPrompt, span, extraKnown, rules } = {}) {
   const begin = state.round + 1
   state.log.push({ round: begin, kind: 'round-begin' })
   state.round = begin
@@ -31,7 +31,7 @@ export async function presentTurn({ state, entries, pov, llmPort, seed, seedProm
   const braided = braidFronts(state.fronts, context.openHypotheses, { round: state.round })
   if (braided.length) pushLog(state, 'fronts-braid', { created: braided.map((item) => ({ id: item.id, name: item.name })) })
   const { candidates, rng, sceneContext } = await generateCandidates({
-    entries, state, pov, llmPort, seed, seedPrompt, sceneContext: context
+    entries, state, pov, llmPort, seed, seedPrompt, sceneContext: context, rules
   })
   const pack = buildSceneCard({ sceneContext, pov, candidates, seed: rng, fronts: state.fronts })
   return {

@@ -53,8 +53,8 @@ export const pluginsEndpoints = {
     // blocked/missingDependencies 由版本闸与依赖闸填充（未落地时是安全空值）。
     // OS-145：modules＝工作面模块插件清单（manifest 的 id/name/description/pages/settings），
     // 设置页「模块」组按它渲染自报设置项；启停状态仍按库内 ui-state 判定（不在响应里写死）。
-    request: { query: {} },
-    response: { ok: 'true', plugins: 'array', byKind: 'object', stats: 'object', modules: 'array?', warnings: 'array?' },
+    request: { query: { root: 'string?' } },
+    response: { ok: 'true', plugins: 'array', byKind: 'object', stats: 'object', modules: 'array?', moduleManifestWarnings: 'array?', moduleManifestNotices: 'array?', moduleSourceGroups: 'object?', capabilityReport: 'object?', warnings: 'array?' },
     errors: []
   },
 

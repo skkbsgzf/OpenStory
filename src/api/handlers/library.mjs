@@ -11,8 +11,7 @@ import { basename } from 'node:path'
 import { API_ERROR_CODES, validateResponse } from '../contracts.mjs'
 import { sendError, sendJson, text } from '../../host/http.mjs'
 import { authorizeRoot, canonicalRoot, rootKey } from '../../host/authorize.mjs'
-import { importPinaxLibraries, inspectPinaxLibraries } from '../../protocol/libraryManifest.mjs'
-import { createLibrary, diagnoseLibrary, importLibrary, scanLibrary, setPrimaryCarrier } from '../../modules/library/libraryManage.mjs'
+import { createLibrary, diagnoseLibrary, importLibrary, scanLibrary, setPrimaryCarrier } from '../../host/libraryManage.mjs'
 
 /** --root 显式授权的库不在 recentProjects 里时也上屏，作者才能点得到。 */
 function mergeLibraryRoots(libraries, extraRoots) {
@@ -54,13 +53,17 @@ export async function libraryDiagnose(ctx) {
   if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
   const diagnosed = await diagnoseLibrary(authorized.root)
   if (!diagnosed.ok) return sendError(res, diagnosed.code ?? API_ERROR_CODES.INVALID_ENTRY, diagnosed.message)
+  if (ctx.libraryUpgrade?.upgraded) {
+    diagnosed.shape.upgrade = ctx.libraryUpgrade.report
+    diagnosed.verdict.detail += `；已一次性升级，冲突 ${ctx.libraryUpgrade.report.conflicts.length} 项，备份 ${ctx.libraryUpgrade.report.backup}`
+  }
   return sendJson(res, 200, { ok: true, shape: diagnosed.shape, verdict: diagnosed.verdict })
 }
 
 export async function libraryCreate(ctx) {
   const { res, request, loaded } = ctx
   if (loaded.legacy) {
-    return sendError(res, API_ERROR_CODES.INVALID_ENTRY, '旧 Pinax 清单只读：请在设置页导入到 OpenStory 库清单后再建库')
+    return sendError(res, API_ERROR_CODES.INVALID_ENTRY, '当前库清单是旧格式，只读兼容；不会覆盖或写回，请改用 OpenStory 自持库清单后再建库')
   }
   const created = await createLibrary({ ...request, preferencesPath: loaded.preferencesPath })
   if (!created.ok) {
@@ -96,41 +99,6 @@ export async function libraryPrimary(ctx) {
   return sendJson(res, 200, { ok: true, document: set.document, ...(set.enabled ? { enabled: set.enabled } : {}) })
 }
 
-/* OS-167：旧 Pinax 清单只读预览＋作者勾选导入。两个端点都不做 root 授权——
- * 它们操作的是本机库清单本身，不是某个库里的稿件。 */
-export async function pinaxListGet(ctx) {
-  const { res, context } = ctx
-  const inspected = inspectPinaxLibraries(context.env)
-  return sendJson(res, 200, {
-    ok: true,
-    source: inspected.source,
-    libraries: inspected.libraries,
-    warnings: inspected.warnings
-  })
-}
-
-export async function pinaxListImport(ctx) {
-  const { res, request, context, loaded } = ctx
-  const imported = await importPinaxLibraries({
-    paths: request.paths,
-    env: context.env,
-    preferencesPath: context.preferencesPath || loaded.preferencesPath
-  })
-  if (!imported.ok) {
-    return sendError(res, imported.code ?? API_ERROR_CODES.INVALID_ENTRY, imported.message, {
-      source: imported.source, rejected: imported.rejected, warnings: imported.warnings
-    })
-  }
-  return sendJson(res, 200, {
-    ok: true,
-    source: imported.source,
-    imported: imported.imported,
-    rejected: imported.rejected,
-    warnings: imported.warnings,
-    preferencesPath: imported.path
-  })
-}
-
 /** library 域端点 → handler 注册表片段（registry.mjs 聚合）。 */
 export const handlers = {
   libraries,
@@ -138,7 +106,5 @@ export const handlers = {
   libraryCreate,
   libraryScan,
   libraryImport,
-  libraryPrimary,
-  pinaxListGet,
-  pinaxListImport
+  libraryPrimary
 }

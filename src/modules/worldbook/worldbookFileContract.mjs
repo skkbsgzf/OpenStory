@@ -6,7 +6,7 @@
  * 实现本体逐字未动；仅本头注释按 OpenStory 出处口径改写。此后在本仓演进，上游不再同步；
  * 出处与转有时的文件对应关系见 docs/kernel-provenance.md。
  *
- * 落盘格式不改：`参考/*.md` 的世界书条目契约（worldbook-file@2）。
+ * 落盘格式不改：`世界书/*.md` 的世界书条目契约（worldbook-file@2）。
  */
 
 /**

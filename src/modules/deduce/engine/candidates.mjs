@@ -4,6 +4,7 @@
 import { createAliasIndex } from '../../../protocol/factDomain.mjs'
 import { spendAi } from './sessionState.mjs'
 import { buildSceneContext, refsWithinKnown, visibleNamesOf } from './sceneContext.mjs'
+import defaultRules from '../../../../suites/deduce-rules/rules.json' with { type: 'json' }
 /**
  * 游玩 / 推演提议用的 system prompt（双叙述纪律的「游玩侧」常量）。
  * 这是主持问答 / 候选提议体：提议剧情走向、输出候选 JSON，面向推演会话，
@@ -24,10 +25,38 @@ export function mulberry32(seed) {
   }
 }
 
-export function roll2d6(rng) {
-  const a = 1 + Math.floor(rng() * 6)
-  const b = 1 + Math.floor(rng() * 6)
-  return { a, b, sum: a + b, success: a + b >= 7 }
+export function normalizeDeduceRules(raw = defaultRules) {
+  const dice = raw?.dice ?? {}
+  const limits = raw?.limits ?? {}
+  const positive = (value, label) => {
+    if (!Number.isInteger(value) || value < 1) throw new TypeError(`推演规则 ${label} 必须是正整数`)
+    return value
+  }
+  return Object.freeze({
+    dice: Object.freeze({
+      count: positive(dice.count, 'dice.count'),
+      sides: positive(dice.sides, 'dice.sides'),
+      successThreshold: positive(dice.successThreshold, 'dice.successThreshold'),
+      label: String(dice.label || `${dice.count}d${dice.sides}`)
+    }),
+    limits: Object.freeze({
+      necessity: positive(limits.necessity, 'limits.necessity'),
+      fate: positive(limits.fate, 'limits.fate'),
+      drama: positive(limits.drama, 'limits.drama'),
+      mixed: positive(limits.mixed, 'limits.mixed'),
+      minimum: positive(limits.minimum, 'limits.minimum')
+    })
+  })
+}
+
+export function roll2d6(rng, rules = defaultRules) {
+  const normalized = normalizeDeduceRules(rules)
+  const rolls = Array.from({ length: normalized.dice.count }, () => 1 + Math.floor(rng() * normalized.dice.sides))
+  const sum = rolls.reduce((total, value) => total + value, 0)
+  return {
+    a: rolls[0], b: rolls[1] ?? 0, sum, success: sum >= normalized.dice.successThreshold,
+    ...(normalized.dice.count === 2 ? {} : { rolls })
+  }
 }
 
 function knownNames(entries) {
@@ -68,16 +97,18 @@ export function necessityCandidates(entries, limit = 2) {
 }
 
 /** L-命运⚙：2d6 剧情检定（结算确定、结果真不确定；骰点 trace 全留）。 */
-export function fateCandidates(state, rng, limit = 1) {
+export function fateCandidates(state, rng, limit = 1, rules = defaultRules) {
+  const normalized = normalizeDeduceRules(rules)
   const out = []
   for (let i = 0; i < limit; i++) {
-    const trace = roll2d6(rng)
+    const trace = roll2d6(rng, normalized)
+    const diceText = trace.rolls ? trace.rolls.join('+') : `${trace.a}+${trace.b}`
     out.push({
       id: `fate-${state.round}-${i}`,
       source: '命运', badge: '⚙',
-      text: `剧情检定 2d6=${trace.a}+${trace.b}=${trace.sum}：${trace.success ? '顺遂' : '受阻'}`,
+      text: `剧情检定 ${normalized.dice.label}=${diceText}=${trace.sum}：${trace.success ? '顺遂' : '受阻'}`,
       adopted: true, proposed: false,
-      trace, refs: []
+      trace: { ...trace, ...(normalized.dice.count === 2 && normalized.dice.label === '2d6' ? {} : { label: normalized.dice.label, rolls: trace.rolls }) }, refs: []
     })
   }
   return out
@@ -136,16 +167,17 @@ export async function dramaCandidates({ state, pov, llmPort, seedPrompt, limit =
  *      只在知情账本有条目时生效；账本为空时 sceneContext 已降级成 world 并记账，
  *      此时不拿「不知道」当「不可能」，避免把局面卡做成空的。
  */
-export async function generateCandidates({ entries, state, pov, llmPort, seed = 1, seedPrompt, sceneContext = null } = {}) {
+export async function generateCandidates({ entries, state, pov, llmPort, seed = 1, seedPrompt, sceneContext = null, rules = defaultRules } = {}) {
+  const normalized = normalizeDeduceRules(rules)
   const known = knownNames(entries)
   const aliasIndex = createAliasIndex(Array.isArray(entries) ? entries : [])
   const context = sceneContext ?? buildSceneContext({ entries, pov, extraKnown: state?.knownExtra ?? [] })
   const visible = visibleNamesOf(context, entries, aliasIndex)
   const rng = mulberry32(seed)
   const all = [
-    ...necessityCandidates(entries, 2),
-    ...fateCandidates(state, rng, 1),
-    ...(await dramaCandidates({ state, pov, llmPort, seedPrompt, sceneContext: context }))
+    ...necessityCandidates(entries, normalized.limits.necessity),
+    ...fateCandidates(state, rng, normalized.limits.fate, normalized),
+    ...(await dramaCandidates({ state, pov, llmPort, seedPrompt, sceneContext: context, limit: normalized.limits.drama }))
   ].filter((c) => screen(c, known))
     .filter((c) => refsWithinKnown(c, visible, aliasIndex))
   const deduped = []
@@ -153,12 +185,12 @@ export async function generateCandidates({ entries, state, pov, llmPort, seed = 
     if (!deduped.some((x) => x.text === c.text)) deduped.push(c)
   }
   const mixed = [...deduped.filter((c) => c.source !== '命运'), ...deduped.filter((c) => c.source === '命运')]
-  const picked = mixed.slice(0, 4)
-  while (picked.length < 2) {
-    const extra = fateCandidates(state, rng, 1)
+  const picked = mixed.slice(0, normalized.limits.mixed)
+  while (picked.length < normalized.limits.minimum) {
+    const extra = fateCandidates(state, rng, 1, normalized)
     if (extra.length === 0) break
     if (!picked.some((x) => x.text === extra[0].text)) picked.push(extra[0])
     else break
   }
-  return { candidates: picked.slice(0, 4), rng, sceneContext: context }
+  return { candidates: picked.slice(0, normalized.limits.mixed), rng, sceneContext: context }
 }

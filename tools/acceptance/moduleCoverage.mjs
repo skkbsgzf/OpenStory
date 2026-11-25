@@ -2,8 +2,7 @@
  * 模块覆盖面口径（OS-165 / G5d）——测试与验收门禁共用的一份真源。
  *
  * 「内核收缩到协议＋宿主＋fact 链，其余皆插件」不是口号：
- *   · src/modules/ 下每个目录必须有合法 manifest；
- *   · core:true 恰好四枚（chapters / worldbook / script / roleplay）；
+ *   · src/modules/ 下每个目录必须有合法 manifest，@2 不得残留 core 字段；
  *   · 每个 handler 端点要么被某模块独占，要么在下面的宿主白名单里（逐组写明理由）；
  *   · 每个未退场页签要么归属某模块，要么是宿主保留页。
  *
@@ -12,11 +11,11 @@
 import { readdirSync, existsSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { HANDLERS, ENDPOINT_MODULES } from '../../src/api/registry.mjs'
+import { HANDLERS } from '../../src/api/registry.mjs'
 import { TAB_REGISTRY } from '../../public/views/registry.mjs'
 import {
-  MODULE_MANIFESTS, MODULE_SPEC, CORE_MODULE_IDS,
-  validateModuleManifest
+  MODULE_MANIFESTS, MODULE_SOURCES, MODULE_SOURCE_GROUPS, MODULE_SPEC,
+  CAPABILITY_SNAPSHOT, validateModuleManifest
 } from '../../src/protocol/modules.mjs'
 
 const REPO = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
@@ -84,6 +83,7 @@ export function coverageReport() {
     .filter((entry) => entry.isDirectory() && !entry.name.startsWith('.'))
     .map((entry) => entry.name)
   const noManifest = []
+  const rawManifests = []
   for (const dir of dirs) {
     const file = join(MODULES_DIR, dir, 'module.manifest.json')
     if (!existsSync(file)) { noManifest.push(dir); continue }
@@ -91,11 +91,29 @@ export function coverageReport() {
     try { raw = JSON.parse(readFileSync(file, 'utf-8')) } catch (error) {
       manifestIssues.push(`${dir}: manifest 读不了（${error?.message || error}）`); continue
     }
-    const checked = validateModuleManifest(raw, { dirName: dir })
+    rawManifests.push(raw)
+    // C6 运行态只认 C 阶段完整形状；B 的缺 class/core 兼容不再作为当前事实。
+    const checked = validateModuleManifest(raw, { dirName: dir, stage: 'C' })
     if (!checked.ok) manifestIssues.push(`${dir}: ${checked.errors.join('；')}`)
     else if (checked.manifest.spec !== MODULE_SPEC) manifestIssues.push(`${dir}: spec 非 ${MODULE_SPEC}`)
   }
   const hostEndpoints = hostOwnedEndpointIds()
+  const endpointOwners = new Map()
+  const endpointOwnerIssues = []
+  for (const manifest of rawManifests) {
+    for (const endpoint of manifest.endpoints ?? []) {
+      const owner = endpointOwners.get(endpoint)
+      if (owner && owner !== manifest.id) endpointOwnerIssues.push(`${endpoint}: ${owner}/${manifest.id} 重复独占`)
+      endpointOwners.set(endpoint, manifest.id)
+    }
+  }
+  const kernelUiIssues = rawManifests.filter((manifest) => manifest.class === 'kernel')
+    .filter((manifest) => ['endpoints', 'pages', 'slots', 'settings', 'settingsHint', 'settingsJump']
+      .some((key) => Object.prototype.hasOwnProperty.call(manifest, key) && (Array.isArray(manifest[key]) ? manifest[key].length > 0 : manifest[key] !== undefined)))
+    .map((manifest) => manifest.id)
+  const workbenchContractIssues = rawManifests.filter((manifest) => manifest.class === 'workbench')
+    .filter((manifest) => !manifest.entry || !(manifest.requires?.length > 0) || !(manifest.slots?.length > 0))
+    .map((manifest) => manifest.id)
   const claimed = new Set(MODULE_MANIFESTS.flatMap((manifest) => manifest.endpoints))
   const uncoveredEndpoints = Object.keys(HANDLERS)
     .filter((id) => !claimed.has(id) && !hostEndpoints.has(id))
@@ -105,9 +123,17 @@ export function coverageReport() {
   return {
     moduleDirs: dirs,
     manifestIds: MODULE_MANIFESTS.map((manifest) => manifest.id),
-    coreIds: [...CORE_MODULE_IDS],
+    coreFieldOwners: MODULE_MANIFESTS.filter((manifest) => Object.prototype.hasOwnProperty.call(manifest, 'core')).map((manifest) => manifest.id),
+    sourceGroups: MODULE_SOURCE_GROUPS,
+    sourceIssues: MODULE_SOURCES.filter((source) => source.source !== 'builtin'
+      || source.sourceDir !== `src/modules/${source.id}`
+      || !/^[a-f0-9]{64}$/u.test(source.manifestSha256)).map((source) => source.id),
     noManifest,
     manifestIssues,
+    kernelUiIssues,
+    workbenchContractIssues,
+    endpointOwnerIssues,
+    capabilityGraphIssues: CAPABILITY_SNAPSHOT.issues.map((issue) => `${issue.code}:${issue.module ?? issue.details?.capability ?? ''}`),
     endpointCount: Object.keys(HANDLERS).length,
     claimedEndpointCount: claimed.size,
     hostEndpointCount: hostEndpoints.size,

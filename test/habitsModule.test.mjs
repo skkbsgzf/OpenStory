@@ -19,7 +19,7 @@ import { computeTabDefs, TAB_REGISTRY } from '../public/views/registry.mjs'
 async function makeLibrary() {
   const base = await mkdtemp(join(tmpdir(), 'os161-habits-'))
   const root = join(base, '夹具库')
-  await mkdir(join(root, '.pinax'), { recursive: true })
+  await mkdir(join(root, '.openstory'), { recursive: true })
   await mkdir(join(root, '习惯'), { recursive: true })
   const preferencesPath = join(base, 'libraries.json')
   await writeFile(preferencesPath, JSON.stringify({ recentProjects: [{ path: root, name: '夹具库' }] }), 'utf-8')
@@ -31,13 +31,13 @@ async function makeLibrary() {
 }
 
 async function setEnabled(root, enabled) {
-  await writeFile(join(root, '.pinax', 'ui-state.json'), JSON.stringify({ modules: { enabled: { habits: enabled } } }), 'utf-8')
+  await writeFile(join(root, '.openstory', 'ui-state.json'), JSON.stringify({ modules: { enabled: { habits: enabled } } }), 'utf-8')
 }
 
 test('manifest：habits 非核心，独占两端点，两者契约都登记 MODULE_DISABLED', () => {
   const manifest = moduleManifest('habits')
   assert.ok(manifest, 'habits manifest 必须装载')
-  assert.equal(manifest.core, false)
+  assert.equal(Object.prototype.hasOwnProperty.call(manifest, 'core'), false)
   assert.deepEqual([...manifest.endpoints].sort(), ['habitsGet', 'habitsPut'])
   for (const endpoint of manifest.endpoints) {
     assert.ok(HANDLERS[endpoint], `${endpoint} 必须有 handler`)
@@ -75,7 +75,7 @@ test('页签可见性：ctx 没给 modulesEnabled 视为全启用；给了且缺
   const tab = TAB_REGISTRY.find((entry) => entry.id === 'habits')
   assert.equal(tab.module, 'habits', '注册表须声明 module 归属')
 
-  const disabled = computeTabDefs({ ...ctx, modulesEnabled: new Set(['analysis']) }).map((def) => def.view)
+  const disabled = computeTabDefs({ ...ctx, modulesEnabled: new Set(['analysis', 'chapters']) }).map((def) => def.view)
   assert.ok(!disabled.includes('habits'), '显式启用集合缺 habits：页签消失')
   assert.ok(disabled.includes('write'), '其他页签不受影响')
 

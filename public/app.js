@@ -3,7 +3,7 @@
  *
  * 全部数据来自本机 daemon（127.0.0.1）：
  *   GET  /api/libraries → 库卡
- *   （OS-54：条目/wiki 视图端点已剔除——fact 数据由推演/曲线/图谱通道消费）
+ *   （OS-54：条目/wiki 视图端点已剔除——fact 数据由扮演/曲线/图谱通道消费）
  *   GET/PUT /api/chapter→ 正文读/写（PUT 同目录 .history 备份）
  *   GET/PUT /api/agent/config            → 模型端点（key 只存 daemon 本机，这里只拿到掩码）
  *   GET/POST /api/agent/sessions…        → 会话（JSONL 在 daemon 侧）
@@ -116,7 +116,7 @@ let uiKit = {
   select: () => '', toolbar: () => '', card: () => '', emptyState: () => '',
   kvTable: () => '', buttonGroup: () => ''
 }
-import('./ui-kit.mjs').then((mod) => { uiKit = mod }).catch(() => {})
+const uiKitReady = import('./ui-kit.mjs').then((mod) => { uiKit = mod; return mod }).catch(() => {})
 
 /* ---------- OS-143：页签/路由声明式注册表（public/views/registry.mjs）----------
    app.js 是经典脚本（index.html 非 module 加载），只能动态 import 注册表；
@@ -163,19 +163,31 @@ const scriptViewsReady = import('./views/scriptViews.mjs').then((mod) => { scrip
 let referenceViews = null
 const referenceViewsReady = import('./views/referenceViews.mjs').then((mod) => { referenceViews = mod; return mod })
   .catch((error) => { console.error('[views] 世界书视图模块加载失败', error); return null })
-/* OS-164：扮演纯视图（views/deduceViews.mjs）——推演/叙事流的纯 HTML 构造住这里；状态机与打字机留本文件 */
+/* OS-164：扮演纯视图（views/deduceViews.mjs）——扮演/叙事流的纯 HTML 构造住这里；状态机与打字机留本文件 */
 let deduceViews = null
 const deduceViewsReady = import('./views/deduceViews.mjs').then((mod) => { deduceViews = mod; return mod })
   .catch((error) => { console.error('[views] 扮演视图模块加载失败', error); return null })
 /* OS-161：前端模块 id 清单（与各模块目录的 module.manifest.json 对齐；后端 manifest 装载结果在此镜像，
    页签可见性只按这张表 × moduleOn(id) 判定，新增模块须同步这里一行）。 */
 const MODULE_IDS = ['analysis', 'comfyui', 'kb', 'habits', 'storysource', 'artifacts', 'exchange', 'chapters', 'script', 'worldbook', 'roleplay']
-// OS-163/164：核心模块恒启用（与后端 isModuleEnabled 的 core 分支同口径）——UI 不因 ui-state 的 false 隐藏核心页签。
-const CORE_MODULE_IDS = ['chapters', 'script', 'worldbook', 'roleplay']
 
 /* OS-149：运行时货架过滤（views/runtimeShelf.mjs）——fixture 套件不进作者可见列表；纯函数在 views/，这里只接线 */
 let runtimeShelf = null
 const runtimeShelfReady = import('./views/runtimeShelf.mjs').then((mod) => { runtimeShelf = mod; return mod }).catch((error) => { console.error('[runtimes] 运行时货架模块加载失败', error); return null })
+
+/* C6：前端壳渲染面迁出——行为/API/事件仍留本文件，boot 首帧前await全部factory */
+let settingsViews = null
+const settingsViewsReady = import('./views/settingsViews.mjs').then((mod) => { settingsViews = mod.createSettingsViews({ state, agent, esc, text, uiKit: () => uiKit, runtimeShelf: () => runtimeShelf, moduleOn, hiddenModules, WORKBENCH_MODULES, SETTINGS_GROUPS, scriptPrefs, dirWork, castColorOf, settingsScriptSectionHtml, settingRuntimeKind, probeBadgeLabel, comfyNodeMapText, typographyState, docPrefSlidersHtml, syncPolicy, syncProblemsFrom, warningsHtml, uiMemory, settingsAggregation: () => settingsAggregation, suitesSectionHtml, pluginsOverviewHtml, errorHtml }); return settingsViews })
+let analysisViews = null
+const analysisViewsReady = import('./views/analysisViews.mjs').then((mod) => { analysisViews = mod.createAnalysisViews({ state, esc, hiddenModules, chapterNoFromFile, analyzeEnabled, analyzeModulesFor, analyzeModuleById, chartsModule: () => chartsModule, analysisModules: () => analysisModules }); return analysisViews })
+let agentViews = null
+const agentViewsReady = import('./views/agentViews.mjs').then((mod) => { agentViews = mod.createAgentViews({ state, agent, esc, text, formatAt, getTempSessionId, getTempMode, mdReady: () => mdReady, mdModule: () => mdModule, updateComposerState, updateAgentChip }); return agentViews })
+let libraryFlowViews = null
+const libraryFlowViewsReady = import('./views/libraryFlowViews.mjs').then((mod) => { libraryFlowViews = mod.createLibraryFlowViews({ state, esc, text, needLibraryHtml, errorHtml, warningsHtml, unitLabel, divideLabel, deliverableLabel, openModal }); return libraryFlowViews })
+let syncViews = null
+const syncViewsReady = import('./views/syncViews.mjs').then((mod) => { syncViews = mod.createSyncViews({ state, esc, text, formatAt }); return syncViews })
+let referencePageViews = null
+const referencePageViewsReady = import('./views/referencePageViews.mjs').then((mod) => { referencePageViews = mod.createReferencePageViews({ state, esc, text, moduleOn, registryModule: () => registryModule, refNodeCardHtml, refModulesHtml, dirWork, scriptViews: () => scriptViews }); return referencePageViews })
 
 /* OS-147：正文章节清单加载状态机（纯函数在 views/chapterLoad.mjs）——首帧占位必须由本次加载自己收口 */
 const chapterLoadReady = import('./views/chapterLoad.mjs').catch((error) => { console.error('[chapters] 章节加载状态机没装上', error); return null })
@@ -184,7 +196,6 @@ const state = {
   libraries: [],
   warnings: [],
   preferencesPath: '',
-  pinaxImport: null,
   kindFilter: '全部',
   current: null,
   view: 'libraries',
@@ -210,7 +221,7 @@ const state = {
   stylesWarnings: [],
   skin: '',
   libFlow: null,
-  create: { parent: '', name: '', primary: 'pinax.carrier.novel', genre: '', length: null, deliverables: [], running: false, result: null, error: '' },
+  create: { parent: '', name: '', primary: 'openstory.carrier.novel', genre: '', length: null, deliverables: [], running: false, result: null, error: '' },
   genres: [],
   brief: null,
   briefGenre: null,
@@ -239,9 +250,9 @@ const state = {
       // OS-81 叙事流：纸面模式（关掉立绘背景回纯纸面）/ 贴底跟随 / 序章折叠
       paperMode: false, flowPin: true, introOpen: null } },
   artifacts: { root: '', groups: [], totals: null, loading: false, error: '', previewFile: '', previewText: '', previewLoading: false },
-  // 参考载体（OS-44）：索引 / 当前笔记 / 反链 / 筛选标签
+  // 世界书载体（OS-44）：索引 / 当前笔记 / 反链 / 筛选标签
   reference: { loaded: false, loading: false, notes: [], tags: [], tagNotes: {}, stats: null, error: '', activePath: '', activeTag: '', firstChapterFilter: 0, note: null, backlinks: { linked: [], unlinked: [] }, draft: '', view: 'graph', q: '', focus: null, absorb: {}, flash: '', tagFilter: '', from: '', noteText: '', fmLen: 0 },
-  // 左内容栏三模块（OS-44）：章节树 / 参考图谱 / 参考摘要
+  // 左内容栏三模块（OS-44）：章节树 / 世界书图谱 / 世界书摘要
   refCol: { graph: null, graphLoading: false, graphError: '', summary: '', summaryBusy: false, summaryError: '', pick: null },
   // 同源版本状态条：POST /api/sync/check 的结果（世界书/故事源共用）。
   // data 是后端原样回包；root 记录这份结果属于哪个库（换库就整块作废重拉）；
@@ -338,7 +349,7 @@ async function loadAnalysisModules() {
 loadAnalysisModules()
   .then(() => {
     if (state.view === 'write' && state.analyze.open) renderAnalyzePanel()
-    if (state.view === 'dir:拆解') render()
+    if (state.view === 'dir:故事源') render()
   })
   .catch(() => {})
 
@@ -559,7 +570,7 @@ function render() {
   renderLibSwitchPanel()
   renderTabs()
   // 故事源图表实例只属于图表态；换页/换形态先释放，避免画布挂在已卸的 DOM 上
-  if (state.view !== 'dir:拆解') disposeStorySourceChart()
+  if (state.view !== 'dir:故事源') disposeStorySourceChart()
   // 正文页自己管滚动（页头吸顶＋纸面/右栏各自滚），外层不再滚动
   // OS-76：剧本页也用沉浸式排版（与正文页同构：铺满视口、左中右三栏）
   // OS-84：推演全形态（叙事流/剧情树/Agent）同一壳——铺满视口、内容区自己滚
@@ -683,14 +694,14 @@ function render() {
   else if (state.view?.startsWith('dir:')) {
     const dir = state.view.slice(4)
     viewEl.innerHTML = viewHtml(state.view, dir)
-    if (dir === '拆解') mountStorySourceChart()
+    if (dir === '故事源') mountStorySourceChart()
     // OS-76：剧本页 fork 正文页——同样的左右栏挂载（图谱/摘要/分析面板）
     if (dir === '剧本') {
       renderAnalyzePanel()
       afterRefColMount()
     }
   }
-  // OS-114：窄面板里参考资料左栏按抽屉处理（宽面板无副作用）
+  // OS-114：窄面板里世界书资料左栏按抽屉处理（宽面板无副作用）
   if (state.view === 'write' || state.view === 'dir:剧本') applyNarrowRefDrawer()
 }
 
@@ -731,7 +742,7 @@ function libraryHtml() {
   const empty = state.libraries.length === 0
     ? `<div class="empty-state">
         <h2>从一块空地开始</h2>
-        <p>新建一个库（挑主模块建骨架），或把已有的稿子目录导入进来。库清单与 Pinax 共用。</p>
+        <p>新建一个库（挑主模块建骨架），或把已有的稿子目录导入进来。库清单由 OpenStory 自己维护。</p>
         <div class="repair-actions" style="justify-content:center">
           <button class="btn-primary" data-action="flow-create">＋新建库</button>
           <button class="btn-ghost" data-action="flow-import">导入稿件</button>
@@ -746,7 +757,7 @@ function libraryHtml() {
       <button class="btn-ghost" data-action="flow-import">导入稿件</button>
       <button class="btn-primary" data-action="flow-create">＋新建库</button>
     </div>
-    <p class="sub">每个库就是磁盘上的一个文件夹，库清单与 Pinax 同一份。</p>
+    <p class="sub">每个库就是磁盘上的一个文件夹，库清单只属于 OpenStory。</p>
     ${errorHtml()}
     ${warningsHtml(state.warnings)}
     ${empty}
@@ -858,7 +869,7 @@ function refreshChapterRows() {
 /* ---------- 沉浸式编辑交互（OS-21）---------- */
 
 
-/** 版本历史：跳到产物中心并预选该文件的历史（产物中心已有 bak/deleted 归一与恢复）。 */
+/** 版本历史：跳到产物并预选该文件的历史（产物已有 bak/deleted 归一与恢复）。 */
 async function openChapterHistory() {
   await openArtifacts({ force: true })
   const inventory = state.artifacts
@@ -876,7 +887,7 @@ let docSaveTimer = null
 function setAutosaveChip(text) {
   const chip = document.getElementById('doc-autosave')
   if (chip) chip.textContent = text
-  // 参考详情页自己的保存提示（OS-53 实时编辑）
+  // 世界书详情页自己的保存提示（OS-53 实时编辑）
   const refChip = document.getElementById('ref-autosave')
   if (refChip) refChip.textContent = text
 }
@@ -1374,8 +1385,8 @@ async function loadCharts() {
 }
 
 /**
- * fact 曲线数据（OS-41·对齐拆解线）：库内 拆解/ 的章级 序列/情绪/剧情点/事件数。
- * 按 root 缓存；拉不到（无拆解数据/网络失败）＝fact:null，面板降级到本地词典近似层。
+ * fact 曲线数据（OS-41·对齐故事源线）：库内 故事源/ 的章级 序列/情绪/剧情点/事件数。
+ * 按 root 缓存；拉不到（无故事源数据/网络失败）＝fact:null，面板降级到本地词典近似层。
  */
 async function loadFactCurve(force = false) {
   const rootPath = state.current?.path ?? ''
@@ -1504,30 +1515,9 @@ function analysisParagraphs() {  if (!mdReady || !mdModule) return []
 }
 
 /** 折线（SVG viewBox，零图表库）。 */
-function sparkline(values, opts) {
-  const options = opts || {}
-  const width = options.width || 260
-  const height = options.height || 54
-  const color = options.color || "var(--accent)"
-  const useFill = options.fill !== false
-  if (!values.length) return ""
-  const max = Math.max.apply(null, values.map((v) => Math.abs(v)).concat([1]))
-  const step = values.length > 1 ? width / (values.length - 1) : width
-  const points = values.map((value, index) => [
-    Math.round(index * step),
-    Math.round(height / 2 - (value / max) * (height / 2 - 4))
-  ])
-  const line = points.map((pair, index) => (index === 0 ? "M" : "L") + pair[0] + "," + pair[1]).join(" ")
-  const area = useFill
-    ? '<path d="' + line + " L" + points[points.length - 1][0] + "," + height / 2 + " L0," + height / 2 + ' Z" fill="' + color + '" opacity=".12"/>'
-    : ""
-  return '<svg class="spark" viewBox="0 0 ' + width + " " + height + '" preserveAspectRatio="none">' + area + '<path d="' + line + '" fill="none" stroke="' + color + '" stroke-width="1.6"/></svg>'
-}
+function sparkline(values, opts) { return analysisViews?.sparkline(values, opts)  }
 
-function barRow(factor) {
-  const width = Math.min(100, Math.max(0, factor.score))
-  return '<div class="bar-row"><span class="bar-label">' + esc(factor.label) + '</span><span class="bar-track"><span class="bar-fill" style="width:' + width + '%"></span></span><span class="bar-score">' + factor.score + '</span><span class="bar-detail">' + esc(factor.detail) + "</span></div>"
-}
+function barRow(factor) { return analysisViews?.barRow(factor)  }
 
 /* ---------- 分析模块选装（S3）：注册表在 public/analysisModules.mjs ---------- */
 
@@ -1582,86 +1572,20 @@ function toggleAnalyzeModule(id) {
 }
 
 /** 「＋ 分析」选择器：本章模块 + 整部作品模块，勾选即启用。 */
-function analyzePickerHtml() {
-  const enabled = analyzeEnabled()
-  const row = (mod) => {
-    const on = enabled.includes(mod.id)
-    return `<button class="am-row${on ? ' on' : ''}" data-action="analyze-module-toggle" data-module-id="${esc(mod.id)}">
-      <span class="am-check">${on ? '✓' : ''}</span>
-      <span class="am-row-main"><b>${esc(mod.label)}</b><span class="am-row-hint">${esc(mod.hint || '')}</span></span>
-    </button>`
-  }
-  const chapter = analyzeModulesFor('chapter')
-  const work = analyzeModulesFor('work')
-  const menu = state.analyze.pickerOpen
-    ? `<div class="am-menu">
-        ${chapter.length ? `<div class="am-group"><h5>本章</h5>${chapter.map(row).join('')}</div>` : ''}
-        ${work.length ? `<div class="am-group"><h5>整部作品</h5>${work.map(row).join('')}</div>` : ''}
-        ${!chapter.length && !work.length ? '<p class="sub">分析模块还没装载。</p>' : ''}
-      </div>`
-    : ''
-  return `<div class="am-bar"><button class="am-add${state.analyze.pickerOpen ? ' on' : ''}" data-action="analyze-picker" title="选择要跑的分析模块">＋ 分析</button><span class="am-bar-note">${enabled.length} 个已启用</span></div>${menu}`
-}
+function analyzePickerHtml() { return analysisViews?.analyzePickerHtml()  }
 
 /** 正文右栏的 work 模块卡：取数→结论，头部带「在故事源中查看」。 */
-function analyzeWorkCardHtml(mod) {
-  const entry = state.analyze.work?.[mod.id]
-  let body
-  if (!entry) body = '<div class="am-empty">正在取数…</div>'
-  else if (entry.error) body = `<div class="warn-box">${esc(entry.error)}</div>`
-  else body = mod.render(entry.result, {})
-  return `<section class="analyze-sec am-card">
-    <div class="am-card-head"><h4>${esc(mod.label)}</h4>
-      <button class="am-goto" data-action="analyze-to-source" data-module-id="${esc(mod.id)}">在故事源中查看</button></div>
-    ${body}
-  </section>`
-}
+function analyzeWorkCardHtml(mod) { return analysisViews?.analyzeWorkCardHtml(mod)  }
 
 /** 本章模块需要的外部状态（注册表不读全局 state——由这里注入）。 */
-function analyzeChapterView() {
-  return {
-    dismissed: state.analyze.dismissed,
-    activePara: state.analyze.activePara,
-    expandOthers: state.analyze.expandOthers,
-    modOpen: state.analyze.modOpen,
-    hidden: [...hiddenModules()],
-    charts: chartsModule,
-    fact: state.analyze.fact,
-    factTab: state.analyze.factTab,
-    chapterNo: chapterNoFromFile(state.chapterFile)
-  }
-}
+function analyzeChapterView() { return analysisViews?.analyzeChapterView()  }
 
 /**
  * 分析面板（S3 封装化）：模块选择器 + 已选模块渲染。
  * 本章模块吃 analyzeChapter 的结果；work 模块吃 loadWorkAnalysis 拉来的整书数据。
  * 默认只启用 chapter-editorial —— 与改造前的整块面板完全一致。
  */
-function analyzePanelHtml() {
-  const enabled = analyzeEnabled()
-  const parts = [analyzePickerHtml()]
-  let cards = 0
-  for (const id of enabled) {
-    const mod = analyzeModuleById(id)
-    if (!mod) continue
-    cards += 1
-    if (mod.scope === 'chapter') {
-      if (state.analyze.busy) {
-        parts.push('<div class="analyze-sec"><div class="loading">正在分析…</div></div>')
-      } else if (!state.analyze.result) {
-        parts.push(`<div class="analyze-sec"><button class="btn-primary" data-action="analyze-run">${esc(mod.emptyLabel || '开始分析')}</button></div>`)
-      } else {
-        parts.push(mod.render(state.analyze.result, analyzeChapterView()))
-      }
-      continue
-    }
-    parts.push(analyzeWorkCardHtml(mod))
-  }
-  if (!cards) {
-    parts.push(`<div class="am-empty">${analysisModules ? '还没有选装分析模块——点「＋ 分析」挑一个。' : '正在装载分析模块…'}</div>`)
-  }
-  return `<div class="analyze-body">${parts.join('')}</div>`
-}
+function analyzePanelHtml() { return analysisViews?.analyzePanelHtml()  }
 
 /**
  * work 级模块的数据（S3）：/api/fact/entries ＋ /api/fact/curve → storySource layout → 模块 run。
@@ -1723,7 +1647,7 @@ async function loadWorkAnalysis(force = false) {
 function openStorySourceModule(moduleId) {
   const id = analyzeModulesFor('work').some((mod) => mod.id === moduleId) ? moduleId : 'plot-curve'
   state.ssJump = { module: id }
-  go('dir:拆解')
+  go('dir:故事源')
 }
 
 /** 故事源条目 → 正文：先切页，等章节清单回来再按章号挑文件（P1 只定位到章）。 */
@@ -1996,7 +1920,7 @@ function writeHtml() {
     ? (mdReady ? renderDocBody(state.chapterText) : '<div class="loading">渲染器载入中…</div>')
     : `<div class="empty-state">
         <h2>选一章开始</h2>
-        <p>左侧点章节载入；或输入标题新建一章（自动编号）。章节就是 <span class="hint">正文/NNN-标题.md</span> 文件，Pinax 里同样可见。</p>
+        <p>左侧点章节载入；或输入标题新建一章（自动编号）。章节就是 <span class="hint">正文/NNN-标题.md</span> 文件，所有修改都在本机留备份与日志。</p>
       </div>`
 
   const chapterNo = currentChapter?.no
@@ -2018,7 +1942,7 @@ function writeHtml() {
         <span class="count">${state.chapterMetaAt ? `改于 ${esc(formatAt(state.chapterMetaAt))}` : ''}</span>
         <span class="sp"></span>
         <span class="doc-autosave" id="doc-autosave"></span>
-        <button class="doc-drawer-btn" data-action="refcol-toggle" title="参考资料" aria-label="参考资料">
+        <button class="doc-drawer-btn" data-action="refcol-toggle" title="世界书" aria-label="世界书">
           <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><rect x="2.5" y="2.5" width="11" height="11" rx="1.6" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M2.5 6h11M2.5 10h11" stroke="currentColor" stroke-width="1.4"/></svg>
         </button>
         <button class="doc-drawer-btn" data-action="analyze-toggle" title="分析本章" aria-label="分析本章"${moduleOn('analysis') ? '' : ' hidden'}><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><circle cx="8" cy="8" r="5.4" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M8 2.6A5.4 5.4 0 0 1 13.4 8H8z" fill="currentColor"/></svg></button>
@@ -2318,12 +2242,12 @@ async function pickGenre(id) {
 function plusMenuHtml() {
   return `<div class="pop-title">引用文件</div>
     <div class="pop-item" data-action="pick-file" data-dir="正文"><span class="pi-ic">📄</span><b>引用正文</b><i>把一章喂给 Agent</i></div>
-    <div class="pop-item" data-action="pick-file" data-dir="参考"><span class="pi-ic">🗂</span><b>引用参考</b><i>把一篇参考喂给 Agent</i></div>
+    <div class="pop-item" data-action="pick-file" data-dir="${registryModule.namingEntry('worldbook').dir}"><span class="pi-ic">🗂</span><b>引用世界书</b><i>把一篇世界书笔记喂给 Agent</i></div>
     <div class="pop-div"></div>
     <div class="pop-title">指令</div>
     <div class="pop-item" data-action="cmd-fill" data-cmd="请总结当前章节的剧情要点、出场人物与埋下的伏笔。"><span class="pi-ic">☑</span><b>总结本章</b><i>要点+伏笔清单</i></div>
-    <div class="pop-item" data-action="cmd-fill" data-cmd="请根据已有章节与参考资料，续写下一章的正文，用待确认卡交付。"><span class="pi-ic">✎</span><b>续写下一章</b><i>产出走待确认卡</i></div>
-    <div class="pop-item" data-action="cmd-fill" data-cmd="列出与本章相关的参考，逐条说明在写作时怎么用。"><span class="pi-ic">◈</span><b>查关联参考</b><i>图谱优先</i></div>
+    <div class="pop-item" data-action="cmd-fill" data-cmd="请根据已有章节与世界书资料，续写下一章的正文，用待确认卡交付。"><span class="pi-ic">✎</span><b>续写下一章</b><i>产出走待确认卡</i></div>
+    <div class="pop-item" data-action="cmd-fill" data-cmd="列出与本章相关的世界书资料，逐条说明在写作时怎么用。"><span class="pi-ic">◈</span><b>查关联世界书</b><i>图谱优先</i></div>
     <div class="pop-div"></div>
     <div class="pop-title">技能</div>
     ${plusSkillsHtml()}
@@ -2385,7 +2309,7 @@ async function attachSkillToAgent(name) {
   document.getElementById('agent-input')?.focus()
 }
 
-/** 引用文件：列该目录下的文件，点选喂给 Agent（内容截 2000 字，与参考 chip 同口径）。 */
+/** 引用文件：列该目录下的文件，点选喂给 Agent（内容截 2000 字，与世界书 chip 同口径）。 */
 async function pickReferenceFile(dir) {
   if (!state.current) return
   try {
@@ -2394,7 +2318,7 @@ async function pickReferenceFile(dir) {
     const files = Array.isArray(payload.files) ? payload.files : []
     if (!menu) return
     // files 端点返回的 file 字段是完整相对路径（含子目录）——之前只取 name 丢了子目录，
-    // 拼出来「参考/绰号.md」而不是「参考/标签/绰号.md」，读文件必 404（OS-51）
+    // 拼出来「世界书/绰号.md」而不是「世界书/标签/绰号.md」，读文件必 404（OS-51）
     menu.innerHTML = `<div class="pop-title">${esc(dir)} · 点选引用</div>` +
       (files.length
         ? files.map((file) => {
@@ -2415,7 +2339,7 @@ async function attachFileToAgent(full) {
   if (!state.current || !full) return
   closeComposerMenus()
   try {
-    // 正文走 chapter 通道；其它目录（参考等）走 reference/note 通道——chapter 端点只认正文/
+    // 正文走 chapter 通道；其它目录（世界书等）走 reference/note 通道——chapter 端点只认正文/
     const payload = full.startsWith('正文/')
       ? await api(`/api/chapter?root=${encodeURIComponent(state.current.path)}&file=${encodeURIComponent(full)}`)
       : await api(`/api/reference/note?root=${encodeURIComponent(state.current.path)}&path=${encodeURIComponent(full)}`)
@@ -2594,78 +2518,17 @@ function rememberAgentError(error) {
  * 会话标题可用性（OS-31）：历史脏数据里存过 GBK 乱码（U+FFFD 已落盘不可逆），
  * 与其在界面上摆一串方块，不如降级成「会话 · 时间」并让它可双击重命名。
  */
-function sessionTitle(session, index) {
-  const raw = text(session.title).trim()
-  const broken = !raw || raw.includes('\uFFFD') || /[\u0000-\u0008\u000B\u000C\u000E-\u001F]/u.test(raw)
-  if (!broken) return { label: raw, broken: false }
-  const at = text(session.createdAt)
-  const stamp = at ? formatAt(at) : ''
-  return { label: `会话${index !== undefined ? ` ${index + 1}` : ''}${stamp ? ` · ${stamp}` : ''}`, broken: true }
-}
+function sessionTitle(session, index) { return agentViews?.sessionTitle(session, index)  }
 
-function sessionsHtml() {
-  const pinnedId = getTempSessionId()
-  const mode = getTempMode()
-  // 模式切换（OS-39b）：fixed＝推荐默认，每次添加都切到固定会话；current＝跟当前会话走
-  const modeSwitch = `<div class="sess-mode">
-      <span class="sm-label">临时需求去哪</span>
-      <button class="mode-opt${mode === 'fixed' ? ' on' : ''}" data-action="temp-mode" data-mode="fixed">固定会话（推荐）</button>
-      <button class="mode-opt${mode === 'current' ? ' on' : ''}" data-action="temp-mode" data-mode="current">当前会话</button>
-    </div>`
-  const fixedName = agent.sessions.find((session) => session.id === pinnedId)?.title || '临时需求'
-  const hint = mode === 'fixed'
-    ? `<div class="sess-hint">润笔/添加到 Agent 都会切到「${esc(fixedName)}」发送，不打断你正在聊的这条；点行上的「设临」可换一条。</div>`
-    : `<div class="sess-hint">临时需求会发到你当前打开的会话（不切换）。</div>`
-  if (!agent.sessions.length) {
-    return `${modeSwitch}${hint}<div class="empty">还没有会话。<br>发第一条消息就会自动建。</div>
-      <div class="divider"></div>
-      <button class="new" data-action="agent-new-session">＋新会话</button>`
-  }
-  const rows = agent.sessions.map((session, index) => {
-    const title = sessionTitle(session, index)
-    // 空会话不摆「0」——只有真聊过才标条数
-    const meta = Number.isFinite(session.messageCount) && session.messageCount > 0 ? `${session.messageCount}` : ''
-    const isTemp = mode === 'fixed' && session.id === getTempSessionId()
-    return `<div class="sess${session.id === agent.sessionId ? ' on' : ''}" data-session-id="${esc(session.id)}" title="${esc(title.label)}${title.broken ? '（历史标题编码损坏，双击重命名）' : '（双击重命名）'}">
-      <span class="tt">${esc(title.label)}</span>
-      ${meta ? `<span class="meta">${meta} 条</span>` : ''}
-      <button class="pin${isTemp ? ' on' : ''}" data-action="session-pin" data-session-id="${esc(session.id)}" title="${isTemp ? '临时需求固定走这条（点一下取消）' : '把这条设为默认临时会话（润笔/分析都走它）'}">${isTemp ? '临时' : '设临'}</button>
-      <button class="x" data-session-del="${esc(session.id)}" title="删除会话">×</button>
-    </div>`
-  }).join('')
-  return `${modeSwitch}${hint}${rows}<div class="divider"></div>
-    <button class="new" data-action="agent-new-session" title="开始一段新对话">＋新会话</button>`
-}
+function sessionsHtml() { return agentViews?.sessionsHtml()  }
 
 /** 当前会话一行：下拉收起时也能看出在聊哪条（含损坏标题的标记）。 */
-function renderAgentCurrent() {
-  const host = document.getElementById('agent-current')
-  if (!host) return
-  if (!agent.sessionId) { host.innerHTML = ''; return }
-  const index = agent.sessions.findIndex((session) => session.id === agent.sessionId)
-  const session = agent.sessions[index]
-  const title = session ? sessionTitle(session, index) : { label: '未落档的新会话', broken: false }
-  host.innerHTML = `<span>当前</span><span class="tt${title.broken ? ' bad' : ''}">${esc(title.label)}</span>`
-}
+function renderAgentCurrent() { return agentViews?.renderAgentCurrent()  }
 
 /** 生效知识链常驻提示（OS-71 作者要求「切换要有画面提示」）：
  * 题材 · 文风 · 方法论数，配了才显示（沉默层），点一下＝打开灯泡选择链。
  * 刚切换 1.5s 内加 flash 动画，让「改了什么」一眼可见。 */
-function renderKbChain() {
-  const host = document.getElementById('agent-kb-chain')
-  if (!host) return
-  const genre = state.briefGenre?.name || ''
-  const picks = state.agent.picksExplicit && state.agent.picks ? state.agent.picks : null
-  if (!genre && !picks?.style && !(picks?.methods || []).length) { host.innerHTML = ''; return }
-  const styleName = picks?.style || ''
-  const methods = picks?.methods || []
-  const flash = Date.now() - (state.agent.picksFlashAt || 0) < 1600
-  const segs = []
-  if (genre) segs.push(`<span class="kb-chip" title="题材（写进库简报）">${esc(genre)}</span>`)
-  if (styleName) segs.push(`<span class="kb-chip style" title="主导文风（每轮注入）">${esc(styleName.replace(/^style-/, ''))}</span>`)
-  if (methods.length) segs.push(`<span class="kb-chip" title="${esc(methods.join('、'))}">方法论 ×${methods.length}</span>`)
-  host.innerHTML = `<button class="kb-chain${flash ? ' flash' : ''}" data-action="toggle-style-menu" title="点开调整知识链">知识链 ${segs.join('<i class="kb-sep">·</i>')}</button>`
-}
+function renderKbChain() { return agentViews?.renderKbChain()  }
 
 function toggleAgentSessions() {
   const panel = document.getElementById('agent-sess-panel')
@@ -2694,133 +2557,22 @@ function closeAgentSessions() {
  *   · 旧落档数据没有 segments（只有拼接的 thinking）→ 走兼容单段渲染
  * 全部收起后 summary 行仍给一句话概览（耗时 + 工具次数 + 段数）。
  */
-function processBlockHtml(proc, { live = false } = {}) {
-  if (!proc) return ''
-  const tools = Array.isArray(proc.tools) ? proc.tools : []
-  const segments = Array.isArray(proc.segments) && proc.segments.length
-    ? proc.segments
-    : (text(proc.thinking).trim() ? [{ type: 'think', text: text(proc.thinking), closed: true }] : [])
-  if (!segments.length && !tools.length) return ''
-  const sec = proc.elapsedMs ? (proc.elapsedMs / 1000).toFixed(1) : ''
-  const toolCount = tools.length
-  const metaParts = [sec ? `${sec}s` : '', toolCount ? `${toolCount} 次工具` : ''].filter(Boolean)
-  const label = live ? '思考中' : '思考过程'
-  // 序列化段与工具行：think 段有自己的位置；tools 按记录顺序穿插（近似发生顺序）
-  const parts = []
-  let toolIdx = 0
-  const thinkSegs = segments.filter((seg) => seg.type === 'think')
-  let thinkIdx = 0
-  // 工具发生在「第几段思考之后」无法精确回放，按段数均匀插入
-  for (const seg of segments) {
-    if (seg.type === 'tool') { parts.push({ type: 'tool', tool: seg }); continue }
-    thinkIdx += 1
-    parts.push({ type: 'think', seg, index: thinkIdx })
-  }
-  // 工具行：没有段信息时统一排在思考后面
-  if (toolCount && !parts.some((part) => part.type === 'tool')) {
-    for (const tool of tools) parts.push({ type: 'tool', tool })
-  }
-  const thinkParts = parts.filter((part) => part.type === 'think')
-  const lastThinkKey = thinkParts.length ? thinkParts[thinkParts.length - 1].seg.t : -1
-  const body = parts.map((part) => {
-    if (part.type === 'tool') return toolRowHtml(part.tool)
-    const seg = part.seg
-    const isLast = seg.t === lastThinkKey
-    const open = live && isLast && !seg.closed
-    const summaryText = seg.closed
-      ? (seg.text.trim().split('\n')[0] || '思路').slice(0, 60) + (seg.text.trim().split('\n').length > 1 || seg.text.length > 60 ? '…' : '')
-      : '正在想…'
-    if (open) {
-      return `<div class="proc-seg live"><div class="proc-seg-head"><i class="proc-dot"></i><span class="proc-seg-label">正在想</span></div><div class="proc-think">${esc(seg.text)}</div></div>`
-    }
-    return `<details class="proc-seg"><summary><span class="proc-seg-label">${esc(summaryText)}</span><span class="proc-seg-n">思路 ${part.index}</span><span class="proc-chev">›</span></summary><div class="proc-think">${esc(seg.text)}</div></details>`
-  }).join('')
-  return `<details class="proc-block${live ? ' live' : ''}"${live ? ' open' : ''}>
-    <summary>
-      <span class="proc-label"><i class="proc-dot"></i>${esc(label)}</span>
-      ${metaParts.length ? `<span class="proc-meta">${esc(metaParts.join(' · '))}</span>` : ''}
-      <span class="proc-chev">›</span>
-    </summary>
-    <div class="proc-body">${body}</div>
-  </details>`
-}
+function processBlockHtml(proc, { live = false } = {}) { return agentViews?.processBlockHtml(proc, { live }) }
 
 /** 工具名的图标与说明（OS-43）：让作者一眼看出「它在干什么」。 */
-const TOOL_META = Object.freeze({
-  read: { icon: '👁', note: '读文件' },
-  read_file: { icon: '👁', note: '读文件' },
-  write: { icon: '✎', note: '写文件' },
-  write_file: { icon: '✎', note: '写文件' },
-  create_file: { icon: '✎', note: '新建文件' },
-  edit: { icon: '✐', note: '改文件' },
-  str_replace_edit: { icon: '✐', note: '改文件' },
-  str_replace_editor: { icon: '✐', note: '改文件' },
-  glob: { icon: '🗂', note: '列目录' },
-  list_files: { icon: '🗂', note: '列目录' },
-  grep: { icon: '🔍', note: '搜内容' },
-  search: { icon: '🔍', note: '搜内容' },
-  web_search: { icon: '🌐', note: '联网搜索' },
-  web_fetch: { icon: '🌐', note: '抓网页' },
-  fetch: { icon: '🌐', note: '抓网页' },
-  bash: { icon: '▶', note: '跑命令' },
-  pwsh: { icon: '▶', note: '跑命令' },
-  shell: { icon: '▶', note: '跑命令' },
-  subagent: { icon: '⑂', note: '派子任务' },
-  task: { icon: '⑂', note: '派子任务' },
-  todo_write: { icon: '☑', note: '列待办' }
-})
-
-function toolMeta(name) {
-  const raw = text(name)
-  return TOOL_META[raw.toLowerCase()] || { icon: '●', note: raw || '工具' }
-}
+function toolMeta(name) { return agentViews?.toolMeta(name)  }
 
 /**
  * 工具行（OS-43）：图标＋动词＋对象＋耗时，让「它调了什么工具」有可辨识的形状。
  * 之前只有一行灰字，看不出读/写/搜/跑的区别。
  */
-function toolRowHtml(tool) {
-  const meta = toolMeta(tool.name)
-  const verb = toolVerb(tool.name)
-  const target = toolTarget(tool)
-  const took = tool.elapsedMs ? `${(tool.elapsedMs / 1000).toFixed(1)}s` : ''
-  const cls = tool.isError ? 'tool-row fail' : 'tool-row'
-  // 工具行可点（OS-59）：点了就打开它读写的那份文件（读＝看内容，写＝跳到正文/世界书）
-  const clickable = target && !tool.isError ? ` data-action="tool-open" data-tool-target="${esc(target)}" role="button" tabindex="0" title="打开 ${esc(target)}"` : ''
-  return `<div class="${cls}${clickable ? ' clickable' : ''}"${clickable}>
-    <span class="tool-icon" title="${esc(meta.note)}">${esc(meta.icon)}</span>
-    <span class="tool-verb">${esc(verb)}</span>
-    ${target ? `<code class="tool-target">${esc(target)}</code>` : ''}
-    ${took ? `<span class="tool-took">${esc(took)}</span>` : ''}
-    ${tool.isError ? '<span class="tool-fail">失败</span>' : ''}
-  </div>`
-}
+function toolRowHtml(tool) { return agentViews?.toolRowHtml(tool)  }
 
 /** 工具名 → 中文动词（照 OD 的词表口径）。 */
-function toolVerb(name) {
-  const raw = text(name)
-  const lower = raw.toLowerCase()
-  if (lower === 'read' || lower === 'read_file') return '读取'
-  if (lower === 'write' || lower === 'write_file' || lower === 'create_file') return '新建'
-  if (lower === 'edit' || lower === 'str_replace_edit' || lower === 'str_replace_editor') return '改写'
-  if (lower === 'grep' || lower === 'search' || lower === 'web_search') return '搜索'
-  if (lower === 'glob' || lower === 'list_files') return '列出'
-  if (lower === 'bash' || lower === 'pwsh' || lower === 'shell') return '执行'
-  if (lower === 'subagent' || lower === 'task') return '子任务'
-  if (lower === 'web_fetch' || lower === 'fetch') return '抓取'
-  if (lower === 'todo_write') return '待办'
-  return raw || '工具'
-}
+function toolVerb(name) { return agentViews?.toolVerb(name)  }
 
 /** 工具调用里的「对象」：优先文件路径/命令/查询词，取不到就不显示。 */
-function toolTarget(tool) {
-  const input = tool.input
-  if (!input || typeof input !== 'object') return ''
-  const candidate = input.file_path || input.path || input.file || input.command || input.pattern || input.query || input.prompt || ''
-  const raw = text(candidate).trim()
-  if (!raw) return ''
-  return raw.length > 48 ? `…${raw.slice(-46)}` : raw
-}
+function toolTarget(tool) { return agentViews?.toolTarget(tool)  }
 
 /**
  * 正文产出框（OS-43）：作者要的「md 框封装 + 自带复制」。
@@ -2828,55 +2580,14 @@ function toolTarget(tool) {
  * 而应该是一个「这是正文」的容器：正常小说排版 + 右上角复制。
  * 判定同 proposedFiles：有文件路径 + 有够长的代码块。
  */
-function proseOutputHtml(raw, files) {
-  if (!files.length) return null
-  // 多段产出（OS-59）：模型一次给两章时，每个围栏一个正文框，按出现顺序与文件路径配对。
-  // 之前只取第一个围栏——第二章直接消失，作者以为模型漏写了。
-  const fences = [...raw.matchAll(/```[^\n]*\n([\s\S]*?)```/gu)]
-    .map((match) => match[1].trim())
-    .filter((body) => body.replace(/\s/gu, '').length >= 80)
-  if (!fences.length) return null
-  const renderOne = (body, file) => {
-    // 正文按小说排版渲染（OS-51：单换行也成段）
-    const paragraphs = body.split(/\n+/u).map((block) => block.trim()).filter(Boolean)
-    const rendered = paragraphs.map((block) => `<p>${esc(block)}</p>`).join('')
-    return `<div class="prose-out">
-    <div class="prose-out-head">
-      <span class="po-label">正文</span>
-      <code class="po-file">${esc(file)}</code>
-      <button class="po-copy" data-action="copy-text" data-copy-target="po-${esc(file.replace(/[^\w]/gu, '_'))}" title="复制这段正文">复制</button>
-    </div>
-    <div class="prose-out-body" id="po-${esc(file.replace(/[^\w]/gu, '_'))}">${rendered}</div>
-  </div>`
-  }
-  return fences.map((body, index) => renderOne(body, files[index] || files[0])).join('')
-}
+function proseOutputHtml(raw, files) { return agentViews?.proseOutputHtml(raw, files)  }
 
 /**
  * 助手正文（OS-43）：无框沉浸式 + Markdown 渲染。
  * 参考 OpenDesign：助手消息没有气泡底色/边框，正文直接落在页面背景上，只有用户消息是气泡。
  * Markdown 走自研 md.mjs（已支持标题/引用/列表/表格/代码/hr/图片/任务列表）。
  */
-function assistantBodyHtml(item, streamingThis, files = []) {
-  const raw = text(item.content)
-  if (!raw) return ''
-  // 流式时不渲染 markdown（半截表格/代码块会闪），出完再渲染；这也是 OD 的做法
-  if (streamingThis) return `<div class="prose-block streaming">${esc(raw)}</div>`
-  // 有正文产出：把那段代码块换成「正文框」
-  const output = proseOutputHtml(raw, files)
-  if (output) {
-    // 把**所有**正文围栏从 markdown 里摘掉，避免渲染两遍（OS-59 多段产出：g 修饰符）
-    const rest = raw.replace(/```[^\n]*\n[\s\S]*?```/gu, '')
-    const restHtml = (mdReady && mdModule && rest.trim()) ? mdModule.renderMarkdown(rest.trim()) : (rest.trim() ? `<p>${esc(rest.trim())}</p>` : '')
-    return `${restHtml ? `<div class="prose-block">${restHtml}</div>` : ''}${output}`
-  }
-  if (!mdReady || !mdModule) return `<div class="prose-block">${esc(raw)}</div>`
-  try {
-    return `<div class="prose-block">${mdModule.renderMarkdown(raw)}</div>`
-  } catch {
-    return `<div class="prose-block">${esc(raw)}</div>`
-  }
-}
+function assistantBodyHtml(item, streamingThis, files = []) { return agentViews?.assistantBodyHtml(item, streamingThis, files) }
 
 /**
  * 这段回复里是否真的产出了「可采纳的正文」。
@@ -2884,197 +2595,37 @@ function assistantBodyHtml(item, streamingThis, files = []) {
  *  - 一句「你好」没有文件可写
  *  - 一段「目录下有这些文件」只是提及
  *  - 一段「统计方法是……」只是说明
- * 判定（照 Pinax/DW 口径，宁可少给也不误给）：
+ * 判定（沿用历史口径，宁可少给也不误给）：
  *    ① 明确点名了正文文件路径（正文/xxx.md 或 NNN-标题.md）
  *    ② 且回复里有**被明确界定为正文的整段文字**——下面两种形态任选：
  *       a) 代码块（```…```）：最常见，作者可以直接整块复制
  *       b) 引用块（> …）连续 ≥3 行：也是一种「这段是给你抄的」的写法
  *    光有「长段落」不够：统计说明、目录清单也长，但那不是正文。
  */
-function proposedFiles(item) {
-  const raw = text(item.content)
-  if (!raw) return []
-  const files = new Set()
-  for (const match of raw.matchAll(/(?:正文[\/])?([0-9]{3}[-_—][^`'"）)\n]+?\.md)/gu)) {
-    files.add(`正文/${match[1]}`)
-  }
-  for (const match of raw.matchAll(/(正文[\/][^`'"）)\n]+?\.md)/gu)) {
-    files.add(match[1].replaceAll('\\', '/'))
-  }
-  if (!files.size) return []
-  // a) 代码块 ≥80 字（去掉围栏行）——多段产出（模型一次给两章）也认：
-  //    按围栏出现顺序与文件路径出现顺序配对，产出多少个正文框由围栏数决定（OS-59）
-  const fences = [...raw.matchAll(/```[^\n]*\n([\s\S]*?)```/gu)].map((match) => match[1].trim())
-  const usable = fences.filter((block) => block.replace(/\s/gu, '').length >= 80)
-  if (usable.length) return [...files]
-  // b) 连续引用块 ≥3 行且合计 ≥80 字
-  const quoteLines = raw.split('\n').filter((line) => /^\s*>\s?\S/u.test(line))
-  if (quoteLines.length >= 3 && quoteLines.join('').replace(/[\s>]/gu, '').length >= 80) return [...files]
-  // c) 单行长引用块 ≥60 字（OS-51 放宽：润笔「拟替换 + 引用块」常只有一行长文）
-  if (quoteLines.length >= 1 && quoteLines.join('').replace(/[\s>]/gu, '').length >= 60) return [...files]
-  return []
-}
+function proposedFiles(item) { return agentViews?.proposedFiles(item)  }
 
 /**
  * 生效标注（OS-43）：这轮用了什么。
  * 作者要能看出「AI 手里有什么武器」——技能、体裁策略、知识库、中文推理，各自一个图标＋一句话。
  */
-function appliedChipsHtml(applied) {
-  if (!applied) return ''
-  const chips = []
-  const skills = Array.isArray(applied.craftSkills) ? applied.craftSkills : []
-  if (skills.length) {
-    const names = skills.map((skill) => skill.name).join('、')
-    chips.push(`<span class="ap-chip" title="${esc(skills.map((skill) => `${skill.name}：${skill.description}`).join('\n'))}"><i>✦</i>技法 ${skills.length} 项<span class="ap-more">${esc(names.slice(0, 40))}${names.length > 40 ? '…' : ''}</span></span>`)
-  }
-  if (applied.brief) {
-    chips.push(`<span class="ap-chip" title="项目简报里的体裁/篇幅/分章约束已注入提示词"><i>▤</i>体裁${applied.genre ? ` · ${esc(applied.genre)}` : ''}</span>`)
-  }
-  if (applied.kb) {
-    chips.push(`<span class="ap-chip" title="同题材先例（案例库/套路库）已检索并注入"><i>◈</i>知识库先例</span>`)
-  }
-  if (applied.canReadFiles) {
-    chips.push(`<span class="ap-chip" title="可以读这个库里的文件，但改正文要走待确认"><i>⌸</i>可读库文件</span>`)
-  }
-  if (applied.chineseReasoning) {
-    chips.push(`<span class="ap-chip" title="推理过程用中文（可在设置里关）"><i>文</i>中文推理</span>`)
-  }
-  return chips.length ? `<div class="ap-chips">${chips.join('')}</div>` : ''
-}
+function appliedChipsHtml(applied) { return agentViews?.appliedChipsHtml(applied)  }
 
-function msgHtml(item, index) {
-  if (item.role === 'user') return `<div class="bub user">${esc(item.content)}</div>`
-  const streamingThis = agent.streaming && index === agent.items.length - 1
-  const cursor = streamingThis ? '<span class="cursor"></span>' : ''
-  // 过程块：流式时展开（活），结束后收起成「思考过程 · 12.3s · 2 次工具」
-  const proc = item.process
-  const processBlock = proc ? processBlockHtml(proc, { live: streamingThis && !item.content }) : ''
-  // 状态行只在「还没有任何过程、也没出正文」时显示——一句话，不刷屏
-  const sec = item.waiting || 0
-  const idleLine = streamingThis && !item.content && !processBlock && sec
-    ? `<span class="act"><i class="act-dot"></i>${item.activity === 'thinking' ? '思考中' : '准备中'}… ${sec}s</span>`
-    : ''
-  const truncated = item.truncated
-    ? '<span class="partial-tag">回答被模型长度上限截断——可以让我接着写完</span>'
-    : ''
-  const partial = item.partial
-    ? '<span class="partial-tag">已停止——这段是不完整回答，以服务器落档为准</span>'
-    : ''
-  const files = streamingThis ? [] : proposedFiles(item)
-  const body = assistantBodyHtml(item, streamingThis, files)
-  // 底部条：复制常驻；「采纳」只在真有产出时出现（OS-43，照 Pinax/DW 的口径）
-  const copyBtn = item.content
-    ? `<button class="msg-act" data-action="msg-copy" data-msg-index="${index}" title="复制这段回复">复制</button>`
-    : ''
-  const rejected = agent.rejectedMsgs?.[index]
-  const adoptBtn = files.length && !rejected
-    ? `<button class="msg-act primary" data-action="card-from" data-msg-index="${index}" title="${files.length > 1 ? `把 ${files.length} 段正文分别写进 ${esc(files.slice(0, 2).join('、'))}${files.length > 2 ? ' 等' : ''}` : `把这段写进 ${esc(files[0])}`}">采纳${files.length > 1 ? ` ${files.length} 段` : ''}</button>`
-    : ''
-  // OS-51：产物形态补齐——驳回（收起这条的产物按钮）与重新修改（带文件上下文重开一轮）
-  const redoBtn = files.length && !rejected
-    ? `<button class="msg-act" data-action="msg-redo" data-msg-index="${index}" data-file="${esc(files[0])}" title="就这段产物提修改要求">重新修改</button>`
-    : ''
-  const rejectBtn = files.length && !rejected
-    ? `<button class="msg-act" data-action="msg-reject" data-msg-index="${index}" title="不采纳，收起这些按钮">驳回</button>`
-    : ''
-  const rejectedTag = rejected ? '<span class="msg-act dead">已驳回</span>' : ''
-  const foot = (adoptBtn || copyBtn || redoBtn || rejectBtn || rejectedTag)
-    ? `<div class="msg-foot">${adoptBtn}${redoBtn}${rejectBtn}${copyBtn}${rejectedTag}</div>`
-    : ''
-  const appliedChips = appliedChipsHtml(item.applied)
-  return `<div class="msg assistant">${idleLine}${processBlock}${body}${cursor}${truncated}${partial}${appliedChips}${foot}</div>`
-}
+function msgHtml(item, index) { return agentViews?.msgHtml(item, index)  }
 
 /**
- * 待确认卡（OS-43 对齐 Pinax/DW 口径）：
+ * 待确认卡（OS-43 历史交互口径）：
  * 只有真动了文件才出现；按钮说「采纳 / 驳回」，不说「采纳写入 / 拒绝」。
  * 采纳后原地变绿药丸「已采纳 · 写入 <文件>」，驳回变灰「已驳回」。
  */
-function cardHtml(item) {
-  const open = item.state === 'open'
-  const snapshotNote = item.snapshot?.exists ? `创建时 ${item.snapshot.chars} 字` : '创建时是新文件'
-  const ops = open
-    ? `<div class="ops">
-        <button class="btn-primary" data-action="card-adopt" data-card-id="${esc(item.id)}">采纳</button>
-        <button class="btn-ghost" data-action="card-reject" data-card-id="${esc(item.id)}">驳回</button>
-        <span class="count">采纳＝写「${esc(item.file)}」· ${esc(snapshotNote)}</span>
-      </div>`
-    : `<div class="ops">
-        <span class="state-chip${item.state === 'adopted' ? ' ok' : ' dead'}">${item.state === 'adopted' ? '已采纳' : '已驳回'}</span>
-        ${item.state === 'adopted' ? `<span class="count">写入「${esc(item.file)}」</span>` : ''}
-        ${item.backup ? `<span class="count">上一版备份：${esc(item.backup)}</span>` : ''}
-      </div>`
-  const revError = agent.cardError?.cardId === item.id ? `<div class="rev-error">${esc(agent.cardError.message)}</div>` : ''
-  return `<div class="card-block">
-    <div class="head"><b>待确认</b><span class="file">${esc(item.file)}</span></div>
-    <div class="body">${esc(item.text)}</div>
-    ${item.note ? `<div class="note">备注：${esc(item.note)}</div>` : ''}
-    ${ops}${revError}
-  </div>`
-}
+function cardHtml(item) { return agentViews?.cardHtml(item)  }
 
-function threadHtml() {
-  if (!state.current) {
-    return `<div class="agent-empty"><strong>先选一个库</strong>点右上角「库」切换器选一个库，Agent 就绑定到那个库。</div>`
-  }
-  if (agent.items.length === 0) {
-    return `<div class="agent-empty"><strong>问剧情、要一段正文、改设定…</strong>回答可以转成「待确认卡」，采纳后才真正写进正文文件。</div>`
-  }
-  // 过程行（kind==='process'）挂到相邻的 assistant 消息上——它是那一轮的过程留痕，
-  // 不要再单独摆一块，否则对话流被切成两半。落档时 process 一定在 assistant 之前，
-  // 但老数据可能反序，所以两边都认。
-  const items = []
-  for (let i = 0; i < agent.items.length; i += 1) {
-    const item = agent.items[i]
-    if (item.kind === 'process') continue
-    if (item.kind === 'card') { items.push(cardHtml(item)); continue }
-    let merged = item
-    if (item.kind === 'msg' && item.role === 'assistant') {
-      const before = agent.items[i - 1]
-      const after = agent.items[i + 1]
-      const proc = before?.kind === 'process' ? before : (after?.kind === 'process' ? after : null)
-      if (proc) merged = { ...item, process: proc }
-    }
-    items.push(msgHtml(merged, i))
-  }
-  return items.join('')
-}
+function threadHtml() { return agentViews?.threadHtml()  }
 
-function renderThread() {
-  const thread = document.getElementById('agent-thread')
-  if (!thread) return
-  const follow = thread.scrollHeight - thread.scrollTop <= thread.clientHeight + 60
-  const notices = agent.notices.slice(-3).map((noticeText) => `<div class="thread-notice">${esc(noticeText)}</div>`).join('')
-  thread.innerHTML = threadHtml()
-    + notices
-    + (agent.lastError ? `<div class="error-box">${esc(agent.lastError)}</div>` : '')
-  if (follow) thread.scrollTop = thread.scrollHeight
-}
+function renderThread() { return agentViews?.renderThread()  }
 
-function renderContextChip() {
-  const host = document.getElementById('agent-context')
-  if (!host) return
-  const ctx = state.agent.pendingContext
-  if (!ctx) { host.innerHTML = ''; return }
-  host.innerHTML = `<div class="ctx-chip">
-    <span class="ctx-label">上下文</span>
-    <span class="ctx-text" title="${esc(ctx.context)}">${esc(ctx.label)}</span>
-    <button class="ctx-x" data-action="clear-agent-context" title="移除上下文">×</button>
-  </div>`
-}
+function renderContextChip() { return agentViews?.renderContextChip()  }
 
-function renderAgent() {
-  renderContextChip()
-  renderAgentCurrent()
-  renderKbChain()
-  const strip = document.getElementById('agent-sess-panel')
-  if (strip) strip.innerHTML = sessionsHtml()
-  const count = document.getElementById('agent-sess-count')
-  if (count) count.textContent = String(agent.sessions.length)
-  renderThread()
-  updateComposerState()
-  updateAgentChip()
-}
+function renderAgent() { return agentViews?.renderAgent()  }
 
 /**
  * SSE 帧分派（daemon 自有帧协议，OS-39 补齐）：
@@ -3400,10 +2951,10 @@ const SETTINGS_SECTIONS = Object.freeze(
 const WORKBENCH_MODULES = Object.freeze([
   { id: 'chapters', label: '章节树', slot: '左栏', suite: 'writing', hint: '卷/章两级，写小说时随手切章' },
   // OS-164/G8b：叫法统一取命名表（与页签「世界书」一致）；模块清单在 registry 异步装载前定义，
-  // 所以用 getter 动态取表，fallback 与表内值同字，装载前后都不出现「参考图谱/参考摘要」旧叫法。
+  // 所以用 getter 动态取表，fallback 与表内值同字，装载前后都不出现「世界书图谱/世界书摘要」旧叫法。
   { id: 'graph', get label() { return registryModule?.namingEntry?.('reference')?.graphLabel || '世界书图谱' }, slot: '左栏', suite: 'writing', hint: '世界书与章节/条目的关系图' },
   { id: 'summary', get label() { return registryModule?.namingEntry?.('reference')?.summaryLabel || '世界书摘要' }, slot: '左栏', suite: 'writing', hint: 'AI 基于图谱总结本章要点' },
-  { id: 'plotCurve', label: '剧情曲线', slot: '右栏', suite: 'writing', hint: '情绪曲线 / 事件密度（需拆解 fact）' },
+  { id: 'plotCurve', label: '剧情曲线', slot: '右栏', suite: 'writing', hint: '情绪曲线 / 事件密度（需故事源 fact）' },
   { id: 'style', label: '文风分析', slot: '右栏', suite: 'writing', hint: '句长/段长变异系数 + 套话与连接词' },
   { id: 'rhythm', label: '节奏', slot: '右栏', suite: 'writing', hint: '逐段字数起伏' },
   { id: 'aiSmell', label: 'AI 味', slot: '右栏', suite: 'writing', hint: '四因子加权评分' },
@@ -3455,10 +3006,10 @@ function openScriptSettingsModal() {
     <div class="field">
       <label>与数据互转</label>
       <div class="row">
-        <button class="btn-ghost" data-action="script-to-fact">剧本 → 拆解条目</button>
-        <button class="btn-ghost" data-action="fact-to-script">拆解条目 → 剧本</button>
+        <button class="btn-ghost" data-action="script-to-fact">剧本 → 故事源条目</button>
+        <button class="btn-ghost" data-action="fact-to-script">故事源条目 → 剧本</button>
       </div>
-      <span class="cfg-note">「剧本 → 拆解」把幕/角色/场景抽成 fact 条目（写入 拆解/）；「拆解 → 剧本」按 fact 反向渲染成剧本文本。</span>
+      <span class="cfg-note">「剧本 → 故事源」把幕/角色/场景抽成 fact 条目（写入 故事源/）；「故事源 → 剧本」按 fact 反向渲染成剧本文本。</span>
     </div>
 
     <div class="ded-image-ops">
@@ -3468,7 +3019,7 @@ function openScriptSettingsModal() {
     <div class="err" id="sm-err"></div>`)
 }
 
-/** 剧本↔fact 互转（弹层按钮触发）——方向 A：剧本 → 拆解条目。 */
+/** 剧本↔fact 互转（弹层按钮触发）——方向 A：剧本 → 故事源条目。 */
 async function scriptToFactFlow() {
   const work = dirWork('剧本')
   if (!work?.text) return
@@ -3479,7 +3030,7 @@ async function scriptToFactFlow() {
   try {
     const normalized = mod.normalizeScript(work.text).text
     // OS-83 修：不拿剧本文件名当 bookId——会造出与本书事实包割裂的「第二本书」。
-    // 先问服务端本库事实包叫什么（拆解/ 下最新的那份），落到同一本书上。
+    // 先问服务端本库事实包叫什么（故事源/ 下最新的那份），落到同一本书上。
     const bookId = await resolveLibraryBookId()
     const { entries, wiki, stats } = await sf.scriptToFact(normalized, { bookId, domain: '舞台剧' })
     const payload = await api('/api/fact/entries/import', {
@@ -3493,14 +3044,14 @@ async function scriptToFactFlow() {
       })
     })
     closeModal()
-    state.reference.flash = `已转成 ${payload.entries} 条拆解条目（${bookId}）——去「故事源」看`
+    state.reference.flash = `已转成 ${payload.entries} 条故事源条目（${bookId}）——去「故事源」看`
     render()
   } catch (error) {
     if (errEl) errEl.textContent = `转失败：${text(error?.message || error)}`
   }
 }
 
-/** 方向 B：拆解条目 → 剧本。 */
+/** 方向 B：故事源条目 → 剧本。 */
 async function factToScriptFlow() {
   const sf = state.scriptFact
   if (!sf?.factToScript) { alert('互转模块还没加载，稍后再试'); return }
@@ -3508,15 +3059,15 @@ async function factToScriptFlow() {
   try {
     const work = dirWork('剧本')
     // OS-83 修：bookId 不能拿剧本文件名凑（空目录时是 ''，会退化成 'screenplay' 再查成 404）。
-    // 拆解事实包按「库」存，不传 bookId 就是本库全量——这才是互转要读的东西。
+    // 故事源事实包按「库」存，不传 bookId 就是本库全量——这才是互转要读的东西。
     const payload = await api(`/api/fact/entries?root=${encodeURIComponent(state.current.path)}&limit=500`)
     if (!payload.ok) throw new Error(payload.error?.message || '读条目失败')
     const { text: scriptText, stats } = sf.factToScript(payload.entries, payload.wiki)
-    if (!scriptText.trim()) { if (errEl) errEl.textContent = '这部书还没有可用的拆解条目'; return }
+    if (!scriptText.trim()) { if (errEl) errEl.textContent = '这部书还没有可用的故事源条目'; return }
     // 空剧本目录：先落一个文件名，否则 PUT 没有落点（旧实现直接静默失败）
     if (!work.file) {
       const stamp = new Date().toISOString().slice(0, 10)
-      work.file = `剧本/${stamp.replace(/-/gu, '')}-${escFileName('由拆解生成')}.md`
+      work.file = `剧本/${stamp.replace(/-/gu, '')}-${escFileName('由故事源生成')}.md`
     }
     work.text = scriptText
     await api('/api/chapter', {
@@ -3529,7 +3080,7 @@ async function factToScriptFlow() {
     // OS-87：如实报这次转出了什么——没有台词只有剧情概要时，这是「骨架」不是剧本，
     // 作者得知道接下来要自己写台词，而不是以为转换坏了。
     state.reference.flash = stats?.skeletal
-      ? `已按 ${stats.acts} 条剧情梳理出剧本骨架（${stats.sketches} 段剧情概要）——拆解里没有台词/事件明细，台词待你补写`
+      ? `已按 ${stats.acts} 条剧情梳理出剧本骨架（${stats.sketches} 段剧情概要）——故事源里没有台词/事件明细，台词待你补写`
       : `已转成剧本：${stats?.acts ?? 0} 幕 · ${stats?.lines ?? 0} 句台词`
     render()
   } catch (error) {
@@ -3577,118 +3128,21 @@ function castColorOf(name) {
 }
 
 /** 套件内部的工作台模块设置（OS-101）：只列这个套件自己的模块。 */
-function settingsModulesSectionHtml({ suiteId = '' } = {}) {
-  const hidden = hiddenModules()
-  const owned = suiteId ? WORKBENCH_MODULES.filter((mod) => mod.suite === suiteId) : WORKBENCH_MODULES
-  if (!owned.length) return ''
-  const groups = ['左栏', '右栏']
-  const rows = groups.map((slot) => {
-    const items = owned.filter((mod) => mod.slot === slot)
-    if (!items.length) return ''
-    return `<div class="step"><h3>${esc(slot)}</h3>
-      <div class="mod-list">${items.map((mod) => {
-        const on = !hidden.has(mod.id)
-        return `<div class="mod-row">
-          <label class="mod-main">
-            <input type="checkbox" data-action="module-toggle" data-module-id="${esc(mod.id)}"${on ? ' checked' : ''}>
-            <span><b>${esc(mod.label)}</b><i>${esc(mod.hint)}</i></span>
-          </label>
-        </div>`
-      }).join('')}</div>
-      <p class="sub">${slot === '左栏' ? '三个都关掉，左栏整体收起来，正文更宽。' : '关掉的模块不再出现在分析面板里，其余照常。'}</p>
-    </div>`
-  }).join('')
-  return `${rows}<div class="step"><h3>当前库</h3><p class="sub">${state.current ? esc(state.current.name) : '还没选库'}——模块开关按库分别记，换库不串。</p></div>`
-}
+function settingsModulesSectionHtml({ suiteId = '' } = {}) { return settingsViews?.settingsModulesSectionHtml({ suiteId }) }
 
 /**
  * 每个分节的一段自然语言说明——只说「这对你意味着什么」，不写实现细节。
  * 平时收起，点右上角「!」才展开（作者口径：呈现要干净，说明要对人话）。
  */
-const SETTINGS_HELP = Object.freeze({
-  plugins: '插件分成两类：一类给写作能力（比如写作套件、编剧套件），一类给 Agent 一条能对话的模型通道。它们都可以随时启用或停用，停用只是让效果回到默认，你设过的值不会丢。点「设置 →」进各自的设置页。',
-  models: '这里配四样东西：对话模型（Agent 平时用的那条通道）、生图、识图、以及 Agent 的默认档。填完可以先点「测试连接」——它会真的发一个最小请求试连，没保存的值也能测。生图的测试会真生成一张小图、消耗额度，所以会先问你一次。',
-  discover: '插件不用安装：往本机的这几个文件夹里丢一个目录或一个 JSON 文件，刷新就出现在列表里。同名时你本机放的那份优先，内置的退到后面。文件坏掉只会跳过它，不会影响别的。',
-  data: '你的稿子始终是磁盘上的文件夹，这个工作台不另建数据库，删掉这个软件稿子也还在。下面是各项配置存在哪儿——都只在这台机器上。',
-  kb: '知识库给 Agent 供弹药：技法配方、文风指纹、题材套路、读者信号、同型案例分库存放。写东西时 Agent 会自动取用，这里只看连接是否健康、每个库装了多少，不用做任何操作。',
-  about: 'OpenStory 是给写小说用的工作台。它和 Pinax 桌面版看的是同一批库文件：两个入口，一份稿子，改哪边都算数。所有数据、密钥、会话都只留在本机，不上传也不联网同步。',
-  suiteSettings: '这里的每一项都是这个套件自己的规则。停用它，规则会退回程序内置的默认值，但你现在填的内容会保留下来，重新启用就回到你设的样子。',
-  moduleSettings: '模块是工作面插件：分析、生图与识图、知识库。停用只是把入口和独占能力收起来，稿件、已存配置和卡片勾选都不会丢，重新启用就回来。生图/识图与知识库的真配置在「引擎与存储」里（本卡片只指路）；内核设置（端口、库路径、凭据）归宿主，不随模块走。'
-})
+function runtimeCard(runtime) { return settingsViews?.runtimeCard(runtime)  }
 
-const RUNTIME_STATUS_LABEL = {
-  ready: '就绪', idle: '待拉起', running: '运行中', unconfigured: '未配置', missing: '不可用'
-}
-
-function runtimeCard(runtime) {
-  const on = runtime.id === agent.runtime
-  const status = RUNTIME_STATUS_LABEL[runtime.status] ?? runtime.status ?? ''
-  const probe = runtime.probe ?? null
-  const probeNote = probe?.version ? ` · ${esc(probe.version)}` : probe?.message ? ` · ${esc(probe.message)}` : ''
-  const canFix = runtime.status === 'missing' && runtime.kind === 'dsh'
-  const desc = text(runtime.description).trim()
-  return `<div class="big-opt${on ? ' on' : ''}${runtime.status === 'missing' ? ' is-missing' : ''}" data-runtime-id="${esc(runtime.id)}" title="${esc(desc)}">
-    <b>${esc(runtime.name)}<span class="src">${esc(runtime.source)}</span><span class="rt-status ${esc(runtime.status || '')}">${esc(status)}</span></b>
-    <span class="one-line">${esc(desc)}${probeNote}</span>
-    ${canFix ? `<div class="rt-fix" data-action="runtime-setup" data-id="${esc(runtime.id)}">修复</div>` : ''}
-  </div>`
-}
-
-function settingsRuntimeSectionHtml() {
-  const runtimeCards = (runtimeShelf?.RUNTIME_SHELF_GROUPS ?? []).map((group) => {
-    const items = runtimeShelf?.runtimeKitsByCategory(agent.runtimeList, group.key) ?? []
-    if (items.length === 0) return ''
-    return `<div class="runtime-group"><div class="runtime-group-head">${esc(group.label)}</div><div class="big-opts">${items.map(runtimeCard).join('')}</div></div>`
-  }).join('')
-  return `<div class="step">
-    <h3>Agent 运行时</h3>
-    <div class="big-opts">${runtimeCards}</div>
-    <div class="field" style="margin-top:14px"><label>Pi 兜底端点</label>
-      <input id="cfg-endpoint" placeholder="https://api.deepseek.com/v1/chat/completions" value="${esc(agent.endpoint)}">
-    </div>
-    <div class="field"><label>模型</label>
-      <input id="cfg-model" placeholder="deepseek-chat" value="${esc(agent.model)}">
-    </div>
-    <div class="field"><label>API Key${agent.apiKeyMasked ? `（已设置 ${esc(agent.apiKeyMasked)}）` : ''}</label>
-      <input id="cfg-key" type="password" placeholder="${agent.apiKeyMasked ? '留空保留原 key' : 'sk-…'}">
-    </div>
-    ${dshDepthFieldHtml()}
-    <div class="field">
-      <!-- OS-100：原来 inline flex + width:auto 覆盖了统一样式，导致标签竖排、勾选框悬空 -->
-      <label class="cfg-switch">
-        <input type="checkbox" id="cfg-chinese-reasoning"${agent.chineseReasoning !== false ? ' checked' : ''}>
-        <span>用中文推理（推荐）</span>
-      </label>
-      <p class="field-note">
-        中文写作讨论用中文思考更贴题，术语和语感不容易在翻译里走样。<br>
-        代价是可能损失一部分推理性能——复杂的形式化推理用英文通常更稳。<br>
-        关掉后模型用默认语言思考，回复本身仍然是中文。
-      </p>
-    </div>
-    <div class="err" id="settings-err"></div>
-    <div class="ops">
-      <button class="btn-primary" data-action="agent-config-save">保存</button>
-    </div>
-  </div>`
-}
+function settingsRuntimeSectionHtml() { return settingsViews?.settingsRuntimeSectionHtml()  }
 
 /**
  * 推理深度（OS-39）：DSH 支持 reasoning_effort，档位由 `dsh --models` 报上来。
  * 只在 DSH 就绪时展示；取不到清单就不摆假选项。
  */
-function dshDepthFieldHtml() {
-  const options = agent.dshReasoningOptions || []
-  if (!options.length) return ''
-  const current = text(agent.reasoningEffort)
-  const rows = [
-    `<option value=""${current ? '' : ' selected'}>默认（用 DSH 自己的档）</option>`,
-    ...options.map((option) => `<option value="${esc(option.id)}"${option.id === current ? ' selected' : ''}>${esc(option.name)}${option.default ? '（DSH 默认）' : ''}</option>`)
-  ].join('')
-  return `<div class="field"><label>推理深度（仅 DSH）</label>
-    <select class="select" id="cfg-reasoning">${rows}</select>
-    <span class="count">想得更久＝答案更稳但更慢；留默认即可</span>
-  </div>`
-}
+function dshDepthFieldHtml() { return settingsViews?.dshDepthFieldHtml()  }
 
 /* ---------- 设置 · 模型与能力（S4）：对话 / 生图 / 识图 / Agent 默认档 ---------- */
 
@@ -3726,12 +3180,7 @@ function parseNodeMapText(value) {
   return out
 }
 
-function cfgBadgeHtml(kind) {
-  const probe = agent.probes[kind]
-  const state = probe?.state ? ` ${probe.state}` : ''
-  const label = probeBadgeLabel(probe)
-  return `<span class="cfg-badge${state}" data-probe-badge="${esc(kind)}" title="${esc(label)}">${esc(label)}</span>`
-}
+function cfgBadgeHtml(kind) { return settingsViews?.cfgBadgeHtml(kind)  }
 
 /** 只重画徽标——不在测试过程中整页重渲，免得把还没保存的输入抹掉。 */
 function paintProbeBadge(kind) {
@@ -3745,199 +3194,13 @@ function paintProbeBadge(kind) {
 }
 
 /** DSH 模型值的传法：provider/id（dsh-cli 认这个形状），没 provider 就裸 id。 */
-function dshModelValue(model) {
-  return model.provider ? `${model.provider}/${model.id}` : model.id
-}
+function dshModelValue(model) { return settingsViews?.dshModelValue(model)  }
 
-function dshModelOptionsHtml(current, emptyLabel) {
-  const models = agent.dshModels || []
-  const value = text(current)
-  const rows = [`<option value=""${value ? '' : ' selected'}>${esc(emptyLabel)}</option>`]
-  let known = false
-  for (const model of models) {
-    const id = dshModelValue(model)
-    if (id === value) known = true
-    rows.push(`<option value="${esc(id)}"${id === value ? ' selected' : ''}>${esc(model.name)}${model.providerName ? `（${esc(model.providerName)}）` : ''}</option>`)
-  }
-  if (value && !known) rows.push(`<option value="${esc(value)}" selected>${esc(value)}（当前值，不在清单里）</option>`)
-  return rows.join('')
-}
+function dshModelOptionsHtml(current, emptyLabel) { return settingsViews?.dshModelOptionsHtml(current, emptyLabel)  }
 
-function dshModelFieldHtml(id, label, current, emptyLabel) {
-  const models = agent.dshModels || []
-  if (!models.length) {
-    return `<div class="field"><label>${esc(label)}</label>
-      <select class="select" id="${esc(id)}">${dshModelOptionsHtml(current, emptyLabel)}</select>
-      <span class="cfg-note">DSH 模型清单没取到（DSH 没装或 profile 没就绪）——先在「插件 · 运行时」里修好，这里才能选。</span>
-    </div>`
-  }
-  return `<div class="field"><label>${esc(label)}</label>
-    <select class="select" id="${esc(id)}">${dshModelOptionsHtml(current, emptyLabel)}</select>
-  </div>`
-}
+function dshModelFieldHtml(id, label, current, emptyLabel) { return settingsViews?.dshModelFieldHtml(id, label, current, emptyLabel)  }
 
-function settingsModelsSectionHtml() {
-  const config = agent.config
-  if (!config) {
-    return `<div class="step"><h3>模型</h3><p class="sub">配置还没读到——确认 daemon 在跑，再回到设置重进这一节。</p></div>`
-  }
-  const runtime = text(agent.runtime)
-  const isDsh = settingRuntimeKind(runtime) === 'dsh'
-  const textBlock = config.text ?? {}
-  const image = config.image ?? {}
-  const vision = config.vision ?? {}
-  const agentBlock = config.agent ?? {}
-
-  const runtimeOptions = [
-    `<option value=""${runtime ? '' : ' selected'}>Pi（默认兜底）</option>`,
-    ...(runtimeShelf?.selectableRuntimeKits(agent.runtimeList) ?? []).map((item) => `<option value="${esc(item.id)}"${item.id === runtime ? ' selected' : ''}>${esc(item.name)}${item.source ? `（${esc(item.source)}）` : ''}</option>`)
-  ].join('')
-
-  const runtimeKind = settingRuntimeKind(runtime)
-  const activeKit = (agent.runtimeList || []).find((item) => item.id === runtime)
-  const kitModels = Array.isArray(activeKit?.models) ? activeKit.models : []
-  // OS-74：三种运行时三种表单——DSH（模型从 /models 选）/ CLI（模型从 kit.models 选，凭据走 CLI 自己）/ Pi（直连端点）
-  const textFields = isDsh
-    ? `${dshModelFieldHtml('mcfg-text-model', '主模型（对话）', textBlock.model, '用运行时自己的默认模型')}
-       ${dshModelFieldHtml('mcfg-subagent-model-a', '子 agent 模型', agentBlock.subagentModel, '跟主模型一样')}
-       ${dshDepthFieldHtml()}
-       <div class="field">
-         <label class="cfg-switch">
-           <input type="checkbox" id="mcfg-chinese"${agent.chineseReasoning !== false ? ' checked' : ''}>
-           <span>用中文推理（推荐）</span>
-         </label>
-         <span class="cfg-note">中文写作讨论用中文思考更贴题，代价是可能损失一部分形式化推理性能。</span>
-       </div>`
-    : runtimeKind === 'cli'
-      ? `<div class="field"><label>模型（走 ${esc(activeKit?.name || 'CLI')} 自己的模型清单）</label>
-           <select class="select" id="mcfg-cli-model">
-             <option value=""${textBlock.model ? '' : ' selected'}>用 kit 缺省（${esc(activeKit?.defaultModel || '未声明')}）</option>
-             ${kitModels.map((m) => `<option value="${esc(m)}"${textBlock.model === m ? ' selected' : ''}>${esc(m)}</option>`).join('')}
-           </select>
-           <span class="cfg-note">CLI 用自己登录的凭据；本仓不存 key、不直连 LLM API——跑动记录因此一致。</span>
-         </div>
-         <div class="field"><label>子 agent 模型（可选）</label>
-           <select class="select" id="mcfg-cli-subagent-model">
-             <option value=""${agentBlock.subagentModel ? '' : ' selected'}>跟主模型一样</option>
-             ${kitModels.map((m) => `<option value="${esc(m)}"${agentBlock.subagentModel === m ? ' selected' : ''}>${esc(m)}</option>`).join('')}
-           </select>
-         </div>`
-      : `<div class="field"><label>Endpoint（OpenAI 兼容 chat/completions）</label>
-         <input id="mcfg-endpoint" placeholder="https://api.deepseek.com/v1/chat/completions" value="${esc(text(textBlock.endpoint))}">
-       </div>
-       <div class="field"><label>模型</label>
-         <input id="mcfg-model" placeholder="deepseek-chat" value="${esc(text(textBlock.model))}">
-       </div>
-       <div class="field"><label>API Key${textBlock.apiKeyMasked ? `（已设置 ${esc(textBlock.apiKeyMasked)}）` : ''}</label>
-         <input id="mcfg-key" type="password" placeholder="${textBlock.apiKeyMasked ? '留空保留原 key' : 'sk-…'}">
-       </div>`
-
-  return `
-    <div class="cfg-card" data-cfg-card="text">
-      <div class="cfg-head"><h3>对话模型</h3>${cfgBadgeHtml('text')}</div>
-      <div class="field"><label>运行时</label>
-        <select class="select" id="mcfg-runtime">${runtimeOptions}</select>
-        <span class="cfg-note">运行时决定 Agent 走哪条通道；选 DSH 时下面改选模型，选 Pi 时直连端点。</span>
-      </div>
-      ${textFields}
-      <div class="row">
-        <button class="btn-primary" data-action="config-save" data-block="text">保存</button>
-        <button class="btn-ghost" data-action="config-probe" data-probe-kind="text">测试连接</button>
-        <span class="cfg-note" id="mcfg-text-note"></span>
-      </div>
-      ${isDsh ? '<span class="cfg-note">测试连接测的是 Pi 兜底端点；DSH 自身的连通性看「插件 · 运行时」的状态灯。</span>' : ''}
-      <div class="err" id="mcfg-text-err"></div>
-    </div>
-
-    <div class="cfg-card" data-cfg-card="image"${moduleOn('comfyui') ? '' : ' hidden'}>
-      <div class="cfg-head"><h3>生图</h3>${cfgBadgeHtml('image')}</div>
-      <div class="field">
-        <label class="cfg-switch">
-          <input type="checkbox" id="mcfg-image-enabled"${image.enabled === true ? ' checked' : ''}>
-          <span>启用生图（推演/世界书生成场景图时会用到）</span>
-        </label>
-      </div>
-      <div class="field"><label>后端</label>
-        <select class="select" id="mcfg-image-backend">
-          <option value="openai"${(image.backend ?? 'openai') !== 'comfyui' ? ' selected' : ''}>OpenAI 兼容 API（云端）</option>
-          <option value="comfyui"${image.backend === 'comfyui' ? ' selected' : ''}>ComfyUI（本机）</option>
-        </select>
-        <span class="cfg-note">OpenAI 兼容：填 endpoint＋模型＋key，一次请求直接出图。ComfyUI：填本地端口＋工作流 JSON，走提交→轮询→取图。</span>
-      </div>
-      <div class="cfg-sub" id="mcfg-image-openai"${image.backend === 'comfyui' ? ' hidden' : ''}>
-        <div class="field"><label>Endpoint（OpenAI 兼容，填到 /v1 为止）</label>
-          <input id="mcfg-image-endpoint" placeholder="https://api.openai.com/v1" value="${esc(text(image.endpoint))}">
-        </div>
-        <div class="field"><label>模型</label>
-          <input id="mcfg-image-model" placeholder="gpt-image-1" value="${esc(text(image.model))}">
-        </div>
-        <div class="field"><label>API Key${image.apiKeyMasked ? `（已设置 ${esc(image.apiKeyMasked)}）` : ''}</label>
-          <input id="mcfg-image-key" type="password" placeholder="${image.apiKeyMasked ? '留空保留原 key' : 'sk-…'}">
-        </div>
-      </div>
-      <div class="cfg-sub" id="mcfg-image-comfy"${image.backend === 'comfyui' ? '' : ' hidden'}>
-        <div class="field"><label>ComfyUI 地址（端口）</label>
-          <input id="mcfg-comfy-url" placeholder="http://127.0.0.1:8188" value="${esc(text(image.comfyUrl))}">
-          <span class="cfg-note">ComfyUI 默认 8188；启动后浏览器打开同地址可确认。</span>
-        </div>
-        <div class="field"><label>工作流 JSON（API 格式导出的那份）</label>
-          <div class="input-with-btn"><input id="mcfg-comfy-workflow" placeholder="参考/素材/comfy/scene.json 或绝对路径" value="${esc(text(image.comfyWorkflow))}"><button class="btn-ghost" data-action="pick-file" data-target="mcfg-comfy-workflow" data-mode="full" data-filter="JSON 工作流 (*.json)|*.json|所有文件 (*.*)|*.*" title="选择 ComfyUI 工作流 JSON 文件">浏览…</button></div>
-          <span class="cfg-note">在 ComfyUI 里用「Save (API Format)」导出。相对路径按库根解析。</span>
-        </div>
-        <div class="field"><label>节点映射（可选，逗号分隔 key:节点id）</label>
-          <input id="mcfg-comfy-nodemap" placeholder="positive:6,negative:7,seed:3" value="${esc(comfyNodeMapText(image.comfyNodeMap))}">
-          <span class="cfg-note">留空＝按节点标题自动猜（Positive/Negative/KSampler/EmptyLatentImage）。</span>
-        </div>
-      </div>
-      <div class="row">
-        <button class="btn-primary" data-action="config-save" data-block="image">保存</button>
-        <button class="btn-ghost" data-action="config-probe" data-probe-kind="image">测试连接</button>
-        <span class="cfg-note" id="mcfg-image-note"></span>
-      </div>
-      <span class="cfg-note">测试会真生成一张 256×256 的小图（消耗额度），点按钮后还会再确认一次。</span>
-      <div class="err" id="mcfg-image-err"></div>
-    </div>
-
-    <div class="cfg-card" data-cfg-card="vision"${moduleOn('comfyui') ? '' : ' hidden'}>
-      <div class="cfg-head"><h3>识图</h3>${cfgBadgeHtml('vision')}</div>
-      <div class="field">
-        <label class="cfg-switch">
-          <input type="checkbox" id="mcfg-vision-enabled"${vision.enabled === true ? ' checked' : ''}>
-          <span>启用识图（派 DSH 子 agent 读图写白描）</span>
-        </label>
-      </div>
-      <div class="field"><label>识图模型（从 DSH 模型清单选）</label>
-        <select class="select" id="mcfg-vision-model">
-          <option value=""${text(vision.model) ? '' : ' selected'}>用 DSH 默认模型</option>
-          ${(agent.dshModels || []).map((m) => `<option value="${esc(m.provider + '/' + m.id)}"${text(vision.model) === m.provider + '/' + m.id ? ' selected' : ''}>${esc(m.providerName + ' / ' + m.name)}</option>`).join('')}
-        </select>
-        <span class="cfg-note">走 DSH 子 agent + 内置 read_image 工具，不引入额外模型、不直连 LLM API。跑动记录与 DSH 会话一致。</span>
-      </div>
-      <div class="field"><label>DSH profile（留空＝默认 openstory）</label>
-        <input id="mcfg-vision-profile" placeholder="openstory" value="${esc(text(vision.profile))}">
-      </div>
-      <div class="row">
-        <button class="btn-primary" data-action="config-save" data-block="vision">保存</button>
-        <span class="cfg-note">识图没有独立探测——随手生一张设定图后点「看这张图写白描」就能验。</span>
-      </div>
-      <div class="err" id="mcfg-vision-err"></div>
-    </div>
-
-    <div class="cfg-card" data-cfg-card="agent">
-      <div class="cfg-head"><h3>Agent 默认档</h3></div>
-      ${dshModelFieldHtml('mcfg-default-model', 'OpenStory 默认模型（对话模型留空时用它）', agentBlock.defaultModel, '不指定')}
-      ${dshModelFieldHtml('mcfg-subagent-model', '默认子 agent 模型', agentBlock.subagentModel, '跟主模型一样')}
-      <div class="field"><label>Profile 名（可选）</label>
-        <input id="mcfg-profile" placeholder="openstory" value="${esc(text(agentBlock.profile))}">
-        <span class="cfg-note">DSH 的 profile 名；留空＝用 DSH 自己的默认 profile。</span>
-      </div>
-      <div class="row">
-        <button class="btn-primary" data-action="config-save" data-block="agent">保存</button>
-        <span class="cfg-note" id="mcfg-agent-note"></span>
-      </div>
-      <div class="err" id="mcfg-agent-err"></div>
-    </div>`
-}
+function settingsModelsSectionHtml() { return settingsViews?.settingsModelsSectionHtml()  }
 
 /** 保存一块配置：PUT /api/config 只传这一块，其余块原样不动。 */
 async function saveConfigBlock(block) {
@@ -4037,18 +3300,9 @@ async function runConfigProbe(kind) {
 }
 
 /** 皮肤卡片内容（不含 .step 外壳）——供「外观」合并节直接嵌入。 */
-function skinCardsHtml() {
-  const styleCards = state.styles.map((pack) => `
-    <button class="big-opt${pack.id === state.skin ? ' on' : ''}" data-skin="${esc(pack.id)}">
-      <b>${esc(pack.name)}<span class="src">${esc(pack.source)}</span></b>
-      <span>${esc(pack.description || '')}</span>
-    </button>`).join('')
-  return `<div class="big-opts">${styleCards || '<span class="count">风格包清单读不到，先用内置珊瑚兜底。</span>'}</div>`
-}
+function skinCardsHtml() { return settingsViews?.skinCardsHtml()  }
 
-function settingsAppearanceSectionHtml() {
-  return `<div class="step"><h3>风格包</h3>${skinCardsHtml()}</div>`
-}
+function settingsAppearanceSectionHtml() { return settingsViews?.settingsAppearanceSectionHtml()  }
 
 
 /**
@@ -4061,62 +3315,7 @@ function settingsAppearanceSectionHtml() {
  *   · 正文轨（纸面阅读）→ 5 档：小 / 中 / 大 / 特大 / 巨（改 --doc-font-size）
  * 每个档位都有**实时预览**，改完立刻投影到 documentElement，写进库内 ui-state。
  */
-function settingsTypographySectionHtml() {
-  const st = typographyState()
-  const uiOptions = [
-    { id: 'compact', label: '紧凑', hint: '0.92× · 信息密度优先' },
-    { id: 'comfortable', label: '标准', hint: '1.0× · 默认' },
-    { id: 'large', label: '大', hint: '1.08× · 长时间看屏' },
-    { id: 'xlarge', label: '特大', hint: '1.18× · 高分屏/远距' }
-  ]
-  const docOptions = [
-    { id: 's', label: '小', hint: '15px' },
-    { id: 'm', label: '中', hint: '17px · 默认' },
-    { id: 'l', label: '大', hint: '19px' },
-    { id: 'xl', label: '特大', hint: '21px' },
-    { id: '2xl', label: '巨', hint: '24px' }
-  ]
-  const uiCards = uiOptions.map((opt) => `
-    <button class="big-opt${st.ui === opt.id ? ' on' : ''}" data-action="typo-ui" data-typo-ui="${esc(opt.id)}">
-      <b>${esc(opt.label)}</b><span>${esc(opt.hint)}</span>
-    </button>`).join('')
-  const docCards = docOptions.map((opt) => `
-    <button class="big-opt${st.doc === opt.id ? ' on' : ''}" data-action="typo-doc" data-typo-doc="${esc(opt.id)}">
-      <b>${esc(opt.label)}</b><span>${esc(opt.hint)}</span>
-    </button>`).join('')
-  return `
-    <div class="step">
-      <h3>界面字号<span class="sub">影响按钮、表单、卡片、标签、表格等所有功能元素</span></h3>
-      <p class="sub">改完立刻生效并写进本库——换机器、清缓存后重新打开也保持一致（存在 .pinax/ui-state.json）。</p>
-      <div class="big-opts">${uiCards}</div>
-      <div class="typo-preview">
-        <div class="typo-preview-head">预览</div>
-        <button class="btn-primary" type="button">主要按钮</button>
-        <button class="btn-ghost" type="button">次要按钮</button>
-        <span class="chip">标签</span>
-        <input class="text" placeholder="输入框示例" style="max-width:200px">
-        <div class="typo-preview-row"><b>卡片标题</b><span class="count">副标说明</span></div>
-      </div>
-    </div>
-
-    <div class="step">
-      <h3>正文字号<span class="sub">只影响正文纸面（阅读/写作），不动界面元素</span></h3>
-      <p class="sub">正文用衬线体与独立行高，与界面字号分轨——调大界面不会把正文撑爆，反之亦然。</p>
-      <div class="big-opts">${docCards}</div>
-      <div class="typo-preview typo-preview-doc">
-        <div class="typo-preview-head">正文预览</div>
-        <p class="doc-paper-sample" style="max-width:none;margin:0">话说大宋仁宗天子在位，嘉祐三年三月三日五更三点，天子驾坐紫宸殿，受百官朝贺。</p>
-      </div>
-    </div>
-
-    <div class="step">
-      <h3>复位</h3>
-      <div class="ops">
-        <button class="btn-ghost" data-action="typo-reset">恢复默认（标准 + 中号正文）</button>
-        <span class="count">档位是项目级的：同一台机器上不同的库可以各自不同</span>
-      </div>
-    </div>`
-}
+function settingsTypographySectionHtml() { return settingsViews?.settingsTypographySectionHtml()  }
 
 /** 读字号档位（存在库内 ui-state，缺省＝标准/中）。 */
 function typographyState() {
@@ -4146,51 +3345,20 @@ function setTypography(kind, value) {
 }
 
 /** 外观·写作（OS-21）：正文字号/行高/段距/首行缩进/自动隔行——改完立刻投影到 CSS 变量。 */
-function settingsWritingSectionHtml() {
-  return `<div class="step">
-    <h3>正文排版</h3>
-    ${docPrefSlidersHtml()}
-  </div>`
-}
+function settingsWritingSectionHtml() { return settingsViews?.settingsWritingSectionHtml()  }
 
 
 /**
  * 「发现与导入」节（OS-28）：应用只管「从哪发现插件」和「怎么把稿子导进来」。
  * 三类货架都是目录制——丢文件即上新，本机覆盖内置。
  */
-function settingsDiscoverSectionHtml() {
-  const shelves = [
-    { label: '业务套件', dir: '%LOCALAPPDATA%\\OpenStory\\openstory\\suites' },
-    { label: 'Agent 运行时', dir: '%LOCALAPPDATA%\\OpenStory\\openstory\\runtimes' },
-    { label: '风格包', dir: '%LOCALAPPDATA%\\OpenStory\\openstory\\styles' }
-  ]
-  const rows = shelves.map((shelf) => `<div class="discover-row"><div><b>${esc(shelf.label)}</b></div><div class="hint">${esc(shelf.dir)}</div></div>`).join('')
-  return `<div class="step"><h3>插件货架</h3>${rows}</div>
-    <div class="step"><h3>库与稿件</h3>
-    <div class="row"><button class="btn-ghost" data-action="flow-create">＋新建库</button><button class="btn-ghost" data-action="flow-import">导入稿件</button></div></div>`
-}
+function settingsDiscoverSectionHtml() { return settingsViews?.settingsDiscoverSectionHtml()  }
 
 /**
  * 「本机与数据」（OS-97 合并）：原来「发现与导入」和「数据与目录」是两节，
  * 但本质是同一件事——文件在哪、怎么进来。合成一节，按「路径 / 导入」两段。
  */
-function settingsCombinedDataSectionHtml() {
-  return `<div class="step">
-    <h3>货架路径<span class="sub">丢文件即上新，本机目录覆盖内置</span></h3>
-    <div class="kv-line"><span class="k">业务套件</span><span class="v">%LOCALAPPDATA%\OpenStory\openstory\suites</span></div>
-    <div class="kv-line"><span class="k">Agent 运行时</span><span class="v">%LOCALAPPDATA%\OpenStory\openstory\runtimes</span></div>
-    <div class="kv-line"><span class="k">风格包</span><span class="v">%LOCALAPPDATA%\OpenStory\openstory\styles</span></div>
-  </div>
-  <div class="step">
-    <h3>库与稿件</h3>
-    <div class="ops">
-      <button class="btn-primary" data-action="flow-create">＋ 新建库</button>
-      <button class="btn-ghost" data-action="flow-import">导入稿件</button>
-    </div>
-  </div>
-  ${settingsSyncSectionHtml()}
-  ${settingsDataSectionHtml().replace(/^<div class="step">\s*<h3>本机路径<\/h3>/, '<div class="step"><h3>本机路径</h3>')}`
-}
+function settingsCombinedDataSectionHtml() { return settingsViews?.settingsCombinedDataSectionHtml()  }
 
 /**
  * 「同步」节（OS-115）：作者口径「每次进入页面发现不同步要有提示去同步；
@@ -4199,62 +3367,18 @@ function settingsCombinedDataSectionHtml() {
  * 两块：
  *   ① 什么时候检查（进页面自动 / 只在手动点的时候）
  *   ② 发现了不同步怎么办（提醒我 / 自动跑 / 只标状态条）
- * 策略落库内 ui-state（.pinax/ui-state.json），不是浏览器缓存。
+ * 策略落库内 ui-state（.openstory/ui-state.json），不是浏览器缓存。
  */
 /**
  * 「同步」节（OS-115/116）：作者口径「别加那么多提示」。
  * 压成一块：一行策略选择＋一行当前状态。不放说明段落、不重复动作按钮——
  * 「立即同步」已经在世界书/故事源的状态条上有了，这里再放一遍就是重复。
  */
-function settingsSyncSectionHtml() {
-  const p = syncPolicy()
-  const seg = (group, value, current, label) => `<button class="seg-btn${current === value ? ' on' : ''}" data-action="sync-policy-${group}" data-value="${esc(value)}">${esc(label)}</button>`
-  const data = state.sync?.data
-  const problems = syncProblemsFrom(data)
-  const dot = !data ? 'idle' : (problems.length ? 'warn' : 'ok')
-  const statusText = !data
-    ? '还没检查过'
-    : (problems.length ? problems[0].label : '一致')
-  return `<div class="sync-set">
-    <div class="sync-set-row">
-      <span class="sync-set-label">检查</span>
-      <span class="seg">${seg('checkon', 'enter', p.checkOn, '进页面')}${seg('checkon', 'manual', p.checkOn, '手动')}</span>
-      <span class="sync-set-label">不同步时</span>
-      <span class="seg">${seg('action', 'remind', p.action, '提醒')}${seg('action', 'auto', p.action, '自动同步')}${seg('action', 'silent', p.action, '不打扰')}</span>
-    </div>
-    <div class="sync-set-status-row">
-      <span class="sync-dot ${dot}"></span>
-      <span class="sync-set-status-text">${esc(statusText)}</span>
-      <button class="sync-mini" data-action="sync-recheck" title="重新检查一次">↻</button>
-    </div>
-  </div>`
-}
+function settingsSyncSectionHtml() { return settingsViews?.settingsSyncSectionHtml()  }
 
-function settingsDataSectionHtml() {
-  const paths = [
-    { label: '库清单', path: state.preferencesPath || '%LOCALAPPDATA%\\OpenStory\\libraries.json' },
-    { label: 'Agent 配置', path: agent.configPath || '%LOCALAPPDATA%\\OpenStory\\openstory\\agent-config.json' },
-    { label: '运行时套件货架', path: state.settings.userDir || '%LOCALAPPDATA%\\OpenStory\\openstory\\runtimes' },
-    { label: '风格包货架', path: (state.stylesDirs || [])[0] || '%LOCALAPPDATA%\\OpenStory\\openstory\\styles' }
-  ]
-  const importSection = settingsAggregation?.pinaxImportSectionHtml
-    ? settingsAggregation.pinaxImportSectionHtml({ scan: state.pinaxImport, esc })
-    : ''
-  return `<div class="step">
-    <h3>本机路径</h3>
-    ${paths.map((item) => `<div class="kv-line"><span class="k">${esc(item.label)}</span><button class="v kv-path" data-action="reveal-path" data-path="${esc(item.path)}" title="在资源管理器里打开">${esc(item.path)}</button></div>`).join(String())}
-    ${warningsHtml(state.warnings)}
-  </div>
-  ${importSection}`
-}
+function settingsDataSectionHtml() { return settingsViews?.settingsDataSectionHtml()  }
 
-function settingsAboutSectionHtml() {
-  return `<div class="step">
-    <h3>OpenStory</h3>
-    <div class="kv-line"><span class="k">版本</span><span class="v">0.1.0</span></div>
-    <div class="kv-line"><span class="k">与 Pinax 的关系</span><span class="v">同一批库文件，两个入口</span></div>
-  </div>`
-}
+function settingsAboutSectionHtml() { return settingsViews?.settingsAboutSectionHtml()  }
 
 /**
  * 知识库（OS-97 重做）。
@@ -4268,85 +3392,7 @@ function settingsAboutSectionHtml() {
  *   ② 连接测试按钮（当场探 WeKnora + embedding，逐项给结果）
  *   ③ 状态区（服务灯 + 六库文档数/解析进度 + 最近检查时间）
  */
-function settingsKbSectionHtml() {
-  const s = state.kbStatus
-  const cfg = state.kbConfig
-  const lamp = (up) => up
-    ? '<span class="kb-lamp is-up">●</span>在线'
-    : '<span class="kb-lamp is-down">●</span>离线'
-
-  if (!cfg) {
-    return '<div class="step"><h3>知识库</h3><div class="loading">正在读取配置…</div></div>'
-  }
-
-  const collections = cfg.collections && typeof cfg.collections === 'object' ? cfg.collections : {}
-  const collectionRows = Object.entries(collections).map(([alias, id]) => `
-    <div class="kb-collection-row">
-      <input class="uikit-input" data-kb-collection-alias value="${esc(alias)}" placeholder="别名" aria-label="分库别名">
-      <input class="uikit-input" data-kb-collection-id value="${esc(id)}" placeholder="collection id" aria-label="分库 id">
-      <button type="button" class="btn-ghost" data-action="kb-collection-remove" title="删除这一行">×</button>
-    </div>`).join('')
-
-  const live = s || {}
-  const svc = live.services || {}
-  const embed = svc.embedding || {}
-  const liveRows = (live.collections || []).map((item) => {
-    const docs = item.docs === null || item.docs === undefined ? '—' : String(item.docs)
-    const parsed = item.parsed === null || item.parsed === undefined ? '—' : `${item.parsed}/${item.docs ?? '?'}`
-    return `<div class="kv-line"><span class="k">${esc(item.alias)}</span><span class="v">文档 ${esc(docs)}｜已解析 ${esc(parsed)}</span></div>`
-  }).join('')
-
-  const statusBlock = !s
-    ? '<div class="kv-line"><span class="k">状态</span><span class="v">读取中…</span></div>'
-    : `<div class="kv-line"><span class="k">WeKnora</span><span class="v">${lamp(!!(svc.weknora && svc.weknora.up))}${svc.weknora && svc.weknora.version ? ' · v' + esc(svc.weknora.version) : ''}</span></div>
-       <div class="kv-line"><span class="k">Embedding</span><span class="v">${lamp(!!embed.up)}${embed.up && embed.model ? ' · ' + esc(embed.model) : ''}</span></div>
-       <div class="kv-line"><span class="k">最近检查</span><span class="v">${esc(s.lastCheck ? String(s.lastCheck).replace('T', ' ').slice(0, 19) : '—')}</span></div>
-       ${liveRows ? '<div class="kv-line-sep"></div>' + liveRows : '<div class="kv-line"><span class="k">分库</span><span class="v">读不到（服务离线或分库为空）</span></div>'}
-       ${s.configError ? '<div class="kv-line"><span class="k">读取问题</span><span class="v">' + esc(s.configError) + '</span></div>' : ''}`
-
-  return `
-    <div class="step">
-      <h3>连接<span class="sub">WeKnora 本体（默认本机 8080）＋ 本地 embedding（8808）</span></h3>
-      ${uiKit.field({
-        label: '服务地址',
-        hint: 'WeKnora 的 HTTP 入口，不带 /api 后缀',
-        control: uiKit.textInput({ id: 'kb-base-url', value: cfg.baseUrl || 'http://127.0.0.1:8080', placeholder: 'http://127.0.0.1:8080' })
-      })}
-      ${uiKit.field({
-        label: 'API Key',
-        hint: cfg.apiKeyMasked ? '当前：' + cfg.apiKeyMasked + '（留空＝不改）' : '必填，WeKnora 的 X-API-Key',
-        control: uiKit.textInput({ id: 'kb-api-key', value: '', placeholder: cfg.apiKeyMasked ? '留空则保留现有密钥' : 'sk-…' })
-      })}
-      ${uiKit.field({
-        label: 'Space ID',
-        hint: '可选；多空间部署时填',
-        control: uiKit.textInput({ id: 'kb-space-id', value: cfg.spaceId || '', placeholder: '留空＝默认空间' })
-      })}
-    </div>
-
-    <div class="step">
-      <h3>分库映射<span class="sub">别名 → WeKnora collection id（六个库各管一类知识）</span></h3>
-      <div class="kb-collections" id="kb-collections">
-        ${collectionRows || '<p class="sub">还没有分库——点下面「＋ 添加分库」</p>'}
-      </div>
-      <div class="ops">
-        <button class="btn-ghost" data-action="kb-collection-add">＋ 添加分库</button>
-        <span class="count">别名决定检索时怎么选库</span>
-      </div>
-    </div>
-
-    <div class="step">
-      <h3>状态</h3>
-      ${statusBlock}
-      <div class="kv-line"><span class="k">配置文件</span><span class="v">${esc(cfg.configPath || '—')}</span></div>
-    </div>
-
-    <div class="ops kb-ops">
-      <button class="btn-primary" data-action="kb-save">保存配置</button>
-      <button class="btn-ghost" data-action="kb-test">测试连接</button>
-      <span class="count" id="kb-msg">${esc(state.kbMsg || '')}</span>
-    </div>`
-}
+function settingsKbSectionHtml() { return settingsViews?.settingsKbSectionHtml()  }
 
 /**
  * 外观（OS-98 合并：皮肤 + 字号）。
@@ -4355,15 +3401,7 @@ function settingsKbSectionHtml() {
  * 原来「皮肤」和「字号」两节分开，用户要来回点；现在合成一节，
  * 主题在上一块、字号在下一块，改完立刻生效。
  */
-function settingsCombinedAppearanceHtml() {
-  // OS-98：皮肤与字号合成一节——作者口径「外观只放一个，字体和主题都是一件事」
-  return `
-    <div class="step">
-      <h3>皮肤主题<span class="sub">亮/暗与配色基调，全局生效</span></h3>
-      ${skinCardsHtml()}
-    </div>
-    ${settingsTypographySectionHtml()}`
-}
+function settingsCombinedAppearanceHtml() { return settingsViews?.settingsCombinedAppearanceHtml()  }
 
 /**
  * 引擎与存储（OS-98 合并：模型 / 知识库 / 本机路径）。
@@ -4372,119 +3410,12 @@ function settingsCombinedAppearanceHtml() {
  * 这些东西也都只有一份，全部都结合到一起。」
  * 这四样本质都是「接什么外部能力、文件存哪」——归到一节，用子标题分开。
  */
-function settingsCombinedEnginesHtml() {
-  const section = (title, hint, body) => `
-    <div class="step">
-      <h3>${esc(title)}${hint ? `<span class="sub">${esc(hint)}</span>` : ''}</h3>
-      ${body}
-    </div>`
-  // 各子节的内部 h3 去掉（外层已有标题）
-  const strip = (html) => text(html)
-    .replace(/^\s*<div class="step">\s*<h3>[^<]*(?:<span class="sub">.*?<\/span>)?[^<]*<\/h3>/, '<div>')
-    .replace(/<div class="step">\s*<h3>[^<]*(?:<span class="sub">.*?<\/span>)?[^<]*<\/h3>/gu, '<div>')
-
-  // OS-100：运行时不再单列——「对话模型」自带运行时选择器与端点/模型/key，
-  // 两处都放会出现两个「运行时」下拉（作者实测截图里就是重复的）。
-  // 这里的顺序＝「接什么 → 查什么 → 存哪」。
-  return [
-    section('对话模型与运行时', 'Agent 走哪条通道、用哪个模型', strip(settingsModelsSectionHtml())),
-    ...(moduleOn('kb') ? [section('知识库', 'WeKnora 连接、分库与测试', strip(settingsKbSectionHtml()))] : []),
-    section('本机路径与导入', '货架位置、库清单、导入稿件', strip(settingsCombinedDataSectionHtml()))
-  ].join('')
-}
+function settingsCombinedEnginesHtml() { return settingsViews?.settingsCombinedEnginesHtml()  }
 
 /** OS-145：设置页「模块」组。OS-146：渲染函数已迁 views/settingsAggregation.mjs，这里只接线。 */
-function settingsModuleSettingsSectionHtml() {
-  return settingsAggregation?.moduleSettingsSectionHtml({
-    modules: state.plugins?.modules ?? [],
-    enabledFor: moduleOn,
-    uiState: state.current ? uiMemory(state.current.path).values : {},
-    esc
-  }) ?? '<div class="step"><h3>模块</h3><p class="sub">正在读取模块清单…</p></div>'
-}
+function settingsModuleSettingsSectionHtml() { return settingsViews?.settingsModuleSettingsSectionHtml()  }
 
-function settingsHtml() {
-  const sectionRenderers = {
-    // —— 本体设置（OS-98 合并：相关概念归一处）——
-    appearance: settingsCombinedAppearanceHtml,
-    engines: settingsCombinedEnginesHtml,
-    modules: settingsModulesSectionHtml,
-    about: settingsAboutSectionHtml,
-    // 旧 id 重定向（深链兼容）
-    typography: settingsCombinedAppearanceHtml,
-    models: settingsCombinedEnginesHtml,
-    kb: settingsCombinedEnginesHtml,
-    data: settingsCombinedEnginesHtml,
-    // —— 插件中心 ——
-    suites: suitesSectionHtml,
-    // 旧 id 重定向到统一的套件主面
-    pluginsOverview: pluginsOverviewHtml,
-    moduleSettings: settingsModuleSettingsSectionHtml,
-    suite: suitesSectionHtml,
-    suiteSettings: suitesSectionHtml,
-    suiteDetail: suitesSectionHtml,
-    runtimes: settingsRuntimeSectionHtml,
-    // —— 兼容旧入口（老链接/深链）——
-    plugins: suitesSectionHtml,
-    runtime: settingsRuntimeSectionHtml,
-    script: settingsScriptSectionHtml,
-    discover: settingsDiscoverSectionHtml
-  }
-  const sectionId = sectionRenderers[state.settings.section] ? state.settings.section : 'appearance'
-  // 套件详情页在导航上高亮所属组（业务套件）
-  const navOn = sectionId === 'suite' || sectionId === 'suiteSettings' || sectionId === 'suiteDetail'
-    ? 'suites'
-    : (sectionId === 'runtime' ? 'runtimes' : sectionId)
-  const sectionHtml = (sectionRenderers[sectionId] ?? settingsAppearanceSectionHtml)()
-  // OS-101：左导航按组渲染——本体设置 / 插件中心。
-  // 插件中心不再是二级壳：它直接把**每个套件**列成一行（作者：「插件中心就是很多套件排列」）。
-  const nav = SETTINGS_GROUPS.map((group) => {
-    const isPluginGroup = group.id === 'plugins'
-    // OS-120：插件组最前面是「总览」入口（三套一份清单）；其后是各套件。
-    const overviewEntry = isPluginGroup
-      // OS-145：插件组里除「全部套件」（由动态套件清单渲染）外的固定节都按声明顺序出（总览 → 模块）
-      ? group.sections.filter((section) => section.id !== 'suites').map((section) => `
-        <button class="settings-nav-item${section.id === navOn ? ' on' : ''}" data-settings-section="${esc(section.id)}">
-          <b>${esc(section.label)}</b>
-          <span>${esc(section.hint)}</span>
-        </button>`).join('')
-      : ''
-    const items = isPluginGroup
-      ? overviewEntry + ((Array.isArray(state.suites) ? state.suites : []).map((suite) => {
-        const on = suite.enabled !== false
-        const active = state.settings.section === 'suites' && state.settings.suiteId === suite.id
-        return `<button class="settings-nav-item${active ? ' on' : ''}" data-action="suite-select" data-id="${esc(suite.id)}">
-          <b>${esc(suite.name)}${on ? '' : '<i class="nav-off-tag">停用</i>'}</b>
-          <span>${esc((suite.domains ?? []).join('／') || suite.description || '')}</span>
-        </button>`
-      }).join('') || '<p class="nav-empty">还没有套件</p>')
-      : group.sections.map((section) => `
-        <button class="settings-nav-item${section.id === navOn ? ' on' : ''}" data-settings-section="${esc(section.id)}">
-          <b>${esc(section.label)}</b>
-          <span>${esc(section.hint)}</span>
-        </button>`).join('')
-    return `<div class="settings-nav-group">
-      <div class="settings-nav-grouphead">${esc(group.label)}<span>${esc(group.hint)}</span></div>
-      ${items}
-    </div>`
-  }).join('')
-  const help = SETTINGS_HELP[sectionId] || SETTINGS_HELP.plugins
-  const helpOpen = state.settings.helpOpen === true
-  return `<div class="lib-wrap">
-    <div class="page-head">
-      <h1>设置</h1>
-      <span class="sp"></span>
-      <button class="help-btn${helpOpen ? ' on' : ''}" data-action="settings-help-toggle" title="这些设置是干什么的" aria-expanded="${helpOpen}">!</button>
-      <button class="icon-btn page-close" data-action="settings-close" title="关闭设置">×</button>
-    </div>
-    ${helpOpen ? `<div class="help-bubble">${esc(help)}</div>` : ''}
-    ${errorHtml()}
-    <div class="settings-layout">
-      <nav class="settings-nav">${nav}</nav>
-      <div class="settings-content">${sectionHtml}</div>
-    </div>
-  </div>`
-}
+function settingsHtml() { return settingsViews?.settingsHtml()  }
 
 /**
  * OS-95：判断宿主当前是不是暗色面。
@@ -4924,7 +3855,7 @@ async function toggleSuite(id) {
   }
 }
 
-/* ---------- 产物中心（OS-11：全库只读盘点＋预览＋去编辑）---------- */
+/* ---------- 产物（OS-11：全库只读盘点＋预览＋去编辑）---------- */
 
 async function openArtifacts({ force = false } = {}) {
   state.view = 'artifacts'
@@ -4976,7 +3907,7 @@ function editArtifact(file) {
     openDirWork(topDir).then(() => loadDirFile(topDir, file))
     return
   }
-  // 根目录散文件没有归属工作面——留在产物中心看预览。
+  // 根目录散文件没有归属工作面——留在产物看预览。
 }
 
 function groupLabel(dir) {
@@ -4984,7 +3915,7 @@ function groupLabel(dir) {
   return DIR_LABELS[dir] || dir
 }
 
-/* ---------- 参考载体（OS-44）：Obsidian 式笔记系统 ---------- */
+/* ---------- 世界书载体（OS-44）：Obsidian 式笔记系统 ---------- */
 
 let refModule = null
 async function loadRefModule() {
@@ -4992,7 +3923,7 @@ async function loadRefModule() {
   return refModule
 }
 
-/** 拉参考索引（供参考页与左栏图谱共用）。 */
+/** 拉世界书索引（供世界书页与左栏图谱共用）。 */
 async function loadReferences({ force = false } = {}) {
   const ref = state.reference
   if (!state.current) return
@@ -5007,7 +3938,7 @@ async function loadReferences({ force = false } = {}) {
     ref.tagNotes = payload.tagNotes && typeof payload.tagNotes === 'object' ? payload.tagNotes : {}
     ref.stats = payload.stats ?? null
     ref.loaded = true
-    // OS-103：世界书第二来源——库内拆解词条（enrich/拆解产物），与笔记同页不同层
+    // OS-103：世界书第二来源——库内故事源词条（enrich/故事源产物），与笔记同页不同层
     api('/api/fact/entries?root=' + encodeURIComponent(state.current.path))
       .then((fact) => {
         ref.factEntries = Array.isArray(fact.entries) ? fact.entries : []
@@ -5015,7 +3946,7 @@ async function loadReferences({ force = false } = {}) {
       })
       .catch(() => { ref.factEntries = [] })
     // OS-89：模块加载时自己检索自己的 log（AGENTS.md 第 10 条）
-    await loadModuleLog('参考', { limit: 20 })
+    await loadModuleLog(registryModule.namingEntry('worldbook').logModule, { limit: 20 })
     // OS-48：顺手探旧目录有没有可迁入的内容（迁入按钮按需显示；目录不存在＝0）
     await probeRetiredDirs()
   } catch (error) {
@@ -5027,7 +3958,7 @@ async function loadReferences({ force = false } = {}) {
 }
 
 /**
- * OS-86：探旧目录还剩多少篇——只服务参考页的「迁入旧目录」按钮（有剩才显示入口）。
+ * OS-86：探旧目录还剩多少篇——只服务世界书页的「迁入旧目录」按钮（有剩才显示入口）。
  * 页签栏与「增加页签」面板已统一按 RETIRED_DIRS 无条件过滤，不再依赖这个计数。
  * 结果缓存在 state.reference.absorb，按库重置。
  */
@@ -5044,10 +3975,10 @@ async function probeRetiredDirs() {
   return ref.absorb
 }
 
-/** 打开一篇参考笔记（含反链）。 */
-/** 打开一篇参考笔记（含反链）。from='graph' 时详情页给「← 返回图谱」键。 */
+/** 打开一篇世界书笔记（含反链）。 */
+/** 打开一篇世界书笔记（含反链）。from='graph' 时详情页给「← 返回图谱」键。 */
 /**
- * 按任意写法找参考笔记（OS-51）：支持 标题 / 相对路径 / 「参考/」前缀路径 / 带或不带 .md。
+ * 按任意写法找世界书笔记（OS-51）：支持 标题 / 相对路径 / 「参考/」旧路径前缀 / 带或不带 .md。
  * 之前「参考/约束/写作纪律」这种全路径匹配不到（只比对 rel 与 title），点它错弹「新建笔记」。
  */
 function findReferenceByRef(ref) {
@@ -5055,7 +3986,7 @@ function findReferenceByRef(ref) {
   if (!raw) return null
   const notes = state.reference.notes || []
   const noMd = raw.replace(/\.(?:md|markdown|txt)$/iu, '')
-  const relNoPrefix = noMd.replace(/^参考[\/]/u, '')
+  const relNoPrefix = noMd.replace(/^(?:参考|世界书)[\/]/u, '')
   return notes.find((note) => note.title === raw)
     || notes.find((note) => note.path === raw || note.path === `${raw}.md`)
     || notes.find((note) => note.rel === noMd || note.rel === `${noMd}.md`)
@@ -5089,7 +4020,7 @@ async function openReference(path, { from = '' } = {}) {
 }
 
 /**
- * 参考详情页（OS-51，作者 Wiki 式分层）：
+ * 世界书详情页（OS-51，作者 Wiki 式分层）：
  *   上半＝左简介（标签 chips＋一句话摘要）＋右关系图谱（本词条邻域）；
  *   下半＝词条详情（完整 Markdown）；
  *   最下＝关联说明（已链接 / 未链接 反链两段）。
@@ -5106,9 +4037,9 @@ function stripFrontmatterOf(raw) {
 }
 
 /**
- * 参考笔记逐块实时渲染（OS-53，作者裁定「直接用实时渲染的词条编辑」）：
+ * 世界书笔记逐块实时渲染（OS-53，作者裁定「直接用实时渲染的词条编辑」）：
  * 与正文页 renderDocBody 同一套组件口径——contenteditable 逐块、失焦写回自动保存。
- * 差异：参考笔记有 frontmatter（不可编辑），块偏移统一加上 fmLen 才是对全文的偏移；
+ * 差异：世界书笔记有 frontmatter（不可编辑），块偏移统一加上 fmLen 才是对全文的偏移；
  * 首个 H1 跳过（标题在详情头显示）；没有批注竖条。
  */
 function renderRefDocBody(bodySource) {
@@ -5125,7 +4056,7 @@ function renderRefDocBody(bodySource) {
   return `<div class="ref-prose prose" id="ref-reader">${parts.join('')}</div>`
 }
 
-/** 参考笔记块失焦写回：按全文偏移拼回 noteText → PUT /api/chapter 自动保存。 */
+/** 世界书笔记块失焦写回：按全文偏移拼回 noteText → PUT /api/chapter 自动保存。 */
 async function commitRefBlock(blockEl) {
   const ref = state.reference
   if (!state.current || !ref.note || !ref.noteText) return
@@ -5165,28 +4096,7 @@ let refRescanTimer = null
 /** OS-81：右栏「图片槽」——1..N 张图，第一张做主图，其余做缩略行。
  * 图片路径来自 referenceStore 的 images[]（frontmatter cover/portrait/images/refImages）。
  * 站内相对路径走 /api/reference/asset 二进制通道（daemon 的 referenceAssetGet）。 */
-function refImagesSlotHtml(note) {
-  const images = Array.isArray(note?.images) ? note.images.filter(Boolean) : []
-  const root = state.current?.path || ''
-  const urlOf = (rel) => /^https?:\/\//u.test(rel)
-    ? rel
-    : `/api/reference/asset?root=${encodeURIComponent(root)}&path=${encodeURIComponent(rel)}`
-  const genBtn = `<button class="ref-slot-gen" data-action="ref-gen-image" title="按这个条目生成设定图（后台任务，进度看右下角任务中心）"${moduleOn('comfyui') ? '' : ' hidden'}>✦ 生成设定图</button>`
-  if (!images.length) {
-    return `<div class="ref-img-slot empty">
-      <div class="ref-slot-head">参考图</div>
-      <div class="ref-slot-empty-body">${genBtn}</div>
-    </div>`
-  }
-  const cover = images[0]
-  const thumbs = images.slice(1, 7)
-  return `<div class="ref-img-slot">
-    <div class="ref-slot-head">参考图<span class="ref-slot-n">${images.length}</span></div>
-    <div class="ref-slot-cover"><img src="${esc(urlOf(cover))}" alt="${esc(note.title || '')}" loading="lazy"></div>
-    ${thumbs.length ? `<div class="ref-slot-thumbs">${thumbs.map((p) => `<img src="${esc(urlOf(p))}" alt="" loading="lazy">`).join('')}</div>` : ''}
-    <div class="ref-slot-ops">${genBtn}</div>
-  </div>`
-}
+function refImagesSlotHtml(note) { return referencePageViews?.refImagesSlotHtml(note)  }
 
 /** OS-75：世界书条目一键生图。生成中禁用按钮，完成后重载笔记（图墙自动出现）。 */
 async function generateReferenceImage() {
@@ -5216,8 +4126,8 @@ async function generateReferenceImage() {
   render()
 }
 
-/** 拆解词条详情（OS-103）：世界书第二来源的只读展示——类型、首次出现章节、定义、
- *  以及它属于哪层（worldview/character/plot…）。想改它得改库内拆解文件（不在笔记通道）。 */
+/** 故事源词条详情（OS-103）：世界书第二来源的只读展示——类型、首次出现章节、定义、
+ *  以及它属于哪层（worldview/character/plot…）。想改它得改库内故事源文件（不在笔记通道）。 */
 function referenceEntryDetailHtml(entryId) {
   return referenceViews.referenceEntryDetailHtml(entryId, state.reference.factEntries, { esc })
 }
@@ -5236,7 +4146,7 @@ function referenceEditorHtml() {
   })
 }
 
-/** 参考页整体（OS-48：侧栏导航 + 视图制主区）。 */
+/** 世界书页整体（OS-48：侧栏导航 + 视图制主区）。 */
 /* ---------- 习惯（OS-57）：描述性自定义表单——正向＋负向词条，Agent 成文前必读 ---------- */
 
 async function loadHabits({ force = false } = {}) {
@@ -5342,7 +4252,7 @@ async function loadSyncCheck({ force = false } = {}) {
     // 只有「这次请求仍是最后一次」时才复位标志，避免旧请求把新请求的 loading 抹掉
     if (state.current?.path === startedFor) sync.loading = false
   }
-  if (state.view === 'reference' || state.view === 'dir:拆解') render()
+  if (state.view === 'reference' || state.view === 'dir:故事源') render()
 }
 
 /** 同步策略（OS-115）：默认「进页面查 + 提醒我」（最不打扰、又不会漏）。 */
@@ -5386,7 +4296,7 @@ function syncProblemsFrom(data) {
   const external = data?.external || {}
   const problems = []
   if (same.wikiStale === true) problems.push({ kind: 'wiki', label: text(same.wikiNote) || '世界书派生档落后' })
-  if (same.chaptersNewerThanFact === true) problems.push({ kind: 'chapters', label: text(same.chaptersNote) || '正文比拆解新' })
+  if (same.chaptersNewerThanFact === true) problems.push({ kind: 'chapters', label: text(same.chaptersNote) || '正文比故事源新' })
   const changes = Array.isArray(external.externalChanges) ? external.externalChanges.filter(Boolean) : []
   if (changes.length) problems.push({ kind: 'external', label: `检测到 ${changes.length} 处未经写通道的改动` })
   return problems
@@ -5422,128 +4332,18 @@ function handleSyncProblems(data, root) {
 }
 
 /** 进场提示横幅（OS-115）：发现不同步时给一条带动作的提示，不做模态弹窗。 */
-function syncPromptHtml() {
-  const sync = state.sync
-  const prompt = sync?.prompt
-  if (!prompt || prompt.root !== state.current?.path) return ''
-  const first = prompt.problems[0]
-  const more = prompt.problems.length > 1 ? `（另有 ${prompt.problems.length - 1} 项）` : ''
-  return `<div class="sync-prompt">
-    <span class="sync-prompt-ic">⟳</span>
-    <span class="sync-prompt-body">
-      <b>发现不同步</b>
-      <span class="sync-prompt-why">${esc(first?.label || '派生档落后于事实源')}${esc(more)}</span>
-    </span>
-    <span class="sync-prompt-ops">
-      <button class="btn-primary" data-action="sync-prompt-go"${sync.regenBusy ? ' disabled' : ''}>${sync.regenBusy ? '同步中…' : '立即同步'}</button>
-      <button class="btn-ghost" data-action="sync-prompt-later">稍后</button>
-    </span>
-  </div>`
-}
+function syncPromptHtml() { return syncViews?.syncPromptHtml()  }
 
-/** 参考笔记里最新的一条 mtime（世界书页顺手显示；没有就返回空串）。 */
-function syncLatestNoteAt() {
-  const notes = state.reference?.notes
-  if (!Array.isArray(notes) || !notes.length) return ''
-  let newest = 0
-  for (const note of notes) {
-    const at = Date.parse(text(note?.mtime))
-    if (Number.isFinite(at) && at > newest) newest = at
-  }
-  return newest ? new Date(newest).toISOString() : ''
-}
+/** 世界书笔记里最新的一条 mtime（世界书页顺手显示；没有就返回空串）。 */
+function syncLatestNoteAt() { return syncViews?.syncLatestNoteAt()  }
 
 /**
  * 同源状态条（纯渲染）：一行紧凑条，三档——✓ 一致 / ! 派生档过期 / ! 外部改动 N 处。
  * 颜色全走语义令牌（--ok / --warn / --danger / --meta），不写死色值。
  */
-function syncBarHtml() {
-  // 状态条是附加信息：任何异形回包/SaaS 字段缺失都不许把世界书页和故事源页一起拖下水
-  try {
-    return syncBarHtmlUnsafe()
-  } catch {
-    return ''
-  }
-}
+function syncBarHtml() { return syncViews?.syncBarHtml()  }
 
-function syncBarHtmlUnsafe() {
-  const sync = state.sync || {}
-  const data = sync.data
-  // 只认对象回包；字符串/数组这种异形响应当没有数据（否则会误报「同源一致」）
-  if (!data || typeof data !== 'object' || Array.isArray(data)) {
-    if (!sync.error) return ''
-    return `<div class="sync-bar bad" title="${esc(sync.error)}">
-      <span class="sync-dot"></span>
-      <span class="sync-main">同源检查不可用</span>
-      <button class="sync-btn" data-action="sync-recheck" title="再试一次：${esc(sync.error)}">重试</button>
-    </div>`
-  }
-  const same = data.sameSource && typeof data.sameSource === 'object' ? data.sameSource : {}
-  const external = data.external && typeof data.external === 'object' ? data.external : {}
-  const current = Number(data.factRevision) || 0
-  // wikiFactRevision 在「无派生档 / 读不出基准」时是 null——不能当 0 显示，那会谎报「基于 revision 0」
-  const rawWikiRev = Number(same.wikiFactRevision)
-  const wikiRevKnown = Number.isSafeInteger(rawWikiRev) && rawWikiRev >= 0
-  const stale = same.wikiStale === true
-  const changes = Array.isArray(external.externalChanges) ? external.externalChanges.filter(Boolean) : []
-  const firstSeen = Array.isArray(external.firstSeen) ? external.firstSeen.filter(Boolean) : []
-
-  const parts = []
-  // OS-114：过期判定改用时间戳——作者看不懂「revision 差几版」，要看「谁比谁新」。
-  const factAt = text(same.factAt || same.factMtime).trim()
-  const wikiAt = text(same.wikiAt || same.wikiGeneratedAt).trim()
-  if (stale) {
-    // 后端 wikiNote 已经是完整人话（含两个时间），直接用它当主文案
-    const why = text(same.wikiNote).trim()
-    const main = why || `派生档生成于 ${wikiAt ? formatAt(wikiAt) : '未知'}，事实源改于 ${factAt ? formatAt(factAt) : '未知'}——建议重新生成`
-    parts.push(`<span class="sync-main">${esc(main)}</span>
-      <button class="sync-btn" data-action="sync-regen-wiki"${sync.regenBusy ? ' disabled' : ''} title="重新生成走 enrich（设置里配了模型才可用）">${sync.regenBusy ? '提交中…' : '重新生成'}</button>`)
-  }
-  if (changes.length) {
-    const shown = changes.slice(0, 40)
-    const rows = shown.map((item) => {
-      const path = typeof item === 'string' ? item : text(item?.path || item?.file || '')
-      const reason = typeof item === 'string' ? '' : text(item?.reason || '')
-      return `<li><span class="sync-path">${esc(path)}</span>${reason ? `<span class="sync-reason">${esc(reason)}</span>` : ''}</li>`
-    }).join('')
-    const rest = changes.length > shown.length
-      ? `<li><span class="sync-reason">还有 ${changes.length - shown.length} 处未列出</span></li>`
-      : ''
-    // 展开态存在 state.sync 上：render() 整块换 innerHTML，原生的 <details> open 会被冲掉
-    parts.push(`<span class="sync-main">检测到 ${changes.length} 处未经写通道的改动</span>
-      <button class="sync-btn" data-action="sync-toggle-list">${sync.openList ? '收起列表' : '展开列表'}</button>
-      ${sync.openList ? `<ul class="sync-list">${rows}${rest}</ul>` : ''}`)
-  }
-  if (!parts.length) {
-    const stamp = factAt ? `事实源 ${formatAt(factAt)}` : ''
-    const wikiStamp = wikiAt ? `派生档 ${formatAt(wikiAt)}` : ''
-    parts.push(`<span class="sync-main">同源一致${stamp ? ` · ${esc(stamp)}` : ''}${wikiStamp ? ` · ${esc(wikiStamp)}` : ''}</span>`)
-  }
-
-  const metas = []
-  // 参考笔记最新更新时间：后端 sameSource.refsMtimeMax 是**ISO 时间串**（不是「几篇更新」的计数）。
-  // 两种键名都读：接口草稿里叫 refsNewerThan，落地实现叫 refsMtimeMax。
-  // 都没有时退回前端扫 state.reference.notes 的 mtime；再没有就不显示。
-  const refsRaw = text(same.refsMtimeMax || same.refsNewerThan).trim()
-  const refAt = /^\d{4}-\d{2}-\d{2}T/u.test(refsRaw) ? refsRaw : syncLatestNoteAt()
-  if (refAt) metas.push(`参考笔记最近更新 ${esc(formatAt(refAt))}`)
-  if (firstSeen.length) metas.push(`另有 ${firstSeen.length} 处首次发现`)
-  // OS-114：正文比事实源新——拆解可能没跟上（提示，不判错）
-  if (same.chaptersNewerThanFact === true && text(same.chaptersNote).trim()) {
-    metas.push(esc(text(same.chaptersNote).trim()))
-  }
-  const checkedAt = text(external.checkedAt).trim()
-  if (checkedAt) metas.push(`核对于 ${esc(formatAt(checkedAt))}`)
-  if (sync.error) metas.push('本次刷新失败，显示上次结果')
-
-  const cls = changes.length ? 'bad' : (stale ? 'warn' : 'ok')
-  return `<div class="sync-bar ${cls}">
-    <span class="sync-dot"></span>
-    ${parts.join('<span class="sync-sep">·</span>')}
-    ${metas.length ? `<span class="sync-meta">${metas.join(' · ')}</span>` : ''}
-    ${sync.notice ? `<span class="sync-notice">${esc(sync.notice)}</span>` : ''}
-  </div>`
-}
+function syncBarHtmlUnsafe() { return syncViews?.syncBarHtmlUnsafe()  }
 
 /**
  * 「重新生成」入口（状态条上的 sync-regen-wiki）：真走 enrich（POST /api/enrich/run）。
@@ -5569,7 +4369,7 @@ async function runSyncRegen({ auto = false } = {}) {
     if (!bookId) bookId = text(books[0]?.bookId).trim()
     if (state.current?.path !== root) return
     if (!bookId) {
-      sync.notice = '这个库还没有拆解数据，enrich 无从跑起。'
+      sync.notice = '这个库还没有故事源数据，enrich 无从跑起。'
       return
     }
     const payload = await api('/api/enrich/run', { method: 'POST', body: JSON.stringify({ root, bookId }) })
@@ -5594,9 +4394,9 @@ function referencePageHtml() {
   if (!state.current) return needLibraryHtml()
   // 进页面拉一次同源检查（loaded 挡重复；换库由 loadSyncCheck 自己作废重拉）
   loadSyncCheck()
-  if (ref.loading && !ref.loaded) return '<div class="loading">正在读取参考…</div>'
-  if (!refModule) return '<div class="loading">参考模块载入中…</div>'
-  // OS-103：拆解词条详情优先（世界书第二来源，只读）
+  if (ref.loading && !ref.loaded) return '<div class="loading">正在读取世界书…</div>'
+  if (!refModule) return '<div class="loading">世界书模块载入中…</div>'
+  // OS-103：故事源词条详情优先（世界书第二来源，只读）
   const mainHtml = (ref.view || 'note') === 'graph'
     ? referenceGraphHtml()
     : (ref.activeEntry ? referenceEntryDetailHtml(ref.activeEntry) : referenceEditorHtml())
@@ -5615,11 +4415,11 @@ function referencePageHtml() {
     stats: ref.stats,
     absorbable: absorbTotal,
     firstChapterFilter: fcLimit,
-    // OS-103：世界书第二来源（拆解词条）与当前选中词条
+    // OS-103：世界书第二来源（故事源词条）与当前选中词条
     factEntries: ref.factEntries || [],
     activeEntry: ref.activeEntry || '',
-    // OS-89：参考模块自己的修改日志（AGENTS.md 第 10 条）
-    changelogHtml: moduleLogHtml('参考', { title: '参考修改记录' })
+    // OS-89：世界书模块自己的修改日志（AGENTS.md 第 10 条）
+    changelogHtml: moduleLogHtml(registryModule.namingEntry('worldbook').logModule, { title: '世界书修改记录' })
   })
   // OS-164：同步状态条＋进场提示由宿主取数，插入位置由 views/referenceViews.mjs 的纯函数决定
   // （函数式 replacement：路径/reason 里可能出现 $& 序列，不能当分组引用吃掉）。
@@ -5627,7 +4427,7 @@ function referencePageHtml() {
   return referenceViews.referencePageHtml({ ref, shell, syncBlock, errorBox: errorHtml(), esc })
 }
 
-/** 参考页·关系图谱视图（OS-51）：大画布＋节点信息卡（简介＋跳转按钮）＋标签筛选行。 */
+/** 世界书页·关系图谱视图（OS-51）：大画布＋节点信息卡（简介＋跳转按钮）＋标签筛选行。 */
 function referenceGraphHtml() {
   return referenceViews.referenceGraphHtml({
     rc: state.refCol, ref: state.reference, esc, text,
@@ -5690,7 +4490,7 @@ function graphFocusView(focusId = state.reference.focus, tagFilter = state.refer
 function navigateFromGraphNode(node) {
   if (node.kind === 'reference') {
     state.reference.view = 'note'
-    // 正文页小图也走这里（OS-52）：不在参考页时先切页签
+    // 正文页小图也走这里（OS-52）：不在世界书页时先切页签
     if (state.view !== 'reference') go('reference')
     openReference(node.id, { from: 'graph' })
     return
@@ -5724,7 +4524,7 @@ function navigateFromGraphNode(node) {
   }
 }
 
-/** 参考页大图谱挂载（OS-48）：focus 模式——点节点聚焦邻域，再点进详情，点空白复位。 */
+/** 世界书页大图谱挂载（OS-48）：focus 模式——点节点聚焦邻域，再点进详情，点空白复位。 */
 async function mountReferenceGraph() {
   const canvas = document.getElementById('ref-graph-canvas')
   if (!canvas) return
@@ -5809,75 +4609,19 @@ async function mountEntryGraph() {
   })
 }
 
-/* ---------- 左内容栏（OS-44）：章节树 / 参考图谱 / 参考摘要 ---------- */
+/* ---------- 左内容栏（OS-44）：章节树 / 世界书图谱 / 世界书摘要 ---------- */
 
 /** 章节树：按目录结构分两级（卷/章）。 */
-function chapterTreeHtml() {
-  const chapters = state.write.chapters || []
-  const head = `<div class="chapter-new">
-      <input id="chapter-new-title" placeholder="新章标题…" value="">
-      <button class="btn-ghost" data-action="chapter-create" title="自动编号新建">＋</button>
-    </div>`
-  return `${head}<div class="chapter-rows">${chapterRowsHtml(chapters)}</div>`
-}
+function chapterTreeHtml() { return referencePageViews?.chapterTreeHtml()  }
 
 /** 章节行（卷/章两级）。抽出来供「只重画行、不动输入框」复用。 */
-function chapterRowsHtml(chapters) {
-  if (!chapters.length) return '<div class="empty" style="padding:6px 4px">还没有章节——上面填标题新建第一章。</div>'
-  // 按 file 的目录段分组：正文/卷一/001-x.md → 卷一
-  const groups = new Map()
-  for (const chapter of chapters) {
-    const parts = text(chapter.file).split('/')
-    const group = parts.length > 2 ? parts[parts.length - 2] : ''
-    if (!groups.has(group)) groups.set(group, [])
-    groups.get(group).push(chapter)
-  }
-  return [...groups.entries()].map(([group, list]) => {
-    const groupHead = group ? `<div class="ct-vol">${esc(group)}</div>` : ''
-    const body = list.map((chapter) => `
-      <button class="ct-row${chapter.file === state.chapterFile ? ' on' : ''}" data-chapter-file="${esc(chapter.file)}" title="${esc(chapter.file)}">
-        <span class="no">${chapter.no !== null ? String(chapter.no).padStart(2, '0') : '—'}</span>
-        <span class="tt">${esc(chapter.title)}</span>
-      </button>`).join('')
-    return `${groupHead}${body}`
-  }).join('')
-}
+function chapterRowsHtml(chapters) { return referencePageViews?.chapterRowsHtml(chapters)  }
 
-/** 参考图谱模块（canvas 力导向，由 graph.mjs 驱动）。 */
-function graphModuleHtml() {
-  const rc = state.refCol
-  if (rc.graphError) return `<div class="error-box">${esc(rc.graphError)}</div>`
-  if (rc.graphLoading) return '<div class="loading">正在构图…</div>'
-  const graph = rc.graph
-  if (!graph) return `<div class="empty">点「重新构图」生成${registryModule?.namingEntry?.('reference')?.graphLabel || '世界书图谱'}。</div>`
-  const byKind = graph.stats?.byKind || {}
-  const legend = [
-    ['reference', '参考', 'var(--accent)'],
-    ['tag', '标签', 'var(--warn)'],
-    ['artifact', '章节/产物', 'var(--ok)'],
-    ['entry', '条目（只读）', 'var(--meta)']
-  ].filter(([kind]) => byKind[kind]).map(([, label, color]) =>
-    `<span><i style="background:${color}"></i>${esc(label)}</span>`).join('')
-  // OS-52：点节点出信息卡（Obsidian 口径：hover 预览、点击看卡，跳转走卡片按钮）
-  const pickNode = rc.pick ? (graph.nodes || []).find((item) => item.id === rc.pick) : null
-  return `<div class="graph-box" id="ref-graph-box"><canvas id="ref-graph-canvas"></canvas></div>
-    <div id="ref-graph-pick">${pickNode ? refNodeCardHtml(pickNode, 'inline') : ''}</div>
-    <div class="graph-legend">${legend || '<span>没有节点</span>'}</div>
-    <div class="graph-hint">${graph.stats?.nodes ?? 0} 个节点 · ${graph.stats?.edges ?? 0} 条边 · 点节点看简介，卡里跳转</div>`
-}
+/** 世界书图谱模块（canvas 力导向，由 graph.mjs 驱动）。 */
+function graphModuleHtml() { return referencePageViews?.graphModuleHtml()  }
 
-/** 参考摘要模块：AI 基于图谱知识总结当前章节的大纲。 */
-function refSummaryHtml() {
-  const rc = state.refCol
-  if (rc.summaryBusy) return '<div class="loading">正在生成摘要…</div>'
-  const body = text(rc.summary)
-  return `<div class="ref-summary">${body ? esc(body) : '<span class="empty">还没有摘要。点下面生成——AI 会读当前章节关联的参考，总结成本章要点。</span>'}</div>
-    ${rc.summaryError ? `<div class="error-box">${esc(rc.summaryError)}</div>` : ''}
-    <div class="ref-summary-ops">
-      <button data-action="ref-summary-run">${body ? '重新生成' : '生成摘要'}</button>
-      ${body ? '<button data-action="ref-summary-clear">清空</button>' : ''}
-    </div>`
-}
+/** 世界书摘要模块：AI 基于图谱知识总结当前章节的大纲。 */
+function refSummaryHtml() { return referencePageViews?.refSummaryHtml()  }
 
 /**
  * 左栏三个模块（OS-44）。
@@ -5894,12 +4638,7 @@ const SCRIPT_REF_MODULES = Object.freeze([
 ])
 
 /** 剧本出场人物卡（OS-163：本体迁 views/scriptViews.mjs，这里取数后转交）。 */
-function scriptCastHtml() {
-  const work = dirWork('剧本')
-  const mod = state.scriptModule
-  if (!mod?.splitScriptBlocks || !work?.text) return '<div class="nav-empty">还没有内容</div>'
-  return scriptViews.scriptCastHtml({ blocks: mod.splitScriptBlocks(work.text), esc })
-}
+function scriptCastHtml() { return referencePageViews?.scriptCastHtml()  }
 
 const REF_MODULES = Object.freeze([
   { id: 'chapters', label: '章节', hint: '卷/章两级', render: () => chapterTreeHtml(), badge: () => String((state.write.chapters || []).length) },
@@ -5911,7 +4650,7 @@ const REF_MODULES = Object.freeze([
 
 /**
  * 题材工作面左栏（OS-45）。
- * 注意它是「小说/参考」这类题材页自己的内部左栏（二等公民的内部结构），
+ * 注意它是「小说/世界书」这类题材页自己的内部左栏（二等公民的内部结构），
  * Agent 始终在最外层最左（一等公民），两者不抢位置——所以这里返回 HTML 字符串，
  * 由各题材页自己决定往哪插，而不是去改全局 .main 布局。
  *
@@ -5928,14 +4667,11 @@ function refModulesHtml({ prepend = '', modules = null } = {}) {
   })
 }
 
-function refColHtml() {
-  const inner = refModulesHtml()
-  return inner ? `<aside class="ref-col" id="ref-col">${inner}</aside>` : ''
-}
+function refColHtml() { return referencePageViews?.refColHtml()  }
 
-/* ── OS-114 窄面板约束：参考资料左栏改「抽屉」────────────────────────
+/* ── OS-114 窄面板约束：世界书资料左栏改「抽屉」────────────────────────
    ≤1000px（与 index.html 的断点一致）时，248px 的左栏不再常驻——默认收起，
-   由页头「参考资料」按钮开合；宽面板保持原样（常驻＋结构性让位）。
+   由页头「世界书资料」按钮开合；宽面板保持原样（常驻＋结构性让位）。
    只动渲染层，narrowOpen 是内存态，不写库内/浏览器状态。 */
 const NARROW_PANEL_MAX = 1000
 
@@ -6028,7 +4764,7 @@ function setModuleHidden(id, hidden) {
   if (!state.moduleHidden) state.moduleHidden = {}
   state.moduleHidden[root] = [...set]
   uiSet('moduleHidden', [...set]) // OS-89：落库内
-  // 在正文/参考页上就地重排左栏（不整页重绘：正文滚动位置不该因为开关卡片被重置）；
+  // 在正文/世界书页上就地重排左栏（不整页重绘：正文滚动位置不该因为开关卡片被重置）；
   // 设置页等其它页面走常规 render，才能同步勾选态。
   const host = document.getElementById('ref-col')
   if (host && (state.view === 'write' || state.view === 'reference')) {
@@ -6053,7 +4789,7 @@ function rerenderRefCol() {
   afterRefColMount()
 }
 
-/** 挂载参考图谱（OS-44）：canvas 就位后调 graph.mjs 的 mountGraph。 */
+/** 挂载世界书图谱（OS-44）：canvas 就位后调 graph.mjs 的 mountGraph。 */
 let graphCleanup = null
 async function mountRefGraph() {
   const canvas = document.getElementById('ref-graph-canvas')
@@ -6074,7 +4810,7 @@ async function mountRefGraph() {
     canvas,
     graph: state.refCol.graph,
     onPick: (node) => {
-      // OS-52：点节点＝出信息卡（跟参考页大图同一套口径），跳转走卡片按钮
+      // OS-52：点节点＝出信息卡（跟世界书页大图同一套口径），跳转走卡片按钮
       state.refCol.pick = state.refCol.pick === node.id ? null : node.id
       updateGraphPickCard()
     },
@@ -6118,13 +4854,13 @@ async function loadRefGraph({ force = false } = {}) {
 }
 
 /**
- * 参考摘要（OS-44）：让 AI 读当前章节关联的参考，总结成本章要点。
+ * 世界书摘要（OS-44）：让 AI 读当前章节关联的世界书，总结成本章要点。
  * 走 ephemeral——不建会话、不污染会话列表。
  */
 /**
  * 单次 Agent 调用（OS-50 补齐）：走 ephemeral 通道——不建会话、不落档、不进会话列表。
  * 与润笔共用 streamChat；只收文本，thinking/tool 一律丢弃。
- * 注意：这个函数原先只有调用点、没有定义，参考摘要一点就 ReferenceError。
+ * 注意：这个函数原先只有调用点、没有定义，世界书摘要一点就 ReferenceError。
  */
 async function runAgentOnce(prompt, { timeoutMs = 120000 } = {}) {
   const controller = new AbortController()
@@ -6158,13 +4894,13 @@ async function runRefSummary() {
   rc.summaryError = ''
   repaintRefModule('summary')
   try {
-    // 材料口径（OS-45 单向原则）：**参考只暴露链接，不给正文/摘要**——参考内容由 Agent
-    // 自己按路径去读（它有读文件能力），否则等于把参考资料全量灌进上下文。
+    // 材料口径（OS-45 单向原则）：**世界书只暴露链接，不给正文/摘要**——世界书内容由 Agent
+    // 自己按路径去读（它有读文件能力），否则等于把世界书资料全量灌进上下文。
     // 章节正文本身是作者要总结的对象，给开头即可。
     const chapter = text(state.chapterText).slice(0, 1200)
     const graph = state.refCol.graph
     const chapterPath = text(state.chapterFile)
-    // 与当前章节直接相连的参考优先，其余按标签/度数补足
+    // 与当前章节直接相连的世界书优先，其余按标签/度数补足
     const linked = (graph?.edges || [])
       .filter((edge) => edge.a === chapterPath || edge.b === chapterPath)
       .map((edge) => (edge.a === chapterPath ? edge.b : edge.a))
@@ -6183,13 +4919,13 @@ async function runRefSummary() {
       .map((note) => `- ${note.title}　${note.path}${note.tags?.length ? `　(${note.tags.map((tag) => `#${tag}`).join(' ')})` : ''}`)
       .join('\n')
     const prompt = [
-      '【参考摘要】',
+      '【世界书摘要】',
       chapterPath ? `当前章节：${chapterPath}` : '（还没选章节）',
       chapter ? `\n章节开头：\n${chapter}` : '',
-      refLinks ? `\n可用参考（只有链接，需要内容请自行读取对应文件）：\n${refLinks}` : '',
+      refLinks ? `\n可用世界书（只有链接，需要内容请自行读取对应文件）：\n${refLinks}` : '',
       '',
-      '请给这一章写一份要点摘要（150 字以内）：这一章要推进什么、涉及哪些参考、有什么要注意的伏笔或设定约束。',
-      '需要参考细节时用你的读文件能力打开上面列出的路径，不要凭空猜测。只输出摘要正文，不要标题、不要解释。'
+      '请给这一章写一份要点摘要（150 字以内）：这一章要推进什么、涉及哪些世界书资料、有什么要注意的伏笔或设定约束。',
+      '需要世界书细节时用你的读文件能力打开上面列出的路径，不要凭空猜测。只输出摘要正文，不要标题、不要解释。'
     ].filter(Boolean).join('\n')
     const result = await runAgentOnce(prompt)
     rc.summary = result || '（模型没有返回内容）'
@@ -6200,23 +4936,23 @@ async function runRefSummary() {
   repaintRefModule('summary')
 }
 
-/** 保存参考笔记（走 /api/chapter 通道，复用原子写＋.history 备份）。 */
+/** 保存世界书笔记（走 /api/chapter 通道，复用原子写＋.history 备份）。 */
 /* OS-53：textarea 版 saveReferenceNote 已退役——实时逐块编辑由 commitRefBlock 接管。 */
 
-/** 把当前参考塞进 Agent 上下文（复用 OS-24 的 chip 机制）。 */
+/** 把当前世界书笔记塞进 Agent 上下文（复用 OS-24 的 chip 机制）。 */
 async function sendReferenceToAgent() {
   const note = state.reference.note
   if (!note) return
   if (dshBridgeAvailable()) {
-    // 嵌入模式：参考正文作为引用块进 DSH 输入框（附世界书来源）
+    // 嵌入模式：世界书正文作为引用块进 DSH 输入框（附世界书来源）
     const body = text(note.text).trim().slice(0, 2000) || note.title
-    reportDshBridge(await sendToDshAgent({ quote: body, hint: openStorySourceNote('reference') + `参考《${note.title}》：` }))
+    reportDshBridge(await sendToDshAgent({ quote: body, hint: openStorySourceNote('reference') + `世界书《${note.title}》：` }))
     return
   }
   agent.pendingContext = {
     quote: note.title,
     context: text(note.text).slice(0, 2000),
-    label: `参考：${note.title}（${text(note.text).replace(/\s/gu, '').length} 字）`
+    label: `世界书：${note.title}（${text(note.text).replace(/\s/gu, '').length} 字）`
   }
   renderAgent()
   const input = document.getElementById('agent-input')
@@ -6227,10 +4963,10 @@ async function sendReferenceToAgent() {
 function openNewReferenceModal(kind) {
   const isTag = kind === 'tag'
   openModal(`
-    <h3>${isTag ? '新建标签' : '新建参考笔记'}</h3>
+    <h3>${isTag ? '新建标签' : '新建世界书笔记'}</h3>
     <p class="sub">${isTag
       ? '标签是人话的分类——给每个标签写一句描述，用的时候一眼知道它什么意思。'
-      : '参考笔记写你查到的、想到的、要记住的。写作时左栏图谱会把它和章节连起来。'}</p>
+      : '世界书笔记写你查到的、想到的、要记住的。写作时左栏图谱会把它和章节连起来。'}</p>
     <div class="field"><label>${isTag ? '标签名（不含 #）' : '标题'}</label>
       <input id="ref-new-name" placeholder="${isTag ? '例如：伏笔' : '例如：渡口钟声'}">
     </div>
@@ -6250,7 +4986,7 @@ function openNewReferenceModal(kind) {
   document.getElementById('ref-new-name')?.focus()
 }
 
-/** 从弹层创建参考笔记 / 标签笔记。 */
+/** 从弹层创建世界书笔记 / 标签笔记。 */
 async function createReferenceFromModal() {
   const errEl = document.getElementById('ref-new-err')
   const name = text(document.getElementById('ref-new-name')?.value).trim()
@@ -6259,10 +4995,10 @@ async function createReferenceFromModal() {
   const isTag = Boolean(descEl) // 弹层里有描述框＝在新建标签
   const dirInput = text(document.getElementById('ref-new-dir')?.value).trim().replace(/^[\\/]+/u, '')
   const safe = name.replace(/[\\/:*?"<>|]/gu, '_')
-  // 标签笔记固定进 参考/标签/；普通笔记按作者指定的子目录
+  // 标签笔记固定进 世界书/标签/；普通笔记按作者指定的子目录
   const file = isTag
-    ? `参考/标签/${safe}.md`
-    : (dirInput ? `参考/${dirInput}/${safe}.md` : `参考/${safe}.md`)
+    ? `${registryModule.namingEntry('worldbook').dir}/标签/${safe}.md`
+    : (dirInput ? `${registryModule.namingEntry('worldbook').dir}/${dirInput}/${safe}.md` : `${registryModule.namingEntry('worldbook').dir}/${safe}.md`)
   const body = isTag
     ? `---\nkind: tag\ntag: ${name}\ndescription: ${text(descEl.value).trim()}\n---\n\n`
     : `---\ntags: []\n---\n\n# ${name}\n\n`
@@ -6292,12 +5028,12 @@ function openAbsorbModal() {
     const count = Number(absorb[dir]) || 0
     if (!count) return ''
     return `<label class="absorb-row"><input type="checkbox" checked data-absorb-dir="${esc(dir)}">
-      <span><b>${esc(dir)}/</b> ${count} 篇 → <span class="hint">参考/${esc(dir)}/</span></span></label>`
+      <span><b>${esc(dir)}/</b> ${count} 篇 → <span class="hint">${registryModule.namingEntry('worldbook').dir}/${esc(dir)}/</span></span></label>`
   }).join('')
   if (!rows) return
   openModal(`
     <h3>迁入旧目录</h3>
-    <p class="sub">这些旧目录的内容会搬进「参考」，并入图谱与双链体系。搬运是显式动作：
+    <p class="sub">这些旧目录的内容会搬进「世界书」，并入图谱与双链体系。搬运是显式动作：
       目标重名不覆盖；原稿挪进 <span class="hint">.history</span> 备份，随时可捞回。</p>
     <div class="absorb-list">${rows}</div>
     <div class="err" id="ref-absorb-err"></div>
@@ -6308,7 +5044,7 @@ function openAbsorbModal() {
   `)
 }
 
-/** 执行迁入：POST /api/reference/absorb → 刷新参考索引与图谱缓存。 */
+/** 执行迁入：POST /api/reference/absorb → 刷新世界书索引与图谱缓存。 */
 async function runAbsorbFromModal() {
   const errEl = document.getElementById('ref-absorb-err')
   const dirs = [...document.querySelectorAll('[data-absorb-dir]')]
@@ -6437,7 +5173,7 @@ function openCardModalFor(cardText, sessionId, noSessionHint = '先开始一段�
     .join('')
   openModal(`
     <h3>转为待确认卡</h3>
-    <p class="sub">创建时记录目标正文的快照；采纳时如果文件已被改过（比如在 Pinax 里保存过），会拒绝写入而不是覆盖。</p>
+    <p class="sub">创建时记录目标正文的快照；采纳时如果文件已被改过（比如被外部工具修改过），会拒绝写入而不是覆盖。</p>
     <div class="field"><label>目标章节（库内相对路径，可手改）</label>
       ${options ? `<select id="card-file-select">${options}</select>` : ''}
       <input id="card-file-input" placeholder="正文/xxx.md" value="${esc(state.chapterFile)}">
@@ -6547,36 +5283,10 @@ async function rejectCard(cardId) {
 /* ---------- 库管理写操作（OS-7：新建/导入/修复整页流）---------- */
 
 // 与 next/shell/library/wizardKit.mjs 的 DECISION_ORDER 同源照抄（浏览器侧拿不到仓内模块）。
-const DECISION_LABELS = {
-  chapter: '正文',
-  script: '剧本',
-  outline: '大纲',
-  'outline-json': '大纲（结构化）',
-  worldbook: '世界书',
-  rule: '约束',
-  idea: '构思',
-  source: '资料',
-  'source-json': '资料（归档 JSON）',
-  material: '资料（章节衍生）',
-  auxiliary: '资料（世界书辅助）',
-  log: '日志'
-}
-
 // 与 openstory/libraryManage.mjs 的 PRIMARY_CHOICES 同源（v1 内嵌修复只给两大主载体）。
-const PRIMARY_CHOICES = [
-  { id: 'pinax.carrier.novel', title: '小说', detail: '正文/ 大纲/ 世界书/ 构思/ 资料/ 日志/ 约束 骨架' },
-  { id: 'pinax.carrier.script', title: '剧本', detail: '剧本/ 人物/ 场景/ 大纲/ 世界书/… 骨架' }
-]
+function flowError(message) { return libraryFlowViews?.flowError(message)  }
 
-function flowError(message) {
-  return message ? `<div class="error-box">${esc(message)}</div>` : ''
-}
-
-function joinDir(parent, name) {
-  const base = text(parent).replace(/[\\/]+$/u, '')
-  const isWindows = base.includes('\\') || /^[a-zA-Z]:/u.test(base)
-  return `${base}${isWindows ? '\\' : '/'}${text(name).trim()}`
-}
+function joinDir(parent, name) { return libraryFlowViews?.joinDir(parent, name)  }
 
 async function flowCreate() {
   state.create.result = null
@@ -6610,87 +5320,7 @@ function flowImport(prefill = {}) {
   document.getElementById('import-source')?.focus()
 }
 
-function createHtml() {
-  const create = state.create
-  const parent = create.parent.trim()
-  const name = create.name.trim()
-  const full = parent && name ? joinDir(parent, name) : ''
-  const primaryCards = [
-    ...PRIMARY_CHOICES.map((choice) => `<button class="big-opt${create.primary === choice.id ? ' on' : ''}" data-create-primary="${esc(choice.id)}"><b>${esc(choice.title)}</b><span>${esc(choice.detail)}</span></button>`),
-    '<button class="big-opt' + (create.primary === '' ? ' on' : '') + '" data-create-primary=""><b>先建空壳</b><span>只落 .pinax/ 与元数据，主模块以后再选（OpenStory 里可以修）。</span></button>'
-  ].join('')
-  const genres = state.genres || []
-  const selectedGenre = genres.find((item) => item.id === create.genre) ?? null
-  const genreCards = genres.length
-    ? genres.map((genre) => `<button class="big-opt${create.genre === genre.id ? ' on' : ''}" data-create-genre="${esc(genre.id)}">
-        <b>${esc(genre.name)}${genre.tier === 'primary' ? '<span class="src">主打</span>' : ''}</b>
-        <span>${esc(genre.summary || '')}</span>
-        <span class="count">交付物：${genre.deliverables.map(deliverableLabel).join('／')} · 篇幅单位：${unitLabel(genre.length.unit)}${genre.length.divideBy !== 'none' ? ` · 分${divideLabel(genre.length.divideBy)}` : ' · 不分章'}</span>
-      </button>`).join('')
-    : '<span class="count">体裁货架读不到——库会建成未声明体裁的空壳，可在库里补声明。</span>'
-  const lengthInput = create.length ?? (selectedGenre?.length?.total?.target ?? '')
-  const perUnitInput = selectedGenre?.length?.perUnit?.target ?? ''
-  const genreDetail = selectedGenre
-    ? `<div class="row" style="margin-top:12px;align-items:flex-end">
-        <div class="field"><label>总篇幅目标（${unitLabel(selectedGenre.length.unit)}）</label>
-          <input id="create-length" type="number" min="1" value="${esc(lengthInput)}"></div>
-        ${selectedGenre.length.divideBy !== 'none' ? `<div class="field"><label>每${divideLabel(selectedGenre.length.divideBy)}约（${unitLabel(selectedGenre.length.unit)}）</label>
-          <input id="create-per-unit" type="number" min="1" value="${esc(perUnitInput)}"></div>` : ''}
-        <span class="count">体裁建议区间：${selectedGenre.length.total ? `${selectedGenre.length.total.min}–${selectedGenre.length.total.max}` : '不限'}${selectedGenre.length.divideBy !== 'none' ? ` · 分${divideLabel(selectedGenre.length.divideBy)}` : ''}</span>
-      </div>`
-    : ''
-  const result = create.result
-    ? `<div class="step">
-        <h3><span class="no">✓</span>库已建成</h3>
-        <p class="sub">${esc(create.result.document?.name ?? '')} · ${esc(create.result.root)}</p>
-        ${create.result.briefWritten ? '<p class="sub">✓ 作品简报已写入（体裁/篇幅已锁定，页签与 Agent 策略按它生效）</p>' : ''}
-        ${create.result.briefError ? `<p class="sub" style="color:var(--danger)">${esc(create.result.briefError)}</p>` : ''}
-        <p class="sub">${create.result.needsPrimary ? '这是个空壳库：还没选主模块。可以在库里点「诊断」修，或现在去导入稿件。' : `骨架与 .pinax/project.json 已按「${esc(create.result.document?.kind ?? '')}」落盘，并已登记进库清单（Pinax 里也能看到）。`}</p>
-        <div class="repair-actions">
-          <button class="btn-primary" data-action="create-open" data-root="${esc(create.result.root)}">打开这个库</button>
-          <button class="btn-ghost" data-action="create-import" data-root="${esc(create.result.root)}">继续导入稿件</button>
-          <button class="btn-ghost" data-action="flow-create-reset">再建一个</button>
-        </div>
-      </div>`
-    : ''
-  return `<div class="lib-wrap">
-    <div class="lib-head-row">
-      <button class="btn-ghost" data-action="flow-back">← 库管理</button><span class="sp"></span>
-    </div>
-    <h1>新建库</h1>
-    <p class="sub">目录＝固化中文骨架 ∪ 模块认领的文件夹；只建不删。建好自动登记进库清单。</p>
-    ${result}
-    ${result ? '' : `
-    <div class="step">
-      <h3><span class="no">1</span>位置与名字</h3>
-      <div class="row">
-        <div class="field"><label>放在哪个目录下（绝对路径）</label>
-          <div class="input-with-btn">
-            <input id="create-parent" placeholder="D:\\写作" value="${esc(create.parent)}">
-            <button class="btn-ghost" data-action="pick-folder" data-target="create-parent" title="弹出 Windows 文件夹选择框">浏览…</button>
-          </div></div>
-        <div class="field"><label>库名（也是文件夹名）</label>
-          <input id="create-name" placeholder="长夜" value="${esc(create.name)}"></div>
-      </div>
-      ${full ? `<div class="path-preview">将创建：${esc(full)}</div>` : ''}
-    </div>
-    <div class="step">
-      <h3><span class="no">2</span>主模块（决定骨架形态）</h3>
-      <div class="big-opts">${primaryCards}</div>
-      <p class="sub">其余载体（世界书/漫画/…）的主模块在 Pinax 里选。</p>
-    </div>
-    <div class="step">
-      <h3><span class="no">3</span>作品简报（体裁＝一等约束）</h3>
-      <p class="sub">体裁决定要哪些模块、写多长、Agent 用什么策略——建库后写进 <span class="hint">.openstory/brief.json</span>。</p>
-      <div class="big-opts">${genreCards}</div>
-      ${genreDetail}
-    </div>
-    ${flowError(create.error)}
-    <div class="row">
-      <button class="btn-primary" data-action="create-submit"${create.running ? ' disabled' : ''}>${create.running ? '创建中…' : '创建库'}</button>
-    </div>`}
-  </div>`
-}
+function createHtml() { return libraryFlowViews?.createHtml()  }
 
 /** 原生选择器（OS-108）：调 daemon 弹 Windows 对话框 → 回填目标输入框。 */
 /** 在资源管理器打开路径（OS-109）：文件夹＝打开；文件＝选中。失败如实提示。 */
@@ -6808,150 +5438,15 @@ async function loadFsBrowse(pathToLoad, { remember = false } = {}) {
 }
 
 /** 内建浏览器的浮层 HTML（用 openModal 挂载）。 */
-function renderFsBrowserModal() {
-  const fb = state.fsBrowse
-  if (!fb?.open) { return }
-  const rows = fb.entries.map((item) => `<button class="fsb-row" data-action="fsb-go" data-path="${esc(item.path)}">
-      <span class="fsb-ic">${item.kind === 'drive' ? '💽' : '📁'}</span>
-      <span class="fsb-name">${esc(item.name)}</span>
-    </button>`).join('')
-  // OS-119：默认根与「上次选择」都做成一步可回的快捷入口（作者：不用每次都从头选）
-  const shortcuts = []
-  if (fb.defaultRoot && !fb.isDefaultRoot) shortcuts.push(`<button class="fsb-jump" data-action="fsb-jump" data-path="${esc(fb.defaultRoot)}" title="默认放在这里：建库大多落这个目录">⌂ 默认目录</button>`)
-  if (fb.lastPicked && fb.lastPicked !== fb.path && fb.lastPicked !== fb.defaultRoot) shortcuts.push(`<button class="fsb-jump" data-action="fsb-jump" data-path="${esc(fb.lastPicked)}" title="上次选过的文件夹">↺ 上次选择</button>`)
-  openModal(`<h3>选择文件夹</h3>
-    ${fb.note ? `<p class="sub">${esc(fb.note)}</p>` : ''}
-    <div class="fsb-path">
-      <button class="btn-ghost" data-action="fsb-up"${fb.parent ? '' : ' disabled'} title="上一级">↑ 上一级</button>
-      <span class="fsb-cur">${esc(fb.path || '（选择盘符）')}${fb.isDefaultRoot ? '<span class="fsb-tag">默认目录</span>' : ''}</span>
-    </div>
-    ${shortcuts.length ? `<div class="fsb-jumps">${shortcuts.join(String())}</div>` : ''}
-    <div class="fsb-list">
-      ${fb.loading ? '<p class="fsb-hint">读取中…</p>' : ''}
-      ${fb.error ? `<p class="fsb-err">${esc(fb.error)}</p>` : ''}
-      ${!fb.loading && !fb.error ? (rows || '<p class="fsb-hint">这里没有子文件夹</p>') : ''}
-    </div>
-    <div class="ded-image-ops">
-      <button class="btn-ghost" data-action="fsb-close">取消</button>
-      ${fb.path ? `<button class="btn-primary" data-action="fsb-pick">选这个文件夹</button>` : ''}
-    </div>`)
-}
+function renderFsBrowserModal() { return libraryFlowViews?.renderFsBrowserModal()  }
 
-function importHtml() {
-  const impo = state.impo
-  const options = state.libraries
-    .map((library) => `<option value="${esc(library.path)}"${library.path === impo.root ? ' selected' : ''}>${esc(library.name)}${library.path === state.current?.path ? '（当前）' : ''}</option>`)
-    .join('')
-  return `<div class="lib-wrap">
-    <div class="lib-head-row">
-      <button class="btn-ghost" data-action="flow-back">← 库管理</button><span class="sp"></span>
-    </div>
-    <h1>导入稿件</h1>
-    <p class="sub">源目录永远只读；识别出的稿件按类别落进目标库的标准目录，只新增不覆盖，认不出的原样跳过不猜。</p>
-    ${flowError(impo.error)}
-    <div class="step">
-      <h3><span class="no">1</span>目标库</h3>
-      ${options ? `<select class="select" id="import-root">${options}</select>` : '<span class="count">还没有库——先去 <button class="btn-ghost" data-action="flow-create">新建一个</button>。</span>'}
-    </div>
-    <div class="step">
-      <h3><span class="no">2</span>源目录（只读）</h3>
-      <div class="field">
-                  <div class="input-with-btn">
-            <input id="import-source" placeholder="D:\\旧稿\\长夜　（顶层目录名＝类别：正文/剧本/大纲/世界书/约束/构思/资料/日志）" value="${esc(impo.source)}">
-            <button class="btn-ghost" data-action="pick-folder" data-target="import-source" title="弹出 Windows 文件夹选择框">浏览…</button>
-          </div>
-      </div>
-      <div class="row">
-        <button class="btn-primary" data-action="import-scan"${impo.running || !options ? ' disabled' : ''}>${impo.running ? '扫描中…' : '扫描预览'}</button>
-        <span class="count">上限 400 个文件 / 单文件 2MB / 总量 32MB。</span>
-      </div>
-    </div>
-    ${impo.plan ? planHtml(impo.plan) : ''}
-    ${impo.report ? reportHtml(impo.report) : ''}
-  </div>`
-}
+function importHtml() { return libraryFlowViews?.importHtml()  }
 
-function planHtml(plan) {
-  const items = Array.isArray(plan.items) ? plan.items : []
-  const groups = new Map()
-  for (const item of items) {
-    if (!groups.has(item.decision)) groups.set(item.decision, [])
-    groups.get(item.decision).push(item)
-  }
-  const groupHtml = [...groups.entries()].map(([decision, list]) => `
-    <div class="plan-group">
-      <h4>${esc(DECISION_LABELS[decision] ?? decision)}<span class="cnt">${list.length} 个文件</span></h4>
-      <div class="plan-files">${list.slice(0, 40).map((item) => `<div>${esc(item.source)} → ${esc(item.target || '（归档）')}</div>`).join('')}${list.length > 40 ? `<div>…还有 ${list.length - 40} 个</div>` : ''}</div>
-    </div>`).join('')
-  const skipped = Array.isArray(plan.skipped) ? plan.skipped : []
-  const warnings = Array.isArray(plan.warnings) ? plan.warnings : []
-  return `<div class="step">
-    <h3><span class="no">3</span>预览（计划模式，还没写盘）</h3>
-    <div class="result-kv">
-      <span><b>${plan.importable ?? items.length}</b> 可导入</span>
-      <span><b>${plan.skippedCount ?? skipped.length}</b> 跳过</span>
-      <span class="count">扫描 ${plan.scanned ?? '—'} 个文件 · ${plan.mode === 'plan' ? 'dryRun' : plan.mode}</span>
-    </div>
-    ${groupHtml || '<div class="count">没有可导入的文件。</div>'}
-    ${skipped.length ? `<div class="plan-group"><h4>跳过<span class="cnt">${skipped.length}</span></h4><div class="plan-files">${skipped.slice(0, 30).map((item) => `<div>${esc(item.source || item.name || '?')} — ${esc(item.reason || '')}</div>`).join('')}</div></div>` : ''}
-    ${warningsHtml(warnings)}
-    <div class="row">
-      <button class="btn-primary" data-action="import-run"${state.impo.running ? ' disabled' : ''}>${state.impo.running ? '导入中…' : '执行导入'}</button>
-      <span class="count">核对上面的 target 再落盘；写不进的逐条记账，不中断其余文件。</span>
-    </div>
-  </div>`
-}
+function planHtml(plan) { return libraryFlowViews?.planHtml(plan)  }
 
-function reportHtml(report) {
-  const written = Array.isArray(report.written) ? report.written : []
-  const failures = Array.isArray(report.writeFailures) ? report.writeFailures : []
-  return `<div class="step">
-    <h3><span class="no">✓</span>导入完成</h3>
-    <div class="result-kv">
-      <span><b>${report.createdCount ?? 0}</b> 新建</span>
-      <span><b>${report.reusedCount ?? 0}</b> 同内容复用</span>
-      <span class="${failures.length ? 'bad' : ''}"><b>${failures.length || (report.failedCount ?? 0)}</b> 失败</span>
-      <span><b>${report.skippedCount ?? 0}</b> 跳过</span>
-    </div>
-    ${written.length ? `<div class="plan-group"><h4>落盘清单<span class="cnt">${written.length}</span></h4><div class="plan-files">${written.slice(0, 40).map((item) => `<div>${esc(item.target || item.source)}${item.reused ? '（同内容，未重写）' : ''}</div>`).join('')}</div></div>` : ''}
-    ${failures.length ? `<div class="plan-group"><h4>写失败<span class="cnt">${failures.length}</span></h4><div class="plan-files">${failures.slice(0, 20).map((item) => `<div>${esc(item.target || item.source || '?')} — ${esc(item.reason || '')}</div>`).join('')}</div></div>` : ''}
-    <div class="repair-actions">
-      <button class="btn-primary" data-action="import-open" data-root="${esc(report.targetRoot ?? '')}">打开这个库</button>
-      <button class="btn-ghost" data-action="import-again">再导一批</button>
-    </div>
-  </div>`
-}
+function reportHtml(report) { return libraryFlowViews?.reportHtml(report)  }
 
-function repairHtml() {
-  const repair = state.repair
-  if (!repair) return needLibraryHtml()
-  const verdict = repair.verdict
-  let actions = ''
-  if (verdict.action === 'create-here') {
-    actions = `<div class="repair-actions"><button class="btn-primary" data-action="repair-create">在这里新建库</button></div>`
-  } else if (verdict.action === 'import-here') {
-    actions = `<div class="repair-actions">
-        <button class="btn-primary" data-action="repair-import">导入这个文件夹</button>
-        <button class="btn-ghost" data-action="repair-create">或者旁边建个新库存它</button>
-      </div>
-      <p class="sub" style="margin-top:10px">导入需要一个已登记的库当目标：先「在这里新建库」再导，或回「库管理」选别的目标。</p>`
-  } else if (verdict.action === 'pick-primary') {
-    actions = `<div class="big-opts" style="margin-top:12px">
-        ${PRIMARY_CHOICES.map((choice) => `<button class="big-opt" data-action="repair-primary" data-id="${esc(choice.id)}"><b>${esc(choice.title)}</b><span>${esc(choice.detail)}</span></button>`).join('')}
-      </div>
-      <p class="sub" style="margin-top:10px">选完连骨架一起落盘（依赖闭包装不齐会拒绝）。其余载体主模块在 Pinax 里选。</p>`
-  }
-  return `<div class="repair-card">
-    <h2>${esc(verdict.title)}</h2>
-    <p class="detail">${esc(verdict.detail)}</p>
-    <p class="path">${esc(repair.path)}</p>
-    ${errorHtml()}
-    ${actions}
-    ${verdict.action ? '' : '<p class="sub">这个形态 OpenStory 修不了：按下面的技术详情看原因，或回 Pinax 处理。</p>'}
-    <div class="raw-detail">形态：${esc(JSON.stringify(repair.shape))}</div>
-    <div class="repair-actions"><button class="btn-ghost" data-action="flow-back">← 库管理</button></div>
-  </div>`
-}
+function repairHtml() { return libraryFlowViews?.repairHtml()  }
 
 async function submitCreate() {
   const create = state.create
@@ -7081,43 +5576,6 @@ async function refreshLibraries() {
   } catch { /* 保住旧清单 */ }
 }
 
-/* OS-167：旧 Pinax 清单只读预览＋勾选导入。选中态留宿主，HTML 构造在 views/settingsAggregation.mjs。 */
-async function scanPinaxList() {
-  try {
-    const payload = await api('/api/library/pinax-list')
-    const libraries = Array.isArray(payload.libraries) ? payload.libraries : []
-    state.pinaxImport = {
-      ...payload,
-      libraries,
-      selected: libraries.filter((item) => item?.ok === true).map((item) => item.path),
-      result: null
-    }
-  } catch (error) {
-    state.error = `${error?.code ? `${error.code} · ` : ''}${text(error?.message || error)}`
-  }
-  render()
-}
-
-async function applyPinaxImport() {
-  const scan = state.pinaxImport
-  if (!scan) return
-  const inputs = document.querySelectorAll('[data-pinax-path]:checked')
-  const paths = [...inputs].map((el) => el.dataset.pinaxPath).filter(Boolean)
-  if (!paths.length) {
-    state.error = '先勾选体检通过的库再导入'
-    render()
-    return
-  }
-  try {
-    const result = await api('/api/library/pinax-import', { method: 'POST', body: JSON.stringify({ paths }) })
-    await refreshLibraries()
-    state.pinaxImport = { ...scan, selected: paths, result }
-  } catch (error) {
-    state.error = `${error?.code ? `${error.code} · ` : ''}${text(error?.message || error)}`
-  }
-  render()
-}
-
 /* ---------- 业务页扩展（OS-8：动态页签＋目录工作面＋推演页）----------
    OS-143：页签词表/退场表/默认隐藏种子已迁 public/views/registry.mjs（唯一真源），
    本文件经顶部 registryReady 的引用壳消费它们；renderTabs/go 由注册表驱动。 */
@@ -7178,14 +5636,13 @@ function openTabAdd() {
         <span class="tp-check">${off ? '' : '✓'}</span><b>${esc(item.label)}</b></button>`
     }).join('')
   // 目录型页签（已有目录）
-  // 「参考」「习惯」不是普通目录：它们分流到 reference/habits 专页（见 renderTabs）。
-  // 面板里要用同一个 view 键，否则勾选会写进 dir:参考 而页签栏根本不放它——
+  // 世界书/习惯有专页（见 renderTabs）；面板条目须复用页签的 view 键。
   // 注册表条目的 view 就是页签栏的键（OS-143）。
   // OS-86：已退场的旧目录彻底不出现——不管磁盘上还在不在、有多少篇。
   // 作者口径：没被官方认证的标签就是要消失，不做「旧·待迁」降级露出；
-  // 内容清理走一次性迁移（大纲/构思/资料→参考，约束→习惯＋参考存档）。
+  // 内容清理走一次性迁移（大纲/构思/资料→世界书，约束→习惯＋世界书存档）。
   const dirRows = libDirs
-    .filter((dir) => dir !== '正文' && dir !== '世界书' && dir !== '推演')
+    .filter((dir) => dir !== '正文' && dir !== '世界书' && dir !== '扮演')
     .filter((dir) => !RETIRED_DIRS.includes(dir))
     .sort((left, right) => DIR_ORDER.indexOf(left) - DIR_ORDER.indexOf(right))
     .map((dir) => {
@@ -7278,8 +5735,7 @@ function renderTabs() {
   const tabsEl = document.getElementById('tabs')
   if (!tabsEl || !registryModule) return
   const hidden = state.current ? hiddenTabs() : new Set()
-  // OS-161：模块停用 → 归属页签消失。用前端单一入口 moduleOn 构造显式启用映射；
-  // 核心模块（core:true）恒启用，所以不会误伤。
+  // OS-161：模块停用 → 归属页签消失。用前端单一入口 moduleOn 构造显式启用映射。
   const modulesEnabled = Object.fromEntries(MODULE_IDS.map((id) => [id, moduleOn(id)]))
   const defs = registryModule.computeTabDefs({
     current: state.current,
@@ -7829,7 +6285,7 @@ function ssChapterOverviewHtml(chapter) {
 function ssBookOverviewHtml(fv, layout) {
   const title = fv.book?.title || fv.curve?.title || fv.bookId || '这本书'
   return `<div class="ss-detail-head"><h2>《${esc(title)}》</h2><span class="ss-align ${layout.stats.alignment === 'approximate' ? 'approximate' : ''}">${esc(ssAlignLabel(layout.stats.alignment))}</span></div>
-    <p class="ss-prose">这是 Fact 链的可视化工作面：左栏按章／层／图切换，中栏读条目，右栏看溯源、世界书关联与推演/分析消费点。</p>
+    <p class="ss-prose">这是 Fact 链的可视化工作面：左栏按章／层／图切换，中栏读条目，右栏看溯源、世界书关联与扮演/分析消费点。</p>
     <div class="ss-stat-grid">
       <div class="ss-stat"><b>${layout.stats.entries}</b><span>条目</span></div>
       <div class="ss-stat"><b>${layout.stats.events}</b><span>事件</span></div>
@@ -7854,10 +6310,10 @@ function factViewHtml() {
   loadSyncCheck()
   if (!ssModule) {
     ensureStorySourceModule()
-      .then(() => { if (state.view === 'dir:拆解') render() })
+      .then(() => { if (state.view === 'dir:故事源') render() })
       .catch((error) => {
         if (state.factView) state.factView.error = text(error?.message || error)
-        if (state.view === 'dir:拆解') render()
+        if (state.view === 'dir:故事源') render()
       })
     return `<div class="doc-head">${headKick}<h1>故事源</h1></div><div class="loading">正在装载故事源…</div>`
   }
@@ -7869,7 +6325,7 @@ function factViewHtml() {
     return `<div class="doc-head">${headKick}<h1>故事源</h1></div>${flowError(fv.error)}`
   }
   if (fv.entriesError && ssModule.isFactUnreadableError(fv.entriesError)) {
-    return `<div class="doc-head">${headKick}<h1>故事源</h1><div class="doc-meta"><span class="b">Fact 链</span><span>拆解档读不出来</span></div></div><div class="warn-box">${esc(ssModule.factUnreadableText(fv.entriesError))}——这不是「还没有故事源」：拆解/ 下有档但读不出来，修好档或删掉坏档再回来。</div>`
+    return `<div class="doc-head">${headKick}<h1>故事源</h1><div class="doc-meta"><span class="b">Fact 链</span><span>故事源档读不出来</span></div></div><div class="warn-box">${esc(ssModule.factUnreadableText(fv.entriesError))}——这不是「还没有故事源」：故事源/ 下有档但读不出来，修好档或删掉坏档再回来。</div>`
   }
   if (fv.entriesError && !ssModule.isFactEmptyError(fv.entriesError)) {
     return `<div class="doc-head">${headKick}<h1>故事源</h1><div class="doc-meta"><span class="b">Fact 链</span><span>条目读不了</span></div></div>${flowError(`条目读不了：${text(fv.entriesError?.message || fv.entriesError)}`)}`
@@ -7878,7 +6334,7 @@ function factViewHtml() {
   if (!fv.entries.length) {
     return `<div class="doc-head">${headKick}<h1>故事源</h1><div class="doc-meta"><span class="b">Fact 链</span><span>还没有条目</span></div>${syncBarHtml()}</div>
       <div class="empty-state"><h2>还没有故事源</h2>
-      <p>拆解/ 目录下没有可读的 fact 条目（或这本书只有章纲没有条目）。先在「世界书/条目」侧产出条目，跑一次 enrich，再回来。</p></div>`
+      <p>故事源/ 目录下没有可读的 fact 条目（或这本书只有章纲没有条目）。先在「世界书/条目」侧产出条目，跑一次 enrich，再回来。</p></div>`
   }
 
   const layout = ssLayoutOf(fv)
@@ -7906,7 +6362,7 @@ function factViewHtml() {
       <div class="doc-meta">
         <span class="b">Fact 链</span>
         <span>《${esc(title)}》${fv.revision ? ` · revision ${fv.revision}` : ''}</span>
-        <select class="select" id="ss-book" title="换一本拆解数据">${pickOptions}</select>
+        <select class="select" id="ss-book" title="换一本故事源数据">${pickOptions}</select>
         <span class="ss-align ${stats.alignment === 'approximate' ? 'approximate' : ''}">${esc(ssAlignLabel(stats.alignment))}</span>
         <span class="count">${stats.entries} 条目 · ${stats.chapters} 章 · ${stats.events} 事件</span>
         ${fv.truncated ? `<span class="count">只读了前 ${fv.entries.length} / ${fv.total} 条</span>` : ''}
@@ -8251,7 +6707,7 @@ async function mountStorySourceChart() {
   }
   try {
     const echarts = await loadEcharts()
-    if (token !== ssChartToken || !host.isConnected || state.view !== 'dir:拆解' || state.factView !== fv) return
+    if (token !== ssChartToken || !host.isConnected || state.view !== 'dir:故事源' || state.factView !== fv) return
     const option = ssChartOption(fv.layout, kind, ssChartTheme())
     if (!option) {
       host.innerHTML = '<div class="ss-empty">这张图还没有数据——entry 事件流或章纲还没铺开。</div>'
@@ -8272,7 +6728,7 @@ async function mountStorySourceChart() {
       fv.ss.chapter = chapter
       fv.ss.openChapters[chapter] = true
       // 让 ECharts 先把 click 事件走完，再换 DOM（避免在自己的事件里 dispose 自己）
-      setTimeout(() => { if (state.view === 'dir:拆解') render() }, 0)
+      setTimeout(() => { if (state.view === 'dir:故事源') render() }, 0)
     })
     ssChartResize = () => { ssChartInstance?.resize() }
     window.addEventListener('resize', ssChartResize)
@@ -8324,9 +6780,9 @@ function renderScriptDocBody(source) {
 
 function dirViewHtml(dir) {
   if (!state.current) return needLibraryHtml()
-  // 拆解目录走专属视图（OS-66）：enrich 产出的六槽位/因果图/台账/章纲是人类可读的
+  // 故事源目录走专属视图（OS-66）：enrich 产出的六槽位/因果图/台账/章纲是人类可读的
   // 结构化知识，用裸 textarea 呈现等于把知识当文本埋掉。
-  if (dir === '拆解') {
+  if (dir === '故事源') {
     loadFactViewData()
     return factViewHtml()
   }
@@ -8365,7 +6821,7 @@ function dirViewHtml(dir) {
 /* ---------- 推演页（前提/变量/分支三段 → Agent 通道 → 待确认卡）---------- */
 
 
-/* ---------- 推演引擎（OS-29）：接 Pinax fact 推演链 ---------- */
+/* ---------- 推演引擎（OS-29）：接本仓自持 fact 推演链 ---------- */
 
 /** 呈现一拍：局面卡＋候选（引擎确定性，不需要模型）。 */
 async function deduceEnginePresent(opts) {
@@ -8418,7 +6874,7 @@ async function deduceEnginePresent(opts) {
 }
 
 /** 角色卡编辑（OS-102）：把角色档案就地改好写回库内世界书条目。
- *  优先改 参考/ 里的同名笔记；没有就提示去世界书新建（不偷偷造文件）。 */
+ *  优先改 世界书/ 里的同名笔记；没有就提示去世界书新建（不偷偷造文件）。 */
 function roleplayEditCard(name) {
   const engine = state.deduce.engine
   const narrative = engine.data?.narrative
@@ -8433,7 +6889,7 @@ function roleplayEditCard(name) {
     goal: isSelf ? text(id?.goal) : ''
   }
   openModal(`<h3>编辑角色档案 · ${esc(cardName)}</h3>
-    <p class="sub">改完写回库内世界书条目（参考/ 下标题含该角色的那篇）。关掉重开扮演就用新档案。</p>
+    <p class="sub">改完写回库内世界书条目（世界书/ 下标题含该角色的那篇）。关掉重开扮演就用新档案。</p>
     <div class="field"><label>身份／一句话</label>
       <input id="rc-identity" value="${esc(cur.identity)}" placeholder="如：与老人同住的年轻男子，自述神经质但坚称没疯">
     </div>
@@ -8452,7 +6908,7 @@ function roleplayEditCard(name) {
     </div>`)
 }
 
-/** 保存角色卡：找参考笔记（标题或路径含角色名）→ 改写 frontmatter 的 identity/archetype/personality/goal。 */
+/** 保存角色卡：找世界书笔记（标题或路径含角色名）→ 改写 frontmatter 的 identity/archetype/personality/goal。 */
 async function roleplaySaveCard(name) {
   const engine = state.deduce.engine
   const cardName = text(name).trim()
@@ -8609,7 +7065,7 @@ async function deduceSessionManage(action, sessionId) {
     engine.customText = ''
     engine.flowPin = true
     if (action === 'delete') {
-      engine.hint = `已删除这一局（回收站：推演/<bookId>/.deleted/sessions/ 可找回）——现在在：${engine.session?.title || '主线'}`
+      engine.hint = `已删除这一局（回收站：扮演/<bookId>/.deleted/sessions/ 可找回）——现在在：${engine.session?.title || '主线'}`
       // 删除响应带局清单但没有画面——直接 peek 新激活局
       if (engine.session) await deduceEnginePresent({ peek: true })
     } else {
@@ -8703,7 +7159,7 @@ async function deduceEngineTurn(opts) {
   render()
 }
 
-/** 待确认事实卡结算（OS-82 回填闭环）：write＝写进拆解（单条 upsert），dismiss＝只出队。 */
+/** 待确认事实卡结算（OS-82 回填闭环）：write＝写进故事源（单条 upsert），dismiss＝只出队。 */
 async function deducePendingSettle(pendingId, action) {
   const engine = state.deduce.engine
   if (!state.current || !pendingId) return
@@ -8802,11 +7258,11 @@ async function deduceArchiveChapter() {
 
 /* ---------- 文游素材（OS-61 P4）：立绘/BGM 占位骨架＋打字机 ---------- */
 
-/** 素材本体直挂 URL（<img>/<audio> 同源装载）：path 相对 推演/<bookId>/素材/。 */
+/** 素材本体直挂 URL（<img>/<audio> 同源装载）：path 相对 扮演/<bookId>/素材/。 */
 function dedAssetUrl(item) {
   const engine = state.deduce.engine
   const bookId = engine.assetBookId
-  const prefix = `推演/${bookId}/素材/`
+  const prefix = `${registryModule.namingEntry('roleplay').dir}/${bookId}/素材/`
   const sub = text(item.path).startsWith(prefix) ? text(item.path).slice(prefix.length) : text(item.path)
   return `/api/deduce/asset?root=${encodeURIComponent(state.current.path)}&bookId=${encodeURIComponent(bookId)}&path=${encodeURIComponent(sub)}`
 }
@@ -9108,7 +7564,7 @@ function deduceHtml() {
 }
 
 /**
- * 事实包健康度（OS-60）：推演质量的根在拆解条目。
+ * 事实包健康度（OS-60）：推演质量的根在故事源条目。
  * 只有命运骰候选＝事实包太薄（没有足够角色/地点/伏笔支撑必然与戏剧候选），
  * 这里如实告诉作者缺什么、补了会怎样——而不是让他对着两张检定单发呆。
  */
@@ -9139,8 +7595,8 @@ function deduceTurnLineHtml(node) {
   return deduceViews.deduceTurnLineHtml(node, { esc, text })
 }
 
-/** 待确认事实卡（OS-82 回填闭环）：这一拍结算产出的 fact 条目——写进拆解前的最后一道闸。
- *  「写入拆解」走 writeFactFile 单条 upsert（只进这一条，不动其他条目）；「忽略」只出队不落库。 */
+/** 待确认事实卡（OS-82 回填闭环）：这一拍结算产出的 fact 条目——写进故事源前的最后一道闸。
+ *  「写入故事源」走 writeFactFile 单条 upsert（只进这一条，不动其他条目）；「忽略」只出队不落库。 */
 function deducePendingFactHtml(item) {
   return deduceViews.deducePendingFactHtml(item, { esc, text })
 }
@@ -9213,11 +7669,11 @@ function deduceEngineHtml() {
         <button class="fl-btn${infoVisible ? ' on' : ''}" data-action="deduce-info-toggle" title="显示/隐藏左侧的已知信息：你扮演谁／谁在你面前／这里是什么地方／你经历过的">状态</button>
         <button class="fl-btn${engine.setOpen ? ' on' : ''}" data-action="deduce-tools-toggle" title="推演设置：POV / 种子 / 推进 / 重新开局">⚙ 设置</button>
         <button class="fl-btn${engine.bgmOn ? ' on' : ''}" data-action="deduce-bgm-toggle"${bgmAsset ? '' : ' disabled'}
-          title="${bgmAsset ? `播放：${esc(bgmAsset.name)}（循环）` : '未配置 BGM——放 推演/…/素材/bgm/<场景或情绪>.mp3 即可启用'}">♪ BGM</button>
+          title="${bgmAsset ? `播放：${esc(bgmAsset.name)}（循环）` : '未配置 BGM——放 扮演/…/素材/bgm/<场景或情绪>.mp3 即可启用'}">♪ BGM</button>
         <i class="fl-bar-div"></i>
         <button class="fl-btn" data-action="deduce-image" title="按本拍局面生成一张场景立绘（需在设置里配生图端点）"${engine.turnBusy ? ' disabled' : ''}${moduleOn('comfyui') ? '' : ' hidden'}>生图</button>
         <button class="fl-btn" data-action="deduce-archive"${engine.turnBusy || !bufferCount ? ' disabled' : ''} title="把本章缓冲的拍整理成 markdown 归档（不写正文文件）">归档</button>
-        <button class="fl-btn" data-action="deduce-export"${engine.turnBusy ? ' disabled' : ''} title="整个会话导出成 markdown（每拍的决定＋正文），落 推演/&lt;bookId&gt;/导出/">导出</button>
+        <button class="fl-btn" data-action="deduce-export"${engine.turnBusy ? ' disabled' : ''} title="整个会话导出成 markdown（每拍的决定＋正文），落 扮演/&lt;bookId&gt;/导出/">导出</button>
       ` : ''}
       <i class="fl-bar-div"></i>
       <button class="fl-btn${engine.paperMode ? ' on' : ''}" data-action="deduce-paper-toggle" title="纸面模式：关掉立绘背景，纯纸面读文">纸面</button>
@@ -9241,7 +7697,7 @@ function deduceEngineHtml() {
         <span class="ded-sess-name">${esc(item.title || (item.id === 'main' ? '主线' : item.id))}</span>
         <span class="ded-sess-meta">${item.rounds} 拍${item.pending ? ` · ${item.pending} 张待确认` : ''}</span>
       </button>
-      <button class="ded-sess-del" data-action="deduce-sess-del" data-id="${esc(item.id)}" title="删除这一局（非破坏——文件进 推演/.deleted/sessions/ 可找回）">删</button>
+      <button class="ded-sess-del" data-action="deduce-sess-del" data-id="${esc(item.id)}" title="删除这一局（非破坏——文件进 扮演/.deleted/sessions/ 可找回）">删</button>
     </div>`
   }).join('')
   const sessHtml = `<div class="ded-sess">
@@ -9398,7 +7854,7 @@ function deduceEngineHtml() {
   </div>`
 }
 
-/** 导出整个推演会话（OS-94）：每拍的决定＋正文出 markdown，落 推演/<bookId>/导出/。 */
+/** 导出整个推演会话（OS-94）：每拍的决定＋正文出 markdown，落 扮演/<bookId>/导出/。 */
 async function deduceExportSession() {
   const engine = state.deduce.engine
   if (!state.current) return
@@ -9470,7 +7926,7 @@ async function deducePromoteRun() {
  */
 function deduceImageFlow() {
   openModal(`<h3>生成场景立绘</h3>
-    <p class="sub">调生图端点按画面描述生成一张场景图，落 推演/&lt;bookId&gt;/素材/场景/ 后自动挂为舞台背景。</p>
+    <p class="sub">调生图端点按画面描述生成一张场景图，落 扮演/&lt;bookId&gt;/素材/场景/ 后自动挂为舞台背景。</p>
     <div class="field"><label>场景名（立绘绑定用，如：龙虎山）</label>
       <input id="deduce-image-name" placeholder="例如：龙虎山">
     </div>
@@ -9539,7 +7995,7 @@ function deduceAgentHtml() {
 /* ---------- 数据加载 ---------- */
 
 async function boot() {
-  await Promise.all([registryReady, runtimeShelfReady, workbenchViewsReady, scriptViewsReady, referenceViewsReady, deduceViewsReady]) // OS-143/149/161/163/164：注册表、运行时货架、各工作面纯视图先就位（首帧起页签全部由注册表驱动）
+  await Promise.all([registryReady, runtimeShelfReady, workbenchViewsReady, scriptViewsReady, referenceViewsReady, deduceViewsReady, settingsAggregationReady, uiKitReady, settingsViewsReady, analysisViewsReady, agentViewsReady, libraryFlowViewsReady, syncViewsReady, referencePageViewsReady]) // OS-143/149/161/163/164：注册表、运行时货架、各工作面纯视图先就位（首帧起页签全部由注册表驱动）
   applyTypography()   // OS-91：无库时也先套默认字号档，避免首帧跳变
   applyAgentCollapse() // OS-103
   // 运行时清单与 config 一起拉：chip 要能显示「DSH 原生」这类具体名字，不能等进设置页才加载
@@ -9651,7 +8107,7 @@ async function openLibrary(path) {
     await loadUiState()
     applyTypography()   // OS-91：进库即应用项目级字号档位
     applyAgentCollapse() // OS-103：进库即应用 Agent 栏折叠状态
-    // OS-84：探已退场旧目录还剩多少篇——页签栏第一帧就要据此决定藏/露，不能等进参考页
+    // OS-84：探已退场旧目录还剩多少篇——页签栏第一帧就要据此决定藏/露，不能等进世界书页
     await probeRetiredDirs()
     // OS-19：体裁声明后按 excludedPages 裁剪页签（未声明＝不裁剪，保持 OS-8 行为）
     try {
@@ -9927,7 +8383,7 @@ function go(view) {
     return
   }
   if (view === 'reference') {
-    // 参考页：拉索引，并预挂载模块。loadReferences 内部已含 OS-89 的日志检索。
+    // 世界书页：拉索引，并预挂载模块。loadReferences 内部已含 OS-89 的日志检索。
     // OS-147：收口在 loadReferences 自己身上——索引在途时再进本页会走 ref.loading 早退
     loadReferences().catch((e) => console.error('[ref-render]', e))
     loadRefModule().then(() => { if (state.view === 'reference') render() }).catch(() => {})
@@ -9935,7 +8391,7 @@ function go(view) {
   }
   if (view === 'deduce') {
     // OS-89：推演模块加载时检索自己的 log
-    loadModuleLog('推演', { limit: 20 }).then(() => {
+    loadModuleLog(registryModule.namingEntry('roleplay').logModule, { limit: 20 }).then(() => {
       if (state.view === 'deduce') render()
     })
     return
@@ -9945,7 +8401,7 @@ function go(view) {
     return
   }
   if (view === 'write') {
-    // 章节工作面自带清单（不再依赖拆解）；有当前章且在清单里就自动载入。
+    // 章节工作面自带清单（不再依赖故事源）；有当前章且在清单里就自动载入。
     loadWriteChapters().then(() => {
       if (!state.chapterLoaded && state.chapterFile && state.write.chapters.some((chapter) => chapter.file === state.chapterFile)) {
         loadChapter(state.chapterFile)
@@ -9953,9 +8409,9 @@ function go(view) {
       // OS-89：日志是异步拉的，到位后重排左栏（否则「本模块修改」停在 0）
       if (state.view === 'write' && document.getElementById('ref-col')) renderRefCol()
     })
-    // 左栏图谱与参考索引：写小说时要能看到关联的参考（OS-45）。
+    // 左栏图谱与世界书索引：写小说时要能看到关联的世界书（OS-45）。
     // 注意 loadReferences 有「已加载就短路」的分支，所以图谱要单独保证被拉一次——
-    // 否则从参考页切回正文时，索引已缓存但图谱还是空的。
+    // 否则从世界书页切回正文时，索引已缓存但图谱还是空的。
     Promise.resolve()
       .then(() => loadReferences())
       .then(() => loadRefGraph())
@@ -9965,7 +8421,7 @@ function go(view) {
 }
 
 document.addEventListener('click', (event) => {
-  // OS-103：世界书·拆解词条点击——切 note 视图并展示词条详情（只读，来源 拆解/）
+  // OS-103：世界书·故事源词条点击——切 note 视图并展示词条详情（只读，来源 故事源/）
   const refEntryBtn = event.target.closest?.('[data-ref-entry]')
   if (refEntryBtn && state.view === 'reference') {
     state.reference.activeEntry = refEntryBtn.dataset.refEntry || ''
@@ -9976,16 +8432,16 @@ document.addEventListener('click', (event) => {
   }
   // 故事源（S2）：形态/层/条/章/图/折叠/关联/辐射都在页内切换，不碰全局路由
   const ssTarget = event.target.closest?.('[data-ss-view], [data-ss-layer], [data-ss-entry], [data-ss-chapter], [data-ss-chart], [data-ss-fold], [data-ss-close], [data-ss-open], [data-ss-ref], [data-ss-radiate], [data-ss-retry-chart], [data-ss-goto-write]')
-  if (ssTarget && state.view === 'dir:拆解') {
+  if (ssTarget && state.view === 'dir:故事源') {
     handleSsClick(ssTarget)
     return
   }
-  // 消息内路径 code（OS-51）：点「参考/约束/写作纪律」＝打开这篇参考；
+  // 消息内路径 code（OS-51）：点「参考/约束/写作纪律」旧路径＝打开这篇世界书；
   // 点「正文/001-xxx.md」＝打开这一章。之前没这个入口，点路径会误弹「新建笔记」。
   const pathCode = event.target.closest?.('.msg.assistant code, .msg.assistant .tool-target')
   if (pathCode) {
-    const raw = pathCode.textContent.trim()
-    const looksLikePath = /^(?:参考|正文|大纲|世界书|拆解|人物|场景|事件|约束|资料|构思|标签)[\/][^\s]+$/u.test(raw)
+    const raw = pathCode.textContent.trim().replace(/^参考[\/]/u, `${registryModule.namingEntry('worldbook').dir}/`)
+    const looksLikePath = /^(?:参考|正文|大纲|世界书|故事源|扮演|人物|场景|事件|约束|资料|构思|标签)[\/][^\s]+$/u.test(raw)
       || /^[0-9]{3}[-_—][^\s]*\.md$/u.test(raw)
     if (looksLikePath) {
       if (raw.startsWith('正文/') || /^[0-9]{3}[-_—]/u.test(raw)) {
@@ -9994,7 +8450,7 @@ document.addEventListener('click', (event) => {
         go('write')
         return
       }
-      if (raw.startsWith('参考/')) {
+      if (raw.startsWith(`${registryModule.namingEntry('worldbook').dir}/`) || raw.startsWith('参考/')) {
         const jumpTo = (hit) => {
           state.reference.activePath = hit.path
           if (state.view !== 'reference') go('reference')
@@ -10007,7 +8463,7 @@ document.addEventListener('click', (event) => {
           const nameInput = document.getElementById('ref-new-name')
           if (nameInput) nameInput.value = name
         }
-        // write 页通常还没拉参考索引——先补一次再匹配（click 委托非 async，走 Promise 链）
+        // write 页通常还没拉世界书索引——先补一次再匹配（click 委托非 async，走 Promise 链）
         const tryJump = () => {
           const hit = findReferenceByRef(raw)
           if (hit) jumpTo(hit)
@@ -10046,7 +8502,7 @@ document.addEventListener('click', (event) => {
     return
   }
 
-  // 双链点击（OS-44）：[[某参考]] 在正文或参考页里都能点开
+  // 双链点击（OS-44）：[[某世界书]] 在正文或世界书页里都能点开
   const wl = event.target.closest?.('a.wl[data-ref]')
   if (wl) {
     event.preventDefault()
@@ -10061,7 +8517,7 @@ document.addEventListener('click', (event) => {
     }
     // 条目链接：条目工作面已剔除，条目数据的消费方是推演
     if (/^条目[:：]/u.test(ref)) { go('deduce'); return }
-    // 否则当参考笔记：标题/相对路径/「参考/」前缀都能认（OS-51）
+    // 否则当世界书笔记：标题/相对路径/「参考/」旧路径前缀都能认（OS-51）
     const hit = findReferenceByRef(ref)
     if (hit) {
       state.reference.activePath = hit.path
@@ -10327,7 +8783,7 @@ document.addEventListener('click', (event) => {
     setSyncPolicy({ action: ['auto', 'silent'].includes(v) ? v : 'remind' })
   } else if (action === 'sync-regen-wiki') {
     // 同源状态条·重新生成：真入口走 enrich（设置里配了文本模型才可用），
-    // 未配置/无拆解数据时只在状态条上说明，不发请求。
+    // 未配置/无故事源数据时只在状态条上说明，不发请求。
     regenWikiFromSync()
   } else if (action === 'sync-recheck') {
     // 同源状态条·重试：绕过 loaded 缓存再打一次（后端刚起来时用）
@@ -10362,8 +8818,8 @@ document.addEventListener('click', (event) => {
       input.setSelectionRange?.(end, end)
     }
   } else if (action === 'tool-open') {
-    // 工具行点击（OS-59）：按目标路径分流——正文→正文页，参考→世界书，其它→目录页
-    const raw = text(target.dataset.toolTarget).trim()
+    // 工具行点击（OS-59）：按目标路径分流——正文→正文页，参考旧路径→世界书，其它→目录页
+    const raw = text(target.dataset.toolTarget).trim().replace(/^参考[\/]/u, `${registryModule.namingEntry('worldbook').dir}/`)
     if (!raw) return
     if (raw.startsWith('正文/') || /^[0-9]{3}[-_—]/u.test(raw)) {
       const file = raw.startsWith('正文/') ? raw : `正文/${raw}`
@@ -10371,7 +8827,7 @@ document.addEventListener('click', (event) => {
       go('write')
       return
     }
-    if (raw.startsWith('参考/')) {
+    if (raw.startsWith(`${registryModule.namingEntry('worldbook').dir}/`)) {
       const jumpTo = (hit) => {
         state.reference.activePath = hit.path
         if (state.view !== 'reference') go('reference')
@@ -10454,10 +8910,6 @@ document.addEventListener('click', (event) => {
     render()
   } else if (action === 'reveal-path') {
     revealNativePath(target.dataset.path || '')
-  } else if (action === 'pinax-import-scan') {
-    scanPinaxList()
-  } else if (action === 'pinax-import-apply') {
-    applyPinaxImport()
   } else if (action === 'fsb-go') {
     loadFsBrowse(target.dataset.path || '')
   } else if (action === 'fsb-jump') {
@@ -10949,7 +9401,7 @@ document.addEventListener('click', (event) => {
   } else if (action === 'doc-more') {
     openDocMore()
   } else if (action === 'chapter-history') {
-    closeModal() // 版本历史会跳到产物中心，面板得先收
+    closeModal() // 版本历史会跳到产物，面板得先收
     openChapterHistory()
   } else if (action === 'chapter-nav') {
     if (target.dataset.file) loadChapter(target.dataset.file)
@@ -10997,7 +9449,7 @@ document.addEventListener('change', (event) => {
     return
   }
   // 故事源换书（S2）：force 重拉 entries/curve/graph
-  if (target.id === 'ss-book' && state.view === 'dir:拆解') {
+  if (target.id === 'ss-book' && state.view === 'dir:故事源') {
     loadFactViewData(true, target.value)
     return
   }
@@ -11063,14 +9515,14 @@ document.addEventListener('input', (event) => {
       engine.draft.prose = target.value
       // OS-89：编辑中的草稿也要落本地（未保存内容禁止只活在内存/缓存里）。
       // 走独立草稿通道，和「会话整存」分开——会话整存是失焦时才做，这里要即时。
-      debounceDraftPersist('推演', engine.draft.nodeId || `round-${engine.draft.round}`, target.value)
+      debounceDraftPersist(registryModule.namingEntry('roleplay').logModule, engine.draft.nodeId || `round-${engine.draft.round}`, target.value)
     }
     const chars = document.getElementById('deduce-draft-chars')
     if (chars) chars.textContent = `${target.value.length} 字 · 失焦自动保存`
     return
   }
   // 故事源表格（S2）：只重渲表体，不打断搜索框焦点
-  if (target.id === 'ss-search' && state.view === 'dir:拆解') {
+  if (target.id === 'ss-search' && state.view === 'dir:故事源') {
     const fv = state.factView
     if (!fv?.layout || !fv.ss) return
     fv.ss.q = target.value
@@ -11104,7 +9556,7 @@ document.addEventListener('input', (event) => {
     return
   }
   if (target.id === 'ref-search') {
-    // 参考侧栏搜索（OS-53）：只重渲目录树容器，不打断输入焦点
+    // 世界书侧栏搜索（OS-53）：只重渲目录树容器，不打断输入焦点
     state.reference.q = target.value
     const tree = document.getElementById('ref-tree')
     if (tree && refModule) {
@@ -11202,7 +9654,7 @@ document.addEventListener('dblclick', (event) => {
 document.addEventListener('focusout', (event) => {
   const blockEl = event.target?.closest?.('.doc-block[data-block]')
   if (!blockEl) return
-  // 正文页 / 参考详情页 / 剧本页共用同一套逐块实时编辑（OS-53/OS-76）；按所在容器与视图分流写回
+  // 正文页 / 世界书详情页 / 剧本页共用同一套逐块实时编辑（OS-53/OS-76）；按所在容器与视图分流写回
   if (blockEl.closest('#ref-reader')) commitRefBlock(blockEl)
   else if (state.view === 'write' || state.view === 'dir:剧本') commitDocBlock(blockEl)
 })
@@ -11302,7 +9754,7 @@ function setSkin(id) {
   // wiki 网页态的强调色跟包走，换皮即重载 iframe；设置页要刷新选中态。
   if (state.view === 'settings') render()
   // 图谱是 canvas 绘制、配色取自 CSS 变量；换皮后重挂一次才能跟上新色板
-  // （参考页大图是 focus 模式，正文页左栏小图是 jump 模式——按当前页分流，OS-49）
+  // （世界书页大图是 focus 模式，正文页左栏小图是 jump 模式——按当前页分流，OS-49）
   if (document.getElementById('ref-graph-canvas')) {
     graphCleanup?.()
     graphCleanup = null
@@ -11312,7 +9764,7 @@ function setSkin(id) {
     })
   }
   // 故事源图表用令牌取色：换皮后重挂一次，轴/线/热力才跟上新色板（OS-49 同口径）
-  if (state.view === 'dir:拆解' && state.factView?.ss?.view === 'chart') mountStorySourceChart()
+  if (state.view === 'dir:故事源' && state.factView?.ss?.view === 'chart') mountStorySourceChart()
 }
 
 async function loadStyles() {
@@ -11437,7 +9889,7 @@ async function bootStyles() {
  *   「绝对不能放在任何浏览器缓存里……关掉浏览器、换一台机器、清缓存后，
  *     重新打开库必须完全复原。不能复原＝违规。」
  *
- * 所以这些偏好全部改到库内 `.pinax/ui-state.json`：
+ * 所以这些偏好全部改到库内 `.openstory/ui-state.json`：
  *   · 读：同步（界面渲染需要立即拿到值）——从内存镜像 state.uiState 读；
  *     进库时由 loadUiState() 从服务端拉一次灌满镜像。
  *   · 写：同步更新镜像 + 异步防抖落库（不阻塞 UI，但保证最终一致）。
@@ -11491,7 +9943,7 @@ function uiGet(key, fallback = null) {
   return key in mem.values ? mem.values[key] : fallback
 }
 /** OS-144 模块插件判定（前端唯一入口）：ui-state `modules.enabled.<id>`（扁平键优先，缺省启用）。 */
-function moduleOn(id) { if (CORE_MODULE_IDS.includes(id)) return true; const flat = uiGet(`modules.enabled.${id}`, null); if (flat !== null) return flat !== false; const nested = uiGet('modules', null); if (nested && nested.enabled && Object.prototype.hasOwnProperty.call(nested.enabled, id)) return nested.enabled[id] !== false; return true }
+function moduleOn(id) { const flat = uiGet(`modules.enabled.${id}`, null); if (flat !== null) return flat !== false; const nested = uiGet('modules', null); if (nested && nested.enabled && Object.prototype.hasOwnProperty.call(nested.enabled, id)) return nested.enabled[id] !== false; return true }
 
 /** 防抖落库：短时间内多次设置只写一次。 */
 let uiFlushTimer = null
@@ -11549,7 +10001,7 @@ window.addEventListener('beforeunload', flushUiOnUnload)
 /**
  * 模块加载时检索自己的 log。
  * 「每一个模块在每次加载的时候，都要自己检索一遍跟自己相关的一些 log。」
- * @param {string} module 模块名（正文/参考/推演/习惯/剧本/故事源…）
+ * @param {string} module 模块名（正文/世界书/扮演/习惯/剧本/故事源…）
  * @param {{limit?: number, file?: string}} [opts]
  * @returns {Promise<{entries: Array, truncated: boolean}>}
  */
@@ -11662,7 +10114,7 @@ async function restoreFromLog(module, at, afterHash) {
     // 重载受影响的数据
     await loadModuleLog(module, { limit: 20 })
     if (module === '正文') await loadWriteChapters({ force: true })
-    if (module === '参考') await loadReferences({ force: true })
+    if (module === registryModule.namingEntry('worldbook').logModule) await loadReferences({ force: true })
     if (module === '习惯') { state.habits = null; await loadHabits({ force: true }) }
     render()
   } catch (error) {
@@ -11681,7 +10133,7 @@ async function restoreFromLog(module, at, afterHash) {
 const draftTimers = new Map()
 
 /**
- * 把「正在编辑、尚未保存」的内容落进库内 .pinax/drafts（防抖 700ms）。
+ * 把「正在编辑、尚未保存」的内容落进库内 .openstory/drafts（防抖 700ms）。
  * @param {string} module 模块名
  * @param {string} id     草稿标识（如推演拍号）
  * @param {string} body   当前文本
@@ -11839,7 +10291,7 @@ document.addEventListener('change', (event) => {
   }
 })
 
-/** 写回 frontmatter.firstChapter：读原文→替换/插入 fm 行→走参考保存通道（OS-96）。 */
+/** 写回 frontmatter.firstChapter：读原文→替换/插入 fm 行→走世界书保存通道（OS-96）。 */
 async function saveFirstChapter(notePath, value) {
   const ref = state.reference
   if (!state.current || !notePath) return
@@ -11860,7 +10312,7 @@ async function saveFirstChapter(notePath, value) {
     } else {
       next = `---\nfirstChapter: ${value}\n---\n\n` + raw
     }
-    // 与逐块编辑同通道（/api/chapter PUT——参考笔记就是普通文件）
+    // 与逐块编辑同通道（/api/chapter PUT——世界书笔记就是普通文件）
     await api('/api/chapter', {
       method: 'PUT',
       body: JSON.stringify({ root: state.current.path, file: notePath, text: next })

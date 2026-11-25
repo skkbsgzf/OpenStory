@@ -15,6 +15,6 @@
  * 不必绕这一层。新增导出前先问「推演引擎真的要用吗」——协议层转供面只随真实消费方增长。
  */
 
-export * from '../kernel/fact/domain/index.mjs'
-export * from '../kernel/fact/domain/aliases.js'
-export { buildFactPack } from '../kernel/fact/factPack.mjs'
+export * from '../modules/fact/fact/domain/index.mjs'
+export * from '../modules/fact/fact/domain/aliases.js'
+export { buildFactPack } from '../modules/fact/fact/factPack.mjs'

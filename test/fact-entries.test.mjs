@@ -1,6 +1,6 @@
 /**
  * 故事源条目层（工单 S1）用例：条目级读端点／书目列表。
- * 夹具：拆解/ 两本——一本正常 3 条（plot×2 + character×1），一本 JSON 损坏。
+ * 夹具：故事源/ 两本——一本正常 3 条（plot×2 + character×1），一本 JSON 损坏。
  * 跑法：node --test test/fact-entries.test.mjs
  */
 import test from 'node:test'
@@ -42,17 +42,17 @@ const ENTRIES = [
 async function makeLibrary(base) {
   const root = join(base, '条目库')
   await mkdir(join(root, '正文'), { recursive: true })
-  await mkdir(join(root, '拆解'), { recursive: true })
+  await mkdir(join(root, '故事源'), { recursive: true })
   const fact = {
     book: { id: '好档', title: '好档之书' },
     entries: ENTRIES,
     revision: 3
   }
-  await writeFile(join(root, '拆解', '好档.json'), JSON.stringify(fact), 'utf-8')
-  await writeFile(join(root, '拆解', '好档.wiki.json'), JSON.stringify({ derivedFrom: { factRevision: 3 } }), 'utf-8')
-  await writeFile(join(root, '拆解', '坏档.json'), '{ not json', 'utf-8')
-  // 旁路档：没有 entries 不是坏档，静默跳过。
-  await writeFile(join(root, '拆解', '拆解汇总.json'), JSON.stringify({ note: '聚合产物' }), 'utf-8')
+  await writeFile(join(root, '故事源', '好档.json'), JSON.stringify(fact), 'utf-8')
+  await writeFile(join(root, '故事源', '好档.wiki.json'), JSON.stringify({ derivedFrom: { factRevision: 3, schema: 'openstory-wiki-derived@2' } }), 'utf-8')
+  await writeFile(join(root, '故事源', '坏档.json'), '{ not json', 'utf-8')
+  // 历史汇总档名仍只作兼容输入：没有 entries 时静默跳过，不冒充一本书。
+  await writeFile(join(root, '故事源', '拆解汇总.json'), JSON.stringify({ note: '聚合产物' }), 'utf-8')
   const preferencesPath = join(base, 'libraries.json')
   await writeFile(preferencesPath, JSON.stringify({ recentProjects: [{ path: root, name: '条目库' }] }), 'utf-8')
   return { root, preferencesPath }
@@ -149,7 +149,7 @@ test('fact/entries：显式指向坏档＝空条目＋warnings，不整体报错
   })
 })
 
-test('fact/entries：库里还没有拆解条目＝FACT_EMPTY（专用空态码，不是内部校验错误）', async () => {
+test('fact/entries：库里还没有故事源条目＝FACT_EMPTY（专用空态码，不是内部校验错误）', async () => {
   const base = await mkdtemp(join(tmpdir(), 'os-fact-empty-'))
   try {
     const root = join(base, '空库')
@@ -163,7 +163,7 @@ test('fact/entries：库里还没有拆解条目＝FACT_EMPTY（专用空态码�
       assert.equal(res.status, 404)
       assert.equal(payload.ok, false)
       assert.equal(payload.error.code, 'FACT_EMPTY')
-      assert.equal(payload.error.message, '这个库还没有拆解条目')
+      assert.equal(payload.error.message, '这个库还没有故事源条目')
       // 不许再把「响应形状不符合契约」这类内部校验信息甩给页面
       assert.equal(String(payload.error.message).includes('契约'), false)
     } finally {
@@ -179,10 +179,10 @@ test('fact/entries：有档但全部读不出来＝FACT_UNREADABLE（坏档不�
   try {
     const root = join(base, '坏档库')
     await mkdir(join(root, '正文'), { recursive: true })
-    await mkdir(join(root, '拆解'), { recursive: true })
+    await mkdir(join(root, '故事源'), { recursive: true })
     // 两种坏法：JSON 坏、形状坏——都要在 details 里逐本报出来
-    await writeFile(join(root, '拆解', '碎档.json'), '{ not json', 'utf-8')
-    await writeFile(join(root, '拆解', '形状档.json'), JSON.stringify({ book: { id: 'x' }, entries: 'nope' }), 'utf-8')
+    await writeFile(join(root, '故事源', '碎档.json'), '{ not json', 'utf-8')
+    await writeFile(join(root, '故事源', '形状档.json'), JSON.stringify({ book: { id: 'x' }, entries: 'nope' }), 'utf-8')
     const preferencesPath = join(base, 'libraries.json')
     await writeFile(preferencesPath, JSON.stringify({ recentProjects: [{ path: root, name: '坏档库' }] }), 'utf-8')
     const daemon = await startDaemon({ port: 0, preferencesPath, env: { ...process.env, LOCALAPPDATA: base }, logger: { log() {} } })
@@ -193,7 +193,7 @@ test('fact/entries：有档但全部读不出来＝FACT_UNREADABLE（坏档不�
       assert.equal(payload.ok, false)
       assert.equal(payload.error.code, 'FACT_UNREADABLE')
       assert.notEqual(payload.error.code, 'FACT_EMPTY', '坏档不许冒充空库')
-      assert.match(payload.error.message, /拆解档读不出来/u)
+      assert.match(payload.error.message, /故事源档读不出来/u)
       const books = payload.error.details?.books
       assert.equal(Array.isArray(books), true)
       assert.deepEqual(books.map((book) => book.bookId).sort(), ['形状档', '碎档'])

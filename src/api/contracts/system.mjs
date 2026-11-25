@@ -72,7 +72,7 @@ export const systemEndpoints = {
     method: 'GET',
     path: '/api/files',
     // 列库内文件：无 dir＝顶层扫描（dirs＋files）；带 dir（单段目录名）＝递归文本文件清单
-    // （深度≤3，跳过 .pinax/.history/隐藏，只收 md/txt/markdown/json，≤500 个）。
+    // （深度≤3，跳过 .openstory/.history/隐藏，只收 md/txt/markdown/json，≤500 个）。
     // 读/写文件本体仍走 GET/PUT /api/chapter（任何库内文本路径都通）。
     request: { query: { root: 'string', dir: 'string?' } },
     response: { ok: 'true', dirs: 'array?', files: 'array', warnings: 'array?' },
@@ -122,7 +122,7 @@ export const systemEndpoints = {
       }
     },
     response: { ok: 'true', text: 'string', chars: 'number', model: 'string?' },
-    errors: ['NO_LIBRARY', 'PATH_ESCAPE', 'INVALID_ENTRY', 'AGENT_UPSTREAM_ERROR', 'MODULE_DISABLED']
+    errors: ['NO_LIBRARY', 'PATH_ESCAPE', 'INVALID_ENTRY', 'AGENT_UPSTREAM_ERROR', 'MODULE_DISABLED', 'PLUGIN_DEGRADED']
   },
 
   habitsGet: {
@@ -132,7 +132,7 @@ export const systemEndpoints = {
     // Agent 成文前必读；分析引擎的 verdict 也按它参数化。
     request: { query: { root: 'string' } },
     response: { ok: 'true', habits: 'object' },
-    errors: ['NO_LIBRARY', 'MODULE_DISABLED']
+    errors: ['NO_LIBRARY', 'MODULE_DISABLED', 'PLUGIN_DEGRADED']
   },
 
   habitsPut: {
@@ -141,7 +141,7 @@ export const systemEndpoints = {
     // 保存习惯表：按 schema 归一（未知键丢弃、列表去重限长）；原子写＋.history 备份。
     request: { body: { root: 'string', habits: 'object' } },
     response: { ok: 'true', habits: 'object', backup: 'string?' },
-    errors: ['NO_LIBRARY', 'INVALID_ENTRY', 'WRITE_PROTOCOL_IO_FAILED', 'MODULE_DISABLED']
+    errors: ['NO_LIBRARY', 'INVALID_ENTRY', 'WRITE_PROTOCOL_IO_FAILED', 'MODULE_DISABLED', 'PLUGIN_DEGRADED']
   },
 
   dirCreate: {
@@ -157,12 +157,12 @@ export const systemEndpoints = {
   artifactsGet: {
     method: 'GET',
     path: '/api/artifacts',
-    // 产物中心的全库只读盘点：按顶层目录分组的文本文件清单（深度≤3，跳过 .pinax/隐藏，≤1000 个）
+    // 产物的全库只读盘点：按顶层目录分组的文本文件清单（深度≤3，跳过 .openstory/隐藏，≤1000 个）
     // ＋版本与历史（groups[].history：.history/ 的 bak/deleted 档按原文件归组）＋totals（files/bytes/histories）。
     // 只看不写——写归各工作面；恢复版本＝客户端 GET 历史档＋PUT 原文件（chapter 通道）。
     request: { query: { root: 'string' } },
     response: { ok: 'true', groups: 'array', totals: 'object' },
-    errors: ['NO_LIBRARY', 'PATH_ESCAPE', 'INVALID_ENTRY', 'MODULE_DISABLED']
+    errors: ['NO_LIBRARY', 'PATH_ESCAPE', 'INVALID_ENTRY', 'MODULE_DISABLED', 'PLUGIN_DEGRADED']
   },
 
   kbStatusGet: {
@@ -172,7 +172,7 @@ export const systemEndpoints = {
     // OS-146：root 可选——带上就按该库的模块开关判定（多库时不再被「另一个库停用了 kb」误拦）；不带＝daemon 兜底。
     request: { query: { root: 'string?' } },
     response: { ok: 'true', configured: 'boolean', backend: 'string?', configPath: 'string', configError: 'string?', services: 'object', lastCheck: 'string?', collections: 'array' },
-    errors: ['MODULE_DISABLED']
+    errors: ['MODULE_DISABLED', 'PLUGIN_DEGRADED']
   },
 
   briefGet: {
@@ -200,7 +200,7 @@ export const systemEndpoints = {
     // OS-146：root 可选——模块闸按该库判定（同 kbStatusGet）
     request: { query: { root: 'string?' } },
     response: { ok: 'true', config: 'object', configPath: 'string', masked: 'boolean' },
-    errors: ['MODULE_DISABLED']
+    errors: ['MODULE_DISABLED', 'PLUGIN_DEGRADED']
   },
 
   kbConfigPut: {
@@ -211,7 +211,7 @@ export const systemEndpoints = {
     // OS-146：root 可选——模块闸按该库判定（多库时不被别的库的停用误拦）
     request: { body: { root: 'string?', backend: 'string?', baseUrl: 'string?', apiKey: 'string?', spaceId: 'string?', collections: 'object?' } },
     response: { ok: 'true', status: 'object' },
-    errors: ['INVALID_ENTRY', 'WRITE_PROTOCOL_IO_FAILED', 'MODULE_DISABLED']
+    errors: ['INVALID_ENTRY', 'WRITE_PROTOCOL_IO_FAILED', 'MODULE_DISABLED', 'PLUGIN_DEGRADED']
   },
 
   kbTest: {
@@ -221,13 +221,13 @@ export const systemEndpoints = {
     // OS-146：root 可选——模块闸按该库判定（同 kbConfigPut）
     request: { body: { root: 'string?', baseUrl: 'string?', apiKey: 'string?' } },
     response: { ok: 'true', weknora: 'object', embedding: 'object', collections: 'array' },
-    errors: ['MODULE_DISABLED']
+    errors: ['MODULE_DISABLED', 'PLUGIN_DEGRADED']
   },
 
   uiStateGet: {
     method: 'GET',
     path: '/api/ui-state',
-    // OS-89：界面状态落库内（.pinax/ui-state.json），不再用浏览器 localStorage。
+    // OS-89：界面状态落库内（.openstory/ui-state.json），不再用浏览器 localStorage。
     // 换机器 / 清缓存后重新打开库必须完全复原（AGENTS.md 第 8 条）。
     request: { query: { root: 'string' } },
     response: { ok: 'true', state: 'object' },
@@ -240,7 +240,7 @@ export const systemEndpoints = {
     // 整对象合并写（浅合并，undefined 不覆盖）。原子写 + .history 备份。
     request: { body: { root: 'string', state: 'object' } },
     response: { ok: 'true', state: 'object', backup: 'string?' },
-    errors: ['NO_LIBRARY', 'INVALID_ENTRY', 'WRITE_PROTOCOL_IO_FAILED', 'MODULE_CORE']
+    errors: ['NO_LIBRARY', 'INVALID_ENTRY', 'WRITE_PROTOCOL_IO_FAILED', 'CAPABILITY_MISSING', 'CAPABILITY_CONFLICT', 'CAPABILITY_IN_USE', 'OVERRIDE_REJECTED']
   },
 
   uiPreferencesGet: {

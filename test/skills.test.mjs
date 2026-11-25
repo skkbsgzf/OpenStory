@@ -7,6 +7,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
+import { readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { validateRequest, validateResponse } from '../src/api/contracts.mjs'
@@ -88,6 +89,39 @@ test('内置货架：31 个技能全部合规，四类齐全', () => {
   assert.equal(byCat.extract.length, 2, 'extract：fact 抽取/采集质量守则')
   for (const expected of ['screenplay-craft', 'storyboard-craft', 'de-ai-writing', 'humanizer', 'shuangwen-chapter-check', 'info-reveal-budget', 'rule-horror-cold-prose', 'prose-continuity-rules', 'fanqie-pattern-playbook', 'reader-needs-ironrules', 'pattern-design-method', 'style-yishou-micheng', 'fact-extraction-quality', 'style-wangbuliao-baiyue', 'style-nianshang-yinshi', 'style-moshi-danmu', 'style-rejinzhi', 'style-fengpi-fanpai', 'style-huanqin-baofu', 'style-chixie-rusong', 'style-da-qin-yaoren', 'style-shangan-guanchang', 'style-shangjiao-guojia']) {
     assert.ok(skills.some((skill) => skill.name === expected), `缺 ${expected}`)
+  }
+})
+
+test('OS-172：产品作者身份与依赖声明', () => {
+  const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf-8'))
+  assert.equal(pkg.author, 'skkbsgzf <59155174+skkbsgzf@users.noreply.github.com>')
+  assert.equal(pkg.dependencies['@xenova/transformers'], '^2.17.2')
+  assert.equal(pkg.license, 'SEE LICENSE IN LICENSE')
+})
+
+test('OS-172：七个内置技能归属作者；工具映射收窄且不保留旧工具名', () => {
+  const { skills, warnings } = loadSkills([builtinSkillsDir()])
+  assert.equal(warnings.length, 0, `不应有 warning：${JSON.stringify(warnings)}`)
+  const expectedTools = {
+    'fact-consistency': ['openstory_skills_read'],
+    'fact-extract': ['openstory_skills_read', 'openstory_novel_read_chapter'],
+    'outline-restructure': [],
+    'scene-expand': ['openstory_novel_read_chapter'],
+    'worldbook-refactor': ['openstory_reference_index', 'openstory_reference_read_note'],
+    'continuity-check': ['openstory_novel_read_chapter', 'openstory_reference_index'],
+    'chapter-rewrite': ['openstory_novel_read_chapter']
+  }
+  for (const [name, tools] of Object.entries(expectedTools)) {
+    const skill = skills.find((item) => item.name === name)
+    assert.ok(skill, `缺内置技能 ${name}`)
+    assert.equal(skill.vendor, 'skkbsgzf', `${name} vendor 未归一`)
+    assert.deepEqual(skill.tools, tools, `${name} 工具映射漂移`)
+    assert.ok(skill.tools.every((tool) => !tool.startsWith('pinax_')), `${name} 不得声明旧工具`)
+    const notice = skill.body.split('## 可用性')[1]?.split('\n## ')[0] || ''
+    const usage = skill.body.replace(notice, '')
+    assert.match(notice, /不可用/u, `${name} 缺不可用提示`)
+    assert.doesNotMatch(usage, /pinax_[a-z_]+/u, `${name} 的可用流程不得保留旧工具名`)
+    assert.doesNotMatch(skill.body, /pinax_[a-z_]+/u, `${name} 不得保留旧工具名`)
   }
 })
 

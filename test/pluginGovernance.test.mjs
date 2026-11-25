@@ -27,7 +27,7 @@ const SUITE = {
   id: 'governed',
   name: '受闸套件',
   version: '0.1.0',
-  vendor: 'Pinax 官方'
+  vendor: 'skkbsgzf'
 }
 
 function skillMarkdown({ name = 'governed-skill', extra = '' } = {}) {

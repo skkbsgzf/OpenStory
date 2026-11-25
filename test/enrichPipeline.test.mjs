@@ -4,7 +4,7 @@
  *   · enrichStatus：job 即身份（内存 Map），未知 jobId＝NOT_FOUND，不校验 root；
  *   · enrichRun：bookId 缺失＝INVALID_ENTRY；事实链为空＝INVALID_ENTRY（先于任何模型调用）；
  *     没配模型端点＝AGENT_UPSTREAM_ERROR（piUpstream 的「还没配置」被包成上游错误如实报）；
- *   · enrichGraph：bookId 不存在／拆解档缺失＝NOT_FOUND（同步、零模型）。
+ *   · enrichGraph：bookId 不存在／故事源档缺失＝NOT_FOUND（同步、零模型）。
  *
  * LLM 用测试内临时端口的 mock（test/mockLlmServer.mjs）；夹具在系统临时目录。
  * 契约：contracts/fact.mjs enrichRun / enrichStatus / enrichGraph。
@@ -30,9 +30,9 @@ before(async () => {
   const { startDaemon } = await import('../src/host/daemon.mjs')
   base = await mkdtemp(join(tmpdir(), 'os135-enrich-pipeline-'))
   libRoot = join(base, 'lib')       // 有夹具书
-  emptyLibRoot = join(base, 'empty') // 拆解目录为空＝事实链为空
+  emptyLibRoot = join(base, 'empty') // 故事源目录为空＝事实链为空
   await writeE2eBookFixture(libRoot)
-  await mkdir(join(emptyLibRoot, '拆解'), { recursive: true })
+  await mkdir(join(emptyLibRoot, '故事源'), { recursive: true })
   mock = await startMockLlmServer()
   await writeFile(join(base, 'agent-config.json'), JSON.stringify({
     runtime: '', endpoint: mock.endpoint, model: 'mock', apiKey: '', updatedAt: new Date().toISOString()
@@ -127,7 +127,7 @@ describe('enrichGraph：派生层读取', () => {
     assert.equal(body.error.code, 'NOT_FOUND')
   })
 
-  it('拆解档缺失的库＝404 NOT_FOUND', async () => {
+  it('故事源档缺失的库＝404 NOT_FOUND', async () => {
     const { status, body } = await get(daemon, `/api/enrich/graph?root=${encodeURIComponent(emptyLibRoot)}&bookId=empty-book`)
     assert.equal(status, 404)
     assert.equal(body.error.code, 'NOT_FOUND')

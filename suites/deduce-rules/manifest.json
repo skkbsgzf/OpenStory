@@ -1,0 +1,14 @@
+{
+  "spec": "openstory-module@2",
+  "id": "deduce-rules",
+  "name": "默认推演规则",
+  "version": "1.0.0",
+  "class": "suite",
+  "builtin": true,
+  "description": "默认 2d6 剧情检定与候选配比规则；只提供数据，不携带可执行代码。",
+  "supplies": ["deduce-rule"],
+  "entries": { "deduce-rule": "rules.json" },
+  "appliesTo": [{ "id": "deduce.engine", "min": 1 }],
+  "deps": [],
+  "settings": []
+}

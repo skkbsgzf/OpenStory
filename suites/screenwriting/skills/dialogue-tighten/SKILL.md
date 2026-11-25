@@ -2,7 +2,7 @@
 name: dialogue-tighten
 description: 台词紧凑改写——删废话、给台词上目的，产提案不落盘
 version: 0.1.0
-vendor: Pinax 官方
+vendor: skkbsgzf
 category: transform
 genres: ["*"]
 ---

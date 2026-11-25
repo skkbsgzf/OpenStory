@@ -15,7 +15,7 @@ export function text(value) {
 /** daemon 默认端口（reference 异步生图回环调用也用它兜底，故落共享层）。 */
 export const DEFAULT_PORT = 8807
 
-/** JSON 请求体上限：16MB（拆解整包导入一类的大负载够用，再大就该走文件通道）。 */
+/** JSON 请求体上限：16MB（故事源整包导入一类的大负载够用，再大就该走文件通道）。 */
 export const MAX_JSON_BODY = 16 * 1024 * 1024
 
 /** 契约错误码 → HTTP 状态码（未识别的码一律 500，不假装是客户端错）。 */
@@ -36,9 +36,13 @@ const STATUS_BY_CODE = Object.freeze({
   UNSUPPORTED_MEDIA_TYPE: 400,
   // 模块插件停用（OS-144）：请求本身合法，但所属工作面被作者关掉——冲突而非客户端错误
   MODULE_DISABLED: 409,
-  // 核心模块不可停用（OS-163）：请求本身合法但触碰了不可协商的核心开关——冲突
-  MODULE_CORE: 409,
-  // 故事源空库（OS-150a）：还没有拆解条目＝可预期的空态（不是坏档），404 让调用方走空态分支
+  CAPABILITY_MISSING: 503,
+  CAPABILITY_CONFLICT: 503,
+  CAPABILITY_IN_USE: 409,
+  OVERRIDE_REJECTED: 400,
+  PLUGIN_DEGRADED: 503,
+  MIGRATION_FAILED: 500,
+  // 故事源空库（OS-150a）：还没有故事源条目＝可预期的空态（不是坏档），404 让调用方走空态分支
   FACT_EMPTY: 404,
   // 故事源坏档（OS-150b）：有档但全部读不出来＝数据面故障，不是客户端的错
   FACT_UNREADABLE: 500,

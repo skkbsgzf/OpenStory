@@ -45,8 +45,8 @@ export const SETTINGS_MARKER_VERSION = 1
  */
 export const KERNEL_SETTINGS = Object.freeze([
   Object.freeze({ id: 'daemon', label: 'daemon 端口', note: '127.0.0.1:8807，只监听本机' }),
-  Object.freeze({ id: 'libraryPath', label: '库路径', note: '库清单在 %LOCALAPPDATA%/OpenStory/libraries.json（旧 Pinax 清单只读导入）' }),
-  Object.freeze({ id: 'dataDir', label: '数据目录', note: '草稿 / 推演 / 日志 / 界面状态都在库内 .pinax/' }),
+  Object.freeze({ id: 'libraryPath', label: '库路径', note: '库清单在 %LOCALAPPDATA%/OpenStory/libraries.json；旧清单只读，不自动导入' }),
+  Object.freeze({ id: 'dataDir', label: '数据目录', note: '草稿 / 扮演 / 日志 / 界面状态都在库内 .openstory/' }),
   Object.freeze({ id: 'credentials', label: '凭据存储', note: '本机 agent-config.json / kb-config.json，响应只回掩码' })
 ])
 
@@ -140,14 +140,13 @@ export function aggregateSettings({ kernel = KERNEL_SETTINGS, modules = [], enab
   const enabledMap = isPlainObject(enabled) ? enabled : {}
   const moduleGroups = (Array.isArray(modules) ? modules : [])
     .filter((manifest) => isPlainObject(manifest) && text(manifest.id).trim())
+    .filter((manifest) => !['host-composition', 'kernel', 'suite'].includes(manifest.role))
     .map((manifest) => {
       const id = text(manifest.id).trim()
-      // OS-163：核心模块恒启用、不可停用（ui-state 里写成 false 也不生效）
-      const core = manifest.core === true
-      const on = core || enabledMap[id] !== false
+      // 工作台一视同仁：启停真源是库内 ui-state，设置值在停用时保留。
+      const on = enabledMap[id] !== false
       return {
         id,
-        core,
         name: text(manifest.name).trim() || id,
         description: text(manifest.description).trim(),
         // OS-146：真配置在别处时的指路（hint 一句话＋jump 设置页区块 id）；没有就空
@@ -290,10 +289,7 @@ export function renderSettingsModules(aggregation, deps = {}) {
   const group = (aggregation?.groups ?? []).find((item) => item.id === 'modules')
   if (!group) return ''
   const cards = (group.modules ?? []).map((module) => {
-    // OS-163：核心模块的启停开关锁死（checked + disabled），旁边挂「核心模块」徽标。
-    const toggle = module.core
-      ? `<label class="cfg-switch"><input type="checkbox" checked disabled data-module-id="${esc(module.id)}"><span>启用「${esc(module.name)}」</span></label><span class="pill">核心模块</span>`
-      : `<label class="cfg-switch"><input type="checkbox" data-action="plugin-module-toggle" data-module-id="${esc(module.id)}"${module.enabled ? ' checked' : ''}><span>启用「${esc(module.name)}」</span></label>`
+    const toggle = `<label class="cfg-switch"><input type="checkbox" data-action="plugin-module-toggle" data-module-id="${esc(module.id)}"${module.enabled ? ' checked' : ''}><span>启用「${esc(module.name)}」</span></label>`
     // 指路行（OS-146）：真配置在 agent-config / kb-config 之类的宿主位置，这里只说明去哪找
     const pointer = text(module.settingsHint)
       ? `<div class="row"><span class="cfg-note">${esc(module.settingsHint)}</span>${text(module.settingsJump)
@@ -393,56 +389,4 @@ export function scriptSectionHtml({ state, scriptPrefs, dirWork, castColorOf, es
       <button class="btn-primary" data-action="script-pref-save">保存剧本设置</button>
       <span class="cfg-note" id="sc-pref-note"></span>
     </div>`
-}
-
-/**
- * OS-167 设置页「导入 Pinax 清单」纯视图。
- *
- * app.js 只做取数/勾选/提交：传入 `scan`（/api/library/pinax-list 的载荷＋selected/result），
- * 这里只吐 HTML。非法项标灰、写明原因，不能勾选；只读预览不写任何文件。
- *
- * @param {{scan?:object, esc?:Function}} deps
- */
-export function pinaxImportSectionHtml({ scan = null, esc } = {}) {
-  const escape = typeof esc === 'function' ? esc : (value) => text(value)
-  if (!scan) {
-    return `<div class="step">
-      <h3>导入 Pinax 清单<span class="sub">旧院只读，不写回</span></h3>
-      <p class="sub">OpenStory 自持库清单在 <code>%LOCALAPPDATA%/OpenStory/libraries.json</code>。
-        互认靠库内 <code>.pinax/project.json</code>，不靠本机清单；需要把 Pinax 里登记过的库带过来时，在这里扫描并勾选。</p>
-      <div class="row"><button type="button" class="btn-ghost" data-action="pinax-import-scan">扫描旧 Pinax 清单</button></div>
-    </div>`
-  }
-  const list = Array.isArray(scan.libraries) ? scan.libraries : []
-  const selected = new Set(Array.isArray(scan.selected) ? scan.selected : [])
-  const rows = list.map((item) => {
-    const path = text(item?.path)
-    const enabled = item?.ok === true
-    const checked = enabled && selected.has(path) ? ' checked' : ''
-    const state = enabled
-      ? '<span class="pill">可导入</span>'
-      : `<span class="pill">${escape(item?.reason || '不可导入')}</span>`
-    return `<label class="cfg-switch${enabled ? '' : ' mp-off'}" title="${escape(path)}">
-      <input type="checkbox" data-pinax-path="${escape(path)}"${checked}${enabled ? '' : ' disabled'}>
-      <span>${escape(item?.name || path)}</span>
-    </label>
-    <div class="kv-line"><span class="k">路径</span><span class="v">${escape(path)}</span></div>
-    <div class="kv-line"><span class="k">体检</span><span class="v">${state}</span></div>`
-  }).join('')
-  const result = scan.result
-    ? `<p class="sub">已导入 ${Number(scan.result.imported?.length ?? 0)} 项；拒绝 ${Number(scan.result.rejected?.length ?? 0)} 项。清单路径：${escape(scan.result.preferencesPath || '')}</p>`
-    : ''
-  const warnings = (Array.isArray(scan.warnings) ? scan.warnings : [])
-    .map((warning) => `<p class="sub">${escape(warning?.message || '')}</p>`).join('')
-  return `<div class="step">
-    <h3>导入 Pinax 清单<span class="sub">旧院只读，不写回</span></h3>
-    <p class="sub">来源：${escape(scan.source || '（旧院清单不存在）')}。逐个体检后才可勾选；不存在的目录、没有 <code>.pinax/project.json</code> 的项标灰。</p>
-    ${rows || '<p class="sub">旧清单里没有可显示的库。</p>'}
-    ${warnings}
-    ${result}
-    <div class="row">
-      <button type="button" class="btn-ghost" data-action="pinax-import-scan">重新扫描</button>
-      <button type="button" class="btn-primary" data-action="pinax-import-apply">导入勾选</button>
-    </div>
-  </div>`
 }

@@ -18,7 +18,7 @@ import { parseScript } from './script.mjs'
 
 const text = (value) => String(value ?? '')
 
-/** 与 core/pinax stableEntryId 完全同算法：sha1(layer|domain|slot|name)[:12]。
+/** 沿用历史 stableEntryId 算法（谱系见 docs/kernel-provenance.md）：sha1(layer|domain|slot|name)[:12]。
  * 浏览器与 Node 都有 Web Crypto 的 SHA-1；这里返回 Promise（调用方 await）。
  * 用同步缓存避免重复计算同一条目。 */
 const ID_CACHE = new Map()
@@ -145,7 +145,7 @@ export async function scriptToFact(source, { bookId = 'screenplay', domain = '�
   }
 
   const wiki = {
-    derivedFrom: { factRevision: 1, schema: 'pinax-wiki-derived@1' },
+    derivedFrom: { factRevision: 1, schema: 'openstory-wiki-derived@2' },
     version: 'wiki-enrich@3',
     generated_at: new Date().toISOString(),
     protagonist: null,

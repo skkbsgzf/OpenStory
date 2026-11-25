@@ -100,9 +100,11 @@ test('runtimeShelf：货架三组声明（native/dsh/cli）', () => {
 
 test('接线：app.js 的货架与下拉都走 views/runtimeShelf.mjs（不内联过滤）', () => {
   const src = readFileSync(join(REPO, 'public/app.js'), 'utf-8')
+  const settingsSrc = readFileSync(join(REPO, 'public/views/settingsViews.mjs'), 'utf-8')
   assert.match(src, /import\('\.\/views\/runtimeShelf\.mjs'\)/u)
-  assert.match(src, /runtimeShelf\?\.runtimeKitsByCategory\(/u, '设置页货架走纯函数')
-  assert.match(src, /runtimeShelf\?\.selectableRuntimeKits\(/u, 'Agent 运行时下拉走纯函数')
+  assert.match(src, /runtimeShelf:\s*\(\)\s*=>\s*runtimeShelf/u, 'app.js 给设置视图注入晚绑定货架')
+  assert.match(settingsSrc, /runtimeShelf\(\)\?\.runtimeKitsByCategory\(/u, '设置页货架走纯函数')
+  assert.match(settingsSrc, /runtimeShelf\(\)\?\.selectableRuntimeKits\(/u, 'Agent 运行时下拉走纯函数')
   assert.match(src, /runtimeShelf \? runtimeShelf\.pluginOverviewItems\(bag\.byKind, kind\)/u, '插件总览的渲染数据走同一个过滤纯函数')
 })
 

@@ -36,6 +36,7 @@
 export const HOST_API_VERSION = 'host-api@2'
 
 import * as kernel from '../kernel/index.mjs'
+import { factCapability } from '../modules/fact/index.mjs'
 import * as chaptersProtocol from './chapters.mjs'
 import * as chapterWriteProtocol from './chapterWrite.mjs'
 import * as changelogProtocol from './changelog.mjs'
@@ -57,7 +58,7 @@ export const KERNEL_ID = kernel.KERNEL_ID
  *                          纯函数，不落盘。
  *   · factStore          —— fact 存储协议：createFactFileStore/writeFactFile/readFactWiki/
  *                          FACT_DIR_NAME。读只读不落盘；writeFactFile 落盘到
- *                          `<库>/拆解/<id>.json`（operationId 幂等＋expectedRevision 乐观并发），
+ *                          `<库>/故事源/<id>.json`（operationId 幂等＋expectedRevision 乐观并发），
  *                          错误码 WRITE_PROTOCOL_*（REVISION_MISMATCH/OPERATION_ID_REQUIRED/
  *                          VALIDATION_FAILED/INVALID_INPUT/NOT_FOUND/IO_FAILED）。
  *   · ok / fail          —— 内核 plumber 响应封装（纯内存）。仅 fork 点与内部协议件使用，
@@ -70,8 +71,8 @@ export const KERNEL_ID = kernel.KERNEL_ID
  * `projectImport`（库管理模块内组合，见 src/modules/library/index.mjs）。
  */
 export const fact = Object.freeze({
-  enrich: kernel.enrich,
-  factStore: kernel.factStore,
+  enrich: factCapability['fact.enrich'],
+  factStore: factCapability['fact.store'],
   fail: kernel.fail,
   ok: kernel.ok,
   writeFileAtomic: kernel.writeFileAtomic
@@ -117,7 +118,7 @@ export const prose = Object.freeze({
 /**
  * changelog 命名空间——变更日志协议（库内唯一「修改留痕」通道，OS-89）。
  *
- * 存储 `<库>/.pinax/log/<模块>/<yyyy-mm>.jsonl`，append-only，一行一记录（hash 链）。
+ * 存储 `<库>/.openstory/log/<模块>/<yyyy-mm>.jsonl`，append-only，一行一记录（hash 链）。
  *   · recordChange({ root, module, file, before, after, … }) —— 落盘追加一条 diff 记录
  *                          （unified diff＋contentHash；写通道红线：所有模块的修改留痕只经此）。
  *   · logFilePath(module, now) / LOG_DIR —— 日志路径与目录常量（纯函数/常量）。
@@ -223,7 +224,7 @@ export const plugins = Object.freeze({
  *   · CONTEXT_SOURCE —— 上下文来源词表（冻结）。
  *   · factHealth(root) —— fact 健康度（只读；无数据如实报 stale:false/count:0，不伪造）。
  *   · loadFactContext({ root, chapterNo, limit }) —— 正文写作的 fact 上下文装配（只读）。
- *   · loadFactDerived({ root, bookId }) —— 拆解派生只读。
+ *   · loadFactDerived({ root, bookId }) —— 故事源派生只读。
  *   · PROSE_DIRECT_READS / allowProseDirectRead({ caller, reason })
  *                          —— prose 直读审计：默认拒绝（空清单），点名放才放行并留审计计数
  *                          （内存）；resetProseAudit() 供测试清零。

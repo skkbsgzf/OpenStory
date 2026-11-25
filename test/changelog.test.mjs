@@ -73,15 +73,15 @@ test('contentHash：同内容同指纹，改一字就不同', () => {
 })
 
 test('logFilePath：按月分文件，模块名进路径', () => {
-  const path = logFilePath('参考', new Date('2026-11-20T10:00:00Z'))
-  assert.equal(path, '.pinax/log/参考/2026-11.jsonl')
+  const path = logFilePath('世界书', new Date('2026-11-20T10:00:00Z'))
+  assert.equal(path, '.openstory/log/世界书/2026-11.jsonl')
 })
 
 test('recordChange：写入 jsonl，含 diff 与前后指纹', async () => {
   const { root, cleanup } = await fixture()
   try {
     const res = await recordChange({
-      root, module: '参考', file: '参考/人物/李逵.md', op: 'update',
+      root, module: '世界书', file: '世界书/人物/李逵.md', op: 'update',
       before: '旧内容', after: '新内容', actor: 'author'
     })
     assert.equal(res.ok, true)
@@ -91,8 +91,8 @@ test('recordChange：写入 jsonl，含 diff 与前后指纹', async () => {
 
     const raw = await readFile(join(root, ...res.path.split('/')), 'utf-8')
     const parsed = JSON.parse(raw.trim())
-    assert.equal(parsed.module, '参考')
-    assert.equal(parsed.file, '参考/人物/李逵.md')
+    assert.equal(parsed.module, '世界书')
+    assert.equal(parsed.file, '世界书/人物/李逵.md')
     assert.equal(parsed.actor, 'author')
   } finally { await cleanup() }
 })
@@ -112,14 +112,14 @@ test('recordChange：内容没变不记（防「打开即保存」刷屏）', as
   } finally { await cleanup() }
 })
 
-test('readLog：按模块隔离——参考的日志不会被正文看到', async () => {
+test('readLog：按模块隔离——世界书的日志不会被正文看到', async () => {
   const { root, cleanup } = await fixture()
   try {
-    await recordChange({ root, module: '参考', file: '参考/a.md', op: 'update', before: 'a', after: 'b' })
+    await recordChange({ root, module: '世界书', file: '世界书/a.md', op: 'update', before: 'a', after: 'b' })
     await recordChange({ root, module: '正文', file: '正文/001.md', op: 'update', before: 'x', after: 'y' })
-    const refLog = await readLog({ root, module: '参考' })
+    const refLog = await readLog({ root, module: '世界书' })
     assert.equal(refLog.entries.length, 1)
-    assert.equal(refLog.entries[0].module, '参考')
+    assert.equal(refLog.entries[0].module, '世界书')
     const all = await readLog({ root })
     assert.equal(all.entries.length, 2)
   } finally { await cleanup() }
@@ -141,7 +141,7 @@ test('readLog：新→旧排序，支持按文件过滤', async () => {
 test('readLog：没有任何日志＝空数组，不是错误', async () => {
   const { root, cleanup } = await fixture()
   try {
-    const res = await readLog({ root, module: '推演' })
+    const res = await readLog({ root, module: '扮演' })
     assert.equal(res.ok, true)
     assert.deepEqual(res.entries, [])
   } finally { await cleanup() }
@@ -151,11 +151,11 @@ test('logSummary：每模块只取最近一条', async () => {
   const { root, cleanup } = await fixture()
   try {
     await recordChange({ root, module: '正文', file: '正文/001.md', op: 'update', before: 'a', after: 'b' })
-    await recordChange({ root, module: '参考', file: '参考/a.md', op: 'create', after: 'x' })
+    await recordChange({ root, module: '世界书', file: '世界书/a.md', op: 'create', after: 'x' })
     const summary = await logSummary(root)
     assert.equal(summary.ok, true)
     const names = summary.modules.map((item) => item.module).sort()
-    assert.deepEqual(names, ['参考', '正文'].sort())
+    assert.deepEqual(names, ['世界书', '正文'].sort())
   } finally { await cleanup() }
 })
 

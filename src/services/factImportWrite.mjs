@@ -9,10 +9,13 @@
 import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { factStore } from '../kernel/index.mjs'
+import { factStore as defaultFactStore } from '../protocol/factStore.mjs'
 import { atomicWriteFile } from '../protocol/hostWrite.mjs'
 import { recordChange } from '../protocol/changelog.mjs'
-import { LOG_MODULES } from '../protocol/naming.mjs'
+import { LOG_MODULES, namingEntry } from '../protocol/naming.mjs'
+
+const STORAGE = namingEntry('libraryStorage')
+const FACT_DIR = namingEntry('storysource').dir
 
 function text(value) { return String(value ?? '') }
 
@@ -21,7 +24,7 @@ function text(value) { return String(value ?? '') }
  * @param {object} input { root, bookId, entries, title?, wiki?, operationId? }
  * @returns {Promise<{ok:boolean, code?:string, message?:string, details?:object, bookId?, entries?, revision?, backup?, logError?, wikiError?}>}
  */
-export async function writeFactEntries({ root, bookId, entries, title = '', wiki = null, operationId = '' } = {}) {
+export async function writeFactEntries({ root, bookId, entries, title = '', wiki = null, operationId = '', factStore = defaultFactStore } = {}) {
   const id = text(bookId).trim()
   if (!id) return { ok: false, code: 'INVALID_ENTRY', message: 'bookId 必填' }
   const list = Array.isArray(entries) ? entries : null
@@ -30,7 +33,7 @@ export async function writeFactEntries({ root, bookId, entries, title = '', wiki
 
   let expectedRevision = null
   let beforeFactRaw = ''
-  const documentPath = join(root, '拆解', `${id}.json`)
+  const documentPath = join(root, FACT_DIR, `${id}.json`)
   try {
     if (existsSync(documentPath)) {
       beforeFactRaw = await readFile(documentPath, 'utf-8')
@@ -48,14 +51,14 @@ export async function writeFactEntries({ root, bookId, entries, title = '', wiki
     ...(expectedRevision !== null ? { expectedRevision } : {})
   })
   if (!written.ok) {
-    return { ok: false, code: written.code ?? 'WRITE_PROTOCOL_IO_FAILED', message: written.message ?? '写入拆解失败', details: written.details }
+    return { ok: false, code: written.code ?? 'WRITE_PROTOCOL_IO_FAILED', message: written.message ?? '写入故事源失败', details: written.details }
   }
 
   let wikiError = ''
   if (wiki && typeof wiki === 'object') {
     try {
-      await atomicWriteFile(join(root, '拆解', `${id}.wiki.json`), JSON.stringify({
-        derivedFrom: { factRevision: Number(written.revision) || 1, schema: 'pinax-wiki-derived@1' },
+      await atomicWriteFile(join(root, FACT_DIR, `${id}.wiki.json`), JSON.stringify({
+        derivedFrom: { factRevision: Number(written.revision) || 1, schema: STORAGE.wikiSchema },
         ...wiki
       }, null, 2))
     } catch (error) {
@@ -65,9 +68,9 @@ export async function writeFactEntries({ root, bookId, entries, title = '', wiki
 
   let factLogError = ''
   try {
-    const afterFactRaw = await readFile(join(root, '拆解', `${id}.json`), 'utf-8')
+    const afterFactRaw = await readFile(join(root, FACT_DIR, `${id}.json`), 'utf-8')
     const logged = await recordChange({
-      root, module: LOG_MODULES.storysource, file: `拆解/${id}.json`,
+      root, module: LOG_MODULES.storysource, file: `${FACT_DIR}/${id}.json`,
       op: documentExisted ? 'update' : 'create',
       before: beforeFactRaw, after: afterFactRaw, actor: 'author',
       meta: {
@@ -78,7 +81,7 @@ export async function writeFactEntries({ root, bookId, entries, title = '', wiki
     })
     if (logged.ok === false) factLogError = logged.message
   } catch (error) {
-    factLogError = `读回拆解档失败：${text(error?.message || error)}`
+    factLogError = `读回故事源档失败：${text(error?.message || error)}`
   }
 
   return {

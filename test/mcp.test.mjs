@@ -68,6 +68,7 @@ test('MCP：initialize 握手（serverInfo/instructions/tools 能力）', async 
     assert.equal(reply.result.protocolVersion, '2024-11-05')
     assert.equal(reply.result.serverInfo.name, 'openstory-local')
     assert.match(reply.result.instructions, /openstory_libraries/)
+    assert.doesNotMatch(reply.result.instructions, /参考/u)
     assert.ok(reply.result.capabilities.tools)
   } finally { mcp.close() }
 })
@@ -77,18 +78,37 @@ test('MCP：tools/list 24 个工具、五模块分组、schema 带 required', as
   try {
     const reply = await mcp.request('tools/list')
     const tools = reply.result.tools
-    // OS-91：22 → 24（+ openstory_skills_list / openstory_skills_read）
-    assert.ok(tools.length >= 22, '工具数异常偏少')
+    // OS-91：22 → 24（+ openstory_skills_list / openstory_skills_read）；OS-172 钉死现有工具面
+    assert.equal(tools.length, 24, 'OpenStory 自身工具数必须保持 24')
     const names = tools.map((tool) => tool.name)
+    assert.equal(new Set(names).size, 24, '工具名不得重复')
     for (const name of ['openstory_libraries', 'openstory_novel_write_chapter', 'openstory_reference_graph', 'openstory_deduce_present', 'openstory_analysis_chapter', 'openstory_habits_read', 'openstory_skills_list', 'openstory_skills_read']) {
       assert.ok(names.includes(name), `缺工具 ${name}`)
     }
     for (const tool of tools) {
       assert.ok(tool.description, `${tool.name} 缺 description`)
       assert.equal(tool.inputSchema.type, 'object')
+      assert.ok(!JSON.stringify(tool).includes('参考/'), `${tool.name} 仍在描述旧目录 参考/`)
     }
+    const readNote = tools.find((tool) => tool.name === 'openstory_reference_read_note')
+    assert.match(readNote.inputSchema.properties.path.description, /世界书\/人物\/宋江\.md/u)
+    const writeNote = tools.find((tool) => tool.name === 'openstory_reference_write_note')
+    assert.match(writeNote.inputSchema.properties.file.description, /世界书\/子目录\/标题\.md/u)
     const write = tools.find((tool) => tool.name === 'openstory_novel_write_chapter')
     assert.deepEqual(write.inputSchema.required, ['root', 'file', 'text'])
+  } finally { mcp.close() }
+})
+
+test('MCP：世界书写入拒绝旧 参考/ 前缀（校验先于 daemon）', async () => {
+  const mcp = startMcp()
+  try {
+    const reply = await mcp.request('tools/call', {
+      name: 'openstory_reference_write_note',
+      arguments: { root: 'fixture-root', file: '参考/人物/宋江.md', text: '提案' }
+    })
+    assert.equal(reply.error, undefined)
+    assert.equal(reply.result.isError, true)
+    assert.match(reply.result.content[0].text, /^E_INVALID_ARGS · .*file 必须以 世界书\/ 开头/u)
   } finally { mcp.close() }
 })
 

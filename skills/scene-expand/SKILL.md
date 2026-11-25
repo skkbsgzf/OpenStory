@@ -1,12 +1,12 @@
 ---
 name: scene-expand
 description: 把一句梗概扩写成一场戏：只落成提案，不动正文原稿。
-tools: [pinax_chapter_read, pinax_chapter_save]
+tools: [openstory_novel_read_chapter]
 output: proposal
 domain: prose
 category: transform
 genres: ["*"]
-vendor: Pinax
+vendor: skkbsgzf
 version: 0.1.0
 ---
 
@@ -14,11 +14,15 @@ version: 0.1.0
 
 作者说「这段扩开写」「把这个场景写出来」时。
 
+## 可用性
+
+`openstory_novel_read_chapter` 可读取原章。OpenStory 当前没有可直接保存扩写稿的工具，该保存能力不可用；扩写结果只在回复中给提案，不自动落盘。
+
 ## 步骤
 
-1. 读要接的那一章，记下 revision、结尾那一拍与在场人物。
+1. 用 `openstory_novel_read_chapter` 读要接的那一章，记下结尾那一拍与在场人物。
 2. 先列这场戏的骨架：地点、视角、进场的欲望、拐点、出场的余味；五条各一句。
-3. 写正文，从上一拍自然接上，不重写前文；`pinax_chapter_save` 落成提案。
+3. 写正文，从上一拍自然接上，不重写前文；把扩写稿作为提案交给作者。
 4. 告诉作者：接在第几段之后、新增多少字、这一场改变了什么。
 
 ## 禁止

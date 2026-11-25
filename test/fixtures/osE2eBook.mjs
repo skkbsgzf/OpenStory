@@ -13,13 +13,13 @@ export const E2E_BOOK_ID = 'e2e-book'
 
 export async function writeE2eBookFixture(root) {
   await mkdir(join(root, '正文'), { recursive: true })
-  await mkdir(join(root, '拆解'), { recursive: true })
+  await mkdir(join(root, '故事源'), { recursive: true })
   for (const [name, body] of [
     ['001-开局.md', '第一章 弹幕预警\n\n沈岚看到弹幕预警：末世只剩三天。林逸说她疯了。'],
     ['002-设局.md', '第二章 反向设局\n\n沈岚识破骗局，决定引导林逸卖房买米。'],
     ['003-收网.md', '第三章 合同收网\n\n沈岚出示合同，当众揭露林逸骗贷。']
   ]) await writeFile(join(root, '正文', name), body, 'utf8')
-  await writeFile(join(root, '拆解', `${E2E_BOOK_ID}.json`), JSON.stringify({
+  await writeFile(join(root, '故事源', `${E2E_BOOK_ID}.json`), JSON.stringify({
     book: { id: E2E_BOOK_ID, title: '端到端测试书', author: 'tester', word_count: 6000 },
     entries: [
       { schema: 'fact.data/v3', id: 'plot-1', layer: 'plot', name: '开局', domain: '测试', status: 'fact',
@@ -44,8 +44,8 @@ export async function writeE2eBookFixture(root) {
   }, null, 1), 'utf8')
   // 兄弟 wiki（派生层）：原夹具目录里这份文件靠 e2e enrich 运行残留——这里给确定性版本，
   // fact 曲线（读 wiki.chapterSummaries）不再依赖「先跑过一次 e2e」
-  await writeFile(join(root, '拆解', `${E2E_BOOK_ID}.wiki.json`), JSON.stringify({
-    derivedFrom: { factRevision: 1, schema: 'pinax-wiki-derived@1' },
+  await writeFile(join(root, '故事源', `${E2E_BOOK_ID}.wiki.json`), JSON.stringify({
+    derivedFrom: { factRevision: 1, schema: 'openstory-wiki-derived@2' },
     chapterSummaries: [
       { chapter: 1, title: '弹幕预警', summary: '沈岚看到弹幕预警末世将至，林逸不信并让她别囤货。', function: '建立', emotion: '疑', beats: 3 },
       { chapter: 2, title: '反向设局', summary: '沈岚识破骗贷合谋，反向设局引导林逸卖房买米。', function: '对峙', emotion: '燃', beats: 4 },

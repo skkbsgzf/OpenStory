@@ -4,10 +4,11 @@
  */
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtemp, writeFile, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, writeFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { buildAugmentedPrompt, knowledgePromptSection, resolveCollections, routeQuery } from '../src/modules/kb/kbRouter.mjs'
+import { defaultKbConfigPath } from '../src/modules/kb/kbAdapter.mjs'
 import { listFingerprintPacks, runStyleCheck } from '../src/services/style-check.mjs'
 
 test('路由：五个意图各归其库；未知意图拒收', () => {
@@ -21,12 +22,31 @@ test('路由：五个意图各归其库；未知意图拒收', () => {
   assert.equal(routeQuery({ intent: 'magic' }).ok, false)
 })
 
-test('配置：六库映射可解析；缺文件降级不抛', () => {
-  const good = resolveCollections('C:/Users/Administrator/AppData/Local/OpenStory/openstory/kb-config.json')
-  assert.equal(good.ok, true)
-  assert.equal(good.map['文风库'].length > 10, true)
-  assert.deepEqual(routeQuery({ intent: 'style' }).collectionIds.map((alias) => good.map[alias]).filter(Boolean).length, 1)
-  assert.equal(resolveCollections('Z:/nope/kb-config.json').ok, false)
+test('配置：六库映射可解析；缺文件降级不抛', async (t) => {
+  // 夹具纪律（OS-169）：绝不读作者机器上的真实 kb-config.json——注入临时 LOCALAPPDATA，
+  // 用 defaultKbConfigPath 推导夹具路径。守卫：推导不出路径＝环境不齐，只能 skip，不回退本机文件。
+  const base = await mkdtemp(join(tmpdir(), 'os169-kbcfg-'))
+  try {
+    const configPath = defaultKbConfigPath({ ...process.env, LOCALAPPDATA: base, APPDATA: base })
+    if (!configPath) { t.skip('守卫：临时 LOCALAPPDATA 无法推导 kb-config 路径（环境不齐）'); return }
+    await mkdir(dirname(configPath), { recursive: true })
+    await writeFile(configPath, JSON.stringify({
+      baseUrl: 'http://127.0.0.1:1',
+      apiKey: 'fixture-key',
+      collections: {
+        文风库: Array.from({ length: 12 }, (_, i) => `style-${i}`),
+        案例库: ['case-1'], 套路库: ['trope-1'], 信号库: ['signal-1'],
+        技法库: ['recipe-1'], 素材库: ['asset-1']
+      }
+    }), 'utf-8')
+    const good = resolveCollections(configPath)
+    assert.equal(good.ok, true)
+    assert.equal(good.map['文风库'].length > 10, true)
+    assert.deepEqual(routeQuery({ intent: 'style' }).collectionIds.map((alias) => good.map[alias]).filter(Boolean).length, 1)
+    assert.equal(resolveCollections('Z:/nope/kb-config.json').ok, false)
+  } finally {
+    await rm(base, { recursive: true, force: true })
+  }
 })
 
 test('提示段：按 style→recipe→precedent→signal 排序；空命中返回空串', () => {

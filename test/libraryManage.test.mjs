@@ -20,7 +20,7 @@ import {
   registerLibrary,
   scanLibrary,
   setPrimaryCarrier
-} from '../src/modules/library/libraryManage.mjs'
+} from '../src/host/libraryManage.mjs'
 import { startDaemon } from '../src/host/daemon.mjs'
 
 async function makeFixture() {
@@ -74,14 +74,14 @@ test('登记：追加去重；清单缺失从零起；坏档拒绝且绝不覆�
 test('建库：novel 主模块全链；重复路径拒绝；非绝对路径拒绝；bare 空壳 needsPrimary', async () => {
   const { base, parent, preferencesPath } = await makeFixture()
   try {
-    const created = await createLibrary({ path: join(parent, '长夜'), name: '长夜', primaryCarrier: 'pinax.carrier.novel', preferencesPath })
+    const created = await createLibrary({ path: join(parent, '长夜'), name: '长夜', primaryCarrier: 'openstory.carrier.novel', preferencesPath })
     assert.equal(created.ok, true)
-    assert.equal(created.document.spec, 'pinax-project@3')
+    assert.equal(created.document.spec, 'openstory-project@4')
     assert.equal(created.document.kind, 'novel')
     assert.equal(created.needsPrimary, false)
     const dirs = await readdir(created.root)
     // OS-164/G8b 合法更新：退场四目录不再随新库落盘，参考/ 作为真笔记目录补进来。
-    for (const dir of ['正文', '参考', '世界书', '日志', '.pinax']) {
+    for (const dir of ['正文', '世界书', '世界书', '日志', '.openstory']) {
       assert.ok(dirs.includes(dir), `骨架缺 ${dir}`)
     }
     for (const retired of ['大纲', '构思', '资料', '约束']) {
@@ -90,7 +90,7 @@ test('建库：novel 主模块全链；重复路径拒绝；非绝对路径拒�
     const prefs = JSON.parse(await readFile(preferencesPath, 'utf-8'))
     assert.equal(prefs.libraries[0].name, '长夜')
 
-    const dupe = await createLibrary({ path: join(parent, '长夜'), name: '长夜', primaryCarrier: 'pinax.carrier.novel', preferencesPath })
+    const dupe = await createLibrary({ path: join(parent, '长夜'), name: '长夜', primaryCarrier: 'openstory.carrier.novel', preferencesPath })
     assert.equal(dupe.ok, false, '目标目录非空拒绝')
 
     const relative = await createLibrary({ path: '写作/长夜2', name: '长夜2', preferencesPath })
@@ -100,7 +100,7 @@ test('建库：novel 主模块全链；重复路径拒绝；非绝对路径拒�
     const bare = await createLibrary({ path: join(parent, '裸库'), name: '裸库', preferencesPath })
     assert.equal(bare.ok, true)
     assert.equal(bare.needsPrimary, true)
-    const bareDoc = JSON.parse(await readFile(join(parent, '裸库', '.pinax', 'project.json'), 'utf-8'))
+    const bareDoc = JSON.parse(await readFile(join(parent, '裸库', '.openstory', 'project.json'), 'utf-8'))
     assert.equal(bareDoc.carriers.primary, null)
 
     const badName = await createLibrary({ path: join(parent, 'x'), name: '', preferencesPath })
@@ -115,12 +115,12 @@ test('建库：novel 主模块全链；重复路径拒绝；非绝对路径拒�
 test('诊断：健康/空地/有稿无标记/裸库/缺路径 五种 verdict', async () => {
   const { base, parent, preferencesPath, empty, draftDir } = await makeFixture()
   try {
-    await createLibrary({ path: join(parent, '长夜'), name: '长夜', primaryCarrier: 'pinax.carrier.novel', preferencesPath })
+    await createLibrary({ path: join(parent, '长夜'), name: '长夜', primaryCarrier: 'openstory.carrier.novel', preferencesPath })
 
     const healthy = await diagnoseLibrary(join(parent, '长夜'))
     assert.equal(healthy.verdict.ok, true)
     assert.equal(healthy.shape.project.kind, 'novel')
-    assert.equal(healthy.shape.project.primary, 'pinax.carrier.novel')
+    assert.equal(healthy.shape.project.primary, 'openstory.carrier.novel')
 
     await mkdir(empty, { recursive: true })
     const emptyVerdict = await diagnoseLibrary(empty)
@@ -151,21 +151,21 @@ test('修主模块：bare→novel 连 kind 一起落；kind 冲突拒绝；revis
     await createLibrary({ path: join(parent, '裸库'), name: '裸库', preferencesPath })
     const root = join(parent, '裸库')
 
-    const stale = await setPrimaryCarrier({ root, primaryCarrier: 'pinax.carrier.novel', expectedRevision: 7 })
+    const stale = await setPrimaryCarrier({ root, primaryCarrier: 'openstory.carrier.novel', expectedRevision: 7 })
     assert.equal(stale.ok, false)
     assert.equal(stale.code, 'REVISION_MISMATCH', 'STALE_REVISION 透传成 REVISION_MISMATCH')
 
-    const set = await setPrimaryCarrier({ root, primaryCarrier: 'pinax.carrier.novel' })
+    const set = await setPrimaryCarrier({ root, primaryCarrier: 'openstory.carrier.novel' })
     assert.equal(set.ok, true)
-    assert.equal(set.document.carriers.primary, 'pinax.carrier.novel')
+    assert.equal(set.document.carriers.primary, 'openstory.carrier.novel')
     assert.equal(set.document.kind, 'novel')
-    assert.ok(set.enabled.includes('pinax.carrier.novel'))
+    assert.ok(set.enabled.includes('openstory.carrier.novel'))
 
-    const conflict = await setPrimaryCarrier({ root, primaryCarrier: 'pinax.carrier.script' })
+    const conflict = await setPrimaryCarrier({ root, primaryCarrier: 'openstory.carrier.script' })
     assert.equal(conflict.ok, false)
-    assert.match(conflict.message, /换类型去 Pinax/)
+    assert.match(conflict.message, /请新建相应类型的库/)
 
-    const unknown = await setPrimaryCarrier({ root, primaryCarrier: 'pinax.carrier.comic' })
+    const unknown = await setPrimaryCarrier({ root, primaryCarrier: 'openstory.carrier.comic' })
     assert.equal(unknown.ok, false, 'kind 一致（record 型无 projectKind）或未知载体都拒绝')
   } finally {
     await rm(base, { recursive: true, force: true })
@@ -177,7 +177,7 @@ test('修主模块：bare→novel 连 kind 一起落；kind 冲突拒绝；revis
 test('扫描/导入：计划→落盘→源目录一个字没动；相对路径与不存在目录拒收', async () => {
   const { base, parent, preferencesPath, source, draftDir } = await makeFixture()
   try {
-    const created = await createLibrary({ path: join(parent, '长夜'), name: '长夜', primaryCarrier: 'pinax.carrier.novel', preferencesPath })
+    const created = await createLibrary({ path: join(parent, '长夜'), name: '长夜', primaryCarrier: 'openstory.carrier.novel', preferencesPath })
     assert.equal(created.ok, true)
 
     const badSource = await scanLibrary({ root: created.root, sourcePath: '相对/路径' })
@@ -248,7 +248,7 @@ test('daemon 端到端：create→diagnose→scan→import→chapter 读到导�
     body: JSON.stringify(body)
   })
   try {
-    const create = await post('/api/library/create', { path: join(fixture.parent, '长夜'), name: '长夜', primaryCarrier: 'pinax.carrier.novel' })
+    const create = await post('/api/library/create', { path: join(fixture.parent, '长夜'), name: '长夜', primaryCarrier: 'openstory.carrier.novel' })
     assert.equal(create.status, 200)
     const created = (await create.json())
     assert.equal(created.ok, true)
@@ -282,7 +282,7 @@ test('daemon 端到端：create→diagnose→scan→import→chapter 读到导�
     // bare → primary → diagnose ok
     const bare = await post('/api/library/create', { path: join(fixture.parent, '裸库'), name: '裸库' })
     assert.equal((await bare.json()).needsPrimary, true)
-    const primary = await post('/api/library/primary', { root: join(fixture.parent, '裸库'), primaryCarrier: 'pinax.carrier.script' })
+    const primary = await post('/api/library/primary', { root: join(fixture.parent, '裸库'), primaryCarrier: 'openstory.carrier.script' })
     assert.equal(primary.status, 200)
     const diagFixed = await fetch(`${origin}/api/library/diagnose?root=${encodeURIComponent(join(fixture.parent, '裸库'))}`)
     assert.equal((await diagFixed.json()).verdict.ok, true)

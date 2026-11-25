@@ -36,7 +36,7 @@ const SETTING_CONSUMERS = Object.freeze({
 
 test('模块设置项消费者表：manifest 声明的每个键都必须在表里，且消费者符号真的在源文件里', () => {
   for (const manifest of MODULE_MANIFESTS) {
-    for (const setting of manifest.settings) {
+    for (const setting of manifest.settings ?? []) {
       const composite = `${manifest.id}:${setting.key}`
       const consumer = SETTING_CONSUMERS[composite]
       assert.ok(consumer, `${composite} 没有消费者登记——改了不生效的设置项不许留在界面上（OS-146）`)
@@ -49,7 +49,7 @@ test('模块设置项消费者表：manifest 声明的每个键都必须在表�
 })
 
 test('模块设置项消费者表：不许留没有 manifest 声明的僵尸项，也不许迁到未声明的键', () => {
-  const declared = new Set(MODULE_MANIFESTS.flatMap((manifest) => manifest.settings.map((setting) => `${manifest.id}:${setting.key}`)))
+  const declared = new Set(MODULE_MANIFESTS.flatMap((manifest) => (manifest.settings ?? []).map((setting) => `${manifest.id}:${setting.key}`)))
   for (const composite of Object.keys(SETTING_CONSUMERS)) {
     assert.ok(declared.has(composite), `消费者表里的 ${composite} 已没有 manifest 声明——删掉这一项`)
   }

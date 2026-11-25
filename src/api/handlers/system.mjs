@@ -17,14 +17,14 @@ import { dirname, join } from 'node:path'
 import { API_ERROR_CODES, isPlainObject, validateResponse } from '../contracts.mjs'
 import { sendError, sendJson, text } from '../../host/http.mjs'
 import { authorizeRoot, resolveInsideRoot, RESERVED_LIB_DIRS } from '../../host/authorize.mjs'
-import { readHabits, normalizeHabits, writeHabitsWithBackup } from '../../modules/habits/habits.mjs'
+import { readHabits, normalizeHabits, writeHabitsWithBackup } from '../../protocol/habits.mjs'
 import { loadGenres, readBrief, writeBrief } from '../../services/genres.mjs'
 import { readAgentPicks, writeAgentPicks } from '../../services/skills.mjs'
 import { getSuiteStateData, saveSuiteStateData } from '../../services/suites.mjs'
 import { loadStylePacks } from '../../services/stylePacks.mjs'
-import { defaultKbConfigPath } from '../../modules/kb/kbAdapter.mjs'
-import { collectKbStatus, kbServiceState, probeServices } from '../../modules/kb/kbHealth.mjs'
-import { resolveCollections } from '../../modules/kb/kbRouter.mjs'
+import { defaultKbConfigPath } from '../../protocol/kbAdapter.mjs'
+import { collectKbStatus, kbServiceState, probeServices } from '../../protocol/kbHealth.mjs'
+import { resolveCollections } from '../../protocol/kbRouter.mjs'
 import { listJobs, cancelJob, clearSettled, activeCount } from '../../services/jobCenter.mjs'
 import {
   pickFile,
@@ -39,12 +39,13 @@ import {
   configPublicV2,
   validateConfigPatch,
   normalizeConfigBlock,
-  probeConfigKind
+  probeTextConfig
 } from '../../services/agentConfig.mjs'
-import { runDshStdio, dshModelSelection } from '../../services/dsh-cli.mjs'
-import { listArtifacts, listLibraryFiles } from '../../modules/library/inventory.mjs'
+import { resolveMediaCapability } from '../../protocol/media.mjs'
+import { resolveAgentRuntimeCapability } from '../../protocol/agentRuntime.mjs'
+import { listArtifacts, listLibraryFiles } from '../../protocol/libraryInventory.mjs'
 import { readUiState, writeUiState } from '../../protocol/libState.mjs'
-import { CORE_MODULE_IDS } from '../../protocol/modules.mjs'
+import { BASE_GRAPH, MODULE_MANIFESTS, deriveModuleStateChange } from '../../protocol/modules.mjs'
 import { atomicWriteFile } from '../../protocol/hostWrite.mjs'
 import { defaultUiPreferencesPath, readUiPreferences, writeUiSkin } from '../../services/uiPreferences.mjs'
 
@@ -127,7 +128,15 @@ export async function configProbe(ctx) {
   const { config } = await loadConfigV2(context.agentConfigPath)
   // overrides：用未保存的块值试连（只认同块字段，其余丢弃）
   const block = normalizeConfigBlock(kind, isPlainObject(request.overrides) ? { ...config[kind], ...request.overrides } : config[kind])
-  const probed = await probeConfigKind(kind, block)
+  let probed
+  if (kind === 'text') {
+    probed = await probeTextConfig(block)
+  } else {
+    const capabilityId = kind === 'image' ? 'media.generate' : 'media.describe'
+    const resolved = await resolveMediaCapability('', capabilityId)
+    if (!resolved.ok) return sendError(res, API_ERROR_CODES.PLUGIN_DEGRADED, resolved.message, resolved.details)
+    probed = await resolved.capability.probeConfig(block)
+  }
   const payload = {
     ok: true,
     kind,
@@ -275,14 +284,14 @@ export async function uiStatePut(ctx) {
   const { res, request, allowlist } = ctx
   const authorized = authorizeRoot(allowlist, request.root)
   if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
-  // OS-163：核心模块（core:true）不可停用——只拒绝这一个键，其余状态照旧写。
-  const next = request.state
-  const coreKeys = CORE_MODULE_IDS.map((id) => `modules.enabled.${id}`)
-  const nested = next?.modules?.enabled
-  const denied = coreKeys.filter((key) => next?.[key] === false)
-    .concat(CORE_MODULE_IDS.filter((id) => nested && Object.prototype.hasOwnProperty.call(nested, id) && nested[id] === false).map((id) => `modules.enabled.${id}`))
-  if (denied.length) return sendError(res, API_ERROR_CODES.MODULE_CORE,
-    `核心模块不可停用：${[...new Set(denied)].join('、')}`, { modules: [...new Set(denied)] })
+  const current = await readUiState(authorized.root)
+  const graphChange = deriveModuleStateChange({
+    manifests: MODULE_MANIFESTS,
+    base: BASE_GRAPH,
+    state: current.state,
+    patch: request.state
+  })
+  if (!graphChange.ok) return sendError(res, graphChange.code, graphChange.message, graphChange.details)
   const result = await writeUiState(authorized.root, request.state)
   if (!result.ok) return sendError(res, result.code ?? API_ERROR_CODES.INVALID_ENTRY, result.message)
   return sendJson(res, 200, { ok: true, state: result.state, ...(result.backup ? { backup: result.backup } : {}) })
@@ -439,65 +448,22 @@ export async function visionDescribe(ctx) {
   }
 
   const { config } = await loadConfigV2(context.agentConfigPath)
-  const vision = config.vision
-  if (!vision.enabled) {
-    return sendError(res, API_ERROR_CODES.AGENT_UPSTREAM_ERROR, '识图没启用——设置 · 模型 · 识图里打开开关并选模型')
-  }
-
-  // target 决定白描口径
-  const target = text(request.target).trim() || 'character'
-  const targetGuide = {
-    character: '这是一个角色。写他的外形与气质：身形/衣着的具体质感、面容里最抓人的一处、姿态透出的性格。',
-    scene: '这是一个场景。写氛围：光线从哪来、空气里有什么、什么地方冷、什么地方暖。',
-    creature: '这是一个非人形象（怪物/异兽）。写它的体量与压迫感：尺度对比、不该有的细节、让人不敢直视的那一处。',
-    item: '这是一个道具。写质感与来历感：材质、磨损、拿在手里的分量。'
-  }[target] || '写这个画面的文学白描。'
-  const focus = text(request.focus).trim()
-  const habitContext = text(request.habitContext).trim()
-
-  // ★ 预设提示词（作者口径：不让人现编，固定这套）
-  const prompt = [
-    '你有 read_image 工具。先读这张图，然后用文学语言写一段可直接进小说正文的白描。',
-    '',
-    `图片路径：${resolvedImage.path}`,
-    '',
-    '硬规矩：',
-    '1. 只写看得见、能推理的。图上没有的身份/来历/情绪成因不编。',
-    '2. 动词优先于形容词：「袍角扫过门槛」而不是「他穿着很长的袍子」。',
-    '3. 不要写构图（「左侧是…」），换成小说里能出现的说法。',
-    '4. 不要写风格词（「2D彩漫风格」），那是生图提示词不是正文。',
-    '5. 150–300 字，只输出白描正文，不要标题、不要解释、不要 markdown 围栏。',
-    '',
-    targetGuide,
-    focus ? `\n这次特别留意：${focus}` : '',
-    habitContext ? `\n作者习惯（必须遵守）：${habitContext}` : ''
-  ].filter(Boolean).join('\n')
-
-  // 模型：设置里 vision.model（形如 provider/id）优先；没选＝用 DSH 默认
-  const modelSelection = dshModelSelection(text(vision.model))
-  const profile = text(vision.profile || context.env?.DSH_PROFILE || 'openstory').trim()
-  let collected = ''
-  const run = await runDshStdio({
-    dshCmd: context.env?.DSH_CLI || 'dsh',
-    profile,
-    cwd: authorized.root,
-    prompt,
-    ...(modelSelection ? { model: modelSelection } : {}),
-    inactivityMs: 180_000,
-    timeoutMs: 600_000,
-    onText: (piece) => { collected += piece }
+  const media = await resolveMediaCapability(authorized.root, 'media.describe')
+  if (!media.ok) return sendError(res, API_ERROR_CODES.PLUGIN_DEGRADED, media.message, media.details)
+  const runtime = await resolveAgentRuntimeCapability(authorized.root)
+  if (!runtime.ok) return sendError(res, API_ERROR_CODES.PLUGIN_DEGRADED, runtime.message, runtime.details)
+  const described = await media.capability.describe({
+    imagePath: resolvedImage.path,
+    root: authorized.root,
+    vision: config.vision,
+    target: text(request.target).trim() || 'character',
+    focus: text(request.focus).trim(),
+    habitContext: text(request.habitContext).trim(),
+    env: context.env ?? process.env,
+    runtime: runtime.capability
   })
-  if (!run.ok) {
-    return sendError(res, API_ERROR_CODES.AGENT_UPSTREAM_ERROR, `DSH 识图失败：${text(run.message || run.code || 'unknown')}`)
-  }
-  const out = text(collected || run.text || '').trim()
-  if (!out) return sendError(res, API_ERROR_CODES.AGENT_UPSTREAM_ERROR, 'DSH 子 agent 没有返回文本（模型可能不支持读图）')
-  return sendJson(res, 200, {
-    ok: true,
-    text: out,
-    chars: out.length,
-    ...(modelSelection ? { model: `${modelSelection.provider}/${modelSelection.id}` } : {})
-  })
+  if (!described.ok) return sendError(res, API_ERROR_CODES.AGENT_UPSTREAM_ERROR, described.error)
+  return sendJson(res, 200, { ok: true, text: described.text, chars: described.chars, ...(described.model ? { model: described.model } : {}) })
 }
 
 /** system 域端点 → handler 注册表片段（registry.mjs 聚合）。 */

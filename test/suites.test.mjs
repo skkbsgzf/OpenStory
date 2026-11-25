@@ -30,7 +30,7 @@ const GOOD = {
   id: 'writing',
   name: '写作套件',
   version: '0.1.0',
-  vendor: 'Pinax 官方',
+  vendor: 'skkbsgzf',
   description: '小说写作',
   domains: ['写作'],
   settings: [
@@ -78,7 +78,7 @@ test('套件规整 @2：page 模式（entry 文件必须在）、pages/services 
     await mkdir(suiteDir, { recursive: true })
     await writeFile(join(suiteDir, 'settings.html'), '<html></html>', 'utf-8')
     const page = normalizeSuite({
-      schemaVersion: 'openstory-suite@2', id: 'comicdrama', name: '漫剧', version: '0.2.0', vendor: 'Pinax 官方',
+      schemaVersion: 'openstory-suite@2', id: 'comicdrama', name: '漫剧', version: '0.2.0', vendor: 'skkbsgzf',
       domains: ['漫剧'],
       capabilities: { settings: { mode: 'page', entry: 'settings.html' }, pages: [{ id: 'board', title: '分镜板', entry: 'board.html' }], services: [] }
     }, { source: '内置', dir: suiteDir })
@@ -167,8 +167,8 @@ test('契约：suites 三端点形状', () => {
 
 test('默认路径：跟随 LOCALAPPDATA/OpenStory/openstory', () => {
   assert.equal(
-    defaultSuiteStatePath({ LOCALAPPDATA: 'C:/Users/x/AppData/Local' }).replaceAll('\\', '/'),
-    'C:/Users/x/AppData/Local/OpenStory/openstory/suite-state.json'
+    defaultSuiteStatePath({ LOCALAPPDATA: 'X:/fixture-home/AppData/Local' }).replaceAll('\\', '/'),
+    'X:/fixture-home/AppData/Local/OpenStory/openstory/suite-state.json'
   )
   assert.equal(defaultUserSuitesDir({}).replaceAll('\\', '/').endsWith('openstory/suites'), false)
   assert.equal(defaultUserSuitesDir({}), '')
@@ -217,7 +217,7 @@ test('daemon 端到端：page 模式套件——assets 同源装载＋state-data
     // 仍是货架内合法资产；服务端逐段拒 `..` 的闸在纯函数层（resolveSuiteAssetPath）另测。
     const normalizedEscape = await fetch(`${origin}/suite-assets/comicdrama/%2e%2e/writing/manifest.json`)
     if (normalizedEscape.status === 200) {
-      assert.match(await normalizedEscape.text(), /openstory-suite@/u, '归一后仍只可能落在货架内套件资产上')
+      assert.match(await normalizedEscape.text(), /openstory-(?:suite|module)@/u, '归一后仍只可能落在货架内套件资产上')
     }
     const unknown = await fetch(`${origin}/suite-assets/nope/settings.html`)
     assert.equal(unknown.status, 404)
@@ -243,7 +243,7 @@ test('daemon 端到端：货架→存值→停用→新建空标题被拦→启�
   try {
     const shelves = await (await fetch(`${origin}/api/suites`)).json()
     assert.equal(shelves.ok, true)
-    assert.ok(shelves.suites.some((suite) => suite.id === 'writing' && suite.vendor === 'Pinax 官方'))
+    assert.ok(shelves.suites.some((suite) => suite.id === 'writing' && suite.vendor === 'OpenStory' && suite.source === '内置'))
 
     // 写作套件：存默认标题 → 新建章不填标题 → 用默认标题
     await put('/api/suite/settings', { id: 'writing', values: { newChapterTitle: '草稿章' } })

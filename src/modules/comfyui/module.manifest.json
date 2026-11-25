@@ -1,9 +1,9 @@
 {
-  "spec": "openstory-module@1",
+  "spec": "openstory-module@2",
   "id": "comfyui",
   "name": "生图与识图",
   "version": "0.1.0",
-  "core": false,
+  "builtin": true,
   "description": "生图/识图工作面：ComfyUI 与 OpenAI 兼容生图、DSH 识图。独占端点随停用失效；设置里的生图/识图配置区与生成入口一并隐去，已存的配置值不删。生图/识图的真配置在本机 agent-config.json（settings.image / settings.vision），本模块只报「配置在哪」，不再放第二份输入框（OS-146：界面上的每个设置项必须有真实消费者）。",
   "endpoints": [
     "deduceImage",
@@ -11,9 +11,21 @@
     "visionDescribe"
   ],
   "pages": [
-    { "id": "image-settings", "label": "生图与识图", "slot": "settings" }
+    {
+      "id": "image-settings",
+      "label": "生图与识图"
+    }
   ],
   "settings": [],
+  "class": "workbench",
+  "entry": "index.mjs",
+  "requires": [{ "id": "media.generate", "min": 1 }, { "id": "media.describe", "min": 1 }],
+  "slots": [
+    {
+      "slot": "settings",
+      "page": "image-settings"
+    }
+  ],
   "settingsHint": "端点、模型、key 与开关都在「设置 · 引擎与存储 · 对话模型与运行时」的生图区里配（真源是本机 agent-config.json）；配好并测试可达后，推演里就能直接生成场景图。",
   "settingsJump": "engines"
 }

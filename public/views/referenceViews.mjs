@@ -9,13 +9,13 @@
  * 金样与纯度测试：test/referenceViews.test.mjs。
  */
 
-/** 词条详情（OS-103）：拆解条目只读展示（第二来源），factEntries 由调用方注入。 */
+/** 词条详情（OS-103）：故事源条目只读展示（第二来源），factEntries 由调用方注入。 */
 export function referenceEntryDetailHtml(entryId, factEntries, { esc } = {}) {
   const html = esc ?? ((value) => String(value ?? ''))
   const entry = (Array.isArray(factEntries) ? factEntries : []).find((item) => String(item?.id ?? '') === String(entryId))
   if (!entry) {
     return `<div class="ref-detail"><div class="ref-detail-head"><h1 class="ref-title">词条不存在</h1></div>
-      <p class="ds-empty">这条拆解词条可能已被移除或改过 id——点左侧其他词条看看。</p></div>`
+      <p class="ds-empty">这条故事源词条可能已被移除或改过 id——点左侧其他词条看看。</p></div>`
   }
   const LAYER_LABEL = { worldview: '世界观', character: '角色', plot: '剧情', location: '地点', item: '道具', scene: '场景', term: '术语' }
   const layer = String(entry.layer ?? '').toLowerCase()
@@ -27,10 +27,10 @@ export function referenceEntryDetailHtml(entryId, factEntries, { esc } = {}) {
   return `<div class="ref-detail">
     <div class="ref-detail-head">
       <h1 class="ref-title">${html(String(entry.name || '（无名）'))}</h1>
-      <span class="ref-detail-path">拆解词条 · ${html(LAYER_LABEL[layer] || layer || '未分层')}</span>
+      <span class="ref-detail-path">故事源词条 · ${html(LAYER_LABEL[layer] || layer || '未分层')}</span>
       <span class="fc-badge${firstChapter > 0 ? '' : ' fc-base'}">${firstChapter > 0 ? `首次出现在第${firstChapter}章` : '原生共识'}</span>
       <span class="sp"></span>
-      <span class="count">只读 · 来源 拆解/（改动请走世界书笔记或 enrich）</span>
+      <span class="count">只读 · 来源 故事源/（改动请走世界书笔记或 enrich）</span>
     </div>
     <div class="ref-flow">
       <aside class="ref-side-cards">
@@ -91,7 +91,7 @@ export function referenceEditorHtml({ ref = {}, note, bodySource = '', body = ''
 export function refNodeCardHtml(node, { edges = [], esc, text, variant = '' } = {}) {
   const html = esc ?? ((value) => String(value ?? ''))
   const asText = text ?? ((value) => String(value ?? ''))
-  const kindLabels = { reference: '参考', tag: '标签', artifact: '章节/产物', entry: '条目' }
+  const kindLabels = { reference: '世界书', tag: '标签', artifact: '章节/产物', entry: '条目' }
   const degree = edges.filter((edge) => edge.a === node.id || edge.b === node.id).length
   const tags = Array.isArray(node.tags) ? node.tags : []
   const tagChips = tags.map((tag) => `<button class="pill tag-pick" data-ref-tag="${html(tag)}">#${html(tag)}</button>`).join('')
@@ -108,7 +108,7 @@ export function refNodeCardHtml(node, { edges = [], esc, text, variant = '' } = 
   </div>`
 }
 
-/** 参考页·关系图谱视图（OS-51）：大画布＋节点信息卡＋标签筛选行。 */
+/** 世界书页·关系图谱视图（OS-51）：大画布＋节点信息卡＋标签筛选行。 */
 export function referenceGraphHtml({ rc = {}, ref = {}, esc, text, nodeCardHtml } = {}) {
   const html = esc ?? ((value) => String(value ?? ''))
   if (rc.graphError) return `<div class="error-box">${html(rc.graphError)}</div>`
@@ -116,7 +116,7 @@ export function referenceGraphHtml({ rc = {}, ref = {}, esc, text, nodeCardHtml 
   const stats = rc.graph.stats || {}
   const byKind = stats.byKind || {}
   const legend = [
-    ['reference', '参考', 'var(--accent)'],
+    ['reference', '世界书', 'var(--accent)'],
     ['tag', '标签', 'var(--warn)'],
     ['artifact', '章节/产物', 'var(--ok)'],
     ['entry', '条目（只读）', 'var(--meta)']
@@ -165,7 +165,7 @@ export function refModulesHtml({ prepend = '', modules = [], hidden = new Set(),
 }
 
 /**
- * 参考页整体外壳（OS-48 侧栏导航＋视图制主区）。
+ * 世界书页整体外壳（OS-48 侧栏导航＋视图制主区）。
  * sideEffect 的装载/同源检查、refModule.referenceShellHtml、moduleLogHtml 由宿主先算好传进来；
  * 这里只做「同步状态条插入 ref-grid 之前」与 topic-workspace 包装。
  */

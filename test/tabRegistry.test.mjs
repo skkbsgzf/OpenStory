@@ -52,10 +52,10 @@ function legacyTabDefs(ctx = {}) {
     // OS-19：体裁声明后（如短故事）没有 正文/ 目录就不出正文页签
     if (!ctx.brief || hasDir('正文')) defs.push({ view: 'write', label: '正文', ic: '章', closable: true })
     const extra = libDirs
-      // OS-88：正文/世界书/推演都有内置页签，不能再按目录重复出一个
-      .filter((dir) => dir !== '正文' && dir !== '世界书' && dir !== '推演' && !excluded.has(dir))
+      // OS-88：正文/世界书/扮演都有内置页签，不能再按目录重复出一个
+      .filter((dir) => dir !== '正文' && dir !== '扮演' && !excluded.has(dir))
       // OS-88/92：只认词表内的目录——词表外（素材/漫画/联机/作者自建）不出页签
-      .filter((dir) => Boolean(DIR_LABELS[dir]) || dir === '参考' || dir === '习惯')
+      .filter((dir) => Boolean(DIR_LABELS[dir]) || dir === '习惯')
       // OS-86：已退场的旧目录（大纲/构思/资料/约束）一律不出页签
       .filter((dir) => !RETIRED_DIRS.includes(dir))
       .sort((left, right) => {
@@ -64,10 +64,10 @@ function legacyTabDefs(ctx = {}) {
         return (li === -1 ? 99 : li) - (ri === -1 ? 99 : ri)
       })
       .map((dir) => ({
-        // OS-44/48：参考走笔记专页（页签叫世界书）、拆解页签叫故事源
-        view: dir === '参考' ? 'reference' : (dir === '习惯' ? 'habits' : `dir:${dir}`),
-        label: dir === '参考' ? '世界书' : (DIR_LABELS[dir] || dir),
-        ic: dir === '参考' ? '世' : (DIR_LABELS[dir] || dir).slice(0, 1),
+        // OS-172：世界书走 reference 视图；故事源按目录视图，显示名与磁盘名一致
+        view: dir === '世界书' ? 'reference' : (dir === '习惯' ? 'habits' : `dir:${dir}`),
+        label: DIR_LABELS[dir] || dir,
+        ic: (DIR_LABELS[dir] || dir).slice(0, 1),
         readonly: READONLY_DIRS.has(dir),
         closable: true
       }))
@@ -90,13 +90,13 @@ test('快照：默认小说库的页签集合与顺序（产物/正文/剧本/�
     current: { path: '/lib' },
     brief: null,
     briefGenre: null,
-    libDirs: ['正文', '参考', '剧本', '拆解', '习惯', '日志'],
+    libDirs: ['正文', '世界书', '剧本', '故事源', '习惯', '日志'],
     settingsOpen: false
   })
   assert.deepEqual(defs.map((def) => def.view),
-    ['artifacts', 'write', 'dir:剧本', 'dir:日志', 'reference', 'dir:拆解', 'habits', 'deduce'])
+    ['artifacts', 'write', 'reference', 'dir:剧本', 'dir:日志', 'dir:故事源', 'habits', 'deduce'])
   assert.deepEqual(defs.map((def) => def.label),
-    ['产物', '正文', '剧本', '日志', '世界书', '故事源', '习惯', '扮演'])
+    ['产物', '正文', '世界书', '剧本', '日志', '故事源', '习惯', '扮演'])
   // OS-89：日志页签挂「只读」牌
   const logTab = defs.find((def) => def.view === 'dir:日志')
   assert.equal(logTab.readonly, true)
@@ -110,7 +110,7 @@ test('快照：无库时只剩设置页；正文页签受体裁裁剪（OS-19）
   assert.deepEqual(computeTabDefs({ current: null, settingsOpen: false }).map((def) => def.view), [])
   assert.deepEqual(computeTabDefs({ current: null, settingsOpen: true }).map((def) => def.view), ['settings'])
   // 短故事体裁：声明了 brief 且磁盘无 正文/ 目录 → 不出正文页签
-  const noWrite = computeTabDefs({ current: true, brief: { genre: 'short' }, briefGenre: null, libDirs: ['参考', '日志'], settingsOpen: false })
+  const noWrite = computeTabDefs({ current: true, brief: { genre: 'short' }, briefGenre: null, libDirs: ['世界书', '日志'], settingsOpen: false })
   assert.ok(!noWrite.some((def) => def.view === 'write'))
   // 没声明体裁：即便 正文/ 目录不在，正文页签照出（OS-8 行为）
   const keepWrite = computeTabDefs({ current: true, brief: null, briefGenre: null, libDirs: [], settingsOpen: false })
@@ -120,17 +120,17 @@ test('快照：无库时只剩设置页；正文页签受体裁裁剪（OS-19）
 /* ---------- ② 行为保真：与迁移前旧算法逐字段对拍 ---------- */
 
 test('对拍旧算法：九种场景下 computeTabDefs 与迁移前 renderTabs 语义逐字节等价', () => {
-  const full = { current: true, brief: null, briefGenre: null, libDirs: ['正文', '参考', '剧本', '拆解', '习惯', '日志'], settingsOpen: false }
+  const full = { current: true, brief: null, briefGenre: null, libDirs: ['正文', '世界书', '剧本', '故事源', '习惯', '日志'], settingsOpen: false }
   // 磁盘目录序影响 DIR_ORDER 轨道外（99 组）的稳定展开序
-  const reordered = { ...full, libDirs: ['日志', '习惯', '拆解', '剧本', '参考', '正文'] }
-  const noWriteDir = { current: true, brief: { deliverable: 'short' }, briefGenre: null, libDirs: ['参考', '日志'], settingsOpen: true }
-  // OS-19：体裁裁剪——worldbook 排除的是「世界书」目录名，不碰参考目录（页签照出）
-  const genreWorldbook = { current: true, brief: {}, briefGenre: { excludedPages: ['worldbook', 'entries'] }, libDirs: ['正文', '参考', '世界书', '日志'], settingsOpen: false }
-  const genreScript = { current: true, brief: {}, briefGenre: { excludedPages: ['script'] }, libDirs: ['正文', '参考', '剧本', '日志'], settingsOpen: false }
+  const reordered = { ...full, libDirs: ['日志', '习惯', '故事源', '剧本', '世界书', '正文'] }
+  const noWriteDir = { current: true, brief: { deliverable: 'short' }, briefGenre: null, libDirs: ['世界书', '日志'], settingsOpen: true }
+  // OS-19：体裁裁剪——worldbook 排除世界书目录，entries 排除故事源目录
+  const genreWorldbook = { current: true, brief: {}, briefGenre: { excludedPages: ['worldbook', 'entries'] }, libDirs: ['正文', '世界书', '故事源', '日志'], settingsOpen: false }
+  const genreScript = { current: true, brief: {}, briefGenre: { excludedPages: ['script'] }, libDirs: ['正文', '世界书', '剧本', '日志'], settingsOpen: false }
   // OS-92：词表外目录不出页签
   const unknownDirs = { current: true, brief: null, briefGenre: null, libDirs: ['分镜', '素材', '人物', '场景', '联机', '正文'], settingsOpen: false }
   // OS-84/86：退场目录在磁盘上也不出页签
-  const retiredOnDisk = { current: true, brief: null, briefGenre: null, libDirs: ['大纲', '构思', '资料', '约束', '正文', '参考', '日志'], settingsOpen: false }
+  const retiredOnDisk = { current: true, brief: null, briefGenre: null, libDirs: ['大纲', '构思', '资料', '约束', '正文', '世界书', '日志'], settingsOpen: false }
   const noCurrent = { current: null, settingsOpen: true }
   const emptyDirs = { current: true, brief: null, briefGenre: null, libDirs: [], settingsOpen: false }
   for (const ctx of [full, reordered, noWriteDir, genreWorldbook, genreScript, unknownDirs, retiredOnDisk, noCurrent, emptyDirs]) {
@@ -183,7 +183,7 @@ test('退场目录（大纲/构思/资料/约束）在任何输入下都不出�
   const inputs = [
     { current: true, brief: null, briefGenre: null, libDirs: ['大纲'], settingsOpen: false },
     { current: true, brief: null, briefGenre: null, libDirs: ['大纲', '构思', '资料', '约束'], settingsOpen: true },
-    { current: true, brief: null, briefGenre: { excludedPages: [] }, libDirs: ['大纲', '正文', '参考'], settingsOpen: false },
+    { current: true, brief: null, briefGenre: { excludedPages: [] }, libDirs: ['大纲', '正文', '世界书'], settingsOpen: false },
     { current: true, brief: null, briefGenre: { excludedPages: ['outline', 'notes', 'material', 'constraint'] }, libDirs: ['大纲', '构思', '资料', '约束', '正文'], settingsOpen: false }
   ]
   for (const ctx of inputs) {
@@ -191,7 +191,7 @@ test('退场目录（大纲/构思/资料/约束）在任何输入下都不出�
     for (const dir of RETIRED_DIRS) assert.ok(!views.includes(`dir:${dir}`), `退场目录 ${dir} 不该出现在 ${JSON.stringify(views)}`)
   }
   // dirTabDefs 直呼也滤（双保险的另一半）
-  const direct = dirTabDefs({ libDirs: ['大纲', '参考'], excluded: new Set(), registry: TAB_REGISTRY })
+  const direct = dirTabDefs({ libDirs: ['大纲', '世界书'], excluded: new Set(), registry: TAB_REGISTRY })
   assert.deepEqual(direct.map((def) => def.view), ['reference'])
 })
 
@@ -205,11 +205,11 @@ test('OS-92 词表外目录不出页签；「＋」面板的识别判定与显�
     assert.equal(dirTabEntry(dir), null)
     assert.equal(dirPanelLabel(dir), dir, '词表外目录在面板里原样显示并标「未识别」')
   }
-  for (const dir of ['剧本', '日志', '拆解', '参考', '习惯', '正文']) assert.equal(isKnownDir(dir), true)
-  // OS-44/48：参考在页签栏叫「世界书」、「＋」面板里叫「参考」；拆解两处都叫「故事源」
-  assert.equal(dirPanelLabel('参考'), '参考')
-  assert.equal(dirPanelLabel('拆解'), '故事源')
-  const refEntry = dirTabEntry('参考')
+  for (const dir of ['剧本', '日志', '故事源', '世界书', '习惯', '正文']) assert.equal(isKnownDir(dir), true)
+  // OS-172：世界书在页签栏与「＋」面板都叫「世界书」；故事源两处都叫「故事源」
+  assert.equal(dirPanelLabel('世界书'), '世界书')
+  assert.equal(dirPanelLabel('故事源'), '故事源')
+  const refEntry = dirTabEntry('世界书')
   assert.equal(refEntry.label, '世界书')
   assert.equal(refEntry.view, 'reference')
   // OS-36：面板「常用」区＝产物/正文/扮演，need＝勾选要求的目录
@@ -221,12 +221,12 @@ test('OS-92 词表外目录不出页签；「＋」面板的识别判定与显�
 })
 
 test('OS-83 可新建业务模块清单：磁盘缺什么列什么（词表内＋未退场），全齐时为空', () => {
-  assert.deepEqual(creatableDirNames(['正文', '参考']), [
+  assert.deepEqual(creatableDirNames(['正文', '世界书']), [
     { dir: '剧本', label: '剧本' },
     { dir: '日志', label: '日志' }
   ])
-  assert.deepEqual(creatableDirNames(['正文', '参考', '剧本']), [{ dir: '日志', label: '日志' }])
-  assert.deepEqual(creatableDirNames(['正文', '参考', '剧本', '日志']), [], '词表内目录全在磁盘时没有可建项')
+  assert.deepEqual(creatableDirNames(['正文', '世界书', '剧本']), [{ dir: '日志', label: '日志' }])
+  assert.deepEqual(creatableDirNames(['正文', '世界书', '剧本', '日志']), [], '词表内目录全在磁盘时没有可建项')
   // 退场目录（大纲/构思/资料/约束在 DIR_ORDER 词表外本来就不列）永不为「可建」推荐
   for (const dir of RETIRED_DIRS) {
     assert.ok(!creatableDirNames([]).some((item) => item.dir === dir))
@@ -251,7 +251,7 @@ test('渲染插座：registry 只存注册名，app.js 的 VIEW_RENDERERS 覆盖
   assert.ok(renderNames.length >= 8)
   assert.equal(renderNameForView('write'), 'writeHtml')
   assert.equal(renderNameForView('settings'), 'settingsHtml')
-  assert.equal(renderNameForView('dir:剧本'), 'dirViewHtml', 'dir:* 统一走 dirViewHtml（剧本/拆解 fork 在其内部）')
+  assert.equal(renderNameForView('dir:剧本'), 'dirViewHtml', 'dir:* 统一走 dirViewHtml（剧本/故事源 fork 在其内部）')
   assert.equal(renderNameForView('dir:日志'), 'dirViewHtml')
   assert.equal(renderNameForView('nope'), null)
   // 读 app.js 源码校验插座覆盖（不 import app.js——它是浏览器脚本）
@@ -281,6 +281,6 @@ test('词表映射原样保真：PAGE_TO_DIR_LOCAL/READONLY_DIRS/DIR_ORDER/DIR_L
   assert.deepEqual([...RETIRED_DIRS], ['大纲', '构思', '资料', '约束'])
   assert.ok(READONLY_DIRS.has('日志'))
   assert.equal(READONLY_DIRS.size, 1)
-  assert.equal(DIR_LABELS['拆解'], '故事源')
+  assert.equal(DIR_LABELS['故事源'], '故事源')
   assert.equal(DIR_LABELS['正文'], '正文')
 })

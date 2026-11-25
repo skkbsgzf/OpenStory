@@ -1,7 +1,7 @@
 /**
  * 机器级界面偏好（OS-158）——只存皮肤这类「没有库也要生效」的纯渲染偏好。
  *
- * 与库内 ui-state（.pinax/ui-state.json，随库走）分工：
+ * 与库内 ui-state（.openstory/ui-state.json，随库走）分工：
  *   · 库内 ui-state＝跟稿子走的界面状态（页签/模块开关/选中项），换机器靠库文件复原；
  *   · 本机 ui-preferences＝不随库走的机器级偏好，落本机院子（%LOCALAPPDATA%/OpenStory/openstory/）。
  *

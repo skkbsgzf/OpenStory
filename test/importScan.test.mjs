@@ -38,6 +38,7 @@ test('scanImportSpecs：静态 from／动态 import()／副作用 import／单�
   const specs = scanImportSpecs(src).map((item) => item.spec)
   assert.deepEqual(specs, ['./a.mjs', './b.mjs', './c.mjs', './d.mjs', './e.js', './side-effect.mjs', 'node:fs'])
   assert.equal(scanImportSpecs(src).find((item) => item.spec === './d.mjs').line, 4, '行号按物理行给')
+  assert.deepEqual(scanImportSpecs("const row = { from: '起点', to: '终点' }\nconst other = { from, 'to' }"), [], '对象字段/解构上下文不是 import')
 })
 
 test('反例：public/views 里动态 import(`./app.js`) 被 S2.2 扫描面抓住（旧正则漏检的那类）', () => {

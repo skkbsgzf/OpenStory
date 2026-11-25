@@ -22,6 +22,7 @@ import { basename, dirname, join } from 'node:path'
 import { KERNEL_ERROR_CODES, ok, fail, throwFailure } from '../src/kernel/errors.mjs'
 import { writeFileAtomic, TMP_PREFIX, recoverInterruptedWrites } from '../src/kernel/atomicWrite.mjs'
 import { syncDirectory } from '../src/kernel/fsDurability.mjs'
+import { namingEntry } from '../src/protocol/naming.mjs'
 
 /** 码表值快照（键序＝源文件声明序）。改这里＝改对外 code，要等 OS-157 的显式改名单。
  *  条数说明：工单/设计稿写「26 个码」，源文件实测 25 条（core 原件同）——快照按实测锁 25，
@@ -154,7 +155,7 @@ test('writeFileAtomic 成功：完整落盘＋前缀正确＋目录 fsync 真被
     const opens = calls.filter(([kind]) => kind === 'open')
     assert.equal(opens.length, 2, `应有两次 open（临时文件＋目录），实际：${JSON.stringify(opens)}`)
     assert.equal(dirname(opens[0][1]), dirname(stubbed), '临时文件与目标同目录（rename 才原子）')
-    assert.ok(basename(opens[0][1]).startsWith('.pinax-tmp-'), `临时文件名带前缀：${basename(opens[0][1])}`)
+    assert.ok(basename(opens[0][1]).startsWith('.openstory-tmp-'), `临时文件名带前缀：${basename(opens[0][1])}`)
     assert.equal(opens[0][2], 'w')
     assert.equal(opens[1][1], dirname(stubbed), '第二次 open 是目录（syncDirectory）')
     assert.equal(opens[1][2], 'r')
@@ -175,7 +176,7 @@ test('writeFileAtomic 失败清场：临时文件必被 unlink，目标文件原
     })
     await assert.rejects(() => writeFileAtomic(target, '{"new":"覆盖"}', deps), (error) => error.code === 'EIO')
     assert.equal(removed.length, 1, '失败必须清场（unlink 临时文件）')
-    assert.ok(basename(removed[0]).startsWith('.pinax-tmp-'), '清的是临时文件，不是正文')
+    assert.ok(basename(removed[0]).startsWith('.openstory-tmp-'), '清的是临时文件，不是正文')
     assert.equal(await readFile(target, 'utf-8'), '{"keep":"原稿"}', '目标文件完好')
 
     /* 真文件系统同一路径再验一遍：干净目录里不留半成品（open/unlink 走真 fs，rename 注入失败） */
@@ -186,23 +187,25 @@ test('writeFileAtomic 失败清场：临时文件必被 unlink，目标文件原
       () => writeFileAtomic(freshTarget, 'x', { open, unlink, rename: async () => { throw Object.assign(new Error('boom'), { code: 'EIO' }) } }),
       (error) => error.code === 'EIO'
     )
-    assert.deepEqual(await tmpLeftovers(fresh), [], '失败后目录里没有 .pinax-tmp-*')
+    assert.deepEqual(await tmpLeftovers(fresh), [], '失败后目录里没有 .openstory-tmp-*')
   } finally { await cleanup() }
 })
 
-test('TMP_PREFIX 是 .pinax-tmp-（recoverInterruptedWrites 的回收口径）', () => {
-  assert.equal(TMP_PREFIX, '.pinax-tmp-')
+test('TMP_PREFIX 是 .openstory-tmp-（recoverInterruptedWrites 的回收口径）', () => {
+  assert.equal(TMP_PREFIX, '.openstory-tmp-')
+  assert.equal(TMP_PREFIX, namingEntry('libraryStorage').tempPrefix)
 })
 
-test('recoverInterruptedWrites 只清 .pinax-tmp-*，绝不误删正文；目录缺失＝skipped', async () => {
+test('recoverInterruptedWrites 回收新旧临时文件，绝不误删正文；目录缺失＝skipped', async () => {
   const { root, cleanup } = await fixture()
   try {
     await writeFile(join(root, '001-第一章.md'), '正文', 'utf-8')
     await writeFile(join(root, `${TMP_PREFIX}aaaaaa`), '半成品', 'utf-8')
     await writeFile(join(root, `${TMP_PREFIX}bbbbbb`), '半成品', 'utf-8')
+    await writeFile(join(root, '.pinax-tmp-cccccc'), '旧版半成品', 'utf-8')
     const recovered = await recoverInterruptedWrites(root)
     assert.equal(recovered.skipped, false)
-    assert.deepEqual(recovered.removed.sort(), [`${TMP_PREFIX}aaaaaa`, `${TMP_PREFIX}bbbbbb`])
+    assert.deepEqual(recovered.removed.sort(), [`${TMP_PREFIX}aaaaaa`, `${TMP_PREFIX}bbbbbb`, '.pinax-tmp-cccccc'])
     assert.deepEqual((await readdir(root)).sort(), ['001-第一章.md'])
     const missing = await recoverInterruptedWrites(join(root, '不存在'))
     assert.deepEqual(missing, { removed: [], skipped: true })

@@ -13,7 +13,7 @@ export const chaptersEndpoints = {
     path: '/api/chapter',
     request: { query: { root: 'string', file: 'string' } },
     response: { ok: 'true', name: 'string', text: 'string', chars: 'integer' },
-    errors: ['NO_LIBRARY', 'PATH_ESCAPE', 'INVALID_ENTRY', 'NOT_FOUND']
+    errors: ['NO_LIBRARY', 'PATH_ESCAPE', 'INVALID_ENTRY', 'NOT_FOUND', 'MODULE_DISABLED', 'PLUGIN_DEGRADED']
   },
 
   chapterPut: {
@@ -22,7 +22,7 @@ export const chaptersEndpoints = {
     request: { body: { root: 'string', file: 'string', text: 'string' } },
     // FACT-FIRST：写入后如实回报事实链健康度（stale=正文比事实链新），UI 据此提示重跑。
     response: { ok: 'true', chars: 'integer', savedAt: 'string', backup: 'string?', factStale: 'boolean?', factEntries: 'integer?' },
-    errors: ['NO_LIBRARY', 'PATH_ESCAPE', 'INVALID_ENTRY', 'NOT_FOUND', 'WRITE_PROTOCOL_IO_FAILED']
+    errors: ['NO_LIBRARY', 'PATH_ESCAPE', 'INVALID_ENTRY', 'NOT_FOUND', 'WRITE_PROTOCOL_IO_FAILED', 'MODULE_DISABLED', 'PLUGIN_DEGRADED']
   },
 
   chaptersGet: {
@@ -31,7 +31,7 @@ export const chaptersEndpoints = {
     // 章节清单：文件名 NNN-标题.md／第N章… 解析（parseChapterNumber 同源），无号=null 排尾，字数现算。
     request: { query: { root: 'string', dir: 'string' } },
     response: { ok: 'true', chapters: 'array', warnings: 'array?' },
-    errors: ['NO_LIBRARY', 'PATH_ESCAPE', 'INVALID_ENTRY']
+    errors: ['NO_LIBRARY', 'PATH_ESCAPE', 'INVALID_ENTRY', 'MODULE_DISABLED', 'PLUGIN_DEGRADED']
   },
 
   chaptersCreate: {
@@ -41,7 +41,7 @@ export const chaptersEndpoints = {
     // 「新建章节默认标题」补（套件停用且无标题＝拒绝）；目录不存在自动建；空文件落盘。
     request: { body: { root: 'string', dir: 'string', title: 'string?' } },
     response: { ok: 'true', chapter: 'object' },
-    errors: ['NO_LIBRARY', 'PATH_ESCAPE', 'INVALID_ENTRY', 'NOT_FOUND', 'WRITE_PROTOCOL_IO_FAILED']
+    errors: ['NO_LIBRARY', 'PATH_ESCAPE', 'INVALID_ENTRY', 'NOT_FOUND', 'WRITE_PROTOCOL_IO_FAILED', 'MODULE_DISABLED', 'PLUGIN_DEGRADED']
   },
 
   chaptersRename: {
@@ -50,7 +50,7 @@ export const chaptersEndpoints = {
     // 保号重命名：只换标题段；目标已存在拒绝。
     request: { body: { root: 'string', file: 'string', title: 'string' } },
     response: { ok: 'true', chapter: 'object', previousFile: 'string?' },
-    errors: ['NO_LIBRARY', 'PATH_ESCAPE', 'INVALID_ENTRY', 'NOT_FOUND', 'WRITE_PROTOCOL_IO_FAILED']
+    errors: ['NO_LIBRARY', 'PATH_ESCAPE', 'INVALID_ENTRY', 'NOT_FOUND', 'WRITE_PROTOCOL_IO_FAILED', 'MODULE_DISABLED', 'PLUGIN_DEGRADED']
   },
 
   chapterDelete: {
@@ -59,7 +59,7 @@ export const chaptersEndpoints = {
     // 非破坏删除：挪进同目录 .history/<file>.deleted-<时间戳>。
     request: { query: { root: 'string', file: 'string' } },
     response: { ok: 'true', backup: 'string' },
-    errors: ['NO_LIBRARY', 'PATH_ESCAPE', 'INVALID_ENTRY', 'NOT_FOUND', 'WRITE_PROTOCOL_IO_FAILED']
+    errors: ['NO_LIBRARY', 'PATH_ESCAPE', 'INVALID_ENTRY', 'NOT_FOUND', 'WRITE_PROTOCOL_IO_FAILED', 'MODULE_DISABLED', 'PLUGIN_DEGRADED']
   },
 
   changeLogGet: {
@@ -104,11 +104,11 @@ export const chaptersEndpoints = {
   draftGet: {
     method: 'GET',
     path: '/api/draft',
-    // OS-89：未保存的编辑草稿落库内 .pinax/drafts/<module>/<id>.json。
+    // OS-89：未保存的编辑草稿落库内 .openstory/drafts/<module>/<id>.json。
     // 作者还没点保存的内容也必须落本地（AGENTS.md 第 11 条）。
     request: { query: { root: 'string', module: 'string', id: 'string?' } },
     response: { ok: 'true', draft: 'object?', drafts: 'array?' },
-    errors: ['NO_LIBRARY']
+    errors: ['NO_LIBRARY', 'MODULE_DISABLED', 'PLUGIN_DEGRADED']
   },
 
   draftPut: {

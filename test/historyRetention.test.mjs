@@ -120,7 +120,7 @@ test('集成：临时库连写 60 次（配额 5）——份数有界、最新�
   const base = await mkdtemp(join(tmpdir(), 'openstory-os137-'))
   const root = join(base, '夹具库')
   await mkdir(join(root, '正文', '.history'), { recursive: true })
-  await mkdir(join(root, '.pinax'), { recursive: true })
+  await mkdir(join(root, '.openstory'), { recursive: true })
   await writeFile(join(root, '正文', '001-雨停.md'), '雨到傍晚才停。', 'utf-8')
   // 昨天的日锚种子：mtime 拨到 26 小时前（必是另一个自然日），超出配额也必须活下来
   const anchorName = '001-雨停.md.bak-yesterday'
@@ -159,7 +159,7 @@ test('集成：临时库连写 60 次（配额 5）——份数有界、最新�
     // 留痕日志：当月 jsonl，字段齐全，配额如实
     const now = new Date()
     const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
-    const logPath = join(root, '.pinax', 'log', 'history-prune', `${month}.jsonl`)
+    const logPath = join(root, '.openstory', 'log', 'history-prune', `${month}.jsonl`)
     assert.ok(existsSync(logPath), '留痕日志存在')
     const lines = (await readFile(logPath, 'utf-8')).trim().split('\n').filter(Boolean)
     assert.ok(lines.length > 0, '日志有内容')

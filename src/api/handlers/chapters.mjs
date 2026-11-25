@@ -5,42 +5,43 @@
  *
  * 统一签名 `async handler(ctx)`：全部端点都需要库，第一件事 authorizeRoot。
  */
-import { basename } from 'node:path'
-import { statSync } from 'node:fs'
-import { readFile } from 'node:fs/promises'
 import { API_ERROR_CODES, validateResponse } from '../contracts.mjs'
+import { readFile } from 'node:fs/promises'
 import { sendError, sendJson, text } from '../../host/http.mjs'
-import { authorizeRoot, resolveInsideRoot } from '../../host/authorize.mjs'
-import { listChapters, createChapter, renameChapter, deleteChapter } from '../../protocol/chapters.mjs'
+import { authorizeRoot } from '../../host/authorize.mjs'
 import { readChange, readLog, logSummary } from '../../protocol/changelog.mjs'
-import { writeChapterWithBackup } from '../../protocol/chapterWrite.mjs'
+import { resolveProseCapability } from '../../host/capabilityBindings.mjs'
 import { dropDraft, listDrafts, loadDraft, saveDraft } from '../../protocol/libState.mjs'
 import { factHealth } from '../../protocol/factGuard.mjs'
 import { suiteValue } from '../../services/suites.mjs'
+
+async function proseCapabilityOrError(res, root) {
+  const resolved = await resolveProseCapability(root)
+  if (!resolved.ok) {
+    sendError(res, API_ERROR_CODES.PLUGIN_DEGRADED, resolved.message, resolved.details)
+    return null
+  }
+  return resolved.capability
+}
 
 export async function chapterGet(ctx) {
   const { res, request, allowlist } = ctx
   const authorized = authorizeRoot(allowlist, request.root)
   if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
-  const resolved = resolveInsideRoot(authorized.root, request.file)
-  if (!resolved.ok) return sendError(res, resolved.code, resolved.message, resolved.details)
-  let body
-  try {
-    const stats = statSync(resolved.path)
-    if (!stats.isFile()) return sendError(res, API_ERROR_CODES.NOT_FOUND, '正文路径不是文件', { file: request.file })
-    body = await readFile(resolved.path, 'utf-8')
-  } catch (error) {
-    if (error?.code === 'ENOENT') return sendError(res, API_ERROR_CODES.NOT_FOUND, `正文文件不存在：${request.file}`, { file: request.file })
-    return sendError(res, API_ERROR_CODES.NOT_FOUND, `正文读取失败：${text(error?.message || error)}`, { file: request.file })
-  }
-  return sendJson(res, 200, { ok: true, name: basename(resolved.path), text: body, chars: body.length })
+  const prose = await proseCapabilityOrError(res, authorized.root)
+  if (!prose) return null
+  const chapter = await prose.readChapter(authorized.root, request.file)
+  if (!chapter.ok) return sendError(res, chapter.code, chapter.message, chapter.details)
+  return sendJson(res, 200, chapter)
 }
 
 export async function chapterPut(ctx) {
   const { res, request, allowlist } = ctx
   const authorized = authorizeRoot(allowlist, request.root)
   if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
-  const written = await writeChapterWithBackup(authorized.root, request.file, request.text)
+  const prose = await proseCapabilityOrError(res, authorized.root)
+  if (!prose) return null
+  const written = await prose.writeChapterWithBackup(authorized.root, request.file, request.text)
   if (!written.ok) return sendError(res, written.code, written.message, written.details)
   // FACT-FIRST 规则 5：正文写入**不**隐式触发事实链重建（重建要跑模型、要花钱），
   // 但必须如实告诉调用方「这本书的事实链已落后于正文」，由 UI 决定提示还是自动重跑。
@@ -61,7 +62,9 @@ export async function chaptersGet(ctx) {
   const { res, request, allowlist } = ctx
   const authorized = authorizeRoot(allowlist, request.root)
   if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
-  const listed = await listChapters(authorized.root, request.dir)
+  const prose = await proseCapabilityOrError(res, authorized.root)
+  if (!prose) return null
+  const listed = await prose.listChapters(authorized.root, request.dir)
   if (!listed.ok) return sendError(res, listed.code ?? API_ERROR_CODES.INVALID_ENTRY, listed.message, listed.details)
   return sendJson(res, 200, { ok: true, chapters: listed.chapters, ...(listed.warnings?.length ? { warnings: listed.warnings } : {}) })
 }
@@ -73,7 +76,9 @@ export async function chaptersCreate(ctx) {
   // title 缺省＝用写作套件的「新建章节默认标题」（套件停用＝无默认，createChapter 自行拒绝）
   const defaultTitle = text(request.title).trim()
     || text(await suiteValue(context.suitesDirs, context.suiteStatePath, 'writing', 'newChapterTitle', '', authorized.root))
-  const created = await createChapter(authorized.root, request.dir, defaultTitle)
+  const prose = await proseCapabilityOrError(res, authorized.root)
+  if (!prose) return null
+  const created = await prose.createChapter(authorized.root, request.dir, defaultTitle)
   if (!created.ok) return sendError(res, created.code ?? API_ERROR_CODES.INVALID_ENTRY, created.message, created.details)
   return sendJson(res, 200, { ok: true, chapter: created.chapter })
 }
@@ -82,7 +87,9 @@ export async function chaptersRename(ctx) {
   const { res, request, allowlist } = ctx
   const authorized = authorizeRoot(allowlist, request.root)
   if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
-  const renamed = await renameChapter(authorized.root, request.file, request.title)
+  const prose = await proseCapabilityOrError(res, authorized.root)
+  if (!prose) return null
+  const renamed = await prose.renameChapter(authorized.root, request.file, request.title)
   if (!renamed.ok) return sendError(res, renamed.code ?? API_ERROR_CODES.INVALID_ENTRY, renamed.message, renamed.details)
   return sendJson(res, 200, { ok: true, chapter: renamed.chapter, ...(renamed.previousFile ? { previousFile: renamed.previousFile } : {}) })
 }
@@ -91,7 +98,9 @@ export async function chapterDelete(ctx) {
   const { res, request, allowlist } = ctx
   const authorized = authorizeRoot(allowlist, request.root)
   if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
-  const deleted = await deleteChapter(authorized.root, request.file)
+  const prose = await proseCapabilityOrError(res, authorized.root)
+  if (!prose) return null
+  const deleted = await prose.deleteChapter(authorized.root, request.file)
   if (!deleted.ok) return sendError(res, deleted.code ?? API_ERROR_CODES.INVALID_ENTRY, deleted.message, deleted.details)
   return sendJson(res, 200, { ok: true, backup: deleted.backup })
 }
@@ -149,7 +158,9 @@ export async function changeLogRestore(ctx) {
     return sendError(res, API_ERROR_CODES.NOT_FOUND, `备份文件读不到：${text(error?.message || error)}`)
   }
   // 2) 先给当前内容做一次安全备份（这次恢复本身也要可回退），再写回
-  const written = await writeChapterWithBackup(authorized.root, entry.file, beforeText, {
+  const prose = await proseCapabilityOrError(res, authorized.root)
+  if (!prose) return null
+  const written = await prose.writeChapterWithBackup(authorized.root, entry.file, beforeText, {
     module: entry.module,
     actor: 'author',
     meta: { restoredFrom: entry.backup, restoredAt: entry.at }

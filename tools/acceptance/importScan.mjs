@@ -22,7 +22,8 @@ export function scanImportSpecs(src) {
   const source = String(src ?? '')
   const out = []
   // 三个入口前面都要求 import/from 关键字边界，避免把 `transform '+x'` 一类标识符当依赖。
-  const re = /(?:\bfrom\s*|\bimport\s*\(\s*|\bimport\s+)(['"])([^'"\n]+)\1/gu
+  // from 后必须有空白：对象字段 `from: 'x'`、`from, 'x'` 不是 import 说明符。
+  const re = /(?:\bfrom\s+|\bimport\s*\(\s*|\bimport\s+)(['"])([^'"\n]+)\1/gu
   for (const match of source.matchAll(re)) {
     out.push({
       spec: match[2],
@@ -58,6 +59,10 @@ export const PUBLIC_EDGE_ALLOW = Object.freeze([
   Object.freeze({
     edge: 'analysisModules.mjs -> analysis.mjs',
     reason: '分析引擎是浏览器/Node 双用的纯函数（analysis.mjs 零依赖、零 DOM，后端 roleplayEngine 也引它）；analysisModules 只在调用方没注入引擎时惰性 import 取 analyzeChapter，属共享引擎边而非模块耦合'
+  }),
+  Object.freeze({
+    edge: 'referenceStore.mjs -> views/registry.mjs',
+    reason: '世界书存储层只读命名真源表的 worldbook.dir；registry 不反向引存储层、不执行 DOM 或视图渲染，此边不形成模块耦合或循环依赖'
   })
 ])
 

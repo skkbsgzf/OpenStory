@@ -1,6 +1,6 @@
 /**
  * fact 域 handler（OS-141 daemon 拆分）——27 端点，与 contracts/fact.mjs 一一对应：
- * factCurveGet/factEntriesGet/factBooksGet/factEntriesImport（拆解条目层）、
+ * factCurveGet/factEntriesGet/factBooksGet/factEntriesImport（故事源条目层）、
  * deduceOpeningGet/deducePresent/deduceSettle/deduceTurn/deduceBranch/deduceArchive/
  * deduceSessionGet/deduceSessionPut/deduceSessionsGet/deduceSessionManage/deduceExport/
  * deducePromote/deducePendingSettle/deduceImage/deduceAssets/deduceAssetFile（推演文游层）、
@@ -17,10 +17,9 @@ import { basename, extname, join } from 'node:path'
 import { API_ERROR_CODES, isPlainObject, validateResponse } from '../contracts.mjs'
 import { sendError, sendJson, text } from '../../host/http.mjs'
 import { authorizeRoot, resolveInsideRoot } from '../../host/authorize.mjs'
+import { resolveDeduceCapability, resolveFactCapability, resolveProseCapability } from '../../host/capabilityBindings.mjs'
 import { listFactBooks, factOffsetOf, factLimitOf, resolveFactBookId } from '../../services/factBooks.mjs'
-import { factStore } from '../../kernel/index.mjs' // OS-157：内核公开面唯一出口（S2.4'），实现已全树自持
 import { writeFactEntries } from '../../services/factImportWrite.mjs' // OS-162：fact 写通道唯一实现
-import { deduceOpening as deduceOpeningEngine, deducePresent as deducePresentEngine, deduceSettle as deduceSettleEngine, loadEntries, deduceStatePath } from '../../modules/deduce/deduceEngine.mjs'
 import {
   appendNode,
   archiveChapter,
@@ -35,13 +34,13 @@ import {
   safeDeduceBookId,
   saveDeduceSession,
   writeActiveSessionId
-} from '../../modules/deduce/deduceSession.mjs'
-import { readLegacyDeduceState, bridgeDeduceCandidates, turnNodeWords, generateTurnProse, buildDeduceLlmPort } from '../../modules/deduce/turnProse.mjs'
-import { buildRoleplayMemory, compressMemory, deAiPass, roleplayOpening as roleplayOpeningEngine, roleplayTurn as roleplayTurnEngine, shouldSummarize } from '../../modules/roleplay/roleplayEngine.mjs'
+} from '../../protocol/deduceSession.mjs'
+import { buildRoleplayMemory, compressMemory, deAiPass, roleplayOpening as roleplayOpeningEngine, roleplayTurn as roleplayTurnEngine, shouldSummarize } from '../../protocol/roleplayEngine.mjs'
 import { enrichBook, enrichGraph as enrichGraphEngine } from '../../services/enrichEngine.mjs'
-import { generateViaComfy } from '../../modules/comfyui/comfyEngine.mjs'
+import { resolveMediaCapability } from '../../protocol/media.mjs'
+import { loadDeduceRules } from '../../protocol/deduceRules.mjs'
 import { isModuleEnabled } from '../../protocol/modules.mjs'
-import { loadConfigV2, DEFAULT_IMAGE_STYLE, DEFAULT_IMAGE_NEGATIVE, imagesGenerationsUrl } from '../../services/agentConfig.mjs'
+import { loadConfigV2 } from '../../services/agentConfig.mjs'
 import { chatCompleteViaUpstream, resolveChatUpstream, resolveUpstreamSafe } from '../../services/chatUpstream.mjs'
 import { runCliChat } from '../../services/cli-bridge.mjs'
 import { runDshStdio } from '../../services/dsh-cli.mjs'
@@ -55,25 +54,54 @@ import {
   markNativeDialogUnusable,
   NATIVE_DIALOG_TIMEOUT_MS
 } from '../../services/nativePicker.mjs'
-import { writeChapterWithBackup } from '../../protocol/chapterWrite.mjs'
-import { createChapter } from '../../protocol/chapters.mjs'
 import { recordChange } from '../../protocol/changelog.mjs'
-import { LOG_MODULES } from '../../protocol/naming.mjs' // OS-148：日志模块名只从命名表取
+import { LOG_MODULES, namingEntry } from '../../protocol/naming.mjs'
+
+const FACT_DIR = namingEntry('storysource').dir
+const ROLEPLAY_DIR = namingEntry('roleplay').dir
 import { atomicWriteFile } from '../../protocol/hostWrite.mjs'
 
-/* ---------- 分析面板 fact 曲线（KB-ARCH 对齐拆解线算法）---------- */
+async function deduceCapabilityOrError(res, root) {
+  const resolved = await resolveDeduceCapability(root)
+  if (!resolved.ok) {
+    sendError(res, API_ERROR_CODES.PLUGIN_DEGRADED, resolved.message, resolved.details)
+    return null
+  }
+  return resolved.capability
+}
 
-// 分析面板 fact 曲线：读库内 拆解/ 的 fact+wiki，给章级曲线数据。
-// 无拆解数据时返回 ok:true + chapters:[]（前端降级到本地词典近似），绝不报错。
+async function factCapabilityOrError(res, root, id = 'fact.store', range) {
+  const resolved = await resolveFactCapability(root, id, range)
+  if (!resolved.ok) {
+    sendError(res, API_ERROR_CODES.PLUGIN_DEGRADED, resolved.message, resolved.details)
+    return null
+  }
+  return resolved.capability
+}
+
+async function proseCapabilityOrError(res, root) {
+  const resolved = await resolveProseCapability(root)
+  if (!resolved.ok) {
+    sendError(res, API_ERROR_CODES.PLUGIN_DEGRADED, resolved.message, resolved.details)
+    return null
+  }
+  return resolved.capability
+}
+
+/* ---------- 分析面板 fact 曲线（KB-ARCH 对齐故事源曲线算法）---------- */
+
+// 分析面板 fact 曲线：读库内 故事源/ 的 fact+wiki，给章级曲线数据。
+// 无故事源数据时返回 ok:true + chapters:[]（前端降级到本地词典近似），绝不报错。
 export async function factCurveGet(ctx) {
   const { res, request, allowlist } = ctx
   const authorized = authorizeRoot(allowlist, request.root)
   if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
-  const dir = join(authorized.root, '拆解')
+  const dir = join(authorized.root, FACT_DIR)
   let files = []
   try {
     files = (await readdir(dir)).filter((name) => name.endsWith('.json')
       && !name.endsWith('.wiki.json') && !name.includes('.operations')
+      // 旧目录名旁路档只作兼容排除，不重新生成旧布局。
       && name !== '拆解汇总.json' && name !== '拆解索引.json')
   } catch { files = [] }
   const wanted = text(request.bookId).trim()
@@ -87,7 +115,9 @@ export async function factCurveGet(ctx) {
   const bookId = basename(pickPath).replace(/\.json$/, '')
   let document = null
   try { document = JSON.parse(readFileSync(pickPath, 'utf8')) } catch { document = null }
-  if (!document) return sendError(res, API_ERROR_CODES.INVALID_ENTRY, `拆解文件读不了：${bookId}`)
+  if (!document) return sendError(res, API_ERROR_CODES.INVALID_ENTRY, `故事源文件读不了：${bookId}`)
+  const factStore = await factCapabilityOrError(res, authorized.root)
+  if (!factStore) return null
   const { wiki } = factStore.readFactWiki({ root: authorized.root, id: bookId, document })
   // 事件密度：plot 条目按 provenance.chapters 首章归组计数
   const eventsByChapter = new Map()
@@ -146,26 +176,28 @@ export async function factEntriesGet(ctx) {
   let book = null
   if (wantedBookId) {
     book = books.find((item) => item.bookId === wantedBookId) ?? null
-    if (!book) return sendError(res, API_ERROR_CODES.NOT_FOUND, `拆解里没有这本书：${wantedBookId}`)
+    if (!book) return sendError(res, API_ERROR_CODES.NOT_FOUND, `故事源里没有这本书：${wantedBookId}`)
   } else {
     // 缺省书＝mtime 最新的可读一本（坏档不参与兜底，免得兜底到一本永远读不出条目的书）。
     book = books.filter((item) => !item.error).sort((left, right) => right.mtime - left.mtime)[0] ?? null
   }
-  // OS-150a：库里还没有拆解书＝合法空态（前端故事源页据此摆引导空态）。
+  // OS-150a：库里还没有故事源书＝合法空态（前端故事源页据此摆引导空态）。
   // OS-150b：有档但一本都读不出来＝坏档，必须与空态分开报（前端显示告警，不摆「还没有故事源」）。
   // 两种判定都只认 error.code，页面不认文案。不能落下去拼 bookId:'' 的响应——契约要求非空。
   if (!book) {
     const unreadable = books.filter((item) => item.error)
     if (unreadable.length) {
-      return sendError(res, API_ERROR_CODES.FACT_UNREADABLE, '拆解档读不出来', {
+      return sendError(res, API_ERROR_CODES.FACT_UNREADABLE, '故事源档读不出来', {
         books: unreadable.map((item) => ({ bookId: item.bookId, file: item.file, error: item.error }))
       })
     }
-    return sendError(res, API_ERROR_CODES.FACT_EMPTY, '这个库还没有拆解条目')
+    return sendError(res, API_ERROR_CODES.FACT_EMPTY, '这个库还没有故事源条目')
   }
+  const factStore = await factCapabilityOrError(res, authorized.root)
+  if (!factStore) return null
   const listed = factStore.createFactFileStore({ root: authorized.root }).list({})
   if (!listed.ok) {
-    return sendError(res, API_ERROR_CODES.INVALID_ENTRY, listed?.error?.message ?? '拆解数据读不了', listed?.error?.details)
+    return sendError(res, API_ERROR_CODES.INVALID_ENTRY, listed?.error?.message ?? '故事源数据读不了', listed?.error?.details)
   }
   // 书的身份按文件名算（与 factCurveGet／推演同口径）；条目溯源里 file 是内核透传的原档名，
   // bookId 可能来自档内 book.id 而与文件名不同——两种都对得上才收进这本书。
@@ -233,7 +265,9 @@ export async function deduceOpeningGet(ctx) {
   const { res, request, allowlist } = ctx
   const authorized = authorizeRoot(allowlist, request.root)
   if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
-  const result = deduceOpeningEngine({ root: authorized.root })
+  const capability = await deduceCapabilityOrError(res, authorized.root)
+  if (!capability) return
+  const result = capability.deduceOpening({ root: authorized.root })
   if (!result.ok) return sendError(res, result.code ?? API_ERROR_CODES.INVALID_ENTRY, result.message)
   return sendJson(res, 200, result)
 }
@@ -242,7 +276,11 @@ export async function deducePresent(ctx) {
   const { res, request, context, allowlist } = ctx
   const authorized = authorizeRoot(allowlist, request.root)
   if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
-  const result = await deducePresentEngine({
+  const capability = await deduceCapabilityOrError(res, authorized.root)
+  if (!capability) return
+  const rulePack = await loadDeduceRules({ suitesDirs: context.suitesDirs, suiteStatePath: context.suiteStatePath, root: authorized.root })
+  if (!rulePack.ok) return sendError(res, rulePack.code, rulePack.message)
+  const result = await capability.deducePresent({
     root: authorized.root,
     bookId: await resolveFactBookId(authorized.root, request.bookId),
     pov: text(request.pov),
@@ -251,11 +289,12 @@ export async function deducePresent(ctx) {
     peek: request.peek === true,
     // OS-93：选中的开头（剧情骨架段 definition）——戏剧候选围绕它锚定
     seedPrompt: text(request.seedPrompt),
+    rules: request.rules ?? rulePack.rules,
     // OS-96：扮演底座按章节筛世界书（写到30章的库不给31章以后的知识）
     chapterLimit: Number.isFinite(Number(request.chapterLimit)) && Number(request.chapterLimit) > 0 ? Number(request.chapterLimit) : null,
     sessionId: text(request.sessionId).trim() || readActiveSessionId(authorized.root, await resolveFactBookId(authorized.root, request.bookId)),
     // OS-82：戏剧候选接全局文本模型（没配模型＝null，必然/命运照常）
-    llmPort: await buildDeduceLlmPort({ context })
+    llmPort: await capability.buildDeduceLlmPort({ context })
   })
   // peek 且无会话：不是错误——前端维持空态
   if (!result.ok && result.code === 'NO_DEDUCE_SESSION') return sendJson(res, 200, { ok: false, code: 'NO_DEDUCE_SESSION', message: result.message })
@@ -267,7 +306,9 @@ export async function deduceSettle(ctx) {
   const { res, request, allowlist } = ctx
   const authorized = authorizeRoot(allowlist, request.root)
   if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
-  const result = await deduceSettleEngine({
+  const capability = await deduceCapabilityOrError(res, authorized.root)
+  if (!capability) return
+  const result = await capability.deduceSettle({
     root: authorized.root,
     bookId: await resolveFactBookId(authorized.root, request.bookId),
     candidateId: text(request.candidateId),
@@ -285,6 +326,8 @@ export async function deduceSessionGet(ctx) {
   const { res, request, allowlist } = ctx
   const authorized = authorizeRoot(allowlist, request.root)
   if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
+  const capability = await deduceCapabilityOrError(res, authorized.root)
+  if (!capability) return
   const bookId = await resolveFactBookId(authorized.root, request.bookId)
   // OS-86：sessionId 缺省＝激活指针（回落主线）——前端不用管「现在在哪局」
   const wanted = text(request.sessionId).trim()
@@ -293,7 +336,7 @@ export async function deduceSessionGet(ctx) {
   // 自动桥接（OS-62）：新层还没有节点、但旧引擎层推过拍 → 把最后一面导入成首节点。
   // 老库升级后剧情树不再空白；旧档不动，重复读幂等。只桥主线——多局是 OS-86 之后的产物。
   if ((!session || !(session.nodes || []).length) && (sid === 'main' || !wanted)) {
-    const legacy = readLegacyDeduceState(authorized.root, bookId)
+    const legacy = capability.readLegacyDeduceState(authorized.root, bookId)
     if (legacy) {
       const merged = importLegacyDeduce({ legacyState: legacy, session, bookId })
       if (merged.ok && merged.imported) {
@@ -385,6 +428,8 @@ export async function deduceTurn(ctx) {
   const { res, request, context, allowlist } = ctx
   const authorized = authorizeRoot(allowlist, request.root)
   if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
+  const capability = await deduceCapabilityOrError(res, authorized.root)
+  if (!capability) return
   const root = authorized.root
   const bookId = await resolveFactBookId(root, request.bookId)
   // OS-86：局跟 sessionId 走——引擎状态（候选桥接/结算）与会话存储必须同一局
@@ -400,13 +445,13 @@ export async function deduceTurn(ctx) {
     const last = branchNodes[branchNodes.length - 1]
     if (!last) return sendError(res, API_ERROR_CODES.INVALID_ENTRY, '还没有可重写的拍：先选一条候选或自己写一拍')
     const previous = branchNodes[branchNodes.length - 2]
-    const gen = await generateTurnProse({ context, root, node: last, previousProse: previous?.prose })
+    const gen = await capability.generateTurnProse({ context, root, node: last, previousProse: previous?.prose })
     // 模型不可用时不毁旧稿：prose 保持原样，proseError 如实报
     if (gen.prose) {
       last.prose = gen.prose
       const buffered = (session.buffer?.nodes ?? []).find((node) => node.id === last.id)
       if (buffered) buffered.prose = gen.prose
-      if (session.buffer) session.buffer.words = (session.buffer.nodes ?? []).reduce((sum, node) => sum + turnNodeWords(node), 0)
+      if (session.buffer) session.buffer.words = (session.buffer.nodes ?? []).reduce((sum, node) => sum + capability.turnNodeWords(node), 0)
     }
     const saved = await saveDeduceSession(root, bookId, session)
     if (!saved.ok) return sendError(res, saved.code ?? API_ERROR_CODES.WRITE_PROTOCOL_IO_FAILED, saved.message)
@@ -418,20 +463,19 @@ export async function deduceTurn(ctx) {
   }
   let settled
   if (customText) {
-    settled = await deduceSettleEngine({ root, bookId, action: 'inject', note: customText, sessionId: sid })
+    settled = await capability.deduceSettle({ root, bookId, action: 'inject', note: customText, sessionId: sid })
   } else {
-    const bridged = await bridgeDeduceCandidates(root, bookId, sid)
+    const bridged = await capability.bridgeDeduceCandidates(root, bookId, sid)
     if (!bridged.ok) return sendError(res, bridged.code ?? API_ERROR_CODES.INVALID_ENTRY, bridged.message)
-    settled = await deduceSettleEngine({ root, bookId, candidateId: choiceId, action: 'choose', sessionId: sid })
+    settled = await capability.deduceSettle({ root, bookId, candidateId: choiceId, action: 'choose', sessionId: sid })
   }
   if (!settled.ok) return sendError(res, settled.code ?? API_ERROR_CODES.INVALID_ENTRY, settled.message)
   // OS-82 回填闭环：结算产出的 fact 条目不自动落库——挂会话 pending 队列（待确认卡），
-  // 作者点「写入拆解」才走 writeFactFile 单条 upsert；点「忽略」只出队。
+  // 作者点「写入故事源」才走 writeFactFile 单条 upsert；点「忽略」只出队。
   const settledEntry = settled.result?.entry ?? null
 
   // 局面与候选取自引擎最后一面（present 存的 lastTurn）；自定义拍补一条「作者」候选
-  let lastTurn = null
-  try { lastTurn = JSON.parse(readFileSync(deduceStatePath(root, bookId, sid), 'utf-8')).lastTurn ?? null } catch { lastTurn = null }
+  const lastTurn = capability.readLastTurn(root, bookId, sid)
   const sceneCard = lastTurn?.sceneCard ?? {}
   const candidates = (Array.isArray(lastTurn?.candidates) ? lastTurn.candidates : [])
     .map((candidate) => ({ id: text(candidate?.id), source: text(candidate?.source), text: text(candidate?.text) }))
@@ -456,7 +500,7 @@ export async function deduceTurn(ctx) {
     parentId = text(fork?.id)
   }
   draft.parentId = parentId
-  const gen = await generateTurnProse({ context, root, node: draft, previousProse: previous?.prose })
+  const gen = await capability.generateTurnProse({ context, root, node: draft, previousProse: previous?.prose })
   draft.prose = gen.prose
   const node = appendNode(session, draft)
   if (settledEntry) {
@@ -482,13 +526,15 @@ export async function roleplayOpeningGet(ctx) {
   const { res, request, context, allowlist } = ctx
   const authorized = authorizeRoot(allowlist, request.root)
   if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
+  const capability = await deduceCapabilityOrError(res, authorized.root)
+  if (!capability) return
   const root = authorized.root
   const bookId = await resolveFactBookId(root, request.bookId)
-  const loaded = loadEntries(root)
+  const loaded = capability.loadEntries(root)
   if (!loaded.ok) return sendError(res, API_ERROR_CODES.INVALID_ENTRY, loaded.message)
-  // OS-107 修：空事实包不能开局——扮演底座必须有世界书/拆解条目，否则模型凭空编造
+  // OS-107 修：空事实包不能开局——扮演底座必须有世界书/故事源条目，否则模型凭空编造
   if (!Array.isArray(loaded.entries) || loaded.entries.length === 0) {
-    return sendError(res, API_ERROR_CODES.INVALID_ENTRY, '这个库还没有事实包（拆解条目/世界书词条）——先补世界书或跑 enrich，再开始扮演')
+    return sendError(res, API_ERROR_CODES.INVALID_ENTRY, '这个库还没有事实包（故事源条目/世界书词条）——先补世界书或跑 enrich，再开始扮演')
   }
   const chapterLimit = Number.isFinite(Number(request.chapterLimit)) && Number(request.chapterLimit) > 0 ? Number(request.chapterLimit) : null
   const entries = chapterLimit == null
@@ -542,13 +588,15 @@ export async function roleplayTurn(ctx) {
   const { res, request, context, allowlist } = ctx
   const authorized = authorizeRoot(allowlist, request.root)
   if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
+  const capability = await deduceCapabilityOrError(res, authorized.root)
+  if (!capability) return
   const root = authorized.root
   const bookId = await resolveFactBookId(root, request.bookId)
-  const loaded = loadEntries(root)
+  const loaded = capability.loadEntries(root)
   if (!loaded.ok) return sendError(res, API_ERROR_CODES.INVALID_ENTRY, loaded.message)
   // OS-107 修：空事实包不能演——与开场同口径
   if (!Array.isArray(loaded.entries) || loaded.entries.length === 0) {
-    return sendError(res, API_ERROR_CODES.INVALID_ENTRY, '这个库还没有事实包——扮演需要世界书/拆解条目作底座')
+    return sendError(res, API_ERROR_CODES.INVALID_ENTRY, '这个库还没有事实包——扮演需要世界书/故事源条目作底座')
   }
   // 世界书按章过滤（OS-96）：chapterLimit 给了＝晚于该章成立的词条不存在
   const chapterLimit = Number.isFinite(Number(request.chapterLimit)) && Number(request.chapterLimit) > 0 ? Number(request.chapterLimit) : null
@@ -646,7 +694,7 @@ export async function roleplayTurn(ctx) {
 
 export async function deduceExport(ctx) {
   // OS-94：推演导出——整个会话（每拍的决定＋正文＋归档清单）出 markdown，
-  // 落 推演/<bookId>/导出/会话-<bookId>-<sid>-<ts>.md。读侧动作，不改会话。
+  // 落 扮演/<bookId>/导出/会话-<bookId>-<sid>-<ts>.md。读侧动作，不改会话。
   const { res, request, allowlist } = ctx
   const authorized = authorizeRoot(allowlist, request.root)
   if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
@@ -668,12 +716,12 @@ export async function deduceExport(ctx) {
   if (Array.isArray(session.archived) && session.archived.length) {
     lines.push('## 已归档章节', '', ...session.archived.map((a) => `- ${text(a.path)}（${Number(a.words) || 0} 字）`), '')
   }
-  const exportDir = join(root, '推演', safeDeduceBookId(bookId), '导出')
+  const exportDir = join(root, ROLEPLAY_DIR, safeDeduceBookId(bookId), '导出')
   await mkdir(exportDir, { recursive: true })
   const fileName = `会话-${safeDeduceBookId(bookId)}-${sid}-${Date.now().toString(36)}.md`
   const outPath = join(exportDir, fileName)
   await writeFile(outPath, lines.join('\n'), 'utf-8')
-  return sendJson(res, 200, { ok: true, path: `推演/${safeDeduceBookId(bookId)}/导出/${fileName}`, words: lines.join('\n').length })
+  return sendJson(res, 200, { ok: true, path: `${ROLEPLAY_DIR}/${safeDeduceBookId(bookId)}/导出/${fileName}`, words: lines.join('\n').length })
 }
 
 export async function deducePromote(ctx) {
@@ -692,9 +740,11 @@ export async function deducePromote(ctx) {
   if (!node) return sendError(res, API_ERROR_CODES.NOT_FOUND, `会话里没有这一拍：${nodeId}`)
   const prose = text(node.prose).trim()
   if (!prose) return sendError(res, API_ERROR_CODES.INVALID_ENTRY, '这一拍还没有正文——先「重写」出稿或自己写完，再转正')
-  const created = await createChapter(root, '正文', text(request.title).trim() || `推演第${Number(node.round) || 0}拍`)
+  const proseCapability = await proseCapabilityOrError(res, root)
+  if (!proseCapability) return null
+  const created = await proseCapability.createChapter(root, '正文', text(request.title).trim() || `推演第${Number(node.round) || 0}拍`)
   if (!created.ok) return sendError(res, created.code ?? API_ERROR_CODES.INVALID_ENTRY, created.message ?? '章节创建失败')
-  const written = await writeChapterWithBackup(root, created.chapter.file, prose)
+  const written = await proseCapability.writeChapterWithBackup(root, created.chapter.file, prose)
   if (!written.ok) return sendError(res, written.code ?? API_ERROR_CODES.WRITE_PROTOCOL_IO_FAILED, written.message ?? '章节写入失败')
   return sendJson(res, 200, { ok: true, file: created.chapter.file, chapter: created.chapter, chars: prose.length })
 }
@@ -702,7 +752,7 @@ export async function deducePromote(ctx) {
 export async function deducePendingSettle(ctx) {
   // OS-82 回填闭环：待确认卡落库（write）/丢弃（dismiss）。写走内核 writeFactFile 的
   // 单条 upsert（entry 形态：按 id 命中替换、没有就追加）——推演一拍只进一条事件，
-  // 绝不动拆解文件里其他条目（与 factEntriesImport 的整份替换是两回事）。
+  // 绝不动故事源文件里其他条目（与 factEntriesImport 的整份替换是两回事）。
   const { res, request, allowlist } = ctx
   const authorized = authorizeRoot(allowlist, request.root)
   if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
@@ -726,11 +776,11 @@ export async function deducePendingSettle(ctx) {
   if (action !== 'write' || !item.entry || typeof item.entry !== 'object') {
     return sendError(res, API_ERROR_CODES.INVALID_ENTRY, 'action 只认 write/dismiss，卡上要有结算产出的条目')
   }
-  // 写前重读 revision 走乐观并发（与 factEntriesImport 同口径），避免覆盖别人刚写的拆解
+  // 写前重读 revision 走乐观并发（与 factEntriesImport 同口径），避免覆盖别人刚写的故事源
   let expectedRevision = null
   let beforeFactRaw = '' // OS-107：写前原文（写后就读不到旧内容了）——变更日志的 diff 靠它
   try {
-    const factPath = join(root, '拆解', `${bookId}.json`)
+    const factPath = join(root, FACT_DIR, `${bookId}.json`)
     if (existsSync(factPath)) {
       beforeFactRaw = await readFile(factPath, 'utf-8')
       const existing = JSON.parse(beforeFactRaw)
@@ -739,6 +789,8 @@ export async function deducePendingSettle(ctx) {
     }
   } catch { /* 读不到就当新建 */ }
   const entryExisted = beforeFactRaw !== ''
+  const factStore = await factCapabilityOrError(res, root)
+  if (!factStore) return null
   const written = await factStore.writeFactFile({
     root,
     bookId,
@@ -746,13 +798,13 @@ export async function deducePendingSettle(ctx) {
     operationId: `deduce-backfill-${pendingId}`,
     ...(expectedRevision !== null ? { expectedRevision } : {})
   })
-  if (!written.ok) return sendError(res, written.code ?? API_ERROR_CODES.WRITE_PROTOCOL_IO_FAILED, written.message ?? '写入拆解失败', written.details)
+  if (!written.ok) return sendError(res, written.code ?? API_ERROR_CODES.WRITE_PROTOCOL_IO_FAILED, written.message ?? '写入故事源失败', written.details)
   // OS-107：fact 落盘即留痕（AGENTS.md 第 10 条）。失败分支已提前 return，这里是最窄的
   // 「写成功即记」点；日志写失败不阻断主写入，但要如实回传给调用方。
   let factLogError = ''
   try {
-    const factRel = `拆解/${bookId}.json`
-    const afterFactRaw = await readFile(join(root, '拆解', `${bookId}.json`), 'utf-8')
+    const factRel = `${FACT_DIR}/${bookId}.json`
+    const afterFactRaw = await readFile(join(root, FACT_DIR, `${bookId}.json`), 'utf-8')
     const logged = await recordChange({
       root,
       module: LOG_MODULES.storysource,
@@ -771,7 +823,7 @@ export async function deducePendingSettle(ctx) {
     })
     if (logged.ok === false) factLogError = logged.message
   } catch (error) {
-    factLogError = `读回拆解档失败：${text(error?.message || error)}`
+    factLogError = `读回故事源档失败：${text(error?.message || error)}`
   }
   session.pending.splice(index, 1)
   const saved = await saveDeduceSession(root, bookId, session)
@@ -787,10 +839,11 @@ export async function deducePendingSettle(ctx) {
 
 export async function deduceImage(ctx) {
   // 生图（OS-63 预留转正）：调全局配置的 image 块（OpenAI 兼容 images/generations），
-  // 产物落 推演/<bookId>/素材/场景/<name>.png。没开开关/没填端点＝如实报，不假装生成。
+  // 产物落 扮演/<bookId>/素材/场景/<name>.png。没开开关/没填端点＝如实报，不假装生成。
   const { res, request, context, allowlist } = ctx
   const authorized = authorizeRoot(allowlist, request.root)
   if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
+  const bookId = await resolveFactBookId(authorized.root, request.bookId)
   const { config } = await loadConfigV2(context.agentConfigPath)
   const image = config.image
   if (!image.enabled) {
@@ -801,51 +854,23 @@ export async function deduceImage(ctx) {
   if (!name || !prompt) return sendError(res, API_ERROR_CODES.INVALID_ENTRY, 'name 与 prompt 必填')
   if (/[\/]|\.\./u.test(name)) return sendError(res, API_ERROR_CODES.PATH_ESCAPE, 'name 不能含路径分隔符')
   const size = text(request.size).trim() || '1024x1024'
-  // OS-74：双后端——openai（同步 images/generations）或 comfyui（提交→轮询→取图）
-  let b64 = ''
-  if (image.backend === 'comfyui') {
-    if (!text(image.comfyUrl).trim()) {
-      return sendError(res, API_ERROR_CODES.AGENT_UPSTREAM_ERROR, '未配置 ComfyUI 地址——设置 · 模型 · 生图里切到 ComfyUI 并填端口')
-    }
-    // 风格提示词优先级：请求覆盖 > 设置里的 stylePrompt > 内置默认「2D彩漫风格」
-    const stylePrefix = text(request.stylePrompt).trim() || text(image.stylePrompt).trim() || DEFAULT_IMAGE_STYLE
-    const comfy = await generateViaComfy({
-      comfyUrl: image.comfyUrl,
-      workflowPath: image.comfyWorkflow,
-      root: authorized.root,
-      nodeMap: image.comfyNodeMap,
-      prompt: `${stylePrefix}，${prompt}。无文字。`,
-      negative: text(request.negative).trim() || DEFAULT_IMAGE_NEGATIVE,
-      size
-    })
-    if (!comfy.ok) return sendError(res, API_ERROR_CODES.AGENT_UPSTREAM_ERROR, `ComfyUI 生图失败：${comfy.error}`)
-    b64 = comfy.b64
-  } else {
-    if (!image.endpoint) {
-      return sendError(res, API_ERROR_CODES.AGENT_UPSTREAM_ERROR, '未配置生图端点——设置 · 模型 · 生图里填 OpenAI 兼容 images API 的地址与模型后可用')
-    }
-    const stylePrefix = text(request.stylePrompt).trim() || text(image.stylePrompt).trim() || DEFAULT_IMAGE_STYLE
-    const body = JSON.stringify({ model: text(image.model), prompt: `${stylePrefix}，${prompt}。无文字。`, size, n: 1, response_format: 'b64_json' })
-    let payload = null
-    try {
-      const response = await fetch(imagesGenerationsUrl(image.endpoint), {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', ...(image.apiKey ? { authorization: `Bearer ${image.apiKey}` } : {}) },
-        body, signal: AbortSignal.timeout(300_000)
-      })
-      if (!response.ok) throw new Error(`HTTP ${response.status} · ${(await response.text()).slice(0, 200)}`)
-      payload = await response.json()
-    } catch (error) {
-      return sendError(res, API_ERROR_CODES.AGENT_UPSTREAM_ERROR, `生图端点失败：${text(error?.message || error)}`)
-    }
-    b64 = payload?.data?.[0]?.b64_json
-    if (!b64) return sendError(res, API_ERROR_CODES.AGENT_UPSTREAM_ERROR, '生图端点没有返回图片数据（b64_json 为空）')
-  }
-  const dir = join(authorized.root, '推演', safeDeduceBookId(bookId), '素材', '场景')
+  const media = await resolveMediaCapability(authorized.root, 'media.generate')
+  if (!media.ok) return sendError(res, API_ERROR_CODES.PLUGIN_DEGRADED, media.message, media.details)
+  const generated = await media.capability.generate({
+    image,
+    root: authorized.root,
+    prompt,
+    stylePrompt: text(request.stylePrompt),
+    negative: text(request.negative),
+    size
+  })
+  if (!generated.ok) return sendError(res, API_ERROR_CODES.AGENT_UPSTREAM_ERROR, generated.error)
+  const b64 = generated.b64
+  const dir = join(authorized.root, ROLEPLAY_DIR, safeDeduceBookId(bookId), '素材', '场景')
   await mkdir(dir, { recursive: true })
   const path = join(dir, `${name}.png`)
   await atomicWriteFile(path, Buffer.from(b64, 'base64')) // 二进制走 hostWrite 二进制分支
-  return sendJson(res, 200, { ok: true, name, path: `推演/${safeDeduceBookId(bookId)}/素材/场景/${name}.png`, size })
+  return sendJson(res, 200, { ok: true, name, path: `${ROLEPLAY_DIR}/${safeDeduceBookId(bookId)}/素材/场景/${name}.png`, size })
 }
 
 /* 剧情树分支（OS-61 P3）：从某一拍开新分支。只动 branchId/cursor 与分叉溯源，
@@ -880,9 +905,9 @@ export async function deduceBranch(ctx) {
 
 /* ---------- 文游素材（OS-61 P4）：立绘/BGM 占位骨架 ----------
  * 素材绑定约定（全部可选，缺失时前端用渐变占位块，不同 kind 不同色）：
- *   推演/<bookId>/素材/角色/<角色名>.png   —— 人物立绘/头像（按局面卡 who 匹配）
- *   推演/<bookId>/素材/场景/<场景名>.png   —— 场景立绘（按局面卡 where 匹配）
- *   推演/<bookId>/素材/bgm/<场景或情绪>.mp3 —— 背景乐（按场景名或张力情绪匹配）
+ *   扮演/<bookId>/素材/角色/<角色名>.png   —— 人物立绘/头像（按局面卡 who 匹配）
+ *   扮演/<bookId>/素材/场景/<场景名>.png   —— 场景立绘（按局面卡 where 匹配）
+ *   扮演/<bookId>/素材/bgm/<场景或情绪>.mp3 —— 背景乐（按场景名或张力情绪匹配）
  * 素材到位后无需改代码：盘点端点现扫目录，前端按名字对上就换真图。 */
 
 /** 素材单文件上限：立绘/BGM 都是本机小文件，16MB 足够且防误挂大档。 */
@@ -895,9 +920,9 @@ const DEDUCE_ASSET_KINDS = Object.freeze([
   { dir: 'bgm', field: 'bgm', ext: '.mp3' }
 ])
 
-/** 盘点 推演/<bookId>/素材/：目录不存在＝空数组；隐藏文件/子目录/异扩展名跳过。 */
+/** 盘点 扮演/<bookId>/素材/：目录不存在＝空数组；隐藏文件/子目录/异扩展名跳过。 */
 async function listDeduceAssets(root, bookId) {
-  const base = resolveInsideRoot(root, `推演/${bookId}/素材`)
+  const base = resolveInsideRoot(root, `${ROLEPLAY_DIR}/${bookId}/素材`)
   if (!base.ok) return base
   const result = { ok: true, characters: [], scenes: [], bgm: [] }
   for (const kind of DEDUCE_ASSET_KINDS) {
@@ -911,7 +936,7 @@ async function listDeduceAssets(root, bookId) {
       .filter((entry) => entry.isFile() && !entry.name.startsWith('.') && extname(entry.name).toLowerCase() === kind.ext)
       .map((entry) => ({
         name: entry.name.slice(0, -kind.ext.length),
-        path: `推演/${bookId}/素材/${kind.dir}/${entry.name}`
+        path: `${ROLEPLAY_DIR}/${bookId}/素材/${kind.dir}/${entry.name}`
       }))
       .sort((left, right) => left.name.localeCompare(right.name, 'zh-Hans-CN'))
   }
@@ -937,7 +962,7 @@ export async function deduceAssetFile(ctx) {
   if (text(request.path).includes(':')) {
     return sendError(res, API_ERROR_CODES.PATH_ESCAPE, `素材路径不许带盘符：${text(request.path)}`)
   }
-  const resolved = resolveInsideRoot(authorized.root, `推演/${bookId}/素材/${text(request.path)}`)
+  const resolved = resolveInsideRoot(authorized.root, `${ROLEPLAY_DIR}/${bookId}/素材/${text(request.path)}`)
   if (!resolved.ok) return sendError(res, resolved.code, resolved.message, resolved.details)
   const ext = extname(resolved.path).toLowerCase()
   if (ext !== '.png' && ext !== '.mp3') {
@@ -1012,7 +1037,7 @@ export async function nativeReveal(ctx) {
   return sendJson(res, 200, { ok: true })
 }
 
-/* ---------- 拆解整包导入（OS-78/OS-135 修）---------- */
+/* ---------- 故事源整包导入（OS-78/OS-135 修）---------- */
 
 export async function factEntriesImport(ctx) {
   // OS-162：写逻辑抽入 src/services/factImportWrite.mjs（exchange 适配器共用同一份）——
@@ -1022,8 +1047,11 @@ export async function factEntriesImport(ctx) {
   if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
   const operationId = text(request.operationId).trim()
     || `screenplay-import-${text(request.bookId).trim()}-${Date.now().toString(36)}`
+  const factStore = await factCapabilityOrError(res, authorized.root)
+  if (!factStore) return null
   const result = await writeFactEntries({
     root: authorized.root,
+    factStore,
     bookId: request.bookId,
     entries: request.entries,
     title: request.title,
@@ -1105,15 +1133,17 @@ export async function enrichRun(ctx) {
     return { text: data.choices?.[0]?.message?.content ?? '' }
   }
   const jobId = `enrich-${bookId}-${Date.now().toString(36)}`
-  // 事实条目与书元数据：factFileStore 取 entries（与 /api/entries 同源），book 从拆解文件读
+  // 事实条目与书元数据：factFileStore 取 entries（与 /api/entries 同源），book 从故事源文件读
+  const factStore = await factCapabilityOrError(res, authorized.root)
+  if (!factStore) return null
   const store = factStore.createFactFileStore({ root: authorized.root })
   const listed = await store.list({})
   if (!listed.ok || !listed.entries.length) {
-    return sendError(res, API_ERROR_CODES.INVALID_ENTRY, '事实链为空——先跑抽取（pinax_extract_*）再 enrich')
+    return sendError(res, API_ERROR_CODES.INVALID_ENTRY, '事实链为空——先导入或生成故事源条目，再运行 enrich')
   }
   let book = { id: bookId, title: bookId }
   try {
-    const dataset = JSON.parse(readFileSync(join(authorized.root, '拆解', `${bookId}.json`), 'utf8'))
+    const dataset = JSON.parse(readFileSync(join(authorized.root, FACT_DIR, `${bookId}.json`), 'utf8'))
     if (dataset.book) book = dataset.book
   } catch { /* 元数据缺失就用 bookId 兜底 */ }
   const job = { jobId, bookId, root: authorized.root, state: 'running', progress: [], summary: null, error: null, startedAt: new Date().toISOString() }

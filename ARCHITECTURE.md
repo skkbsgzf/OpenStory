@@ -1,12 +1,11 @@
 # OpenStory 架构
 
-> 分层与实测（OS-133 归档，OS-150 起数字由脚本生成；OS-157 起 L2/L3 合并为「自有内核」一层）。本文所有「N 文件 / N 行」只出现在
-> 下方**生成表**里——它由 `tools/arch-stats.mjs` 按约定目录扫描实测生成，标记
-> `arch-stats:start` 与 `arch-stats:end` 圈定范围，叙述部分不再手写会漂的数字。
-> 改了文件结构或行数：跑 `npm run arch:stats` 回写生成表；`node tools/arch-stats.mjs --check`
-> 与验收门禁 S0.2 逐字比对，手改一个数字就红。
-> OS-140 布局归一后自持模块收进 `src/` 六目录，仓根只留 `daemon.mjs`/`mcp.mjs` 两个入口垫片
-> （布局宪法见 AGENTS.md 硬规则 7；分层是逻辑职责，物理布局见路径表）。
+> OS-150 起规模数字由脚本生成；OS-173/C6 起不再使用 L7–L2 旧分层口径。
+> 当前按**底座、契约、协议、模块角色、服务/资源、前端与磁盘库**描述职责。
+> 本文所有文件数/行数只出现在 `arch-stats:start` … `arch-stats:end` 生成段：
+> `tools/arch-stats.mjs` 直接扫描源码与 `module.manifest.json`，不执行模块 `activate`。
+> 改目录或行数后运行 `npm run arch:stats`；`node tools/arch-stats.mjs --check` 与验收 S0.2 逐字比对。
+> 物理行按 CRLF／LF／CR 归一，空行与注释计入，末尾换行不额外计一行。
 
 ## 数据优先级（一级公民声明）
 
@@ -14,283 +13,281 @@
 
 ```
 ① 事实链 fact entries（事件/人物/设定/关系/因果图/需求层级/台账）
-② 正文   chapters（.md 原文）
+② 正文 chapters（.md 原文）
 ③ 派生物 wiki 快照 / RAG 索引 / 推演会话
 ```
 
 事实链是正文的**结构化投影**，每条事件都带 `sources[]`（源文件＋段号＋quote_hash）可回指原文。
-所以读数据先问「事实链里有没有」，喂模型先问「能不能只喂事实链」；正文用作出处与兜底。
+读数据先问事实链，喂模型先问能否只喂事实链；正文用作出处与兜底。任何绕过
+`factStore`/`fact.store` 写协议直接改事实链的做法都算违约。
 
-这一优先级对所有模块有约束力：任何绕过 `factStore`（内核公开面出口，factFileStore）
-直接读正文喂模型的做法，都算违约。
+## 职责地图与依赖方向
 
-## 分层（自上而下，依赖只许向下）
+```
+前端 public/ ─HTTP→ 契约 src/api/ ─分派→ 底座 src/host/
+                                          │
+                          协议 src/protocol/ + 能力句柄
+                                          │
+                 ┌────────────────────────┼─────────────────────┐
+                 ▼                        ▼                     ▼
+          内核件模块                 工作台模块            服务/套件资源
+       src/modules/*（kernel）    src/modules/*（workbench）       │
+                 └──────── 物理写管道 src/kernel/ ──────────────┘
+                                          │
+                                      本地磁盘库
+```
 
-下面这张表是**生成段**：文件数与行数由 `tools/arch-stats.mjs` 实测，不要手改（改目录结构后跑
-`npm run arch:stats` 回写）。L7–L2 各节的规模数字一律以本表为准，正文只写职责与边界。
+这不是一条“文件越靠下越可信”的旧层号，而是运行时边界：
+
+- **底座**只拥有进程/网络、装载与动态入口、契约壳、物理写管道、命名投影五类不可替代职责。
+- **契约**冻结外部 endpoint id、路径、请求/响应形状与错误信封；内部模块改名不得改端点或 MCP 工具名。
+- **协议与能力句柄**是模块间唯一消费面。明确的兼容转供叶可以 re-export，不得复制实现。
+- **内核件模块**只提供带主版本的能力；不得拥有 endpoint、page、slot 或设置界面。
+- **工作台模块**声明 hard/optional requires、pages/slots 与独占 endpoints，并经 `activate` 登记贡献。
+- **服务与套件资源**实现外围适配或提供声明式数据，不反向拥有工作台 UI。
+- **磁盘库**是唯一持久真相；浏览器只保存内存视图，未确认草稿/推演态同样落本地。
+
+下面是**生成段**：不要手改数字。内核件、工作台、套件模块与宿主组合面按各自 manifest 的
+`class` 分组；`agentbar`/`library` 是无 class 的恒启宿主组合面，单列统计。
 
 <!-- arch-stats:start -->
-| 层 | 目录 | 文件数 | 行数 |
+| 分工 | 范围 | 文件数 | 行数 |
 |---|---|---:|---:|
-| L7 前端 | `public/`（含 `views/`） | 23 | 21,317 |
-| L6 契约层 | `src/api/contracts/` | 9 | 1,465 |
-| L5 宿主层 | `src/host/` | 7 | 1,684 |
-| L4 自持层 | `src/{modules,services,protocol}/` | 74 | 16,112 |
-| L2 自有内核 | `src/kernel/` | 11 | 1,871 |
-| L1 磁盘库 | 库＝文件夹（无代码） | — | — |
+| 底座 | `src/host/`＋`src/kernel/` | 17 | 2,317 |
+| 契约 | `src/api/` | 18 | 5,080 |
+| 协议 | `src/protocol/` | 49 | 4,387 |
+| 内核件（class: kernel，7） | `src/modules/agent-runtime/`＋`src/modules/deduce/`＋`src/modules/fact/`＋`src/modules/media/`＋`src/modules/prose/`＋`src/modules/storage/`＋`src/modules/text/` | 47 | 8,494 |
+| 工作台（class: workbench，11） | `src/modules/analysis/`＋`src/modules/artifacts/`＋`src/modules/chapters/`＋`src/modules/comfyui/`＋`src/modules/exchange/`＋`src/modules/habits/`＋`src/modules/kb/`＋`src/modules/roleplay/`＋`src/modules/script/`＋`src/modules/storysource/`＋`src/modules/worldbook/` | 21 | 2,862 |
+| 宿主组合面（恒启） | `src/modules/agentbar/`＋`src/modules/library/` | 6 | 1,361 |
+| 套件模块（class: suite） | `src/modules/` | 0 | 0 |
+| 服务 | `src/services/` | 22 | 4,720 |
+| 套件资源 | `suites/`＋`styles/`＋`runtimes/`＋`genres/`＋`skills/` | 60 | 3,050 |
+| 设计令牌 | `design-system/` | 3 | 133 |
+| 前端 | `public/` | 29 | 20,889 |
+| 磁盘库 | 库＝文件夹（无代码） | — | — |
 
 | 附加指标 | 实测 |
 |---|---:|
-| `public/app.js` 行数 | 11,886 |
-| 契约端点数（`method:` 计数） | 107 |
-| 测试文件数（`test/*.test.mjs`） | 87 |
+| `public/app.js` 行数 | 10,338 |
+| `public/views/*.mjs` 文件数 | 14 |
+| 契约端点数（`ENDPOINTS` 键数） | 105 |
+| 测试文件数（`test/*.test.mjs`） | 102 |
+
+**模块清单（由 `src/modules/*/module.manifest.json` 自动生成）**
+
+| id | 角色 | 独占端点数 | 页签/入口 | manifest `settings` 项数 |
+|---|---|---:|---|---:|
+| agent-runtime | kernel | 0 | — | 0 |
+| agentbar | host-composition | 0 | — | 0 |
+| analysis | workbench | 0 | analysis-panel | 0 |
+| artifacts | workbench | 1 | artifacts | 0 |
+| chapters | workbench | 7 | write | 0 |
+| comfyui | workbench | 3 | image-settings | 0 |
+| deduce | kernel | 0 | — | 0 |
+| exchange | workbench | 2 | exchange-actions | 0 |
+| fact | kernel | 0 | — | 0 |
+| habits | workbench | 2 | habits | 0 |
+| kb | workbench | 4 | kb-settings | 0 |
+| library | host-composition | 0 | — | 0 |
+| media | kernel | 0 | — | 0 |
+| prose | kernel | 0 | — | 0 |
+| roleplay | workbench | 17 | deduce | 0 |
+| script | workbench | 0 | script | 0 |
+| storage | kernel | 0 | — | 0 |
+| storysource | workbench | 0 | storySource | 0 |
+| text | kernel | 0 | — | 0 |
+| worldbook | workbench | 5 | reference | 0 |
+
+合计 20 份 manifest（7 kernel + 11 workbench + 2 host-composition）；41 个模块独占端点，64 个宿主自有端点，端点覆盖 105/105。
+kernel 能力声明：agent.runtime@1 / deduce.engine@1 / fact.store@3 / fact.pack@1 / fact.enrich@1 / media.generate@1 / media.describe@1 / prose.write@1 / storage.roots@1 / library.list@1 / storage.scaffold@1 / text.analyze@1。
+`app.js` 当前上限 10,500 行（只降不升），当前实测 10,338 行。
 <!-- arch-stats:end -->
 
-```
-L7 前端 → L6 契约层 → L5 宿主层 → L4 自持层 → L2 自有内核 → L1 磁盘库
-```
+## 底座 `src/host/` ＋ `src/kernel/`
 
-### L7 前端 `public/`
+### 进程与网络 `src/host/`
 
-- **职责**：工作台单页（无构建、原生 ES 模块）。`index.html`（样式令牌 `:root` 单一真源）
-  ＋ `app.js`（装配壳：路由/页签消费/左列 Agent）＋ 零依赖模块
-  （analysis/analysisModules/charts/graph/md/reference/referenceStore/script/scriptFact/
-  scriptFormat/storySource/storyTree/ui-kit＋`views/registry.mjs` 页签/路由声明式注册表
-  ＋`views/settingsAggregation.mjs` 设置聚合与设置页渲染＋`views/chapterLoad.mjs` 章节加载状态机
-  ＋`views/runtimeShelf.mjs` 运行时货架）；echarts 本地 vendor（`public/vendor/echarts.min.js`）。
-- **页签/路由注册协议（OS-143）**：页签系统唯一真源在 `views/registry.mjs`（TAB_REGISTRY
-  纯数据＋computeTabDefs/dirTabDefs/viewScope 纯函数，词表外目录不出页签、退场目录无条件
-  过滤都可测试）；`app.js` 是消费壳——renderTabs/go/openTabAdd 全由注册表驱动，视图渲染
-  函数本体经 `VIEW_RENDERERS` 注册名插座解耦（registry 只存名字，绝不 import app.js，
-  依赖方向恒为壳→表）。**`app.js` 增量冻结**：此后只许减不许增（修 bug 除外），
-  视图代码只出不进（G5 逐个迁出，迁出后从模块侧重新注册渲染名）。
-  **口径补钉（OS-146）**：`app.js` 只留**接线**（取数 → 转交，必要时一行占位），
-  **视图渲染函数一律在 `public/views/`**——新增渲染函数留在 app.js 算违约
-  （判例：`settingsModuleSettingsSectionHtml` 本体已迁 `views/settingsAggregation.mjs`）。
-- **命名单一真源（OS-148/G8a·G8d）**：同一概念在五层（磁盘目录／页签名／changelog 模块／
-  契约域／MCP 工具名前缀）的名字只有一份数据——`views/registry.mjs` 的 `NAMING_TABLE`
-  （含 `dir/tab/panelLabel/logModule/contract/mcpPrefix` 六列＋三列实况补注）。
-  页签条目的 `dir`/`label`/`panelLabel` 由 `tabNaming(概念id)` 派生；`DIR_LABELS`/`DIR_ORDER`/
-  `READONLY_DIRS`/`PAGE_TO_DIR_LOCAL`/`LOG_MODULES` 逐键派生；后端**只 re-export**——
-  `src/protocol/naming.mjs` 是 Host 侧取表口，`chapterWrite.moduleOfPath`（目录→日志模块）、
-  `deduceSession.DEDUCE_SESSION_DIR`、各模块写日志的 `LOG_MODULES` 常量都从这里取，
-  `app.js` 的「视图→日志模块」走 `logModuleForView()`。表为什么落在注册表而不是独立
-  `public/naming.mjs`：注册表有「零 import」纯度门禁，且它本来就是目录词表/页签名的唯一真源
-  （理由钉在 AGENTS.md 硬规则 21）。门禁：`test/naming.test.mjs`＋验收 S2.5。
-- **边界**：只经 HTTP 契约（L6）与 daemon 说话；不落任何内容性/状态性数据（OS-89，
-  浏览器只做内存视图）；前端模块互不 import（门禁 S2.2，md.mjs 渲染协议除外；
-  app.js 经动态 import 消费 registry/ui-kit 等 leaf 模块）。
+- `daemon.mjs` 以 node:http 手写路由，只监听 `127.0.0.1`；入口由实现文件直跑，仓根零 `.mjs`。
+- 单实例锁、stamp、generation 与 `/api/health` 构成进程事实；缺业务能力不阻止 health。
+- 来源防护保持四道闸：Host、Origin、Sec-Fetch-Site，以及带 body 时强制 JSON content-type。
+  错误码 `FORBIDDEN_ORIGIN`（403）与 `UNSUPPORTED_MEDIA_TYPE`（400）不随模块改动。
+- `mcp.mjs` 是 stdio JSON-RPC 到 daemon HTTP 的薄适配层；数据操作仍走 daemon，不套 agent 对话。
+- 旧库一次性升级只对请求中显式指定且已授权的 root 执行：先备份，再迁移，失败按 journal
+  回滚，成功后旧目录改名留档；运行态不维护 `.pinax/` 与 `.openstory/` 长期双读。
 
-### L6 契约层 `src/api/`
+### 装载与动态激活
 
-- **职责**：API 形状唯一真源（OS-130 契约分域）。`src/api/contracts.mjs` 聚合八域分片
-  （`src/api/contracts/`）：
-  library / chapters / fact / reference / agent / plugins / system / exchange 八域（OS-162 加 exchange），端点总数见上方生成表
-  （按 `method:` 计数，与验收 S2.3 同口径）；请求/响应双端校验，daemon 与前端共享同一份。
-  端点实现（OS-141 拆出）在 `src/api/handlers/`：八域 handler，键＝endpointId。
-  错误码词表含 OS-136 来源防护两码：`FORBIDDEN_ORIGIN`（Host/Origin/Sec-Fetch-Site 拒收，403）、
-  `UNSUPPORTED_MEDIA_TYPE`（带 body 非 JSON，400）。
-- **边界**：纯数据＋纯函数，零依赖（不 import node:path/fs，浏览器也能载入）；
-  改形状＝改对应域分片，两端一起跟。
+- `src/protocol/modules.mjs` 校验 manifest、固定内置来源与阶段：测试/迁移可显式 stage B；
+  生产装载使用 stage C，class 与 class 专属字段不得缺省，任意 `core` 字段拒绝。
+- `src/protocol/capabilityGraph.mjs` 对候选图执行闭环、冲突、覆盖合法三检查；启停事务先验证
+  候选快照再提交。hard 依赖缺失不拖死 daemon，消费者降级；主动停用仍是 `MODULE_DISABLED`（409）。
+- `src/host/moduleLoader.mjs` 校验 entry 不逃逸包目录、必须导出 `activate`，再以能力上下文调用。
+- `src/protocol/moduleActivation.mjs` 校验贡献键只能为 capabilities/handlers/pages/settingsConsumers；
+  未声明贡献不得注册。验收 S2.7 在独立进程真实激活全部内置模块，不用静态字符串冒充动态验证。
+- `src/protocol/capabilityImplementations.mjs` 是统一能力实现注册表；宿主组合根只允许显式绑定，
+  不允许用私有 fallback 掩盖漏登记。`src/protocol/capabilityResolver.mjs` 提供绑定不可变快照的薄代理。
 
-### L5 宿主层 `src/host/`
+### 物理写管道 `src/kernel/`
 
-- **职责**：node:http 手写路由，只监听 127.0.0.1:8807（`DEFAULT_PORT` src/host/http.mjs:16，daemon 第 76 行再出口）。
-  仓根零 `.mjs`（OS-159）：入口直跑 `src/host/daemon.mjs` / `src/host/mcp.mjs`（实现文件自带 isMain 判定）。
-  endpointFor 契约分派＋validateResponse 响应校验；**唯一磁盘写入面**（原子写＋.history
-  备份）；SSE 通道；**OS-136 来源防护四层闸**——①Host 闸全局生效（只认
-  `127.0.0.1/localhost/[::1]`＋实际绑定端口，防 DNS 重绑定）；②Origin／③Sec-Fetch-Site
-  两道闸管全部 `/api`（只放行本机回环源与 same-origin/none；不带 Origin 的本机进程——
-  node fetch/curl/直接调 src/host/mcp.mjs——不受影响）；④带 body 必须 application/json（跨站
-  text/plain 简单请求从此写不进来；`FORBIDDEN_ORIGIN`=403、`UNSUPPORTED_MEDIA_TYPE`=400，
-  专项测试 `test/originGuard.test.mjs`）；**OS-127 进程治理**——单实例锁
-  （`%LOCALAPPDATA%/OpenStory/openstory/daemon.lock`）、acquire/stamp/clear 三步闸、
-  generation 代际继承、`/api/health` 读 DAEMON_RUNTIME。
-- **本机院子双院现状（OS-166）**：新院 `%LOCALAPPDATA%/OpenStory/` 归 OpenStory；旧院
-  `%LOCALAPPDATA%/PinaxNext/` **冻结给 Pinax 桌面端，OpenStory 不读、不写、不删**。首启时
-  `src/protocol/courtyard.mjs`（经 `src/host/courtyard.mjs` 原样转供）检测旧院在、新院不在，
-  递归拷贝全部条目（跳 `*.tmp-*` 与 `daemon.lock`），写
-  `.migrated-from-pinaxnext.json`（`schema/from/to/at/entries/note`）；目标已存在或标记已写
-  即不再重复。所有本机路径解析从这一处取，env 注入只用于测试隔离。
-- **伴生进程**：`src/host/mcp.mjs`（stdio JSON-RPC，**24 工具**）是 daemon HTTP 的薄适配层
-  ——数据操作全部转发本机 daemon，唯一直算例外是 analysis 纯函数；不套娃（不开 agent 对话）。
-  **模块闸口径（OS-146）**：分析工具只在**显式给了 root** 时按该库的 `modules.enabled.analysis`
-  判定；不给 root ＝没有库上下文，不做模块闸——**绝不回落到本机库清单第一条**（那会让工具行为
-  随「本机装了几个库」漂移，测试不 hermetic）。
-- **边界**：业务逻辑下沉 L4；daemon 只做分派、校验、落盘与进程治理。
+`src/kernel/` 是 OpenStory 自持的物理内核，身份 `openstory-kernel@1`。它于 OS-152→157
+由 Pinax-next `feat/pinax-electron-next@70a4f44` 分批转为自有；`core/`、`vendor/` 与旧同步流程已退役。
+保留真实出处，不再宣称桌面端互认或上游同步。
 
-### L4 本仓自持层
-
-OS-123/124 解耦后，建库/导入/章节号解析全部自持，不再 vendor。OS-140 起物理布局收进
-`src/`（域模块 `src/modules/`、外围服务 `src/services/`、协议件 `src/protocol/`），
-下面按逻辑职责组列表（规模见生成表）：
-
-| 组 | 模块 |
+| 组 | 职责 |
 |---|---|
-| 建库与导入（OS-123/124 fork 点，src/modules/library/） | projectDoc（建库＋project.json 合同） / importAdapter（整目录导入） / textUtil（章节号＋世界书契约判定） / libraryManage |
-| fact 消费与校验 | enrichEngine（语义富化 6 窗，src/services/） / factGuard（src/protocol/） / deduceEngine（推演核封装，src/modules/deduce/） / **engine/（OS-155 自 core 归位的确定性推演链 8 件：opening/turn/settle/candidates/fronts/patchChannel/sceneContext/sessionState＋出口 index.mjs——推演是产品引擎，不是内核能力）** / deduceSession（多局会话容器） / deduceNarrative / dependencyGraph（因果依赖图，src/protocol/） / syncCheck（正文↔拆解一致性，src/services/） |
-| 协议层（OS-142 起为显式 Host API：`src/protocol/index.mjs` 入口＋叶子件，能力清单与版本约定见 [src/protocol/README.md](./src/protocol/README.md)） | index（host-api@2 入口：fact/prose/changelog/jobs/events/plugins/guard 七命名空间，全部冻结对象；键清单快照由 test/hostApi.test.mjs 钉死） / chapters（正文读写协议） / chapterWrite（正文写备份＋.history 保留策略） / changelog（diff＋月度 jsonl） / versionGate（插件版本闸） / plugins（三货架只读聚合） / dependencyGraph（套件依赖闭包） / agentEvents（AG-UI canonical 事件＋SSE 投影） / factGuard（FACT-FIRST 守卫） / libState（库内状态与草稿） / hostWrite（OS-138 宿主写协议唯一入口——原子写收敛，内联 tmp＋rename 全归一处） ＋转供叶子 kernelPlumber / authorize / apiErrors / upstream / worldbookContract（OS-142：把 fork 点 plumber、路径授权、错误码、上游模型通道、世界书契约按原名转供给模块层）/ **factDomain（OS-155：fact 域原语＋factPack 的只 re-export，给推演引擎——模块不许直引 src/kernel/）** |
-| 参考/世界书 | referenceStore（标签/双链/图谱，src/modules/worldbook/） |
-| Agent | agentStore（src/modules/agentbar/） / agentEvents（AG-UI canonical 事件模型＋SSE 投影，src/protocol/） / roleplayEngine / roleplayPrompts（后两者 src/modules/roleplay/） |
-| 插件货架（src/services/，数据目录仍在仓根 suites//styles//runtimes//genres//skills/） | suites / skills / runtimes / genres / stylePacks |
-| 模块插件（OS-144，`src/modules/<id>/module.manifest.json`＝`openstory-module@1`） | analysis（manifest 声明；引擎仍是 public/analysis.mjs 零依赖纯函数，前端与 Node 共用，无 daemon 端点）/ comfyui（comfyEngine 生图；独占端点 deduceImage / referenceImageGenerate / visionDescribe）/ kb（kbRouter / kbAdapter / kbHealth；独占端点 kbStatusGet / kbConfigGet / kbConfigPut / kbTest）/ OS-161 三个普通模块：habits（习惯实现已移入模块目录，独占 habitsGet / habitsPut；lint 与提示词注入经宿主钩子 `src/host/moduleHooks.mjs`）/ storysource（零独占端点——读宿主共享 fact 端点，停用不影响它们）/ artifacts（独占 artifactsGet）/ exchange（pedia/v1↔fact.data/v3 薄适配，独占 exchangeImport / exchangeExport；写复用 factEntriesImport 抽出的共用函数）。/ OS-163~164 四个核心模块：chapters（独占 chapterGet/chapterPut/chaptersGet/chaptersCreate/chaptersRename/chapterDelete/draftGet，changeLog* 归宿主）/ script（零独占端点，借 chapters 写通道）/ worldbook（独占五个 reference* 端点；referenceImageGenerate 归 comfyui；世界书/ 是载体兼容输入，导入后 absorb 进 参考/）/ roleplay（独占 deduce*/roleplay* 端点，deduceImage 归 comfyui）——`core:true` 恒启用，ui-state 写 false 不生效，写停用回 MODULE_CORE（409），页签恒在。启停判定单一入口 `src/protocol/modules.mjs` 的 isModuleEnabled（ui-state `modules.enabled.<id>`，缺省 true）；普通模块独占端点停用回 MODULE_DISABLED，共用端点不受影响，值与数据保留。设置见下方「模块自报设置」表 |
-| 引擎与周边（src/services/） | libState（src/protocol/） / jobCenter（任务中心） / nativePicker / dsh-bridge / dsh-cli / embedding-server / embeddingPaths / cli-bridge / style-check |
+| 公开面/身份 | `index.mjs` 五键 `factStore/enrich/ok/fail/writeFileAtomic`；`identity.mjs` 固定内核身份 |
+| 管道件 | `errors.mjs`、`atomicWrite.mjs`、`fsDurability.mjs`：统一失败载荷、原子写、fsync/rename/目录 fsync 与失败清场 |
+| fact 链 | `fact/factFileStore.mjs`、wikiDerive、factPack、domain：事实写协议、派生、稳定 id 与状态机 |
+| enrich | 伪章推导与因果图度量等纯只读函数 |
 
-**模块插件清单（OS-165/G5d，实测自各 `module.manifest.json`；覆盖面门禁 S2.7 与 `test/moduleCoverage.test.mjs` 共用口径）**
+写协议只经 `factFileStore.writeFactFile`；物理提交只经统一写管道。协议兼容转供叶可直取
+公开面或管道件，但不得复制函数体。内核不得反向 import 协议或业务模块；当前边界债由 S2.4'
+逐文件报告，不能以“暂存”为由静默豁免。
 
-| id | 核心 | 独占端点数 | 页签/入口 | manifest `settings` 项数 |
-|---|---|---:|---|---:|
-| agentbar | 普通 | 0 | — | 0 |
-| analysis | 普通 | 0 | analysis-panel | 0 |
-| artifacts | 普通 | 1 | artifacts | 0 |
-| chapters | 核心 | 7 | write | 0 |
-| comfyui | 普通 | 3 | image-settings | 0 |
-| deduce | 普通 | 0 | — | 0 |
-| exchange | 普通 | 2 | exchange-actions | 0 |
-| habits | 普通 | 2 | habits | 0 |
-| kb | 普通 | 4 | kb-settings | 0 |
-| library | 普通 | 0 | — | 0 |
-| roleplay | 核心 | 17 | deduce | 0 |
-| script | 核心 | 0 | script | 0 |
-| storysource | 普通 | 0 | storySource | 0 |
-| worldbook | 核心 | 5 | reference | 0 |
+### 底座能力句柄
 
-合计 14 份 manifest（4 核心 + 10 普通）；41 个模块独占端点，64 个宿主自有端点，端点覆盖 105/105（100%），页签无归属 0。`agentbar` / `deduce` / `library` 是宿主域实现目录（零端点零页签），只为清单透明而登记，没有可停用的工作面。所有模块的 `settings` 项都是 0——真配置在别处，manifest 只用 `settingsHint` / `settingsJump` 指路（OS-146）。
+`src/host/baseCapabilities.mjs` 提供五项只读/受控句柄：
 
-**模块自报设置（OS-145 立、OS-146 收紧口径）**：`openstory-module@1` 的 `settings` 是渲染声明，
-字段口径对齐业务套件（`openstory-suite@2`）：`{ key, label, type: string|number|boolean|select, default, options? }`。
-值落库内 ui-state `modules.settings.<id>.<key>`（扁平键，兼容嵌套写法）；聚合纯函数在
-`public/views/settingsAggregation.mjs`（零 import，Node 测试可直接跑；app.js 只取数调用）。
+| 能力 | 职责 |
+|---|---|
+| `base.process` | lock/stamp/generation/health/jobs/events/SSE |
+| `base.loader` | manifest 校验、源发现、图检查、动态激活与启动报告 |
+| `base.contract` | endpoint 分派、请求/响应形状、统一错误信封 |
+| `base.write` | 原子写、临时文件、备份钩子、journal 物理提交 |
+| `base.naming` | 正名/slug/目录/日志/slot 的只读投影 |
 
-**OS-146 铁律：界面上出现的每个设置项必须有真实消费者。** 上一版这里摆了 7 个输入框，
-但生图/识图的真源是本机 `agent-config.json`（`loadConfigV2().image/.vision`）、知识库的真源是
-本机 `kb-config.json`（`/api/kb/config`）、右栏卡片的真开关是 ui-state 的 `analyzeEnabled` 数组——
-那 7 个键一个都没有消费者（改了不生效），已全部删除；迁移表随之清空（不许往库里写没人读的死键）。
-真配置在别处的模块只报两句指路（manifest `settingsHint` 一句话 ＋ `settingsJump` 设置页区块 id），
-设置页渲染成一行说明＋「去配置 →」按钮，不再摆第二份输入框。守卫：`test/moduleSettingsConsumers.test.mjs`
-（键 → 消费者文件:符号 的表；新键不在表里＝红）。
+## 契约 `src/api/`
 
-| 模块 | manifest `settings` | 指路（settingsHint / settingsJump） |
-|---|---|---|
-| analysis | 空（没有可调参数；卡片勾选在右栏、AI 味阈值随扮演闸走） | 说明只有 settingsHint |
-| comfyui | 空（真配置＝agent-config.json 的 image/vision） | 「设置 · 引擎与存储 · 对话模型与运行时」/ `engines` |
-| kb | 空（真配置＝kb-config.json，`/api/kb/config`） | 「设置 · 引擎与存储 · 知识库」/ `engines` |
+- `contracts.mjs` 聚合 library/chapters/fact/reference/agent/plugins/system/exchange 八域分片，
+  是 API 形状唯一真源；端点数取 `ENDPOINTS` 键数，与 S2.3 同口径。
+- `registry.mjs` 以 endpointId 登记 handler；`handlers/` 提供八域业务实现。
+- 契约壳拥有 endpoint id/path、HTTP 映射和统一错误信封，不拥有插件内部实现。
+- 业务 handler 必须经协议转供或能力句柄消费模块；当前直接 import 的边界债由 S2.1 点名。
+- 前端与 daemon 共享同一契约；MCP 工具名、外部错误码字符串不随内部 slug 改名。
 
-> 内核设置（daemon 端口语义、库路径、数据目录、凭据存储）是 L5 宿主的，不进 manifest、不插件化；
-> 设置页把它们作为只读的「内核设置区」与各模块自报设置区聚合在同一个入口。
+## 协议 `src/protocol/`
 
-- **边界**（OS-142 升格为路径规则）：`src/modules/**` 只准引三类——node 内置模块
-  （`node:` 前缀）、`src/protocol/**`（Host API：index.mjs 七命名空间＋叶子件）、自己模块
-  目录内文件；模块间禁止直接 import（门禁 S2.1，静态 from 与动态 import() 都扫）。
-  内核能力只从协议层 `fact` 命名空间取（经 L2 公开面五键转出，模块层不直引内核实现）；
-  **插件只准 import `src/protocol/index.mjs`**。OS-166/167 新增两个叶子件：`courtyard.mjs`（本机院子唯一解析源）与 `libraryManifest.mjs`（自持库清单读写＋旧清单只读导入），模块层可直引。豁免唯一且显式点名：
-  roleplayEngine→public/analysis.mjs（纯函数 AI 味分析，台账见 src/protocol/README.md）。
+协议层是宿主与模块之间的稳定消费面，不是业务实现的复制区。
 
-### L2 src/kernel/（自有内核，openstory-kernel@1）
+- `index.mjs` 保持 `host-api@2` 的 fact/prose/changelog/jobs/events/plugins/guard 七命名空间；
+  删成员、改签名或改语义才升主版本，并同步 `test/hostApi.test.mjs` 与 `src/protocol/README.md`。
+- 文件协议包括 chapters/chapterWrite/changelog/libState/hostWrite/libraryManifest/libraryUpgrade。
+- 治理协议包括 modules/capabilityGraph/capabilityResolver/capabilityImplementations/moduleActivation/
+  capabilityBindings/dependencyGraph/versionGate/plugins/naming。
+- 兼容转供叶包括 factStore/factDomain/chapters/chapterWrite/text/media/agentRuntime/
+  worldbookContract/capabilityImplementations，以及 host/courtyard、host/capabilityBindings。
+  这些叶子只允许 re-export 或显式绑定；S2.1 会比较实现体，拒绝复制。
+- `naming.mjs` 当前仍从 `public/views/registry.mjs` re-export。它是迁移态，不构成第二真源；
+  词表最终归属由 ADR 0002 的 D 批裁定，当前不提前宣称已完成迁移。
 
-内核自 2026-11-24 起为 OpenStory 自持实现；由 Pinax-next `feat/pinax-electron-next`@`70a4f44`
-于 OS-152→OS-157 分批转自有，`core/`、`vendor/` 与 `npm run vendor:check` 已整体退役。
-**无上游同步；互认靠落盘金样**（`test/decoupleStep2.test.mjs` 的建库格式逐字节锁定，
-夹具抓取清单见 `docs/kernel-provenance.md` 第三节）。按能力分三组：
+## 模块角色 `src/modules/`
 
-| 组 | 文件 | 职责 |
-|---|---|---|
-| 公开面/身份 | `index.mjs`（五键 factStore/enrich/ok/fail/writeFileAtomic）、`identity.mjs` | 唯一内核出口＋身份串，供协议层与 handler 直取 |
-| 管道件 | `errors.mjs`（`KERNEL_ERROR_CODES` 25 值，OS-157 去前缀）、`atomicWrite.mjs`、`fsDurability.mjs` | 统一失败载荷；原子写（fsync＋rename＋目录 fsync）与失败清场 |
-| fact 链 | `fact/factFileStore.mjs`（写协议唯一入口）、`fact/wikiDerive.mjs`、`fact/factPack.mjs`、`fact/domain/`（8 件＋桶 `index.mjs`） | `<库>/拆解/<id>.json` 的读写与 wiki 派生；词表/稳定 id/状态机/双时间轴/校验 |
-| enrich | `enrich/pseudoChapters.mjs`、`enrich/metrics.mjs` | 纯函数只读度量（伪章推导＋因果图三指标） |
+### 七内核件（manifest `class: kernel`）
 
-扩展名沿用迁移现状（domain 件为 `.js`，仅桶改名 `.mjs`）；arch-stats 的 L2 口径只计 `.mjs`，
-7 件 `.js` 不进分层表文件数/行数。推演 8 件**不在内核**：OS-155 起归
-`src/modules/deduce/engine/`，它是会产生会话状态与新条目的产品引擎（只读派生才留内核）；
-llmPort 规范/兼容形态见 [docs/deduce-llm-port.md](./docs/deduce-llm-port.md)。
-世界书文件契约亦不在内核：OS-157 起归 `src/modules/worldbook/worldbookFileContract.mjs`。
+内置内核件按能力域划分为 `storage/fact/prose/text/deduce/agent-runtime/media`。
+它们与 `src/kernel/` 物理管道不是同一概念：前者是带版本的业务能力供给者，后者是统一失败/写盘基础设施。
 
-- **消费方**：API/宿主层 handlers/fact、handlers/reference、services/systemPrompt 直取
-  `src/kernel/index.mjs`；协议层 protocol/index、protocol/factGuard 同取公开面；
-  kernelPlumber/hostWrite 直取管道件。模块层经协议层 `fact` 命名空间与 `factDomain.mjs` 取，
-  不直引内核实现。
-- **边界**：写协议只经 `factFileStore.writeFactFile`（operationId 幂等＋expectedRevision 乐观并发，
-  直测见 `test/factWriteProtocol.test.mjs`）；磁盘格式名冻结（见跨层红线 2）；
-  门禁 S2.4' 钉死 `src/**` 不出现 `core/` 路径说明符。逐文件出处见
-  `docs/kernel-provenance.md`，错误码改名见 `docs/error-code-rename.md`。
+- 只声明 `capabilities` 与能力依赖；不声明 endpoints/pages/slots/settings/settingsHint/settingsJump。
+- `entry` 导出 `activate`，返回的 capability 句柄必须与 manifest 逐项对应。
+- 能力主版本变更代表不兼容；改变格式或确定性结果必须带新金样，覆盖者不得冒充原金样。
+- 模块间禁止直接 import；只能经协议转供叶或 `context.resolve()` 获取稳定句柄。
 
-### L1 磁盘库 ——文件即真相
+### 工作台（manifest `class: workbench`）
 
-库＝文件夹，无数据库。`.pinax` 兼容形态与 Pinax 桌面端**双向兼容**：
+- 声明非空 `requires` 与 `slots`，pages 只保存 id/label，嵌入点只在 slots 写 `{slot,page}`。
+- 独占 endpoint 必须登记在 manifest；共用 fact 读不登记，停用任何工作台不得让共用读失效。
+- `activate` 的 handlers/pages/settingsConsumers 必须与声明一致；设置键必须有真实消费者。
+- `agentbar` 与 `library` 不是 workbench，不接受模块启停键，也不渲染成普通工作台开关。
+- 套件模块（`class: suite`）只提供 supplies/entries/resources 等声明式数据；当前内置清单若无该类，
+  生成段会显示 0，不以货架数量冒充 module@2 suite 数量。
+
+### 设置与启停
+
+模块设置值落 `<库>/.openstory/ui-state.json` 的 `modules.settings.<id>.<key>`；套件设置落
+`<库>/.openstory/plugins/suite-state.json`。停用不删稿件、设置或历史。
+
+OS-146 铁律继续有效：界面设置项必须有真实消费者。生图/识图真源在本机 agent-config.json，
+知识库真源在本机 kb-config.json，右栏卡片开关是 ui-state `analyzeEnabled`；不得在设置页再摆一份。
+`public/views/settingsAggregation.mjs` 是零 import 的聚合/渲染纯函数，`app.js` 只取数调用。
+
+## 服务与套件资源 `src/services/` 及资源目录
+
+- 服务提供 embedding、CLI/DSH 桥、模型配置、任务中心、原生选择器、同步检查、语义富化与货架扫描等外围能力。
+- 资源目录 `suites/`、`styles/`、`runtimes/`、`genres/`、`skills/` 与 `src/services/` 的实现分别计数。
+- 业务套件、runtime kit、风格包仍是既有货架协议；新 `module@2 class:suite` 禁止宿主可执行代码。
+  legacy page 模式的 `.html/.mjs/.js` 继续隔离，不贴新协议标签，不开放第三方执行。
+- 本机货架不得静默覆盖内置；显式 override 必须过版本对齐、迁移责任与回退链守卫。
+- 凭据只存本机，响应只回掩码；服务不得把密钥或内部绝对路径写入库内日志。
+
+## 前端 `public/`
+
+- 原生 ES 模块、零 npm 构建；`index.html` 的 `:root` 是颜色与字号令牌真源，并同步
+  `design-system/tokens.css`。功能轨与正文轨分离，页面不得自造字号/颜色体系。
+- `views/registry.mjs` 是页签/路由声明注册表与 `NAMING_TABLE` 唯一真源；词表外目录不出页签，
+  退场目录无条件过滤。`app.js` 是只减不增的消费壳，视图渲染函数只出不进。
+- `app.js` 当前硬上限与实测见生成段；`tools/number-anchors.mjs` 同时保存历史“只降不升”断言。
+- 新 UI 只用 `.uikit-*` 与全局令牌；多值输入用 chipField。窄面板必须在 675px 与 420px 自查，
+  ≤1000px 左右栏回覆盖抽屉，正文可读下限 `--doc-read-min` 不被压缩。
+- 前端只经 HTTP 契约与 daemon 说话，不把内容性/状态性数据放入 localStorage/sessionStorage/IndexedDB。
+- `echarts` 本地运行库在 `public/vendor/`，不计入前端源码规模；设计令牌单独成行。
+
+## 磁盘库——文件即真相
+
+库是文件夹，无数据库。运行态唯一为 `<库>/.openstory/`；读侧只认新布局，不做长期双读。
 
 | 位置 | 内容 |
 |---|---|
-| `正文/NNN-标题.md` `剧本/` `参考/` | 稿件（文件名即章节号） |
-| `拆解/<bookId>.json` | fact 真源（`fact.data/v3`，**跨仓契约**）＋ `*.wiki.json` 派生 |
-| `推演/<bookId>/` | session.json（多局）＋ 归档 ＋ .history |
-| `.pinax/project.json` | spec `pinax-project@3`、schemaVersion 3、carriers{primary,enabled,revision}（**跨仓契约**，金样 `test/decoupleStep2.test.mjs` 钉死） |
-| `.pinax/{drafts,log,ui-state.json,proposals,state}` | 草稿 / 模块日志（append-only jsonl） / 界面状态 / 提案 |
-| `.openstory/{deduce,brief.json,agent-picks.json}` | 引擎会话状态 / 项目简报 / Agent 选择链 |
-| `<同目录>/.history/` | 每版写前备份（二进制快照）；OS-137 起滚动保留——每原文件最新 `OPENSTORY_HISTORY_KEEP`（缺省 50）份＋每个自然日的最后一份（日锚），最新一份绝不删，删除留痕 `.pinax/log/history-prune/<yyyy-mm>.jsonl` |
-| `%LOCALAPPDATA%/OpenStory/libraries.json`（不入库） | OS-167 自持库清单：`{schemaVersion,libraries:[{path,name,addedAt,source}]}`，source 只取 `openstory`／`imported-pinax`；root 白名单只认这里，旧 Pinax 清单只在设置页勾选导入、绝不写回 |
-| `%LOCALAPPDATA%/OpenStory/openstory/`（不入库） | agent-config.json（凭据）、daemon.lock（进程治理）、suites/styles/runtimes 本机货架 |
-| `%LOCALAPPDATA%/PinaxNext/`（不入库，冻结） | 旧院，只归 Pinax 桌面端；OS-166 首启只从此处一次性拷贝到新院，不迁移、不删除、不改写 |
+| `正文/NNN-标题.md`、`剧本/`、`世界书/` | 稿件；旧 `参考/` 只在升级时迁入 `世界书/` |
+| `故事源/<bookId>.json` | fact 真源 `fact.data/v3` ＋ `*.wiki.json` 派生 `openstory-wiki-derived@2` |
+| `扮演/<bookId>/` | 主线/多局 session、active 指针、归档、导出与素材 |
+| `导入导出/` | 导入与导出的落盘文件 |
+| `.openstory/project.json` | `openstory-project@4`、schemaVersion 4、carrier＝`openstory.carrier.*` |
+| `.openstory/drafts/<模块>/` | 作者正在编辑但尚未提交的草稿 |
+| `.openstory/deduce/` | 未被采纳的推演拍/会话引擎态 |
+| `.openstory/log/<模块>/<yyyy-mm>.jsonl` | append-only diff/log，模块加载时自检索 |
+| `.openstory/ui-state.json` | 页签、模块开关、选中项、字号等界面状态 |
+| `.openstory/plugins/suite-state.json` | 随库走的套件启停与设置 |
+| 同目录 `.history/` | 写前二进制备份；每文件配额＋日锚＋最新保护，删除留痕 |
+| `.history/upgrade-<时间戳>/` | 旧库一次性升级前整库备份 |
+| `<旧目录名>.retired-<时间戳>/` | 升级成功后退役留档，不参与运行 |
+| `.openstory/upgrade.json` | 升级报告与幂等标记 |
+| `%LOCALAPPDATA%/OpenStory/libraries.json`（不入库） | OpenStory 自持库清单；库身份仍靠库内 project.json |
+| `%LOCALAPPDATA%/OpenStory/openstory/`（不入库） | agent-config.json、daemon.lock、机器级界面偏好与本机货架 |
+| `%LOCALAPPDATA%/PinaxNext/`（不入库，冻结） | 历史旧院；首启只拷贝，不迁移、不改写、不删除 |
 
-- **边界**：除本机货架与锁文件外，一切状态落库内固定位置；关掉浏览器/换机器/清缓存，
-  重新打开库必须完全复原（OS-89 判据）。
+旧库升级按“备份 → 运行态 → 目录 → 状态键名 → 项目标记 → 派生 schema → 存量路径 → 升级标记”
+执行；目录映射为 `参考/→世界书/`、`拆解/→故事源/`、`推演/→扮演/`、`导出/→导入导出/`。
+项目/carrier/wiki/临时前缀归一到 OpenStory 谱系名，同名冲突加升级后缀。测试只使用临时
+`LOCALAPPDATA` 与临时夹具库，不读作者真库或真院子。
 
-## 内核演进纪律（OS-157 起）
+## 门禁与演进纪律
 
-内核已自有，**不再有上游同步动作**（旧的三步 vendor 升级流程随 `core/`、`vendor/`、
-`npm run vendor:check` 一并退役）。后续演进按三条：
+1. **S2.1 能力路由**：模块只经协议/能力句柄消费；API/services/host/protocol 的直连只允许
+   点名声明的兼容转供叶，并用函数体比较拒绝实现复制。
+2. **S2.4' 底座边界**：`src/kernel/` 不得反向 import 协议/模块；host 只允许显式组合绑定；
+   `core/`/`vendor/` 路径不得回潮；物理写实现不得在底座外复制。
+3. **S2.7 能力归属**：stage-C 覆盖、kernel 零 UI/端点、workbench entry/requires/slots、端点唯一归属、
+   能力图无错误，以及独立进程动态激活/贡献校验必须同时通过。
+4. **磁盘格式冻结**：`.openstory/project.json`＝`openstory-project@4`、`故事源/*.json`＝`fact.data/v3`、
+   `*.wiki.json`＝`openstory-wiki-derived@2`、`.openstory-tmp-*`。变更须连金样与迁移夹具一起评估。
+5. **每笔写操作可追溯**：统一写通道生成 `.history` 备份，`recordChange()` 计算 unified diff 并追加月度日志。
+6. **外部名字不漂移**：endpoint id/path、MCP 工具名与既有错误码不随内部结构调整；要改另立兼容工单。
+7. **门禁失败不伪装完成**：动态注册缺项、hard require 未解析或 src 边界债必须在报告中逐项保留，
+   不得改测试口径换取绿灯。
 
-1. **写协议只经 `factFileStore.writeFactFile`**：operationId 幂等、expectedRevision 乐观并发、
-   revision 自增、wiki 旁挂分离——任何新写入通道都要先过这里，不许内联绕过。
-2. **磁盘格式名冻结清单**：`.pinax/project.json`＝`pinax-project@3`、`拆解/*.json`＝`fact.data/v3`、
-   `*.wiki.json`＝`pinax-wiki-derived@1`、`.pinax-tmp-*` 临时前缀（见 §1.4.1 与跨层红线 2）。
-   变更须同时更新金样与 `docs/kernel-provenance.md` 的互认夹具口径。
-3. **公开面变更走 Host API 版本语义**：`src/kernel/index.mjs` 新增出口先改
-   `test/kernelIdentity.test.mjs` 快照；Host API 命名空间删成员/改签名/改语义才升 `host-api@3`，
-   并同步 `test/hostApi.test.mjs` 的 SNAPSHOT 与 `src/protocol/README.md` 能力清单。
+## 插件生态与历史出处
 
-## 跨层红线
+| 货架 | 协议 | 职责 |
+|---|---|---|
+| 业务套件 | `openstory-suite@2` | 业务规则、独立设置页与 legacy 页面/工作流 |
+| Agent runtime kit | `openstory-runtime-kit@1` | sidecar/endpoint 命令描述；执行适配归 agent-runtime |
+| 风格包 | tokens JSON | 整窗换肤与栅格密度 |
 
-1. **内核实现只在 `src/kernel/**`**——`core/`、`vendor/` 已退役；门禁 S2.4' 钉死 `src/**`
-   与仓根垫片不得出现 `core/` 路径说明符（防陈旧 import 回潮）。
-2. **`project.json` 与 fact schema（`fact.data/v3`）是跨仓契约**——与 Pinax 桌面端
-   双向兼容：spec `pinax-project@3`、schemaVersion 3、字段名与顺序、carriers 结构、
-   fact 条目形状，一个字节不许变（金样护栏 `test/decoupleStep2.test.mjs`、
-   `test/decoupleStep1.test.mjs`）。
-3. **S2.4' 内核实现唯一**：`src/**` 与仓根垫片不得出现 `core/` 路径说明符；内核实现只在
-   `src/kernel/`，公开面 `src/kernel/index.mjs` 五键。协议层 `factGuard`/`index` 直取公开面，
-   `kernelPlumber`/`hostWrite` 直取管道件；模块层只经协议层取内核能力。世界书契约属世界书模块，
-   经 `src/protocol/worldbookContract.mjs` 转供取用。
-4. **依赖只许向下**（L7→L6→L5→L4→L2→L1 单向）；Pinax 从不 import OpenStory。
-5. **daemon 来源防护闸不许拆**（OS-136）：Host／Origin／Sec-Fetch-Site 三道闸＋强制 JSON
-   content-type 是「作者浏览器里的任意网页写不进本机 daemon」的纵深防线；所有端点（含
-   `fsBrowse` 这类本机目录浏览）默认吃闸，不做绕行后门。本地进程本来就能直接读盘，
-   不加目录白名单——OS-110/119 的「任意磁盘目录建库」行为不变。
+逐文件“来源 → 现位置”见 `docs/kernel-provenance.md`。内核最初出自 Pinax-next
+`feat/pinax-electron-next@70a4f44`，世界书文件契约出自 `@pinax/core` 0.16.0；这些只作真实出处。
+OS-172 后 OpenStory 与 Pinax 桌面端没有互认协议、共享运行态或清单导入通道。旧库、旧院与旧格式
+只作一次性迁移源；历史决策文档保留裁定过程，不把其中的旧数字重新解释为当前事实。
 
-## 插件生态（三层货架，协议各自成文）
-
-| 层 | 协议 | 管什么 | 注册方式 |
-|---|---|---|---|
-| 业务套件 | [PROTOCOL.md](suites/PROTOCOL.md)（openstory-suite@2） | 业务域默认规则＋独立设置页＋（未来）业务页/工作流 | 目录＋manifest；capabilities 能力声明；宿主按声明加载 |
-| Agent 运行时 kit | openstory-runtime-kit@1（`openstory/runtimes/README.md`） | 模型对话通道（sidecar/endpoint） | 目录＋manifest；chat 面＝OpenAI 兼容 SSE |
-| 风格包 | tokens JSON | 整窗换肤＋栅格密度 | 目录＋tokens |
-
-共同规则：**本机目录按 id 覆盖内置**；坏档跳过＋warning 不拖垮货架；停用＝规则退回内置默认
-（值保留）；凭据只存本机。能力白名单见 OS-129（插件能力白名单，services 声明对齐宿主真实实现）。
-
-## 与 Pinax 的关系
-
-- 同一份文件资产、两个壳：Pinax（Electron 深度形态）与 OpenStory（浏览器轻形态）。
-- 内核关系（OS-123→157 解耦收官后）：内核已全树自持于 `src/kernel/`（身份 `openstory-kernel@1`），
-  最初逐字取自 Pinax-next@`70a4f44` 与 @pinax/core 0.16.0（`e56a0bc`），逐文件出处见
-  `docs/kernel-provenance.md`；建库/导入/章节号/载体映射亦为本仓自持（projectDoc/importAdapter/
-  chapterNumber）。**不再与上游同步**；兼容锚是落盘格式金样，不是代码字节。
-  Pinax 从不 import OpenStory。
-- 两侧设置互不干扰：OpenStory 的套件/运行时/风格配置全部只存本机 openstory 目录。
-
-## 演进约定
-
-- 契约先行：API 变更先改 `src/api/contracts/<域>.mjs`（OS-130 分域，端点总数见生成表），两端一起跟。
-- 每批「界面上能看到新东西」；demo 数据退役一批、真数据上位一批。
-- 插件协议升级走 schemaVersion（@2 起精确匹配＋@1 兼容读），不做半懂兼容。
-- 遗留与明确不做的事项见 [docs/LEGACY-ITEMS.md](./docs/LEGACY-ITEMS.md)，不在本文重复。
+架构裁定与协议见 [ADR 0002](docs/adr/0002-base-constitution.md)、
+[module-manifest@2](docs/protocol/module-manifest-2.md)；遗留与明确不做事项见
+[docs/LEGACY-ITEMS.md](docs/LEGACY-ITEMS.md)。

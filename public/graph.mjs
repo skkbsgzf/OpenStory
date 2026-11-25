@@ -1,11 +1,11 @@
 /**
- * 轻量力导向图（OS-44）——零依赖 canvas，给参考图谱用。
+ * 轻量力导向图（OS-44）——零依赖 canvas，给世界书图谱用。
  *
- * 为什么自研而不引 d3/pixi：本仓零 npm 依赖（VENDORED 口径），参考图谱规模在
+ * 为什么自研而不引 d3/pixi：本仓零 npm 依赖（VENDORED 口径），世界书图谱规模在
  * 几百节点以内，canvas 2D + 一个 O(n²) 斥力 + 边弹簧就够用，没必要引入 200KB 库。
  *
  * OS-49 对齐作者 Wiki 设计（D:\Qbook\短篇选题库\wiki\*\index.html 的 forceLayout）：
- *   · 初始位置按 kind 分环（参考内环 → 产物中环 → 标签/条目外环）
+ *   · 初始位置按 kind 分环（世界书内环 → 产物中环 → 标签/条目外环）
  *   · 斥力按度数缩放：枢纽（关联多的节点）留在中心
  *   · 边弹簧按来源分刚度：双链边短而紧，标签边长而松
  *   · 标签避让：径向朝外候选位 + 度数高者优先占位（照 Wiki 的 labelPos 算法）
@@ -59,7 +59,7 @@ function radiusOf(node) {
   if (node.kind === 'tag') return 5
   if (node.kind === 'artifact') return 6
   if (node.kind === 'entry') return 5
-  // 参考节点：字数越多越大（6~13）
+  // 世界书节点：字数越多越大（6~13）
   const chars = Number(node.chars) || 0
   return Math.max(6, Math.min(13, 6 + chars / 400))
 }
@@ -67,7 +67,7 @@ function radiusOf(node) {
 /**
  * 挂载/重绘图谱。幂等：同一 canvas 上重复调用会重置。
  * @param {object} opts
- * @param {'jump'|'focus'} opts.mode jump=点节点直接 onPick（正文页左栏小图）；focus=调用方管聚焦（参考页大图）
+ * @param {'jump'|'focus'} opts.mode jump=点节点直接 onPick（正文页左栏小图）；focus=调用方管聚焦（世界书页大图）
  * @param {string|null} opts.focusId 聚焦节点 id（focus 模式下画深色描边环）
  * @param {(node) => void} opts.onPick 点节点（位移 <4px）
  * @param {() => void} opts.onBlank 点空白（focus 模式复位用）
@@ -324,8 +324,8 @@ export function mountGraph({ canvas, graph, onPick, onBlank, mode = 'jump', focu
    * 标签可见性分级（作者指出小图里标签互相压住、看不清）。
    * 判据是**空间密度**而不是绝对节点数：小画布（左栏 204px）装 30 个节点已经过挤。
    *   · 密度低（每人有 ≥ 1400px²）→ 全显
-   *   · 密度中 → 只显参考/产物节点，标签只显 hover/聚焦的
-   *   · 密度高 → 只显度数最高的若干参考节点 + hover/聚焦
+   *   · 密度中 → 只显世界书/产物节点，标签只显 hover/聚焦的
+   *   · 密度高 → 只显度数最高的若干世界书节点 + hover/聚焦
    * 这样小图始终「结构可读」，细节靠 hover。
    */
   const area = Math.max(1, width * height)
@@ -340,7 +340,7 @@ export function mountGraph({ canvas, graph, onPick, onBlank, mode = 'jump', focu
     if (hover?.id === node.id || focusId === node.id) return true
     if (labelTier === 'all') return true
     if (labelTier === 'refs') return node.kind !== 'tag'
-    // hubs：只留度数高的参考/产物节点
+    // hubs：只留度数高的世界书/产物节点
     return node.kind !== 'tag' && node.deg >= hubCutoff
   }
 

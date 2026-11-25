@@ -211,7 +211,7 @@ function chapterEditorialHtml(result, view = {}) {
       '<p class="sub">图上的点/柱/彩带都可以点——跳到对应章；正文切章或滚动，当前章在这里高亮回看。</p>'
   } else if (charts) {
     curveSection = charts.renderLocalCurve(result.emotion, { activePara: viewPara }) +
-      '<p class="sub">本库还没有拆解 fact——曲线只是词典近似。跑一次「拆解 → enrich」后，这里会换成语义级剧情曲线：峰值标情绪、可点击跳章。</p>'
+      '<p class="sub">本库还没有故事源 fact——曲线只是词典近似。跑一次「故事源 → enrich」后，这里会换成语义级剧情曲线：峰值标情绪、可点击跳章。</p>'
   }
   const modules = [
     { id: 'plotCurve', title: '情绪曲线', body: curveSection },
@@ -335,7 +335,7 @@ function plotCurveRun({ layout } = {}) {
 }
 
 function plotCurveRender(result, view = {}) {
-  if (result.empty) return emptyHtml(view, '这本书还没有章级的张力/事件数据——先在拆解里铺开条目，再跑 enrich。')
+  if (result.empty) return emptyHtml(view, '这本书还没有章级的张力/事件数据——先在故事源里铺开条目，再跑 enrich。')
   const peakRows = result.peaks.map((point) => rowHtml(
     `第${point.chapter}章${point.title && point.title !== `第${point.chapter}章` ? ` · ${point.title}` : ''}`,
     `张力 ${point.tension}${point.function ? ` · ${point.function}` : ''}${point.emotion ? ` / ${point.emotion}` : ''}`
@@ -487,7 +487,7 @@ function timelineRun({ layout, entries: ctxEntries } = {}) {
   if (!entries.length) return { empty: true, reason: "没有 fact 条目", timeline: null }
   const timeline = buildTimelineSync(entries)
   if (!timeline.stats.drawable) {
-    return { empty: true, reason: "这份拆解没有事件级数据（events/span 为空）", timeline }
+    return { empty: true, reason: "这份故事源没有事件级数据（events/span 为空）", timeline }
   }
   return { empty: false, timeline }
 }
@@ -497,7 +497,7 @@ function timelineRender(data) {
   const timeline = data?.timeline
   if (!timeline || data.empty) {
     return `<div class="tl-empty"><p>${escText(data?.reason || "没有可画的时间线")}</p>
-      <p class="sub">时间线需要 fact 条目里的 events（谁、在哪个 channel、对应章节）——跑一次拆解/enrich 就有了。</p></div>`
+      <p class="sub">时间线需要 fact 条目里的 events（谁、在哪个 channel、对应章节）——先准备故事源条目并运行 enrich 就有了。</p></div>`
   }
   const { tracks, chapters, channels, spans, stats } = timeline
   const colOf = (chapter) => {

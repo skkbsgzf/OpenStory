@@ -15,6 +15,9 @@
  */
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { namingEntry } from '../../protocol/naming.mjs'
+
+const FACT_DIR = namingEntry('storysource').dir
 
 const text = (v) => String(v ?? '')
 
@@ -28,7 +31,7 @@ export function firstPersonify(str, pov, pronoun = '我') {
 
 /** 读兄弟 wiki 文件（<bookId>.wiki.json）；没有就返回 null。 */
 export function readWikiSafe(root, bookId) {
-  const p = join(root, '拆解', `${bookId}.wiki.json`)
+  const p = join(root, FACT_DIR, `${bookId}.wiki.json`)
   if (!existsSync(p)) return null
   try { return JSON.parse(readFileSync(p, 'utf-8')) } catch { return null }
 }

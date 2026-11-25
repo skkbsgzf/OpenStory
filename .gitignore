@@ -17,9 +17,9 @@ tmp/
 
 # OS-160：样例库自带的运行态配置是例外——真实路径生成（tools/samples/generate-sample-config.mjs）
 # 后入库，让「打开样例库＝复现一份配置好的工作台」。其余隐藏数据继续挡。
-!samples/**/.pinax/
-!samples/**/.pinax/ui-state.json
 !samples/**/.openstory/
+!samples/**/.openstory/project.json
+!samples/**/.openstory/ui-state.json
 !samples/**/.openstory/plugins/
 !samples/**/.openstory/plugins/suite-state.json
 

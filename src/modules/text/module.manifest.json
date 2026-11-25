@@ -1,0 +1,17 @@
+{
+  "spec": "openstory-module@2",
+  "id": "text",
+  "name": "文本内核",
+  "version": "1.0.0",
+  "builtin": true,
+  "description": "确定性文本分析唯一内核件：章节统计、节奏、情绪、文风、AI 味与可定位问题清单；不依赖工作台、DOM、存储或第三方包。",
+  "class": "kernel",
+  "entry": "index.mjs",
+  "requires": [
+    { "id": "base.naming", "min": 1 }
+  ],
+  "capabilities": [
+    { "id": "text.analyze", "version": 1, "golden": "text-analyze-v1" }
+  ],
+  "endpoints": []
+}

@@ -162,6 +162,23 @@ describe('三套聚合', () => {
       const runtimes = payload.byKind.runtime
       assert.equal(runtimes.find((item) => item.id === 'echo-kit')?.fixture, true)
       assert.equal(runtimes.find((item) => item.id === 'cli-a')?.fixture, false)
+      const analysis = payload.modules.find((item) => item.id === 'analysis')
+      assert.equal(analysis.spec, 'openstory-module@2')
+      assert.equal(analysis.class, 'workbench')
+      assert.equal(analysis.builtin, true)
+      assert.deepEqual(analysis.slots, [{ slot: 'right', page: 'analysis-panel' }])
+      assert.equal(payload.modules.find((item) => item.id === 'deduce')?.class, 'kernel')
+      assert.ok(payload.moduleManifestNotices.some((item) => item.code === 'MODULE_HOST_COMPOSITION' && item.id === 'agentbar'))
+      assert.equal(analysis.role, 'workbench')
+      assert.equal(analysis.source, 'builtin')
+      assert.equal(analysis.sourceDir, 'src/modules/analysis')
+      assert.match(analysis.manifestSha256, /^[a-f0-9]{64}$/u)
+      assert.deepEqual(payload.moduleSourceGroups.kernel, ['agent-runtime', 'deduce', 'fact', 'media', 'prose', 'storage', 'text'])
+      assert.deepEqual(payload.moduleSourceGroups['host-composition'], ['agentbar', 'library'])
+      assert.deepEqual(payload.moduleManifestWarnings, [])
+      assert.equal(payload.capabilityReport.ok, true)
+      assert.deepEqual(payload.capabilityReport.issues, [])
+      assert.equal(payload.capabilityReport.loaded.length, payload.modules.length)
     } finally {
       await daemon.close()
     }

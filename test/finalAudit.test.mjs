@@ -9,6 +9,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
+import { architectureStats, buildArchitectureBlock } from '../tools/arch-stats.mjs'
 
 const read = (rel) => readFileSync(new URL(`../${rel}`, import.meta.url), 'utf-8')
 
@@ -19,9 +20,11 @@ const routeDoc = read('docs/plan/route-batch2-20261123.md')
 const publishingDoc = read('docs/PUBLISHING.md')
 const systemDoc = read('docs/plan/workorder-system-20261124.md')
 const architecture = read('ARCHITECTURE.md')
+const numberAnchors = JSON.parse(read('docs/number-anchors.json'))
+const fmt = (value) => String(value).replace(/\B(?=(\d{3})+(?!\d))/gu, ',')
 
 test('门禁表覆盖：final-audit.md 列出 acceptance 的全部 check 编号', () => {
-  assert.equal(gateIds.length, 23, `门禁项数漂移：${gateIds.join('/')}`)
+  assert.equal(gateIds.length, numberAnchors.gateCount, `门禁项数漂移：${gateIds.join('/')}`)
   const missing = gateIds.filter((id) => !auditDoc.includes(`| ${id} |`))
   assert.deepEqual(missing, [])
 })
@@ -44,29 +47,41 @@ test('路线归档：G8a~e / G9a~f / G10a~c 逐条标结果并给工单提交', 
 
 test('数值锚点：PUBLISHING／工单体系与 ARCHITECTURE 生成段同源', () => {
   const appLines = [...architecture.matchAll(/\| `public\/app\.js` 行数 \| ([\d,]+) \|/gu)].map((m) => m[1])
-  const endpointLines = [...architecture.matchAll(/\| 契约端点数（`method:` 计数） \| (\d+) \|/gu)].map((m) => m[1])
+  const endpointLines = [...architecture.matchAll(/\| 契约端点数（`ENDPOINTS` 键数） \| (\d+) \|/gu)].map((m) => m[1])
   const testLines = [...architecture.matchAll(/\| 测试文件数（`test\/\*\.test\.mjs`） \| (\d+) \|/gu)].map((m) => m[1])
   assert.equal(appLines.length, 1)
   assert.equal(endpointLines.length, 1)
   assert.equal(testLines.length, 1)
-  assert.equal(endpointLines[0], '107')
-  assert.equal(appLines[0], '11,886')
-  assert.equal(testLines[0], '87')
+  assert.equal(endpointLines[0], String(numberAnchors.endpoints.total))
+  assert.equal(appLines[0], fmt(numberAnchors.appJs.lines))
+  assert.equal(testLines[0], String(numberAnchors.testFiles))
 
   for (const text of [publishingDoc, systemDoc, auditDoc]) {
-    assert.match(text, /682/u, '测试总数锚点缺失')
-    assert.match(text, /107/u, '端点数锚点缺失')
-    assert.match(text, /11,886/u, 'app.js 行数锚点缺失')
+    assert.match(text, new RegExp(String(numberAnchors.tests.total), 'u'), '测试总数锚点缺失')
+    assert.match(text, new RegExp(String(numberAnchors.endpoints.total), 'u'), '端点数锚点缺失')
+    assert.match(text, new RegExp(fmt(numberAnchors.appJs.lines), 'u'), 'app.js 行数锚点缺失')
   }
-  assert.match(publishingDoc, /23 过 \/ 0 挂 \/ 0 警/u)
-  assert.match(systemDoc, /模块 \*\*14\*\*/u)
+  assert.match(publishingDoc, new RegExp(`${numberAnchors.gateCount} 过 / 0 挂 / 0 警`, 'u'))
+  assert.match(systemDoc, /模块 \*\*20\*\*/u)
+})
+
+test('C6 架构规模：取消 L2，按 manifest class 分组且生成段逐字一致', () => {
+  const stats = architectureStats()
+  assert.equal(stats.manifests.length, 20)
+  assert.deepEqual(stats.groups.kernel.map((item) => item.id), ['agent-runtime', 'deduce', 'fact', 'media', 'prose', 'storage', 'text'])
+  assert.equal(stats.groups.workbench.length, 11)
+  assert.equal(stats.groups['host-composition'].length, 2)
+  assert.ok(stats.rows.every((row) => row.files.length > 0 || row.name.includes('class: suite')))
+  assert.ok(!stats.rows.some((row) => /^L2\b/u.test(row.name)))
+  const block = architecture.match(/<!-- arch-stats:start -->[\s\S]*?<!-- arch-stats:end -->/u)?.[0]
+  assert.equal(block?.trimEnd(), buildArchitectureBlock().trimEnd())
 })
 
 test('总复核命令：测试／门禁／arch check／两条 e2e／MCP／双端口都在清单里', () => {
   for (const needle of [
     'node --test test/*.test.mjs',
     'node tools/acceptance/acceptance.mjs',
-    'npm run arch:stats --check',
+    'npm run arch:check',
     'node tools/verify/verify-shuihu.mjs',
     'node tools/verify/verify-newproj.mjs',
     'npm run mcp',

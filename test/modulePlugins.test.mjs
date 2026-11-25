@@ -21,10 +21,8 @@ import { fileURLToPath } from 'node:url'
 import { ENDPOINTS } from '../src/api/contracts.mjs'
 import { HANDLERS, ENDPOINT_MODULES, HANDLER_MODULE_SOURCES } from '../src/api/registry.mjs'
 import {
-  CORE_MODULE_IDS,
   MODULE_MANIFESTS,
   MODULE_SPEC,
-  isCoreModule,
   isModuleEnabled,
   isModuleDisabledFor,
   moduleOfEndpoint,
@@ -38,7 +36,7 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 async function makeLibrary() {
   const base = await mkdtemp(join(tmpdir(), 'openstory-os144-'))
   const root = join(base, '夹具库')
-  await mkdir(join(root, '.pinax'), { recursive: true })
+  await mkdir(join(root, '.openstory'), { recursive: true })
   await mkdir(join(root, '正文'), { recursive: true })
   await writeFile(join(root, '正文', 'ch1.md'), '第一章正文。', 'utf-8')
   const preferencesPath = join(base, 'libraries.json')
@@ -49,7 +47,7 @@ async function makeLibrary() {
 }
 
 async function writeUiState(root, state) {
-  await writeFile(join(root, '.pinax', 'ui-state.json'), JSON.stringify(state, null, 2), 'utf-8')
+  await writeFile(join(root, '.openstory', 'ui-state.json'), JSON.stringify(state, null, 2), 'utf-8')
 }
 
 /** 起 MCP 子进程，收 newline-delimited JSON-RPC 回包。 */
@@ -83,27 +81,24 @@ function startMcp(env = process.env) {
   return { request, close: () => child.kill() }
 }
 
-test('模块 manifest：普通模块都过形状校验，spec/id/core 口径统一', () => {
-  // OS-161 起普通模块按批扩大：校验「全部 manifest 非核心」＋「已知批次全在」，
-  // 数量不再写死（等价加强：原断言的 3 个仍在，新增的也必须过同一套校验）。
+test('模块 manifest：全部工作台过形状校验，core 已退役且端点错误契约完备', () => {
   const ids = MODULE_MANIFESTS.map((manifest) => manifest.id).sort()
-  for (const id of ['analysis', 'comfyui', 'kb', 'habits', 'storysource', 'artifacts', 'exchange']) assert.ok(ids.includes(id), `模块 ${id} 必须在清单`)
+  for (const id of ['analysis', 'comfyui', 'kb', 'habits', 'storysource', 'artifacts', 'exchange', 'chapters', 'script', 'worldbook', 'roleplay']) assert.ok(ids.includes(id), `模块 ${id} 必须在清单`)
   for (const manifest of MODULE_MANIFESTS) {
     const checked = validateModuleManifest(manifest, { dirName: manifest.id })
     assert.equal(checked.ok, true, `${manifest.id} 应过校验：${checked.errors?.join('；')}`)
     assert.equal(manifest.spec, MODULE_SPEC)
-    // OS-163/164：核心四枚（chapters/script/worldbook/roleplay）恒启用；其余仍一律非核心。原「全非核心」断言按批次
-    // 等价加强为「core 标记与核心清单严格一致」，强度不减（普通模块仍必须 false）。
-    assert.equal(manifest.core, CORE_MODULE_IDS.includes(manifest.id), `${manifest.id} 的 core 标记与核心清单不一致`)
+    assert.equal(Object.prototype.hasOwnProperty.call(manifest, 'core'), false, `${manifest.id} 不得再声明 core`)
     for (const endpoint of manifest.endpoints) {
       assert.ok(Object.prototype.hasOwnProperty.call(ENDPOINTS, endpoint), `${manifest.id} 声明的端点不存在：${endpoint}`)
-      // 核心模块不可停用 → MODULE_DISABLED 不可达，端点契约不应登记该码。
-      if (manifest.core) assert.ok(!ENDPOINTS[endpoint].errors.includes('MODULE_DISABLED'), `核心端点 ${endpoint} 不该登记不可达的 MODULE_DISABLED`)
-      else assert.ok(ENDPOINTS[endpoint].errors.includes('MODULE_DISABLED'), `${endpoint} 的契约 errors 应登记 MODULE_DISABLED`)
+      assert.ok(ENDPOINTS[endpoint].errors.includes('MODULE_DISABLED'), `${endpoint} 的契约 errors 应登记 MODULE_DISABLED`)
+      if (manifest.requires?.length) {
+        assert.ok(ENDPOINTS[endpoint].errors.includes('PLUGIN_DEGRADED'), `${endpoint} 的契约 errors 应登记 PLUGIN_DEGRADED`)
+      }
     }
   }
-  // 坏 manifest 会被校验拦住（不是静默放过）
   assert.equal(validateModuleManifest({ spec: 'x' }).ok, false)
+  assert.equal(validateModuleManifest({ ...MODULE_MANIFESTS[0], core: true }).ok, false, '@2 的 core 字段必须拒绝')
 })
 
 test('端点归属：只登记独占端点，共用端点没有归属', () => {
@@ -114,10 +109,8 @@ test('端点归属：只登记独占端点，共用端点没有归属', () => {
   assert.equal(moduleOfEndpoint('visionDescribe'), 'comfyui')
   // 共用端点：任何模块停用都不该影响
   assert.equal(moduleOfEndpoint('factCurveGet'), null)
-  // OS-163：chapterGet 归核心模块 chapters 独占；核心恒启用，原「任何模块停用都不影响它」
-  // 的语义不变——只是从「无归属」升级为「归属不可停用者」（强度不减）。
+  // chapterGet 归正文工作台独占；停用正文时与其它工作台一样返回 MODULE_DISABLED。
   assert.equal(moduleOfEndpoint('chapterGet'), 'chapters')
-  assert.equal(isCoreModule(moduleOfEndpoint('chapterGet')), true)
   // 分析没有 daemon 端点（纯本地引擎），表里不该硬塞
   assert.equal(ENDPOINT_MODULES.analysis, undefined)
   // OS-161 起模块清单按批扩大：断言改为「与 manifest 装载结果一致」的动态等价加强——
@@ -155,6 +148,34 @@ test('isModuleEnabled：单一判定入口，缺省启用，嵌套与扁平键�
   }
 })
 
+test('daemon 宿主组合面：拒绝写成停用插件，存量 false 键也不会关闭库管理与 Agent 栏', async () => {
+  const { base, root, preferencesPath } = await makeLibrary()
+  const daemon = await startDaemon({ port: 0, preferencesPath, env: { LOCALAPPDATA: base, APPDATA: base }, logger: { log() {} } })
+  const origin = `http://127.0.0.1:${daemon.port}`
+  try {
+    const denied = await fetch(`${origin}/api/ui-state`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ root, state: { 'modules.enabled.agentbar': false, 'modules.enabled.library': false } })
+    })
+    assert.equal(denied.status, 400)
+    assert.equal((await denied.json()).error.code, 'INVALID_ENTRY')
+
+    await writeFile(join(root, '.openstory', 'ui-state.json'), JSON.stringify({
+      'modules.enabled.agentbar': false,
+      'modules.enabled.library': false
+    }), 'utf-8')
+    const libraries = await fetch(`${origin}/api/libraries`)
+    assert.equal(libraries.status, 200)
+    const sessions = await fetch(`${origin}/api/agent/sessions?root=${encodeURIComponent(root)}`)
+    assert.equal(sessions.status, 200)
+    assert.equal((await sessions.json()).ok, true)
+  } finally {
+    await daemon.close()
+    await rm(base, { recursive: true, force: true })
+  }
+})
+
 test('daemon：独占端点停用返回 MODULE_DISABLED，共用端点照常，启用恢复且值保留', async () => {
   const { base, root, preferencesPath } = await makeLibrary()
   const env = { LOCALAPPDATA: base, APPDATA: base }
@@ -188,7 +209,7 @@ test('daemon：独占端点停用返回 MODULE_DISABLED，共用端点照常，�
     assert.equal(put.status, 200)
     const enabledStatus = await (await fetch(`${origin}/api/kb/status`)).json()
     assert.equal(enabledStatus.ok, true)
-    const saved = JSON.parse(await readFile(join(root, '.pinax', 'ui-state.json'), 'utf-8'))
+    const saved = JSON.parse(await readFile(join(root, '.openstory', 'ui-state.json'), 'utf-8'))
     assert.equal(saved.theme, 'dark', '停用/启用不该清掉别的界面状态')
     assert.equal(saved.modules.enabled.kb, true)
   } finally {
@@ -202,7 +223,7 @@ test('daemon kb 闸：多库时按请求 root 判定（A 停用 kb、B 启用 �
   const rootA = join(base, '夹具库A')
   const rootB = join(base, '夹具库B')
   for (const root of [rootA, rootB]) {
-    await mkdir(join(root, '.pinax'), { recursive: true })
+    await mkdir(join(root, '.openstory'), { recursive: true })
     await mkdir(join(root, '正文'), { recursive: true })
   }
   await writeUiState(rootA, { modules: { enabled: { kb: false } } })
@@ -232,6 +253,41 @@ test('daemon kb 闸：多库时按请求 root 判定（A 停用 kb、B 启用 �
     const aStatus = await fetch(`${origin}/api/kb/status?root=${encodeURIComponent(rootA)}`)
     assert.equal(aStatus.status, 409, '带 A 的 root 仍按 A 的停用判定')
     assert.equal((await aStatus.json()).error.code, 'MODULE_DISABLED')
+  } finally {
+    await daemon.close()
+    await rm(base, { recursive: true, force: true })
+  }
+})
+
+test('daemon 推演能力：活跃消费者拦住停用，存量断链端点回 PLUGIN_DEGRADED', async () => {
+  const { base, root, preferencesPath } = await makeLibrary()
+  const daemon = await startDaemon({ port: 0, preferencesPath, env: { LOCALAPPDATA: base, APPDATA: base }, logger: { log() {} } })
+  const origin = `http://127.0.0.1:${daemon.port}`
+  try {
+    const denied = await fetch(`${origin}/api/ui-state`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ root, state: { 'modules.enabled.deduce': false } })
+    })
+    assert.equal(denied.status, 409)
+    const deniedPayload = await denied.json()
+    assert.equal(deniedPayload.error.code, 'CAPABILITY_IN_USE')
+    assert.deepEqual(deniedPayload.error.details.consumers, ['roleplay'])
+
+    await writeUiState(root, { 'modules.enabled.deduce': false })
+    const present = await fetch(`${origin}/api/deduce/present`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ root, bookId: 'default' })
+    })
+    assert.equal(present.status, 503)
+    const payload = await present.json()
+    assert.equal(payload.error.code, 'PLUGIN_DEGRADED')
+    assert.equal(payload.error.details.module, 'roleplay')
+    assert.deepEqual(payload.error.details.missing, [{ capability: 'deduce.engine', min: 1, maxExclusive: 2 }])
+
+    const shared = await fetch(`${origin}/api/fact/curve?root=${encodeURIComponent(root)}`)
+    assert.equal(shared.status, 200, '共用 fact 读端点不随推演能力断链失效')
   } finally {
     await daemon.close()
     await rm(base, { recursive: true, force: true })

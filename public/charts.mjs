@@ -1,7 +1,7 @@
 /**
- * 剧情曲线图表库（OS-41·分析对齐拆解线）——从 Qbook wiki 面板移植的三套纯 SVG 算法，零依赖。
+ * 剧情曲线图表库（OS-41·分析对齐故事源曲线）——从 Qbook wiki 面板移植的三套纯 SVG 算法，零依赖。
  *
- * 与拆解线（wiki/{id}/index.html · devtools/build-wiki.mjs）同源同口径：
+ * 与故事源曲线（wiki/{id}/index.html · devtools/build-wiki.mjs）同源同口径：
  *   renderEmotionCurve   情绪曲线 B1：横轴章进度、纵轴剧情强度（beats）、颜色=情绪类型、只标峰值（±2 邻域极大）带标签
  *   renderEventArea      事件密度面积图：逐章事件数（fact 事件流），柱带 hover 与点击
  *   renderFunctionRibbon 章功能彩带条：建立→铺垫→叠加→对峙→揭露→打击→收束 的序列带
@@ -15,7 +15,7 @@
 
 const NS = 'http://www.w3.org/2000/svg'
 
-/** 情绪八色（与拆解线 EMOTION_COLOR 同表；固定色保证跨皮肤可读）。 */
+/** 情绪八色（与故事源曲线 EMOTION_COLOR 同表；固定色保证跨皮肤可读）。 */
 const EMOTION_COLOR = {
   '甜': '#10b981', '痛': '#ef4444', '爽': '#f59e0b', '悔': '#64748b',
   '疑': '#0ea5e9', '燃': '#fbbf24', '压迫': '#94a3b8', '释然': '#cbd5e1'

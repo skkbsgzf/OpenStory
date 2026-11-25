@@ -1,18 +1,21 @@
 # OpenStory 工单派发体系（2026-11-24 起）
 
-> 主 agent 是**监督器＋工单撰写＋验收**；施工一律走 **CodeBuddy CLI 外部进程**（`codebuddy -p --model deepseek-v4.1-flash`）；
-> 不用 API 子 agent，主 agent 不写业务代码。看板在 [`docs/workorders/BOARD.md`](../workorders/BOARD.md)，工单在 `docs/workorders/`。
+> 主 agent 是**监督器＋工单撰写＋验收**，并亲自完成一部分实现；CodeBuddy CLI 只承担已派发的并行或高风险施工，主 agent 独立审查验收。
+> 不用 API 子 agent代替验收。看板在 [`docs/workorders/BOARD.md`](../workorders/BOARD.md)，工单在 `docs/workorders/`。
 
-## 0. 基线（OS-168 收口实测，2026-11-24）
+## 0. 基线（OS-170 数字锚实测，2026-11-25）
 
 - 开工基线：`main` = `91c73ad`，测试 518 例 / 门禁 16 项 / `app.js` 12,477 行 / 端点 101 / 22 笔未推送。该基线只作历史对照，不再代表现状。
 - **收口现状**：`main` HEAD 见 `git log -1`，本地未设 upstream、提交未推送（作者口径「跑完再 push」）；
-  测试 **682 例**（680 过 / 2 条件跳过 / 0 挂）、验收门禁 **23 项**、契约端点 **107**、模块 **14**
-  （核心 4）、`app.js` **11,886 行**、测试文件 **87**。
-- 仓根布局（门禁 S0.1）：文件白名单 7 项＋目录白名单 16 项，实测 26 条目、越界 0；
+  **C6 当前清单**：模块 **20**（7 kernel／11 workbench／2 宿主组合面）；测试 **812 例**、
+  验收门禁 **27 项**、契约端点 **105**、`app.js` **10,338 行**、测试文件 **102**。
+  端点数、`app.js` 行数与测试文件数以 `ARCHITECTURE.md` 生成段和 `docs/number-anchors.json` 为准。**历史收口基线**：测试 750 例
+  （748 过 / 2 条件跳过 / 0 挂）、验收门禁 27 项、契约端点 105、模块 14（11 workbench／1 kernel／
+  2 宿主组合面）、`app.js` 11,835 行、测试文件 93；这些是 OS-170 当时实测，不代表 C6 当前状态。
+- 仓根布局（门禁 S0.1）：文件白名单 7 项＋目录白名单 17 项，实测 27 条目、越界 0；
   入口直跑 `src/host/daemon.mjs` / `src/host/mcp.mjs`，根级零 `.mjs`。
 - 复现命令：`node --test test/*.test.mjs`、`node tools/acceptance/acceptance.mjs`、
-  `npm run arch:stats --check`；逐条执行清单见 [`final-audit.md`](final-audit.md)。
+  `node tools/number-anchors.mjs`（回写机器锚）、`npm run arch:check`；逐条执行清单见 [`final-audit.md`](final-audit.md)。
 - 第一批与第二批状态：OS-157～168 全部验收完成，路线逐条结果见
   [`route-batch2-20261123.md`](route-batch2-20261123.md) 顶部「执行结果」。
 
@@ -51,7 +54,7 @@
 | `LEGACY-ITEMS.md` 未同步第二段 | OS-165、OS-168 |
 | 模块闸不带库路径时退回默认库判定 | 台账；OS-165 审计全部模块闸端点 |
 | 「设置键→消费者」守卫表目前空跑 | 台账，无需动作 |
-| 提交未推送；Pinax 桌面端开新库确认 | 作者 |
+| 提交未推送；真库首次打开时确认 OS-172 升级报告 | 作者；旧桌面端互认确认已随 OS-172 作废 |
 
 ## 3. 总队列（串行，一段一派）
 
@@ -86,8 +89,7 @@
 - **推演链不是内核**：deduce 8 件归扮演模块自己的引擎目录（`src/modules/deduce/` 下）。
 - **业务构成的改名**：`pediaSchema.js` 这个转发桶改名；`pinaxAdapter.mjs` 解散；`FACT_SOURCE` 的出处文案换成 OpenStory 自己的谱系；内核错误码的 `PINAX_` 前缀换成自己的（对外 API／MCP 的错误码字符串不变）。
   fact、enrich、deduce 这些词本来就是 OpenStory 自己的，保留。
-- **磁盘上的名字一个不改**：`.pinax/`、`pinax-project@3`、`pinax.carrier.*`、`fact.data/v3`、`pinax-wiki-derived@1`、`拆解/`、`.history/`。
-  它们是作者既有库与 Pinax 桌面端互认的锚（金样不动、旧库不迁移）。
+- **段 B 当时冻结的磁盘名**：`.pinax/`、`pinax-project@3`、`pinax.carrier.*`、`fact.data/v3`、`pinax-wiki-derived@1`、`拆解/`、`.history/`。**此冻结已被作者 2026-11-24 晚的 OS-172 裁定取代**：新库统一 `.openstory/`、`openstory-project@4`、`openstory.carrier.*`、`openstory-wiki-derived@2`；旧库一次性升级并留档。
 - `vendor/contracts/worldbookFileContract.js` 一并转自有，归世界书模块。
 
 **段 B⁺ · 推送前整备**（作者 2026-11-24 裁定：git push 之前做完）
@@ -167,13 +169,13 @@ node .zcode/os-batch-runner.mjs --plan <plan.json> --status <status.json> --mode
 - **测试与施工永不碰真实数据**：`%LOCALAPPDATA%\PinaxNext\`（真实院子）与 `D:\Projects\`（作者真库）；迁移类逻辑只在临时目录上验证。
 - **高危单开工前主 agent 先备份现场**。
 - **本轮验收标准是 OpenStory 内部代码质量的一次大提升，不是「用 Pinax 去验 OpenStory」**（作者 2026-11-24）。互认金样不再是验收项：既有金样测试照旧不许动（它们护的是作者既有库的落盘格式），但不为「桌面端能不能开」新增会卡人的测试。
-- **浏览器端存储清零**（作者 2026-11-24）：设置一律落盘（库内 `.pinax/ui-state.json`、机器级偏好文件），`localStorage`／`sessionStorage`／`indexedDB`／cookie 一个都不许用——换端口、换浏览器都是同一份设置。
+- **浏览器端存储清零**（作者 2026-11-24）：设置一律落盘（库内 `.openstory/ui-state.json`、机器级偏好文件），`localStorage`／`sessionStorage`／`indexedDB`／cookie 一个都不许用——换端口、换浏览器都是同一份设置。
 - **仓根不散落 .mjs**（作者 2026-11-24）：根目录只留 README、AGENTS、ARCHITECTURE、LICENSE、package.json 与目录。
-- **样例库自带隐藏数据与插件配置**（作者 2026-11-24）：样例里的 `.pinax`／`.openstory` 配置要进仓，打开样例即复现配置；日志、历史、凭据不进。
+- **样例库自带隐藏数据与插件配置**（作者 2026-11-24）：样例里的 `.openstory` 配置要进仓，打开样例即复现配置；日志、历史、凭据不进。OS-172 后旧 `.pinax` 运行态不再写入。
 
 ## 8. 需要作者裁定或动手
 
 1. **内核命名过目**：OS-151 设计稿出来后请过目一句话；§3 的默认方案不合意就改。有现成的《OpenStory 目标架构图.md》请贴入，以它为准。
 2. 第一批路线清单原文不在仓里，需要时请贴入。
 3. 22 笔提交推不推、要不要打 tag。
-4. 用 Pinax 桌面端打开一个 OpenStory 新建库，确认能认。
+4. 用新版首次打开既有真库，确认一次性升级报告；旧桌面端互认已拆除。

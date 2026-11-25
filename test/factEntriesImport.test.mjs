@@ -28,7 +28,7 @@ let libRoot = ''
 let daemon = null
 let port = 0
 
-const factFileOf = (bookId) => join(libRoot, '拆解', `${bookId}.json`)
+const factFileOf = (bookId) => join(libRoot, '故事源', `${bookId}.json`)
 
 const entryOf = (bookId, id, chapter, content) => ({
   schema: 'fact.data/v3',
@@ -47,7 +47,7 @@ before(async () => {
   const { startDaemon } = await import('../src/host/daemon.mjs')
   base = await mkdtemp(join(tmpdir(), 'os135-fact-import-'))
   libRoot = join(base, 'lib')
-  await mkdir(join(libRoot, '拆解'), { recursive: true })
+  await mkdir(join(libRoot, '故事源'), { recursive: true })
   // OS-127 单实例锁：LOCALAPPDATA 指到临时目录，绝不碰开发者真机的锁
   await mkdir(join(base, 'appdata'), { recursive: true })
   daemon = await startDaemon({
@@ -79,7 +79,7 @@ const importBook = ({ bookId, entries, wiki, operationId, title }) =>
 
 /** 数 .operations.jsonl 里某 operationId 的 applied 记录条数（幂等断言用）。 */
 const appliedCount = (operationId) => {
-  const logPath = join(libRoot, '拆解', '.operations.jsonl')
+  const logPath = join(libRoot, '故事源', '.operations.jsonl')
   if (!existsSync(logPath)) return 0
   return readFileSync(logPath, 'utf-8').split('\n')
     .filter((line) => line.trim())
@@ -177,11 +177,11 @@ describe('factEntriesImport 写端点直测（OS-135②）', () => {
     // 修复前：这里连报错都到不了——直接 500「factPath is not defined」。
     // 修复后：内核读出 0 字节不是有效 JSON，拒绝覆盖（IO_FAILED），0 字节原样保留。
     // 注：内核失败信封的 message 嵌在 error 里（{ok,code,error:{code,message}}），
-    // daemon 读 written.message 落空 → 回兜底文案「写入拆解失败」——如实锁当前行为。
+    // daemon 读 written.message 落空 → 回兜底文案「写入故事源失败」——如实锁当前行为。
     assert.equal(status, 500)
     assert.equal(body.ok, false)
     assert.equal(body.error.code, 'IO_FAILED', '内核 IO_FAILED 原样透出（daemon 未映射，落 500 桶）')
-    assert.equal(body.error.message, '写入拆解失败')
+    assert.equal(body.error.message, '写入故事源失败')
     assert.equal(statSync(zeroPath).size, 0, '内核拒绝覆盖，0 字节文件不得被改动')
     assert.equal(appliedCount('os135-regression-zero-1'), 0, '失败的写不得留 applied 记录')
   })

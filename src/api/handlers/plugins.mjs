@@ -14,7 +14,10 @@ import { loadSkills, skillSummary, skillsForGenre } from '../../services/skills.
 import { effectiveSkillsDirs } from '../../services/systemPrompt.mjs'
 import { loadGenres } from '../../services/genres.mjs'
 import { listAllPlugins } from '../../protocol/plugins.mjs'
-import { MODULE_MANIFESTS } from '../../protocol/modules.mjs'
+import {
+  MODULE_MANIFESTS, MODULE_MANIFEST_WARNINGS, MODULE_MANIFEST_NOTICES, MODULE_SOURCE_GROUPS,
+  CAPABILITY_STARTUP_REPORT, moduleRole, moduleSource
+} from '../../protocol/modules.mjs'
 import {
   listSuitesPublic,
   saveSuiteSettings,
@@ -79,14 +82,27 @@ export async function pluginsGet(ctx) {
     // OS-145：模块插件自报设置（设置页「模块」组的数据底；启停状态由前端按库内 ui-state 判定）
     // OS-146：settingsHint/settingsJump ＝真配置在别处时的指路（设置页只指路，不摆第二份输入框）
     modules: MODULE_MANIFESTS.map((manifest) => ({
+      spec: manifest.spec,
       id: manifest.id,
       name: manifest.name,
+      class: manifest.class,
+      role: moduleRole(manifest),
+      builtin: manifest.builtin,
+      source: moduleSource(manifest.id)?.source ?? '',
+      sourceDir: moduleSource(manifest.id)?.sourceDir ?? '',
+      manifestSha256: moduleSource(manifest.id)?.manifestSha256 ?? '',
       description: manifest.description,
+      endpoints: manifest.endpoints,
       pages: manifest.pages,
+      slots: manifest.slots,
       settings: manifest.settings,
       settingsHint: manifest.settingsHint,
       settingsJump: manifest.settingsJump
     })),
+    moduleManifestWarnings: MODULE_MANIFEST_WARNINGS,
+    moduleManifestNotices: MODULE_MANIFEST_NOTICES,
+    moduleSourceGroups: MODULE_SOURCE_GROUPS,
+    capabilityReport: CAPABILITY_STARTUP_REPORT,
     ...(listed.warnings.length ? { warnings: listed.warnings } : {})
   })
 }

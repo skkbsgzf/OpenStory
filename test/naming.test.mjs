@@ -50,12 +50,13 @@ function walkMjs(dirRel) {
  */
 const LOG_MODULES_IN_USE = Object.freeze([
   '正文',     // 正文写通道（moduleOfPath）
-  '参考',     // 参考笔记（moduleOfPath）
+  '世界书',   // 世界书笔记（moduleOfPath）
   '剧本',     // 剧本写通道（moduleOfPath）
-  '拆解',     // fact 条目 / enrich 旁挂 wiki（LOG_MODULES.storysource / .enrich）
-  '故事源',   // moduleOfPath 对 拆解/ 目录的既有实况（dirLogModule，不迁移）
-  '推演',     // 推演会话（LOG_MODULES.roleplay）
+  '故事源',   // fact 条目 / enrich 旁挂 wiki（LOG_MODULES.storysource）
+  '扮演',     // 扮演会话（LOG_MODULES.roleplay）
   '习惯',     // 习惯表（LOG_MODULES.habits）
+  '导入导出', // 导入导出文件（LOG_MODULES.exchange）
+  '库升级',   // 旧库一次性升级（libraryUpgrade）
   '界面状态'  // 库内 ui-state（LOG_MODULES.uiState）
 ])
 
@@ -105,8 +106,11 @@ test('表覆盖日志模块：代码用到的模块名 ⊆ 表的模块列，且
     }
   }
   assert.deepEqual(offenders, [], '日志模块名必须走 LOG_MODULES（命名表），不许写字面量')
-  // 目录→模块名的推断也走表：拆解目录的既有日志名是「故事源」，正文照旧
-  assert.equal(logModuleForDir('拆解'), '故事源')
+  // 目录→模块名的推断也走表：三个正名目录与日志模块逐字相等
+  assert.equal(logModuleForDir('世界书'), '世界书')
+  assert.equal(logModuleForDir('故事源'), '故事源')
+  assert.equal(logModuleForDir('扮演'), '扮演')
+  assert.equal(logModuleForDir('导入导出'), '导入导出')
   assert.equal(logModuleForDir('正文'), '正文')
   assert.equal(logModuleForDir('不认识的目录'), null)
 })
@@ -153,10 +157,10 @@ test('单一来源：DIR_LABELS/DIR_ORDER/READONLY_DIRS/PAGE_TO_DIR_LOCAL 全部
   })
   // 视图→日志模块名：页签层走表，不再在 app.js 里堆 if
   assert.equal(logModuleForView('write'), '正文')
-  assert.equal(logModuleForView('reference'), '参考')
+  assert.equal(logModuleForView('reference'), '世界书')
   assert.equal(logModuleForView('habits'), '习惯')
-  assert.equal(logModuleForView('deduce'), '推演')
-  assert.equal(logModuleForView('dir:拆解'), '拆解')
+  assert.equal(logModuleForView('deduce'), '扮演')
+  assert.equal(logModuleForView('dir:故事源'), '故事源')
   assert.equal(logModuleForView('dir:日志'), '日志')
   assert.equal(logModuleForView('artifacts'), '', '没有日志维度的视图返回空串')
   assert.equal(logModuleForView(undefined), '')
@@ -178,7 +182,7 @@ test('单一来源：后端只 re-export（不复制表），app.js 的视图→
   assert.ok(fnStart > 0, 'app.js 里找不到 moduleOfCurrentView')
   const fnBody = appSrc.slice(fnStart, appSrc.indexOf('\n}', fnStart))
   assert.match(fnBody, /registryModule\.logModuleForView/u, 'moduleOfCurrentView 必须取表')
-  for (const name of ['正文', '参考', '习惯', '推演']) {
+  for (const name of ['正文', '世界书', '习惯', '扮演']) {
     assert.ok(!fnBody.includes(`'${name}'`), `moduleOfCurrentView 里不该再有 '${name}' 字面量`)
   }
 })
@@ -192,8 +196,8 @@ test('OS-150a：src/ 里页签名→目录名只从命名表派生（genres 不�
   assert.match(genres, /PAGE_TO_DIR_LOCAL\[page\]/u, 'excludedPages 的目录解析必须走表')
   // 表内四键的字面量对不许在 src/ 里凑成第二份「页签名→目录名」映射：
   //   · 一张映射至少命中两对，或变量名就叫 *PAGE_TO_DIR*（命中一对也算）；
-  //   · 单点命中不算——如 projectDoc.mjs 的 dataDirs:{script:'剧本'} 是 pinax 载体清单的
-  //     数据目录键，不是页签名映射（值与 vendor 清单逐字一致，不归命名表管）。
+  //   · 单点命中不算——如 projectDoc.mjs 的 dataDirs:{script:'剧本'} 是载体清单的
+  //     数据目录键，不是页签名映射（不归命名表管）。
   const tablePairs = Object.entries(PAGE_TO_DIR_LOCAL).map(([page, dir]) => `${page}: '${dir}'`)
   const offenders = []
   for (const { rel, src } of walkMjs('src')) {
@@ -211,10 +215,30 @@ test('OS-150a：src/ 里页签名→目录名只从命名表派生（genres 不�
   ], '残留映射是显式台账——新增「页签名→目录名」键要在这里登记并在交付说明写去留')
 })
 
+test('OS-172：有目录的模块显示名、入口名、目录名与日志模块名四者一致', () => {
+  const pairs = [
+    ['chapters', 'chapters'], ['worldbook', 'worldbook'], ['script', 'script'],
+    ['storysource', 'storysource'], ['roleplay', 'roleplay'], ['habits', 'habits'],
+    ['exchange', 'exchange']
+  ]
+  for (const [moduleId, conceptId] of pairs) {
+    const manifest = JSON.parse(readFileSync(join(REPO, 'src/modules', moduleId, 'module.manifest.json'), 'utf-8'))
+    const row = namingEntry(conceptId)
+    assert.ok(row?.dir, `${conceptId} 应声明唯一磁盘目录`)
+    assert.equal(manifest.name, row.tab ?? row.dir, `${moduleId} 模块显示名不一致`)
+    assert.equal(row.dir, row.tab ?? row.dir, `${conceptId} 目录与页签/入口名不一致`)
+    assert.equal(row.logModule, row.dir, `${conceptId} 日志模块与目录不一致`)
+  }
+  assert.equal(namingEntry('worldbook').dir, '世界书')
+  assert.equal(namingEntry('storysource').dir, '故事源')
+  assert.equal(namingEntry('roleplay').dir, '扮演')
+  assert.equal(NAMING_TABLE.filter((row) => ['世界书', '故事源', '扮演'].includes(row.dir)).length, 3)
+})
+
 /* ---------- ⑥ 扮演页读自己的日志（OS-150a） ---------- */
 
-test('OS-150a：扮演页的「本模块修改」查的是推演模块（取表，不写死）', () => {
-  assert.equal(logModuleForView('deduce'), '推演')
+test('OS-150a / OS-172：扮演页的「本模块修改」查的是扮演模块（取表，不写死）', () => {
+  assert.equal(logModuleForView('deduce'), '扮演')
   const appSrc = readFileSync(join(REPO, 'public/app.js'), 'utf-8')
   assert.doesNotMatch(appSrc, /moduleLogHtml\('扮演'/u, '扮演页不许写死一个不存在的日志模块名')
   assert.match(appSrc, /moduleLogHtml\(registryModule\?\.logModuleForView\('deduce'\)/u,

@@ -31,10 +31,7 @@ test('Host API 直接导出同一身份（不属七命名空间成员）', () =>
 test('src/kernel/ 公开面逐键锁定（新增出口必须先改本快照）', () => {
   assert.deepEqual(Object.keys(kernel).sort(), [
     'KERNEL_ID', 'KERNEL_NAME', 'KERNEL_VERSION',
-    'enrich', 'factStore', 'fail', 'ok', 'writeFileAtomic'
+    'fail', 'ok', 'writeFileAtomic'
   ])
-  for (const group of ['factStore', 'enrich']) assert.equal(Object.isFrozen(kernel[group]), true)
   for (const fn of ['ok', 'fail', 'writeFileAtomic']) assert.equal(typeof kernel[fn], 'function')
-  assert.deepEqual(Object.keys(kernel.factStore), ['createFactFileStore', 'writeFactFile', 'readFactWiki', 'FACT_DIR_NAME'])
-  assert.deepEqual(Object.keys(kernel.enrich), ['derivePseudoChapters', 'hasRealChapters', 'causalSummary'])
 })

@@ -19,7 +19,7 @@ skills/<skill-id>/SKILL.md         ← 内置（随仓）
 name: screenplay-craft            # 必填，[\w-]
 description: 一句话说明（何时该用它）
 version: 0.1.0                    # 三段数字
-vendor: OpenStory                 # 归属
+vendor: skkbsgzf                 # 归属
 category: craft                   # craft｜review｜transform｜extract
 genres: ["*"]                     # 兼容体裁（genres/*.json 的 id；* 全兼容）
 stage: draft                      # 可选：构思 outline｜设计 design｜草稿 draft｜修订 revise
@@ -47,13 +47,13 @@ stage: draft                      # 可选：构思 outline｜设计 design｜�
 
 | skill | category | 来源 | 说明 |
 |---|---|---|---|
-| chapter-rewrite | transform | Pinax | 按作者方向重写整章，只出提案 |
-| continuity-check | review | Pinax | 正文 vs 大纲/世界书连续性核对，只出问题清单 |
-| fact-consistency | review | Pinax | 整库一致性检测（锚点/规则/时间线/知情） |
-| fact-extract | extract | Pinax | 从正文联合抽取剧情/人物/设定/关系/伏笔 |
-| outline-restructure | transform | Pinax | 大纲合并/拆分/重排，保留节点 id |
-| scene-expand | transform | Pinax | 一句梗概扩写成一场戏，出提案 |
-| worldbook-refactor | transform | Pinax | 世界书拆条/合并/补关系 |
+| chapter-rewrite | transform | skkbsgzf | 按作者方向重写整章，只出提案 |
+| continuity-check | review | skkbsgzf | 正文 vs 大纲/世界书连续性核对，只出问题清单 |
+| fact-consistency | review | skkbsgzf | 整库一致性检测（锚点/规则/时间线/知情） |
+| fact-extract | extract | skkbsgzf | 从正文联合抽取剧情/人物/设定/关系/伏笔 |
+| outline-restructure | transform | skkbsgzf | 大纲合并/拆分/重排，保留节点 id |
+| scene-expand | transform | skkbsgzf | 一句梗概扩写成一场戏，出提案 |
+| worldbook-refactor | transform | skkbsgzf | 世界书拆条/合并/补关系 |
 | humanizer | transform | CodeBuddy 官方 | 去 AI 写作痕迹（基于 Wikipedia「Signs of AI writing」） |
 | screenplay-craft | craft | DeepSeek 蒸馏 | 影视编剧 SOTA 技法（三幕/15拍/场景/对白/弧光/钩子） |
 | storyboard-craft | craft | DeepSeek 蒸馏 | 影视分镜 SOTA 技法（景别/机位/运镜/构图/竖屏/漫剧分格） |

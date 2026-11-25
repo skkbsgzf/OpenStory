@@ -1,12 +1,12 @@
 ---
 name: outline-restructure
 description: 重构大纲结构：合并、拆分、重排节点，保留节点 id 与既有摘要。
-tools: [pinax_outline_read, pinax_outline_save]
+tools: []
 output: proposal
 domain: prose
 category: transform
 genres: ["*"]
-vendor: Pinax
+vendor: skkbsgzf
 version: 0.1.0
 ---
 
@@ -14,11 +14,15 @@ version: 0.1.0
 
 作者说「大纲太碎」「把这两条并成一条」「这一卷的节点顺序不对」时。
 
+## 可用性
+
+OpenStory 当前没有自动读写大纲的工具，相关自动能力不可用；本技能只依据作者提供的大纲产出变更提案，不自动读写文件。
+
 ## 步骤
 
-1. 先 `pinax_outline_read` 读当前树，记下 revision、节点总数与每个节点的 id／title／summary。
-2. 先给作者一张变更表，只分五类：保留、改名、新增、删除、换序。每行写清楚「从哪来、到哪去」。
-3. 得到确认（或作者已明确指令）后，把整棵树交给 `pinax_outline_save`，`expectedRevision` 用刚读到的那一个。
+1. 先取得作者提供的当前大纲树，记下节点总数与每个节点的 id／title／summary；材料不全时先说明缺什么。
+2. 给作者一张变更表，只分五类：保留、改名、新增、删除、换序。每行写清楚「从哪来、到哪去」。
+3. 得到确认（或作者已明确指令）后，在回复中给出调整后的完整大纲提案，不直接写入任何文件。
 4. 返回一句话说明改了几处，不要复述整棵树。
 
 ## 禁止

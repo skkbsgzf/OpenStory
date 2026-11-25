@@ -1,12 +1,12 @@
 /**
  * 推演会话存储层（OS-61）——「文游」体验的数据容器：拍 → 章缓存区 → 归档。
  *
- * 与 deduceEngine.mjs 的分工：引擎管「这一拍怎么推」（Pinax vendor 链），
+ * 与 deduceEngine.mjs 的分工：引擎管「这一拍怎么推」（本仓自持推演链），
  * 本模块管「推出来的拍怎么攒」——每拍一个节点，约一章结束后归档成 markdown，
  * 成文由作者确认后再回合入其他模块（P2/P3 的事，这里只备容器）。
  *
- * 存储：库内 `推演/<bookId>/session.json`（原子写＋.history 备份，与正文/习惯表同一可逆语义）。
- * 归档：`推演/<bookId>/归档/第N章.md`。不碰 .pinax，不碰 vendor。
+ * 存储：库内 `扮演/<bookId>/session.json`（原子写＋.history 备份，与正文/习惯表同一可逆语义）。
+ * 归档：`扮演/<bookId>/归档/第N章.md`。不碰旧元数据目录，不碰已退役的 vendor。
  */
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { mkdir, rename, writeFile } from 'node:fs/promises'
@@ -15,7 +15,7 @@ import { atomicWriteFile } from '../../protocol/hostWrite.mjs'
 import { LOG_MODULES, namingEntry } from '../../protocol/naming.mjs' // OS-148：目录名/日志模块名只从命名表取
 
 export const DEDUCE_SESSION_SCHEMA = 'openstory.deduce-session/v1'
-/** 会话目录名（命名表 roleplay 行的 dir——「推演」是磁盘目录、页签叫「扮演」）。 */
+/** 会话目录名（命名表 roleplay 行的 dir——当前正名为「扮演」）。 */
 export const DEDUCE_SESSION_DIR = namingEntry('roleplay').dir
 
 function text(value) {
@@ -34,7 +34,7 @@ export function deduceSessionPath(root, bookId) {
 
 /**
  * 会话文件路径（OS-86 多局并存）：sessionId='main' 就是既有 session.json（legacy 主线，
- * 零迁移），其余会话落 推演/<bookId>/sessions/<sid>.json——一个库可以同时养好几局
+ * 零迁移），其余会话落 扮演/<bookId>/sessions/<sid>.json——一个库可以同时养好几局
  * 平行世界（不同前提/POV/种子），切换走激活指针而不是覆盖文件。
  */
 export function deduceSessionFile(root, bookId, sessionId = '') {
@@ -44,7 +44,7 @@ export function deduceSessionFile(root, bookId, sessionId = '') {
   return join(root, DEDUCE_SESSION_DIR, safe, 'sessions', `${sid}.json`)
 }
 
-/** 激活指针（OS-86）：推演/<bookId>/active.json = { id }；没有/坏档回落 'main'。 */
+/** 激活指针（OS-86）：扮演/<bookId>/active.json = { id }；没有/坏档回落 'main'。 */
 export function deduceActivePath(root, bookId) {
   return join(root, DEDUCE_SESSION_DIR, safeDeduceBookId(bookId), 'active.json')
 }
@@ -83,7 +83,7 @@ function normalizeRolling(raw) {
   }
 }
 
-/** 待确认事实卡（OS-82 回填闭环）：结算产物不自动落库，作者确认后才写进拆解。
+/** 待确认事实卡（OS-82 回填闭环）：结算产物不自动落库，作者确认后才写进故事源。
  *  归一只保形状：数组照收、非数组清空——条目本体是内核 settle 产出的合法 fact 条目，不做二次校验。 */
 function normalizePending(raw) {
   return Array.isArray(raw) ? raw.filter((item) => item && typeof item === 'object') : []
@@ -219,7 +219,7 @@ export async function createDeduceSession(root, bookId, { title = '' } = {}) {
 }
 
 /**
- * 删除一局（OS-86）：非破坏——文件挪 推演/<bookId>/.deleted/sessions/<sid>-<ts>.json。
+ * 删除一局（OS-86）：非破坏——文件挪 扮演/<bookId>/.deleted/sessions/<sid>-<ts>.json。
  * 主线可以删吗？可以——但删到一份都不剩时拒绝（推演页不能开天窗）；
  * 删的是当前激活局时，激活指针回落到还存在的第一局（主线优先）。
  */
@@ -251,7 +251,7 @@ export async function deleteDeduceSession(root, bookId, sessionId) {
 }
 
 /**
- * 原子写（tmp＋rename）＋写前备份到 `推演/<bookId>/.history/`。
+ * 原子写（tmp＋rename）＋写前备份到 `扮演/<bookId>/.history/`。
  * 落点按 session.sessionId 分档（OS-86：main＝legacy session.json，其余 sessions/<sid>.json）。
  * 失败返回 { ok:false, code, message }，不抛（调用方按契约码透传）。
  */
@@ -383,14 +383,14 @@ async function writeTextWithBackup(root, absPath, content) {
 
 /**
  * 归档一章：缓存区里的拍整理成 markdown（`# 第N章 标题`＋每拍一节，节内是正文或候选摘要），
- * 写到 `推演/<bookId>/归档/第N章.md`，记入 archived、清缓存区、会话落盘。
+ * 写到 `扮演/<bookId>/归档/第N章.md`，记入 archived、清缓存区、会话落盘。
  * 返回 { ok, path, words }；缓存区为空或写盘失败＝ok:false（不抛）。
  */
 /**
  * 旧引擎会话 → 新会话层的一次性桥接（OS-62）。
  *
  * 背景：OS-61 之前推演状态在 `.openstory/deduce/<bookId>.json`（引擎自己的 sessionState），
- * OS-61 之后「拍 → 章」的容器在 `推演/<bookId>/session.json`。两层没打通，导致老库的
+ * OS-61 之后「拍 → 章」的容器在 `扮演/<bookId>/session.json`。两层没打通，导致老库的
  * 推演历史在剧情树里看不到（树读新层，旧层有 round 却没有 nodes）。
  *
  * 口径：**只补历史，不动旧档**。把旧状态里的 lastTurn（最后一面：局面卡＋候选＋张力）

@@ -1,12 +1,12 @@
 ---
 name: continuity-check
 description: 连续性核对：把正文与大纲、世界书对一遍，只出问题清单，不改任何文件。
-tools: [pinax_project_context, pinax_chapter_read, pinax_worldbook_list]
+tools: [openstory_novel_read_chapter, openstory_reference_index]
 output: checklist
 domain: acceptance
 category: review
 genres: ["*"]
-vendor: Pinax
+vendor: skkbsgzf
 version: 0.1.0
 ---
 
@@ -14,9 +14,13 @@ version: 0.1.0
 
 作者说「查一下有没有前后矛盾」「这段和设定对得上吗」时。
 
+## 可用性
+
+OpenStory 当前没有自动读取项目概览与大纲的工具，相关自动能力不可用。项目概览与大纲要点须由作者提供；章节和世界书分别用 `openstory_novel_read_chapter`、`openstory_reference_index`／`openstory_reference_read_note` 核对。
+
 ## 步骤
 
-1. `pinax_project_context` 拿项目概览与大纲要点；需要细节时再 `pinax_chapter_read`／`pinax_worldbook_list`。
+1. 先确定作者本次要核对的章节范围与大纲要点；材料不全时只核对已有依据，不假装完成全书检查。
 2. 只报三类问题：事实冲突（年龄、地点、时间线）、设定越界（正文用了世界书里没有的能力或名词）、伏笔断线（大纲里有、正文没接）。
 3. 每条写成一行：问题 → 依据（哪一章／哪一条目）→ 一句话建议。
 4. 结尾用数字收口：核对了几章、报了几条。

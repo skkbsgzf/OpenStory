@@ -16,7 +16,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { parseChapterNumber, parseWorldbookEntryFile } from '../src/modules/library/textUtil.mjs'
 import { planImport, runImport } from '../src/modules/library/importAdapter.mjs'
-import { createLibrary } from '../src/modules/library/libraryManage.mjs'
+import { createLibrary } from '../src/host/libraryManage.mjs'
 import { serializeWorldbookEntryFile } from '../src/modules/worldbook/worldbookFileContract.mjs'
 
 /* ---------- 夹具 ---------- */
@@ -58,7 +58,7 @@ async function makeTarget(base) {
   const created = await createLibrary({
     path: join(parent, '长夜'),
     name: '长夜',
-    primaryCarrier: 'pinax.carrier.novel',
+    primaryCarrier: 'openstory.carrier.novel',
     preferencesPath: join(base, 'libraries.json')
   })
   assert.equal(created.ok, true, `夹具建库失败：${JSON.stringify(created)}`)
@@ -174,7 +174,7 @@ test('planImport：源目录不存在 / 目标不是项目 / 源含 .pinax 都�
     assert.equal(missing.error.code, 'INVALID_INPUT', '内核 fail() 统一无前缀码')
 
     const notProject = planImport({ sourcePath: source, targetPath: base })
-    assert.equal(notProject.ok, false, '目标缺 .pinax/project.json 要拒绝')
+    assert.equal(notProject.ok, false, '目标缺 .openstory/project.json 要拒绝')
 
     const pinned = await mkdir(join(base, '带pinax', '.pinax'), { recursive: true })
     assert.ok(pinned)

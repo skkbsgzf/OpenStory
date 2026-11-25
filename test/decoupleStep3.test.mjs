@@ -24,8 +24,12 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { factStore, enrich, ok, fail, writeFileAtomic } from '../src/kernel/index.mjs'
-import { projectMeta, projectImport } from '../src/modules/library/index.mjs'
+import { ok, fail, writeFileAtomic } from '../src/kernel/index.mjs'
+import { factCapability } from '../src/modules/fact/index.mjs'
+const factStore = factCapability['fact.store']
+const enrich = factCapability['fact.enrich']
+import { projectMeta } from '../src/modules/storage/index.mjs'
+import { projectImport } from '../src/modules/library/index.mjs'
 import * as deduceEngine from '../src/modules/deduce/engine/index.mjs'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
@@ -56,7 +60,9 @@ test('core/** 进口面为零：src/ 模块与仓根垫片均无 core/ 说明符
   assert.deepEqual(violators, [], `core/** 已退役（OS-156），任何模块都不许再引 core/**，违规：${violators.join('; ')}`)
   // 反向断言：内核公开面仍从自持件组装出口（公开面是真装配，不是空壳）
   const kernelSrc = readFileSync(join(ROOT, 'src/kernel/index.mjs'), 'utf-8')
-  assert.match(kernelSrc, /from '\.\/fact\/factFileStore\.mjs'/, 'factStore 组指 src/kernel/fact/factFileStore.mjs')
+  assert.doesNotMatch(kernelSrc, /from '\.\/fact\//, 'fact 链已降级为独立内核件')
+  const factSrc = readFileSync(join(ROOT, 'src/modules/fact/index.mjs'), 'utf-8')
+  assert.match(factSrc, /from '\.\/fact\/factFileStore\.mjs'/, 'fact.store 组指 fact 内核件实现')
   assert.doesNotMatch(kernelSrc, /(?:from\s+|import\(\s*)['"](?:\.\.?\/)+core\//, '内核已无 core 可引（OS-156）')
 })
 
@@ -78,7 +84,7 @@ test('推演端子形状锁（OS-155 归扮演模块：四端子名字一字不�
 })
 
 test('factStore 冒烟：FACT_DIR_NAME 口径不变＋list 真读内核', async () => {
-  assert.equal(factStore.FACT_DIR_NAME, '拆解')
+  assert.equal(factStore.FACT_DIR_NAME, '故事源')
   const root = await mkdtemp(join(tmpdir(), 'os125-factstore-'))
   try {
     const listed = factStore.createFactFileStore({ root }).list({})
@@ -120,7 +126,7 @@ test('projectMeta 冒烟：合同校验拒空对象＋nextCarriers 推进/冲突
   const invalid = projectMeta.validateProjectDocument({})
   assert.equal(invalid.ok, false)
   assert.equal(invalid.error.code, 'INVALID_INPUT', '错误码映射是内核共见契约')
-  const current = { primary: 'pinax.carrier.novel', enabled: ['pinax.carrier.novel'], revision: 1 }
+  const current = { primary: 'openstory.carrier.novel', enabled: ['openstory.carrier.novel'], revision: 1 }
   const advanced = projectMeta.nextCarriers(current, { expectedRevision: 1 })
   assert.equal(advanced.ok, true)
   assert.equal(advanced.value.revision, 2)

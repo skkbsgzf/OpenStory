@@ -99,7 +99,7 @@ describe('chapterPut 的 factStale（FACT-FIRST 规则 5）', () => {
     })
     assert.equal(imported.status, 200, `拆解导入应 200：${JSON.stringify(imported.body)}`)
     // mtime 确定性：把拆解档回拨 5 秒，保证接下来的正文写入必然更新
-    const factFile = join(libRoot, '拆解', 'stale-book.json')
+    const factFile = join(libRoot, '故事源', 'stale-book.json')
     const backdated = new Date(Date.now() - 5_000)
     utimesSync(factFile, backdated, backdated)
 
@@ -128,11 +128,11 @@ describe('referenceAbsorb 旧目录迁入（OS-48）', () => {
 
     const movedOutline = body.moved.find((item) => item.from === '大纲/主线大纲.md')
     assert.ok(movedOutline, `moved 里应有 大纲/主线大纲.md：${JSON.stringify(body.moved)}`)
-    assert.equal(movedOutline.to, '参考/大纲/主线大纲.md')
+    assert.equal(movedOutline.to, '世界书/大纲/主线大纲.md')
     assert.match(movedOutline.backup, /\.history\/.+\.deleted-/u, '源文件备份应挪进同目录 .history')
 
     assert.equal(
-      readFileSync(join(libRoot, '参考', '大纲', '主线大纲.md'), 'utf-8'),
+      readFileSync(join(libRoot, '世界书', '大纲', '主线大纲.md'), 'utf-8'),
       '# 主线\n预警→设局→收网。'
     )
     assert.ok(!existsSync(join(libRoot, '大纲', '主线大纲.md')), '源文件应已不在原位')
@@ -143,8 +143,8 @@ describe('referenceAbsorb 旧目录迁入（OS-48）', () => {
   it('目标已存在＝skip 不覆盖、源保留原位；白名单外的目录＝INVALID_ENTRY', async () => {
     // 构造同名冲突：大纲/ 与 参考/大纲/ 里各有一份 冲突.md
     await writeFile(join(libRoot, '大纲', '冲突.md'), '大纲版（新写的）', 'utf-8')
-    await mkdir(join(libRoot, '参考', '大纲'), { recursive: true })
-    await writeFile(join(libRoot, '参考', '大纲', '冲突.md'), '参考版（不许覆盖）', 'utf-8')
+    await mkdir(join(libRoot, '世界书', '大纲'), { recursive: true })
+    await writeFile(join(libRoot, '世界书', '大纲', '冲突.md'), '参考版（不许覆盖）', 'utf-8')
 
     const again = await request('POST', '/api/reference/absorb', { root: libRoot, dirs: ['大纲'] })
     assert.equal(again.status, 200)
@@ -154,7 +154,7 @@ describe('referenceAbsorb 旧目录迁入（OS-48）', () => {
     assert.ok(skip, `skipped 里应有 大纲/冲突.md：${JSON.stringify(again.body.skipped)}`)
     assert.match(skip.reason, /目标已存在/u)
     assert.equal(
-      readFileSync(join(libRoot, '参考', '大纲', '冲突.md'), 'utf-8'),
+      readFileSync(join(libRoot, '世界书', '大纲', '冲突.md'), 'utf-8'),
       '参考版（不许覆盖）',
       'skip 分支不得覆盖已有参考'
     )

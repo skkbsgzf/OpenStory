@@ -1,22 +1,24 @@
 # OpenStory 验收线（OS-67 起）
 
-> 每个大修改落地前的四步验收。机械门禁 `tools/acceptance/acceptance.mjs`（19 检查，
-> OS-140 起含 S0 布局宪法，退出码 0=全绿），配套 `.ua/` 知识图谱、Rea 证据口径、OpenDesign UX 对标。
+> 每个大修改落地前的四步验收。机械门禁 `tools/acceptance/acceptance.mjs`（27 检查，
+> OS-140 起含 S0 布局宪法，OS-169 起含 S1.6 测试环境健壮性，OS-170 起含 S2.8 数字锚，
+> OS-172 起含 S2.9 四名一致与 S2.10 谱系名/作者身份，退出码 0=全绿），配套 `.ua/` 知识图谱、Rea 证据口径、OpenDesign UX 对标。
 
 ## 五条交付标准 → 检查映射
 
 | 标准 | 检查 | 口径 |
 |---|---|---|
 | S0 布局 | S0.1–S0.2 | 布局宪法（OS-159）：根目录白名单（零散落 `.mjs`），启动入口直跑 `src/host/{daemon,mcp}.mjs`，自持模块全部在 `src/` 六目录（host/api/protocol/kernel/modules/services）· 架构文档数字与实测一致（OS-150：ARCHITECTURE.md 生成段逐字比对 `tools/arch-stats.mjs`，改了文件结构就跑 `npm run arch:stats` 回写，人不再手填） |
-| S1 Agentic | S1.1–S1.5 | MCP 工具覆盖五模块（读+写）· docs/mcp 文档同步 · skills/ 30 包完整 · dsh-cli 运行时 · 多 CLI 派发器 |
-| S2 可插拔 | S2.1–S2.6 | 模块间零 import（协议层 contracts/changelog/versionGate/plugins/kernel/index 除外）· 前端模块隔离（自动扫描 `public/*.mjs`＋`public/views/*.mjs`，与 S2.1 共用同一份说明符扫描器——静态 from／动态 import()／副作用 import 全在面内；豁免**按边登记**并带理由，OS-150b）· 契约驱动（endpointFor + validateResponse）· 内核实现唯一（S2.4'：src/** 与垫片不得出现 `core/` 路径说明符，内核实现只在 `src/kernel/`，OS-157）· 来源防护闸常绿（OS-136：`test/originGuard.test.mjs` 钉死 Host/Origin/Sec-Fetch-Site 三道闸＋强制 JSON content-type，daemon 只服务本机回环，任意网页写不进）· 命名真源表一致（OS-148：页签层与 changelog 模块名都只从 `public/views/registry.mjs` 的 `NAMING_TABLE` 取）· 豁免表无腐化（S2.6：登记边必须真实存在且写明理由，OS-150b） |
+| S1 Agentic | S1.1–S1.6 | MCP 工具覆盖四模块（读+写）· docs/mcp 文档同步 · skills/ 31 包完整 · dsh-cli 运行时 · 多 CLI 派发器 · 测试不依赖本机环境（OS-169：`test/**` 本机绝对路径零容忍，允许清单为空；本机无依赖时显式 skip 并注明守卫理由） |
+| S2 可插拔 | S2.1–S2.10 | 能力路由边界（模块只经协议/能力句柄；显式兼容转供叶不得复制实现）· 前端模块隔离 · 契约驱动（endpointFor + validateResponse）· 底座边界（S2.4'：kernel 不反向依赖、host 不私接模块/前端、无 core/vendor 回潮、base.* 五项句柄齐全）· 来源防护闸常绿 · 命名真源表一致 · 豁免表无腐化 · 能力归属（S2.7：stage C、kernel 零端点/UI、workbench entry/requires/slots、端点唯一归属、能力图与独立进程 activate/贡献校验）· 数字锚一致（S2.8）· 四名一致（S2.9）· 产品谱系名与作者身份（S2.10） |
 | S3 前端一致性 | S3.1–S3.3 | 裸色值零容忍（:root 令牌单一真源）· 浮层宪法（OS-48 不挤压正文）· 组件约定类齐备 |
 | S4 UX 跳转层级 | S4.1–S4.3 | 核心页签顶栏可达（注册表 core:true 条目逐条验 label/render 注册名/scope；渲染块先剥注释，注释不许冒充已注册，OS-150a）· 关闭按钮两级约定（rm-x/page-close）· docs/UX-STRUCTURE.md 清单在 |
+| CI 合入门禁 | `.github/workflows/ci.yml` | Node 24；`npm test` 两轮＋验收门禁（含 S2.8 数字锚、S2.9 四名一致、S2.10 谱系名）＋架构统计核对；失败留测试/门禁日志产物 |
 
 ## 落地前四步
 
 ```bash
-# ① 单测门禁（547 例，OS-148 起含 test/naming.test.mjs 命名单一真源 7 例）
+# ① 单测门禁（812 例，OS-148 起含 test/naming.test.mjs 命名单一真源，OS-172 起含迁移与四名/谱系门禁）
 node .zcode/run-gate.mjs
 
 # ② 交付标准门禁（S0–S4，Rea 式证据落盘）
@@ -32,6 +34,16 @@ node tools/acceptance/acceptance.mjs --json tools/acceptance/out/report-<日期>
 ```
 
 ①② 是硬门禁（挂了不合入）；③④ 是理解面与视觉面（图谱陈旧 = 影响面分析失真）。
+
+**CI 门槛＝测试两轮＋验收门禁＋数字锚；e2e 仍是本地门禁。** GitHub Actions 在每次 push 与 pull request
+用 Node 24 复跑同一组命令；水浒／新建两条 e2e 依赖 8807 常驻 daemon 与作者本机夹具，不进 CI。
+
+测试纪律（OS-169）：测试不许依赖本机环境——一律临时 `LOCALAPPDATA` 夹具、不读真实用户目录、
+不靠本机恰好装了某个 CLI 或下载过某个模型；环境不齐就显式 skip 并写明守卫理由，不许靠本机环境「假绿」。
+
+数字锚（OS-170）：机器可读真源是 `docs/number-anchors.json`，由 `node tools/number-anchors.mjs`
+真实复跑测试后回写；S2.8 同时核对文档、JSON 与实测。`app.js` 行数按物理行统计：CRLF／LF 归一，
+空行与注释计入，末尾换行不额外计一行；当前上限 10,500 行，保留 11,886 初始锚，只许下调不许上调。
 
 ## 三件套是什么、怎么用
 
@@ -59,15 +71,15 @@ node tools/acceptance/acceptance.mjs --json tools/acceptance/out/report-<日期>
 
 ## 白名单与豁免（改架构时同步这里）
 
-- S2.1 白名单（旧口径 `KERNEL_ALLOW` 内部边，新口径③「模块目录内」已直接放行，这里同口径登记）：
-  `src/modules/deduce/deduceEngine.mjs → src/modules/deduce/deduceNarrative.mjs`（叙事拼装子模块）、
-  `src/modules/deduce/deduceEngine.mjs → src/modules/deduce/engine/index.mjs`（OS-155 推演链出口）；
-  `src/kernel/**` 自有内核不算模块；`src/kernel/index.mjs` 是内核公开面＝能力协议面（OS-157）。
-- S2.4' 内核实现唯一（OS-157 由原 S2.4 退役而来）：`src/**` 与仓根两个垫片中不得出现 `core/`
-  路径说明符（静态 `from` 与动态 `import()` 都算；扫描面＝`src/` 树全部 `.mjs` ＋垫片）；
-  内核实现只在 `src/kernel/`，公开面 `index.mjs` 五键（factStore/enrich/ok/fail/writeFileAtomic）。
-  Host API `host-api@2` 的五键在此定稿（OS-155 删 `deduce`、OS-157 删 `projectMeta`／`projectImport`）。
-  `test/*.test.mjs` 不在扫描范围；出处见 `docs/kernel-provenance.md`。
+- S2.1 能力路由：`src/modules/**` 只准 node 内置、`src/protocol/**`、本模块与点名的套件资源；
+  API/services/host/protocol 直连模块仅限 `tools/acceptance/capabilityBoundaries.mjs` 的显式转供叶。
+  转供叶只许 re-export/绑定，较大函数体与目标实现重复即拒绝；动态 import 与静态 import 都扫描。
+- S2.4' 底座边界：`src/kernel/**` 不得反向 import 协议/业务模块；host 只允许点名的能力绑定/院子转供；
+  `src/**` 与仓根不得出现 `core/`/`vendor/` 路径说明符；`writeFileAtomic` 不得在 `src/kernel/` 外复制。
+  `base.process/base.loader/base.contract/base.write/base.naming` 五项句柄必须存在。
+- S2.7 能力归属：20 份内置 manifest＝7 kernel＋11 workbench＋2 宿主组合面；生产 stage C。
+  kernel 的 endpoints/pages/slots/settings/settingsHint/settingsJump 必须为空，workbench 必须有 entry/requires/slots；
+  端点归属唯一，能力图无错误，独立进程真实 activate 并校验 capabilities/handlers/pages/settingsConsumers。
 - S4.2 关闭家族：模块卡 `rm-x`，整页 `page-close`。
 - S3.1 裸色值豁免：无（画布绘图用 getComputedStyle 现读令牌，见 public/graph.mjs）。
 

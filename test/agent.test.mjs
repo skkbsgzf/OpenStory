@@ -44,10 +44,10 @@ async function makeFixture() {
   const base = await mkdtemp(join(tmpdir(), 'openstory-os4-'))
   const root = join(base, '夹具库')
   await mkdir(join(root, '正文'), { recursive: true })
-  await mkdir(join(root, '.pinax'), { recursive: true })
+  await mkdir(join(root, '.openstory'), { recursive: true })
   await writeFile(join(root, '正文', 'ch1.md'), '第一章正文。', 'utf-8')
-  await mkdir(join(root, '拆解'), { recursive: true })
-  await writeFile(join(root, '拆解', 'book-1.json'), JSON.stringify({
+  await mkdir(join(root, '故事源'), { recursive: true })
+  await writeFile(join(root, '故事源', 'book-1.json'), JSON.stringify({
     book: { id: 'book-1', title: '夹具书' },
     entries: FACT_ENTRIES,
     revision: 1
@@ -541,8 +541,8 @@ test('daemon 端到端：待确认卡——采纳写正文＋备份；改文件�
 
 test('默认路径：跟随 LOCALAPPDATA/OpenStory/openstory', () => {
   assert.equal(
-    defaultAgentConfigPath({ LOCALAPPDATA: 'C:/Users/x/AppData/Local' }).replaceAll('\\', '/'),
-    'C:/Users/x/AppData/Local/OpenStory/openstory/agent-config.json'
+    defaultAgentConfigPath({ LOCALAPPDATA: 'X:/fixture-home/AppData/Local' }).replaceAll('\\', '/'),
+    'X:/fixture-home/AppData/Local/OpenStory/openstory/agent-config.json'
   )
   assert.equal(defaultAgentConfigPath({}), '')
 })

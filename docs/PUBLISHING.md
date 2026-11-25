@@ -4,15 +4,20 @@
 > 标准：**协议干净、demo 干净、人机双读**——三项全绿才允许 push。
 > 自动检查器：`node ~/.zcode/skills/repo-publish/scripts/publish-scan.mjs .`（对任意仓可跑，全绿退出码 0）。
 
-**OS-168 收口数值锚点**（数字只由命令复现，不手抄）：
+**OS-170 历史数字锚**（仅保留当时发布复核结果，不代表 C6 当前状态；机器可读真源是 `docs/number-anchors.json`）：
 
-| 命令 | 当前结果 |
+| 命令 | OS-170 当时结果 |
 |---|---|
-| `node --test test/*.test.mjs` | 682 tests / 680 pass / 2 skip / 0 fail |
-| `node tools/acceptance/acceptance.mjs` | 23 过 / 0 挂 / 0 警 |
-| `npm run arch:stats --check` | 通过；生成段：前端 23 文件 21,317 行、宿主 7 文件 1,684 行、自持层 74 文件 16,112 行、内核 11 文件 1,871 行、`app.js` 11,886 行、端点 107、测试 87 文件 |
-| `grep -rn "PinaxNext" src public` | 仅迁移常量/门面注释；产品零直拼 |
-| `grep -rn "next-preferences" src public` | 仅旧清单只读导入与拒写提示；默认路径零命中 |
+| `node --test test/*.test.mjs` | 750 tests / 748 pass / 2 skip / 0 fail |
+| `node tools/acceptance/acceptance.mjs` | 27 过 / 0 挂 / 0 警 |
+| `npm run arch:check` | 通过；生成段：底座 17 文件 2,317 行、契约 18 文件 5,080 行、协议 49 文件 4,387 行、内核件 47 文件 8,494 行、工作台 21 文件 2,862 行、前端 29 文件 20,889 行、`app.js` 10,338 行、端点 105、测试 102 文件 |
+| `node tools/verify/verify-os172-naming.mjs` | 四名一致 21 概念通过；产品目录扫描 205 文件，仅保留真实出处与迁移兼容 |
+| `node tools/verify/verify-os172-e2e.mjs` | 《水浒传》临时库 10/10＋新建/半成品库 13/13；不碰真库与真实院子 |
+
+**C6／D 批当前审计快照**：全量单测 812 例（810 过／0 挂／2 条件跳过，测试全绿；
+`812 tests / 810 pass / 2 skip / 0 fail`）；验收门禁 27 项；
+契约端点 105；`app.js` 10,338 行（上限 10,500）；测试 102 文件。最终结果以本次任务回报与
+`docs/number-anchors.json` 为准，历史通过记录不得冒充当前通过。
 
 ## 一、推送前必过检查单
 
@@ -28,25 +33,26 @@
 
 ### ③ README 七要件（缺一即红）
 
-①标题下一句话定位 ②边界/声明（不做什么）③快速开始三行命令 ④ASCII 架构图 ⑤仓库地图（目录→内容）⑥出处与致谢（上游链接，指向 `docs/kernel-provenance.md`）⑦版本注记。端点数/测试数/行数**只写在 `ARCHITECTURE.md` 的脚本生成段**（`npm run arch:stats` 回写、`npm run arch:stats --check` 比对），README 不手抄易漂移数字。
+①标题下一句话定位 ②边界/声明（不做什么）③快速开始三行命令 ④ASCII 架构图 ⑤仓库地图（目录→内容）⑥出处与致谢（上游链接，指向 `docs/kernel-provenance.md`）⑦版本注记。端点数/测试数/行数以 `docs/number-anchors.json` 与 `ARCHITECTURE.md` 的脚本生成段为准，README 不手抄易漂移数字。
 
 ### ④ 协议干净
 
-LICENSE 与出处自洽：`README.md` 致谢段记内核谱系（Pinax-next `feat/pinax-electron-next`@`70a4f44`／@pinax/core 0.16.0 `e56a0bc`）与「落盘格式即互认锚」的口径，逐文件「来源 → 现位置」对照见 `docs/kernel-provenance.md`，对外错误码改名见 `docs/error-code-rename.md`；package.json 带 repository/license/engines；**不写真实私人邮箱**。不再有 `core/VENDORED.md` 与 `npm run vendor:check`——互认由落盘格式金样守护。
+LICENSE 与出处自洽：`README.md` 致谢段记内核谱系（Pinax-next `feat/pinax-electron-next`@`70a4f44`／@pinax/core 0.16.0 `e56a0bc`），逐文件「来源 → 现位置」对照见 `docs/kernel-provenance.md`，对外错误码改名见 `docs/error-code-rename.md`；package.json 带 repository/license/engines；**不写真实私人邮箱**。不再有 `core/VENDORED.md` 与 `npm run vendor:check`。OS-172 起互认已拆除，新库契约为 `openstory-project@4`；旧库首次打开时一次性升级并保留备份与留档。
 
 ### ⑤ demo 干净
 
 `samples/*/` 只留内容文件；运行残留/备份/会话一律清除；自带 README（怎么导入＋体验入口）；素材确认来源可公开。
 
-### ⑥ 命名真源一致（OS-148）
+### ⑥ 命名真源一致（OS-148／OS-172）
 
-五层名字（磁盘目录／页签／changelog 模块／契约域／MCP 前缀）只许来自
+显示名、页签/入口名、磁盘目录名与 changelog 模块名只许来自
 `public/views/registry.mjs` 的 `NAMING_TABLE`，后端经 `src/protocol/naming.mjs` 转供。
 发布前跑：
 
 ```bash
-node tools/acceptance/acceptance.mjs     # S2.5 命名真源表一致 必须 ✓
+node tools/acceptance/acceptance.mjs     # S2.5 命名真源表一致、S2.9 四名一致、S2.10 谱系名 必须 ✓
 node --test test/naming.test.mjs         # 页签层/日志层都回表、无第二份字面量
+node tools/verify/verify-os172-naming.mjs
 ```
 
 新概念没登表、或页签/日志层自己写了一份名字——两项都会红。

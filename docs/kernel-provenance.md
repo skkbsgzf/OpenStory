@@ -1,9 +1,9 @@
 # 内核出处声明（OpenStory 自有内核）
 
-> **内核**（`src/kernel/`，身份 `openstory-kernel@1`）自 2026-11-24 起为 OpenStory 自持实现。
-> 其管道件、fact 词表与校验、写协议、派生层最初逐字取自 Pinax-next 分支
-> `feat/pinax-electron-next` 提交 `70a4f44`（2026-11-15）；推演八件亦自该分支平移，
-> 现归 `src/modules/deduce/engine/`（产品引擎，不属内核）。
+> **物理内核**（`src/kernel/`，身份 `openstory-kernel@1`）自 2026-11-24 起为 OpenStory 自持实现。
+> 其管道件最初逐字取自 Pinax-next 分支 `feat/pinax-electron-next` 提交 `70a4f44`（2026-11-15）；
+> fact 词表与校验、写协议、派生层同源，C 批起降为 `src/modules/fact/` 业务内核能力；
+> 推演八件亦自该分支平移，现归 `src/modules/deduce/engine/`（产品引擎，不属物理内核）。
 > 世界书文件契约最初逐字收编自 `@pinax/core` 0.16.0（pinax-core 仓 `e56a0bc`）。
 > OS-152→OS-157 分批转自有后代码在本仓自由演进，**不再与上游同步**。
 > 兼容的锚不是代码，是落盘格式：`.pinax/project.json`＝`pinax-project@3`、
@@ -16,19 +16,19 @@
 | 1 | `next/kernel/errors.mjs` | `src/kernel/errors.mjs` | OS-152（码值 OS-157 去前缀） |
 | 2 | `next/fs/atomicWrite.mjs` | `src/kernel/atomicWrite.mjs` | OS-152 |
 | 3 | `electron/projects/fsDurability.mjs` | `src/kernel/fsDurability.mjs` | OS-152 |
-| 4 | `next/kernel/factFileStore.mjs` | `src/kernel/fact/factFileStore.mjs` | OS-156 |
-| 5 | `next/kernel/wikiDerive.mjs` | `src/kernel/fact/wikiDerive.mjs` | OS-156 |
-| 6 | `next/fact/usecases/factPack.js` | `src/kernel/fact/factPack.mjs` | OS-154 |
-| 7 | `next/fact/domain/aliases.js` | `src/kernel/fact/domain/aliases.js` | OS-153 |
-| 8 | `next/fact/domain/schema.js` | `src/kernel/fact/domain/schema.js` | OS-153 |
-| 9 | `next/fact/domain/stableId.js` | `src/kernel/fact/domain/stableId.js` | OS-153 |
-| 10 | `next/fact/domain/status.js` | `src/kernel/fact/domain/status.js` | OS-153 |
-| 11 | `next/fact/domain/validity.js` | `src/kernel/fact/domain/validity.js` | OS-153 |
-| 12 | `next/fact/domain/vocabulary.js` | `src/kernel/fact/domain/vocabulary.js` | OS-153 |
-| 13 | `next/fact/domain/perspective.js` | `src/kernel/fact/domain/perspective.js` | OS-153 |
-| 14 | `next/fact/domain/pediaSchema.js` | `src/kernel/fact/domain/index.mjs`（桶改名） | OS-153 |
-| 15 | `next/fact/usecases/enrich/pseudoChapters.mjs` | `src/kernel/enrich/pseudoChapters.mjs` | OS-154 |
-| 16 | `next/fact/usecases/enrich/metrics.mjs` | `src/kernel/enrich/metrics.mjs` | OS-154 |
+| 4 | `next/kernel/factFileStore.mjs` | `src/modules/fact/fact/factFileStore.mjs` | OS-156 |
+| 5 | `next/kernel/wikiDerive.mjs` | `src/modules/fact/fact/wikiDerive.mjs` | OS-156 |
+| 6 | `next/fact/usecases/factPack.js` | `src/modules/fact/fact/factPack.mjs` | OS-154 |
+| 7 | `next/fact/domain/aliases.js` | `src/modules/fact/fact/domain/aliases.js` | OS-153 |
+| 8 | `next/fact/domain/schema.js` | `src/modules/fact/fact/domain/schema.js` | OS-153 |
+| 9 | `next/fact/domain/stableId.js` | `src/modules/fact/fact/domain/stableId.js` | OS-153 |
+| 10 | `next/fact/domain/status.js` | `src/modules/fact/fact/domain/status.js` | OS-153 |
+| 11 | `next/fact/domain/validity.js` | `src/modules/fact/fact/domain/validity.js` | OS-153 |
+| 12 | `next/fact/domain/vocabulary.js` | `src/modules/fact/fact/domain/vocabulary.js` | OS-153 |
+| 13 | `next/fact/domain/perspective.js` | `src/modules/fact/fact/domain/perspective.js` | OS-153 |
+| 14 | `next/fact/domain/pediaSchema.js` | `src/modules/fact/fact/domain/index.mjs`（桶改名） | OS-153 |
+| 15 | `next/fact/usecases/enrich/pseudoChapters.mjs` | `src/modules/fact/enrich/pseudoChapters.mjs` | OS-154 |
+| 16 | `next/fact/usecases/enrich/metrics.mjs` | `src/modules/fact/enrich/metrics.mjs` | OS-154 |
 | 17 | `next/fact/usecases/deduce/opening.js` | `src/modules/deduce/engine/opening.mjs` | OS-155 |
 | 18 | `next/fact/usecases/deduce/turn.js` | `src/modules/deduce/engine/turn.mjs` | OS-155 |
 | 19 | `next/fact/usecases/deduce/settle.js` | `src/modules/deduce/engine/settle.mjs` | OS-155 |
@@ -38,6 +38,8 @@
 | 23 | `next/fact/usecases/deduce/sceneContext.js` | `src/modules/deduce/engine/sceneContext.mjs` | OS-155 |
 | 24 | `next/fact/usecases/deduce/sessionState.js` | `src/modules/deduce/engine/sessionState.mjs` | OS-155 |
 
+> 第 4–16 件在 C 批从 `src/kernel/{fact,enrich}/` 物理下移到 `src/modules/fact/{fact,enrich}/`，
+> 由 `fact` 模块的 `activate` 供给 `fact.store@3`／`fact.pack@1`／`fact.enrich@1`；来源与金样不变。
 > 第 15/16 件在上游不存在，是本仓 OS-FACT 批次 `be71a12` 入库后随 OS-154 一并转为自有；
 > 表中保留其上游「同目录」口径只为说明谱系，不表示可从上游同步。
 
@@ -49,7 +51,7 @@
 
 ## 二、本仓新写、无上游对应的装配件
 
-- `src/kernel/identity.mjs` / `src/kernel/index.mjs`（OS-157）：内核身份与公开面装配。
+- `src/kernel/identity.mjs` / `src/kernel/index.mjs`（OS-157）：物理内核身份与 plumber 公开面；C 批明确不再转供业务 fact/enrich。
 - `src/modules/deduce/engine/index.mjs`（OS-155）：四个推演端子的模块内出口。
 - `src/protocol/factDomain.mjs`（OS-155）：推演引擎取 fact 域原语的协议层转供叶。
 - `src/protocol/chapterNumber.mjs`（OS-157）：章节号解析纯函数，从库管理 fork 点上移协议层。

@@ -1,0 +1,18 @@
+{
+  "spec": "openstory-module@2",
+  "id": "prose",
+  "name": "正文内核",
+  "version": "1.0.0",
+  "builtin": true,
+  "description": "正文与剧本共用的章节命名、列举、保号改名、非破坏删除及带备份与修改痕迹的写协议。",
+  "class": "kernel",
+  "entry": "index.mjs",
+  "requires": [
+    { "id": "base.write", "min": 1 },
+    { "id": "base.naming", "min": 1 }
+  ],
+  "capabilities": [
+    { "id": "prose.write", "version": 1, "golden": "chapter-write-v1" }
+  ],
+  "endpoints": []
+}

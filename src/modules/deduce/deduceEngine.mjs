@@ -7,15 +7,17 @@
  * 引擎本身确定性（mulberry32 种子化 2d6），LLM 只是「戏剧」候选的可选来源——没配模型也能跑。
  * llmPort 规范接口见 docs/deduce-llm-port.md（本封装做显式形状校验，坏形状＝当 null 不炸）。
  *
- * 会话状态：一个库一个推演会话文件 `.openstory/deduce/<bookId>.json`（原子写，不碰 Pinax 元数据）。
+ * 会话状态：一个库一个推演会话文件 `.openstory/deduce/<bookId>.json`（原子写，不碰旧元数据目录）。
  */
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { mkdir } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fact } from '../../protocol/index.mjs' // OS-142：内核能力经 Host API fact 命名空间转出（模块纪律：modules 不直引内核实现）
 import { openDeduceSession, presentTurn, applyDirectorAction, settleChoice } from './engine/index.mjs'
+import { normalizeDeduceRules } from './engine/candidates.mjs'
 import { buildNarrativeContext, firstPersonify, readWikiSafe } from './deduceNarrative.mjs'
 import { atomicWriteFile } from '../../protocol/hostWrite.mjs'
+import { namingEntry } from '../../protocol/naming.mjs'
 
 const { factStore } = fact // OS-125 出口组的 fact 存储协议（经协议层转出）；推演端子 OS-155 起归本模块 engine/
 
@@ -23,9 +25,9 @@ function text(value) {
   return String(value ?? '')
 }
 
-export const DEDUCE_DIR = '.openstory/deduce'
+export const DEDUCE_DIR = `${namingEntry('libraryStorage').metadataDir}/deduce`
 
-/** 推演会话文件路径（库内，不碰 .pinax）。OS-86：sessionId='main'＝legacy 单文件，
+/** 推演会话文件路径（库内，不碰旧元数据目录）。OS-86：sessionId='main'＝legacy 单文件，
  *  其余局走 <bookId>@<sid>.json——引擎状态（round/seed/lastCandidates/fronts）跟局走。 */
 export function deduceStatePath(root, bookId, sessionId = '') {
   const safe = text(bookId).replace(/[^\w-]/gu, '_').slice(0, 64) || 'default'
@@ -34,7 +36,7 @@ export function deduceStatePath(root, bookId, sessionId = '') {
   return join(root, DEDUCE_DIR, `${safe}@${sid}.json`)
 }
 
-/** 读库内拆解条目（fact 通道，与 /api/entries 同源）。 */
+/** 读库内故事源条目（fact 通道，与 /api/entries 同源）。 */
 export function loadEntries(root) {
   const store = factStore.createFactFileStore({ root })
   const listed = store.list({ limit: 5000 })
@@ -44,7 +46,7 @@ export function loadEntries(root) {
 
 /**
  * 开局三件套（OS-93，照酒馆：选角色卡 → 选世界书 → 选开头）：
- *   books     拆解目录里的书（bookId＋标题＋各类条目数）＝世界书候选
+ *   books     故事源目录里的书（bookId＋标题＋各类条目数）＝世界书候选
  *   characters 角色卡（character 条目：名字/identity/archetype/出场数）
  *   openings  开头候选：引擎摆局（默认）＋剧情条目（每条剧情事实都是一个可进入的开头，
  *             对应酒馆 alternate_greetings 的位置——选它＝戏剧候选围绕这段锚定）
@@ -54,7 +56,7 @@ export function deduceOpening({ root }) {
   if (!loaded.ok) return { ok: false, code: 'INVALID_ENTRY', message: loaded.message }
   const entries = loaded.entries
   const books = []
-  const dir = join(root, '拆解')
+  const dir = join(root, namingEntry('storysource').dir)
   try {
     for (const name of readdirSync(dir)) {
       if (!name.endsWith('.json') || name.endsWith('.wiki.json')) continue  // wiki 是派生档不是世界书
@@ -80,7 +82,7 @@ export function deduceOpening({ root }) {
         })
       } catch { /* 坏档跳过 */ }
     }
-  } catch { /* 没有拆解目录 */ }
+  } catch { /* 没有故事源目录 */ }
   const characters = entries
     .filter((entry) => text(entry?.layer).toLowerCase() === 'character')
     .map((entry) => ({
@@ -109,6 +111,10 @@ function loadState(root, bookId, sessionId = '') {
   } catch {
     return null
   }
+}
+
+export function readLastTurn(root, bookId, sessionId = '') {
+  return loadState(root, bookId, sessionId)?.lastTurn ?? null
 }
 
 async function saveState(root, bookId, state, sessionId = '') {
@@ -175,7 +181,7 @@ function normalizeLlmPort(llmPort) {
   return { port, notes }
 }
 
-export async function deducePresent({ root, bookId = 'default', pov = '', seed = null, reset = false, peek = false, llmPort = null, sessionId = '', seedPrompt = '', chapterLimit = null } = {}) {
+export async function deducePresent({ root, bookId = 'default', pov = '', seed = null, reset = false, peek = false, llmPort = null, sessionId = '', seedPrompt = '', chapterLimit = null, rules = null } = {}) {
   const loaded = loadEntries(root)
   if (!loaded.ok) return { ok: false, code: 'INVALID_ENTRY', message: loaded.message }
   // OS-96：chapterLimit 给了＝世界书词条按首次出现章节过滤（写 到30 章 的库不给 31 章以后的知识）
@@ -189,9 +195,15 @@ export async function deducePresent({ root, bookId = 'default', pov = '', seed =
       return chapters.length ? Math.min(...chapters) <= limit : true
     })
   if (!entries.length) {
-    return { ok: false, code: 'INVALID_ENTRY', message: '这个库还没有拆解条目（worldview/角色/剧情），推演引擎需要事实包才能开局' }
+    return { ok: false, code: 'INVALID_ENTRY', message: '这个库还没有故事源条目（worldview/角色/剧情），推演引擎需要事实包才能开局' }
   }
   let state = reset ? null : loadState(root, bookId, sessionId)
+  let normalizedRules
+  try {
+    normalizedRules = normalizeDeduceRules(rules ?? state?.rules ?? undefined)
+  } catch (error) {
+    return { ok: false, code: 'INVALID_ENTRY', message: text(error?.message || error) }
+  }
   // peek（OS-60）：界面进入时只读当前局面，**不推进一拍**。
   if (peek) {
     if (!state) return { ok: false, code: 'NO_DEDUCE_SESSION', message: '这个库还没有推演会话' }
@@ -246,6 +258,7 @@ export async function deducePresent({ root, bookId = 'default', pov = '', seed =
   }
   const useSeed = Number.isSafeInteger(seed) ? seed : (state.seed ?? (Math.floor(Math.random() * 1e9)))
   state.seed = useSeed
+  state.rules = normalizedRules
   // OS-155：llmPort 显式形状校验（docs/deduce-llm-port.md）——坏形状只让戏剧候选缺席，不炸拍。
   const { port: safeLlmPort, notes: llmPortNotes } = normalizeLlmPort(llmPort)
   let turn
@@ -255,7 +268,7 @@ export async function deducePresent({ root, bookId = 'default', pov = '', seed =
     // OS-93：seedPrompt＝玩家选的开头（剧情骨架段）——戏剧候选围绕它锚定。
     turn = await presentTurn({
       state, entries, pov: pov || state.pov || null, seed: useSeed,
-      ...(seedPrompt ? { seedPrompt } : {}), ...(safeLlmPort ? { llmPort: safeLlmPort } : {})
+      ...(seedPrompt ? { seedPrompt } : {}), ...(safeLlmPort ? { llmPort: safeLlmPort } : {}), rules: normalizedRules
     })
   } catch (error) {
     return { ok: false, code: text(error?.code || 'INVALID_ENTRY'), message: text(error?.message || error) }
@@ -338,7 +351,8 @@ export function humanizeFateText(trace) {
   const b = Number.isFinite(Number(t.b)) ? Number(t.b) : null
   const sum = Number.isFinite(Number(t.sum)) ? Number(t.sum) : (a !== null && b !== null ? a + b : null)
   const success = t.success === undefined || t.success === null ? (sum !== null && sum >= 7) : t.success === true
-  const roll = sum !== null ? `（命运骰 ${sum}：${a}+${b} ${success ? '顺遂' : '受阻'}）` : ''
+  const dice = Array.isArray(t.rolls) && t.rolls.length ? t.rolls.map(Number).join('+') : `${a}+${b}`
+  const roll = sum !== null ? `（${text(t.label) || '命运骰'} ${sum}：${dice} ${success ? '顺遂' : '受阻'}）` : ''
   if (success) return `世界不拦你——事情按眼下最自然的走向推进${roll}`
   return `世界设了坎——这一步会受阻，有代价要收拾${roll}`
 }

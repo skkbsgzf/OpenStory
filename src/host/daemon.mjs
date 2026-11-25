@@ -41,21 +41,22 @@ import { HANDLERS } from '../api/registry.mjs'
 import { sendError, sendJson, readJson, text, DEFAULT_PORT } from './http.mjs'
 import { canonicalRoot, createRootAllowlist, loadLibraries, resolveInsideRoot } from './authorize.mjs'
 import { serveSuiteRequest } from '../services/suiteAssets.mjs'
-import { defaultAgentConfigPath, defaultSessionsDir } from '../modules/agentbar/agentStore.mjs'
+import { defaultAgentConfigPath, defaultSessionsDir } from '../protocol/agentStore.mjs'
 import { builtinStylesDir, defaultUserStylesDir } from '../services/stylePacks.mjs'
 import { builtinRuntimesDir, defaultUserRuntimesDir, stopAllSidecars } from '../services/runtimes.mjs'
 import { builtinSuitesDir, defaultSuiteStatePath, defaultUserSuitesDir } from '../services/suites.mjs'
 import { builtinGenresDir, defaultUserGenresDir } from '../services/genres.mjs'
 import { builtinSkillsDir, defaultUserSkillsDir } from '../services/skills.mjs'
-import { bootstrapKbHealth } from '../modules/kb/kbHealth.mjs'
-import { defaultKbConfigPath } from '../modules/kb/kbAdapter.mjs'
-import { resolveCollections } from '../modules/kb/kbRouter.mjs'
-import { isModuleDisabledFor, moduleManifest } from '../protocol/modules.mjs'
+import { bootstrapKbHealth } from '../protocol/kbHealth.mjs'
+import { defaultKbConfigPath } from '../protocol/kbAdapter.mjs'
+import { resolveCollections } from '../protocol/kbRouter.mjs'
+import { isModuleDisabledFor, moduleDegradationFor, moduleManifest } from '../protocol/modules.mjs'
+import { ensureLibraryUpgraded } from '../protocol/libraryUpgrade.mjs'
 
 /* ---------- 测试/工具面的再出口（OS-140 垫片契约）：实现迁走了，符号从原处继续拿 ---------- */
 export { browseMemoryPath, defaultBrowseRoot } from '../services/nativePicker.mjs'
 export { defaultPreferencesPath, loadLibraries, createRootAllowlist, resolveInsideRoot } from './authorize.mjs'
-export { listArtifacts, listLibraryFiles } from '../modules/library/inventory.mjs'
+export { listArtifacts, listLibraryFiles } from '../protocol/libraryInventory.mjs'
 export {
   historyBackupPath,
   mapWriteErrorCode,
@@ -64,11 +65,11 @@ export {
   pruneHistoryBackups,
   resolveHistoryKeepPerFile
 } from '../protocol/chapterWrite.mjs'
-export { lintHabits } from '../modules/habits/habits.mjs'
+export { lintHabits } from '../protocol/habits.mjs'
 export { resolveSuiteAssetPath } from '../services/suiteAssets.mjs'
 import { systemPromptFor } from '../services/systemPrompt.mjs'
 import { courtyardPath } from './courtyard.mjs'
-/** 测试钩子（OS-45）：把 systemPromptFor 暴露给单测，验「参考只给链接不给全文」。 */
+/** 测试钩子（OS-45）：把 systemPromptFor 暴露给单测，验「世界书只给链接不给全文」。 */
 export const __test = { systemPromptFor }
 
 /** OS-140 布局归一：本文件从仓根迁到 src/host/——HERE＝本文件目录（src/host），
@@ -77,14 +78,18 @@ const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO_ROOT = join(HERE, '..', '..')
 export { DEFAULT_PORT }
 export const DEFAULT_PUBLIC_DIR = join(REPO_ROOT, 'public')
+/** C5b：浏览器兼容叶只精确转供这一份 src 纯引擎，不开放整个 src/ 静态树。 */
+const TEXT_ENGINE_URL = '/src/modules/text/analysis.mjs'
+const TEXT_ENGINE_FILE = join(REPO_ROOT, 'src', 'modules', 'text', 'analysis.mjs')
 /** OS-80：当前监听的真实端口（port=0 时由系统分配）——handler 里要拼回环 URL 用。
  * 由 startDaemon 的 listen 回调写，handler 读。 */
 let __currentPort = DEFAULT_PORT
 function currentPort() { return __currentPort }
 /** OS-127 进程治理：本 daemon 进程的代际与启动时刻，/api/health 读这里。
  * CLI 启动序列的单实例闸会覆写成锁里的值（generation≥1）；测试内嵌 startDaemon()
- * 不走闸，generation 保持 0（整数即可过契约），startedAt 用 listen 成功时刻兜底。 */
-const DAEMON_RUNTIME = { generation: 0, startedAt: '', booted: false }
+ * 不走闸，generation 保持 0（整数即可过契约），startedAt 用 listen 成功时刻兜底。
+ * OS-188：运行时对象归 processServices，base.process 与 health 读同一份。 */
+import { PROCESS_RUNTIME as DAEMON_RUNTIME } from './processServices.mjs'
 const MAX_STATIC_BYTES = 8 * 1024 * 1024
 
 const MIME = Object.freeze({
@@ -129,7 +134,7 @@ function pidAlive(pid) {
 }
 
 /** 读锁：缺档/坏档/形状不对一律当无锁（previous=null），由调用方按首启或抢占处理。 */
-function readDaemonLock(lockPath) {
+export function readDaemonLock(lockPath) {
   try {
     const parsed = JSON.parse(readFileSync(lockPath, 'utf-8'))
     if (isPlainObject(parsed) && Number.isInteger(parsed.pid)) return parsed
@@ -279,7 +284,9 @@ async function serveStatic(req, res, url, publicDir) {
     return sendError(res, API_ERROR_CODES.INVALID_ENTRY, '静态路径编码不合法')
   }
   if (pathname === '/' || pathname === '') pathname = '/index.html'
-  const resolved = resolveInsideRoot(publicDir, pathname.replace(/^\/+/u, ''), { allowMetadata: true })
+  const resolved = pathname === TEXT_ENGINE_URL
+    ? { ok: true, path: TEXT_ENGINE_FILE }
+    : resolveInsideRoot(publicDir, pathname.replace(/^\/+/u, ''), { allowMetadata: true })
   if (!resolved.ok) {
     return sendError(res, API_ERROR_CODES.PATH_ESCAPE, '静态文件路径越界')
   }
@@ -352,6 +359,18 @@ async function handleApi(req, res, url, context) {
   if (!handler) {
     return sendError(res, API_ERROR_CODES.NOT_FOUND, `端点未实现：${endpointId}`)
   }
+  // OS-172：旧库必须在模块开关（会读 ui-state）与任何业务 handler 之前完成一次性升级。
+  // 只迁移请求显式指定且已授权的 root，不顺手碰默认库或清单里的其它库。
+  const requestedRoot = typeof checked.value?.root === 'string' ? allowlist.resolve(checked.value.root.trim()) : null
+  let libraryUpgrade = null
+  if (requestedRoot) {
+    libraryUpgrade = await ensureLibraryUpgraded(requestedRoot)
+    if (!libraryUpgrade.ok) {
+      return sendError(res, API_ERROR_CODES.LIBRARY_UPGRADE_FAILED, libraryUpgrade.message, {
+        phase: libraryUpgrade.phase, rolledBack: libraryUpgrade.rolledBack, rollbackErrors: libraryUpgrade.rollbackErrors
+      })
+    }
+  }
   // OS-144 模块插件闸：独占端点所属模块被停用 → MODULE_DISABLED（共用端点没有归属，照常放行）。
   // 库根取法（OS-146）：请求 root（已授权）优先——多库时按调用方自己的库判定；
   // 启动默认库/库清单第一条只是没带 root 时的兜底，不是语义。一个库都没有时无法判定，按启用处理。
@@ -360,7 +379,12 @@ async function handleApi(req, res, url, context) {
     const label = moduleManifest(owner)?.name ?? owner
     return sendError(res, API_ERROR_CODES.MODULE_DISABLED, `「${label}」模块已停用——重新启用后可用，已存的值与数据都还在`)
   }
-  return handler({ req, res, url, request: checked.value, context, allowlist, loaded })
+  const degraded = await moduleDegradationFor(endpointId, moduleGateRoot(checked.value, context, allowlist))
+  if (degraded) {
+    const label = moduleManifest(degraded.module)?.name ?? degraded.module
+    return sendError(res, API_ERROR_CODES.PLUGIN_DEGRADED, `「${label}」缺少所需能力，当前不可用`, degraded)
+  }
+  return handler({ req, res, url, request: checked.value, context, allowlist, loaded, libraryUpgrade })
 }
 
 /** 模块停用闸的库根解析（ui-state 是库内状态，没有库就只有缺省启用）。

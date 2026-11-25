@@ -20,7 +20,7 @@ async function makeFixture() {
   await mkdir(join(root, '大纲', '卷一'), { recursive: true })
   await mkdir(join(root, '正文'), { recursive: true })
   await mkdir(join(root, '日志'), { recursive: true })
-  await mkdir(join(root, '.pinax'), { recursive: true })
+  await mkdir(join(root, '.openstory'), { recursive: true })
   await mkdir(join(root, '.history'), { recursive: true })
   await writeFile(join(root, '大纲', '总大纲.md'), '# 总大纲\n\n三幕。', 'utf-8')
   await writeFile(join(root, '大纲', '卷一', '细纲.md'), '第一章：雨停。', 'utf-8')

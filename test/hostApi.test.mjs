@@ -72,13 +72,15 @@ test('快照覆盖全部命名空间（快照本身不许漏命名空间）', ()
   assert.deepEqual(Object.keys(SNAPSHOT).sort(), Object.keys(NAMESPACES).sort())
 })
 
-test('fact 命名空间与内核公开面五键同源（转出不换实现；@2 定稿）', async () => {
+test('fact 命名空间保留 @2 消费形状，事实实现归 fact 内核件', async () => {
   const kernel = await import('../src/kernel/index.mjs')
-  assert.equal(fact.factStore, kernel.factStore)
-  assert.equal(fact.enrich, kernel.enrich)
+  const { factCapability } = await import('../src/modules/fact/index.mjs')
+  assert.equal(fact.factStore, factCapability['fact.store'])
+  assert.equal(fact.enrich, factCapability['fact.enrich'])
   assert.equal(fact.ok, kernel.ok)
   assert.equal(fact.fail, kernel.fail)
   assert.equal(fact.writeFileAtomic, kernel.writeFileAtomic)
+  for (const gone of ['factStore', 'enrich']) assert.equal(gone in kernel, false)
   // OS-155/157：三组已退出 Host API，钥匙逐把钉死
   for (const gone of ['deduce', 'projectImport', 'projectMeta']) assert.equal(gone in fact, false)
   assert.equal(kernel.KERNEL_ID, 'openstory-kernel@1')
@@ -93,13 +95,13 @@ test('冻结是真冻结：改写命名空间成员静默失效（严格模式�
 test('反方向装载序冒烟：library fork 点先于 index 装载（子进程，独立模块表）', () => {
   const loader = `
 import assert from 'node:assert/strict'
-const projectDoc = await import(${JSON.stringify(pathToFileURL(join(ROOT, 'src/modules/library/projectDoc.mjs')).href)})
+const projectDoc = await import(${JSON.stringify(pathToFileURL(join(ROOT, 'src/modules/storage/projectDoc.mjs')).href)})
 const mod = await import(${JSON.stringify(pathToFileURL(join(ROOT, 'src/protocol/index.mjs')).href)})
 assert.equal(mod.HOST_API_VERSION, 'host-api@2')
 for (const name of ['fact', 'prose', 'changelog', 'jobs', 'events', 'plugins', 'guard']) {
   assert.equal(Object.isFrozen(mod[name]), true, name)
 }
-assert.equal(mod.fact.factStore.FACT_DIR_NAME, '拆解', 'fact 转出与内核同源（adapter 解散后环已断）')
+assert.equal(mod.fact.factStore.FACT_DIR_NAME, '故事源', 'fact 转出与内核同源（adapter 解散后环已断）')
 assert.equal(typeof projectDoc.writeProjectDocument, 'function', 'fork 点先装仍可独立工作')
 console.log('reverse-order ok')
 `

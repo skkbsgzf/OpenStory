@@ -16,6 +16,9 @@ import { mkdir, readdir, readFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { atomicWriteFile } from '../../protocol/hostWrite.mjs'
 import { courtyardPath } from '../../protocol/courtyard.mjs'
+import { maskApiKey } from '../../protocol/agentRuntime.mjs'
+
+export { maskApiKey }
 
 function text(value) {
   return String(value ?? '')
@@ -53,13 +56,6 @@ export function sessionDirFor(sessionsDir, root) {
 }
 
 /* ---------- 凭据配置 ---------- */
-
-export function maskApiKey(key) {
-  const raw = text(key).trim()
-  if (!raw) return ''
-  if (raw.length <= 8) return '••••'
-  return `••••${raw.slice(-4)}`
-}
 
 /** 配置规整：endpoint/model/apiKey/runtime 四个字符串字段；configured＝endpoint 或活动 kit 非空。 */
 export function normalizeAgentConfig(raw) {

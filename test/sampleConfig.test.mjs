@@ -38,10 +38,19 @@ function fixture() {
 }
 
 test('样例库自带配置在版本库里，形状与值可解析', () => {
-  const uiPath = join(SAMPLE, '.pinax', 'ui-state.json')
+  const uiPath = join(SAMPLE, '.openstory', 'ui-state.json')
   const suitePath = join(SAMPLE, '.openstory', 'plugins', 'suite-state.json')
-  assert.equal(existsSync(uiPath), true, '样例库应有 .pinax/ui-state.json')
+  assert.equal(existsSync(uiPath), true, '样例库应有 .openstory/ui-state.json')
   assert.equal(existsSync(suitePath), true, '样例库应有 .openstory/plugins/suite-state.json')
+  const project = JSON.parse(readFileSync(join(SAMPLE, '.openstory', 'project.json'), 'utf-8'))
+  assert.equal(project.spec, 'openstory-project@4')
+  assert.equal(project.schemaVersion, 4)
+  for (const dir of ['正文', '世界书', '故事源', '扮演', '习惯']) {
+    assert.equal(existsSync(join(SAMPLE, dir)), true, `样例库应有 ${dir}/`)
+  }
+  for (const dir of ['.pinax', '参考', '拆解', '推演', '导出']) {
+    assert.equal(existsSync(join(SAMPLE, dir)), false, `样例库不应残留 ${dir}/`)
+  }
   const ui = JSON.parse(readFileSync(uiPath, 'utf-8'))
   const state = JSON.parse(readFileSync(suitePath, 'utf-8'))
   assert.equal(typeof ui, 'object')
@@ -114,9 +123,9 @@ test('打开即复现：临时登记样例库副本，经真实 API 读到的配
   const root = join(f.base, '水浒传')
   // 只拷点名的两个配置文件到临时库根——daemon 带 --root 启动不要求库内有稿件；
   // 整库 cpSync 会带上 mp3/png 二进制（本环境 cpSync 二进制曾段错误），测试用不到它们。
-  mkdirSync(join(root, '.pinax'), { recursive: true })
+  mkdirSync(join(root, '.openstory'), { recursive: true })
   mkdirSync(join(root, '.openstory', 'plugins'), { recursive: true })
-  cpSync(join(SAMPLE, '.pinax', 'ui-state.json'), join(root, '.pinax', 'ui-state.json'))
+  cpSync(join(SAMPLE, '.openstory', 'ui-state.json'), join(root, '.openstory', 'ui-state.json'))
   cpSync(join(SAMPLE, '.openstory', 'plugins', 'suite-state.json'), join(root, '.openstory', 'plugins', 'suite-state.json'))
   let child = null
   try {
@@ -124,7 +133,9 @@ test('打开即复现：临时登记样例库副本，经真实 API 读到的配
       cwd: HERE, env: f.env, stdio: 'ignore'
     })
     let up = false
-    for (let i = 0; i < 60; i += 1) {
+    // OS-169：并发全量下 daemon 启动实测可到 12.9s，原 60×200ms=12s 预算会假红；
+    // 放宽到 90×200ms=18s（只放宽等待，不放宽任何配置断言）。
+    for (let i = 0; i < 90; i += 1) {
       await wait(200)
       try {
         const r = await fetch(`http://127.0.0.1:${port}/api/health`, { signal: AbortSignal.timeout(1000) })
@@ -137,7 +148,7 @@ test('打开即复现：临时登记样例库副本，经真实 API 读到的配
     const suites = await (await fetch(`http://127.0.0.1:${port}/api/suites?${q}`)).json()
     const ui = await (await fetch(`http://127.0.0.1:${port}/api/ui-state?${q}`)).json()
     const expectedSuite = JSON.parse(readFileSync(join(SAMPLE, '.openstory', 'plugins', 'suite-state.json'), 'utf-8'))
-    const expectedUi = JSON.parse(readFileSync(join(SAMPLE, '.pinax', 'ui-state.json'), 'utf-8'))
+    const expectedUi = JSON.parse(readFileSync(join(SAMPLE, '.openstory', 'ui-state.json'), 'utf-8'))
     const writing = suites.suites.find((s) => s.id === 'writing')
     assert.equal(writing.enabled, expectedSuite.suites.writing.enabled)
     assert.equal(writing.values.newChapterTitle, expectedSuite.suites.writing.values.newChapterTitle)

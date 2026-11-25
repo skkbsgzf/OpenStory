@@ -7,20 +7,23 @@ import path from 'node:path'
 import { fail, ok } from '../../protocol/kernelPlumber.mjs' // OS-142：内核 plumber 经协议层叶子转供（fork 点专用；本文件函数体内使用，循环引用安全）
 import { parseChapterNumber } from './textUtil.mjs'
 import { parseWorldbookEntryFile } from './textUtil.mjs'
+import { namingEntry } from '../../protocol/naming.mjs'
+
+const METADATA_DIR = namingEntry('libraryStorage').metadataDir
+const WORLDBOOK_DIR = namingEntry('worldbook').dir
 
 /**
- * Next 侧整目录导入（工单E1 · 裁定A：结构动作与建项目同级，走 shell 通道，不经写族闸）。
+ * 整目录导入（OS-123 自持 fork 点；工单 E1 · 裁定 A：结构动作与建项目同级，走 shell 通道，不经写族闸）。
  *
- * 为什么不直接调 `pinax_project_import`：那份实现的分类与落盘全程经
- * `resolveProject()`（server/mcp/localProjects.js:62-72）——目标必须是 `spec=pinax-project@1`
- * 的本地项目；Next 建的项目写 `pinax-project@2`（next/kernel/projectSkeleton.mjs:11），
- * 一进门就 `ERR_SPEC_MISMATCH`。且它拒吃「源＝项目根」（server/mcp/projectImport.js:364-366），
- * 「选一个目录就地归类」这条路本身也不成立。所以这里走裁定给的第二条：Next 自写薄导入器。
+ * 历史移植背景：fork 时没有直接复用上游 `pinax_project_import`，原因是那份实现
+ * 的分类与落盘全程经 `resolveProject()`（server/mcp/localProjects.js:62-72）——目标必须是
+ * `spec=pinax-project@1` 的本地项目；当时 Next 建的项目写 `pinax-project@2`
+ * （next/kernel/projectSkeleton.mjs:11），一进门就 `ERR_SPEC_MISMATCH`；且它拒吃
+ * 「源＝项目根」（server/mcp/projectImport.js:364-366）。因此 fork 点改为本仓自持薄导入器。
  *
- * 同源约定（改动需双侧同步）：类别表、章节形态、目录白名单、跳过理由与大小上限逐条照抄
- * `server/mcp/projectImport.js:16-44`；中文序号解析直接复用它的 `parseChapterNumber`，
- * 世界书契约 v2 的判定复用内核同一个 `parseWorldbookEntryFile`——分类是规则不是语义，
- * 两边认不出的东西都不许替作者编号或编类别。
+ * 历史来源对照（本仓自持后不再与上游同步）：类别表、章节形态、目录白名单、跳过理由与大小上限
+ * 抄自 `server/mcp/projectImport.js:16-44`；中文序号解析与当时实现同源；世界书契约 v2 的判定
+ * 复用本仓同一个 `parseWorldbookEntryFile`——分类是规则不是语义，认不出的东西不替作者编号或编类别。
  *
  * 承诺（与 MCP 侧同一口径）：
  *   - 源目录永远只读：这里不写、不改、不删 sourcePath 下的任何文件；
@@ -29,7 +32,7 @@ import { parseWorldbookEntryFile } from './textUtil.mjs'
  *   - 认不出类别的文件一律进 skipped 带 reason，不猜。
  */
 
-/** 与 server/mcp/projectImport.js:11-13 同源。 */
+/** 历史来源：与 server/mcp/projectImport.js:11-13 同源。 */
 export const IMPORT_LIMITS = Object.freeze({
   maxFiles: 400,
   maxFileBytes: 2 * 1024 * 1024,
@@ -37,7 +40,7 @@ export const IMPORT_LIMITS = Object.freeze({
   maxDepth: 12
 })
 
-/** 源目录顶层名 → 类别（server/mcp/projectImport.js:16-28 的同一张表；剧本是 Next 侧新增类）。 */
+/** 源目录顶层名 → 类别（历史来源：server/mcp/projectImport.js:16-28；剧本是 fork 时新增类）。 */
 export const IMPORT_CATEGORY_BY_DIR = Object.freeze({
   正文: 'chapter',
   剧本: 'script',
@@ -48,15 +51,15 @@ export const IMPORT_CATEGORY_BY_DIR = Object.freeze({
   构思: 'idea',
   资料: 'source',
   素材: 'source',
-  参考: 'source',
+  参考: 'worldbook',
   归档: 'source',
   日志: 'log'
 })
 
 /** 项目内允许写入的顶层目录（白名单；越出即拒绝，绝不写到项目外）。 */
-// OS-164/G8b：参考/ 是真正的世界书笔记目录，导入稿件必须能写进去（原来白名单漏了它）。
+// OS-172：世界书是唯一目标目录；旧稿源目录名只用于识别，不重新生成旧布局。
 // 退场目录（大纲/构思/资料/约束）仍留在白名单里——旧载体导入要能读进来，只是新建库不再建它们。
-const ALLOWED_PROJECT_DIRS = new Set(['正文', '剧本', '参考', '大纲', '世界书', '构思', '资料', '日志', '约束'])
+const ALLOWED_PROJECT_DIRS = new Set(['正文', '剧本', WORLDBOOK_DIR, '大纲', '构思', '资料', '日志', '约束'])
 
 /**
  * 逐类导入（向导「一种或几种都可以」）的类别闭集：作者勾选哪些类，就各给一个只读源目录。
@@ -149,7 +152,7 @@ function walkSource(root, { maxDepth = IMPORT_LIMITS.maxDepth } = {}) {
       if (entry.isSymbolicLink()) { symlinks.push(relative(root, file)); continue }
       if (entry.isDirectory()) {
         if (entry.name === '.kb' || entry.name.startsWith('.')) continue
-        if (depth === 0 && entry.name === 'pinax') continue
+        if (depth === 0 && entry.name === METADATA_DIR) continue
         visit(file, depth + 1, [...chain, entry.name])
         continue
       }
@@ -195,7 +198,7 @@ function classifyFile({ entry, text, forced = null }) {
       }
       return { decision: 'outline-json', name: 'outline', target: '大纲/outline.json', nodes: parsed.nodes.length, chars: normalizeText(text).length }
     }
-    if (topDir === '世界书' && /^(?:graph|manifest)$/iu.test(cleanName)) {
+    if ((topDir === '世界书' || topDir === '参考') && /^(?:graph|manifest)$/iu.test(cleanName)) {
       return {
         decision: 'skip',
         reason: 'graph-owned-by-indexer',
@@ -227,7 +230,7 @@ function classifyFile({ entry, text, forced = null }) {
         decision: 'skip',
         reason: 'worldbook-not-conform',
         code: parsed.error?.code || 'PARSE_FAILED',
-        detail: `世界书条目不合契约 v2（${parsed.error?.message || '解析失败'}）；Next 侧薄导入器只导合规条目，请用 MCP 的 pinax_project_import（worldbookMode:"wrap"）重跑这一批，或单条用 pinax_worldbook_write 重写`
+        detail: `世界书条目不合契约 v2（${parsed.error?.message || '解析失败'}）；请先按世界书文件契约修正 frontmatter，再重新生成导入计划`
       }
     }
     const entryName = cleanTitle(parsed.entry.name) || cleanName
@@ -236,7 +239,7 @@ function classifyFile({ entry, text, forced = null }) {
       decision: 'worldbook',
       name: entryName,
       categoryDir,
-      target: `世界书/${categoryDir}/${safeSegment(entryName)}.md`,
+      target: `${WORLDBOOK_DIR}/${categoryDir}/${safeSegment(entryName)}.md`,
       type: String(parsed.entry.kind || 'general'),
       id: parsed.entry.id || null,
       chars: String(parsed.entry.content || '').length
@@ -260,7 +263,7 @@ function classifyFile({ entry, text, forced = null }) {
       return { decision: 'skip', reason: 'chapter-unidentified', detail: `认不出章节序号与标题（${entry.relative}）；正文需要 第N章 标题或 NNN-标题 形态（文件名、章节目录名或正文开头任一命中），不替作者编号` }
     }
     if (!shape.number) {
-      return { decision: 'skip', reason: 'chapter-unnumbered', detail: `有标题但认不出序号（${entry.relative}）；确认后请用 pinax_chapter_import 指定 chapterNumber` }
+      return { decision: 'skip', reason: 'chapter-unnumbered', detail: `有标题但认不出序号（${entry.relative}）；请在源文件名或正文标题中补上章节号后重试` }
     }
     return { decision: 'chapter', number: shape.number, title: shape.title || `第${shape.number}章`, target: `正文/${String(shape.number).padStart(3, '0')}-${safeSegment(shape.title || `第${shape.number}章`)}.md`, chars: normalizeText(text).length }
   }
@@ -350,9 +353,10 @@ function resolveInputs({ sourcePath, targetPath, sources } = {}) {
     if (isInside(root, targetRoot)) {
       return fail('INVALID_INPUT', `${label}不能在新项目位置里面：导入只新增目标项目里的文件，绝不往源目录写。`)
     }
-    // 裁定第 5 条：源目录里已有 .pinax/ → 计划阶段如实报「该目录已是或曾是 Pinax 项目」并停，不猜。
-    if (fs.existsSync(path.join(root, '.pinax'))) {
-      return fail('INVALID_INPUT', `${label}已是或曾是 Pinax 项目（含 .pinax/ 元数据目录）：${root}。导入源必须是作者的原稿目录——请另选一个目录，或先把 .pinax/ 移走再导入。`, { sourcePath: root })
+    const legacyMetadata = path.join(root, '.pinax')
+    if (fs.existsSync(legacyMetadata) || fs.existsSync(path.join(root, METADATA_DIR, 'project.json'))) {
+      const kind = fs.existsSync(legacyMetadata) ? '旧版项目（含 .pinax/）' : 'OpenStory 项目'
+      return fail('INVALID_INPUT', `${label}已是${kind}：${root}。导入源必须是作者的原稿目录——请直接在库清单打开项目，或另选一个目录。`, { sourcePath: root })
     }
   }
   // 多源之间也要互不包含：两个源互相套着，「只读源」的边界就说不清了。
@@ -367,8 +371,8 @@ function resolveInputs({ sourcePath, targetPath, sources } = {}) {
     }
   }
   // 目标必须是已建骨架的项目根（向导先建项目再导入）。
-  if (!fs.existsSync(path.join(targetRoot, '.pinax', 'project.json'))) {
-    return fail('INVALID_INPUT', `新项目位置还不是 Pinax 项目（缺 .pinax/project.json）：${targetRoot}。向导会先用「先建项目」建好骨架再导入。`, { targetPath: targetRoot })
+  if (!fs.existsSync(path.join(targetRoot, METADATA_DIR, 'project.json'))) {
+    return fail('INVALID_INPUT', `新项目位置还不是 OpenStory 项目（缺 ${METADATA_DIR}/project.json）：${targetRoot}。向导会先用「先建项目」建好骨架再导入。`, { targetPath: targetRoot })
   }
   return ok({ sourceRoot: sourceRoots[0].root, roots: sourceRoots, targetRoot, sources: list ? list.map((item) => ({ category: item.category, path: path.resolve(item.path) })) : null })
 }
@@ -463,12 +467,12 @@ function buildPlan({ roots }) {
 
 function baseReport({ mode, sourceRoot, targetRoot, built }) {
   const warnings = [
-    '正文/ 与 大纲/ 不在 RAG 输入集（世界书/资料/规则/约束/文风）里；要让 Agent 查到设定，需要 世界书 与 约束 有内容并跑 pinax_project_index。',
+    '正文/ 与 大纲/ 不在 RAG 输入集（世界书/资料/规则/约束/文风）里；要让 Agent 查到设定，请把相关内容整理进世界书或约束。',
     '源目录只读：本次导入不写、不改、不删源目录下的任何文件。'
   ]
   if (built.scanned.symlinks.length) warnings.push(`源目录含 ${built.scanned.symlinks.length} 个符号链接，已跳过（知识索引遇到符号链接会整次拒绝）。`)
   if (built.scanned.tooDeep.length) warnings.push(`源目录有 ${built.scanned.tooDeep.length} 处层级超过 ${IMPORT_LIMITS.maxDepth} 层，已跳过。`)
-  if (built.byReason['worldbook-not-conform']) warnings.push(`有 ${built.byReason['worldbook-not-conform']} 个世界书文件不合契约 v2；Next 侧薄导入器不改写作者文本，可用 MCP 的 pinax_project_import（worldbookMode:"wrap"）单独处理这一批。`)
+  if (built.byReason['worldbook-not-conform']) warnings.push(`有 ${built.byReason['worldbook-not-conform']} 个世界书文件不合契约 v2；导入器不改写作者文本，请先修正后再重试。`)
   if (mode === 'plan') warnings.unshift('当前是计划模式（dryRun）：未写入任何文件；核对每项的 target 后再按「执行导入」落盘。')
 
   return {
@@ -505,8 +509,8 @@ function baseReport({ mode, sourceRoot, targetRoot, built }) {
     warnings,
     next: built.deduped.length
       ? (mode === 'plan'
-        ? ['核对 items 的 decision 与 target', '需要调整类别就先整理源目录再重新生成计划', '按「执行导入」落盘', '跑 pinax_project_index 同步 RAG']
-        : ['跑 pinax_project_index 同步 RAG', '用 project-bootstrap 状态卡复核剩余问题'])
+        ? ['核对 items 的 decision 与 target', '需要调整类别就先整理源目录再重新生成计划', '按「执行导入」落盘']
+        : ['检查导入报告并复核剩余问题'])
       : ['没有可导入文件：按 skipped 的 reason 处置源目录']
   }
 }

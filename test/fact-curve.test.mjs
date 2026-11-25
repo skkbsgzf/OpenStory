@@ -1,5 +1,5 @@
 /**
- * fact 曲线端点用例（OS-41·分析对齐拆解线）——章级序列/情绪/剧情点/事件数，无拆解数据降级。
+ * fact 曲线端点用例（OS-41·分析对齐故事源线）——章级序列/情绪/剧情点/事件数，无故事源数据降级。
  * 跑法：node --test test/fact-curve.test.mjs
  */
 import test from 'node:test'
@@ -19,10 +19,10 @@ async function makeLibrary(base, name) {
   return { root, preferencesPath }
 }
 
-test('fact 曲线：无拆解数据 → chapters 空 books 空，降级 200', async () => {
+test('fact 曲线：无故事源数据 → chapters 空 books 空，降级 200', async () => {
   const base = await mkdtemp(join(tmpdir(), 'os-factcurve-'))
   try {
-    const { root, preferencesPath } = await makeLibrary(base, '无拆解库')
+    const { root, preferencesPath } = await makeLibrary(base, '无故事源库')
     const daemon = await startDaemon({ port: 0, preferencesPath, env: { ...process.env, LOCALAPPDATA: base }, logger: { log() {} } })
     try {
       const res = await fetch(`http://127.0.0.1:${daemon.port}/api/fact/curve?${new URLSearchParams({ root }).toString()}`)
@@ -44,7 +44,7 @@ test('fact 曲线：e2e 夹具库 → 三章序列（功能/情绪/剧情点/事
   const base = await mkdtemp(join(tmpdir(), 'os-factcurve2-'))
   try {
     const { root, preferencesPath } = await makeLibrary(base, '夹具库')
-    // 复用 e2e fact 夹具（拆解/ 三章 fact）——OS-135② 起夹具真相收编进 fixtures/osE2eBook.mjs，
+    // 复用 e2e fact 夹具（故事源/ 三章 fact）——OS-135② 起夹具真相收编进 fixtures/osE2eBook.mjs，
     // 写进本用例的临时目录（不再 cp 未跟踪的 test/fixtures/os-e2e 残留）
     await writeE2eBookFixture(root)
     const daemon = await startDaemon({ port: 0, preferencesPath, env: { ...process.env, LOCALAPPDATA: base }, logger: { log() {} } })

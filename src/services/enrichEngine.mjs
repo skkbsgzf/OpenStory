@@ -11,7 +11,7 @@
  *
  * 与 devtools 版的差异只有两处：
  *   · LLM 走注入的 llmPort（宿主接 runtime kit），不再绑死 dispatchDotsCompletion；
- *   · 事实条目由调用方传入（factFileStore 取），不再自己读拆解 JSON。
+ *   · 事实条目由调用方传入（factFileStore 取），不再自己读故事源 JSON。
  * 落盘走 writeFactFile 写兄弟 `<bookId>.wiki.json`（S2 契约，旁挂优先）。
  *
  * 溯源纪律（TRACE_HEADER）沿用 Pinax 六槽位口径：章号证据 / 三态置信 / 引用≤40字。
@@ -22,7 +22,9 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fact } from '../protocol/index.mjs' // OS-142：内核能力经 Host API fact 命名空间转出（与 src/modules 同纪律，不直引内核实现）
 import { recordChange } from '../protocol/changelog.mjs'
-import { LOG_MODULES } from '../protocol/naming.mjs' // OS-148：日志模块名只从命名表取
+import { LOG_MODULES, namingEntry } from '../protocol/naming.mjs'
+
+const FACT_DIR = namingEntry('storysource').dir
 
 const { factStore, enrich } = fact // OS-125 出口组的 fact 存储协议＋enrich 度量（经协议层转出，实现不换）
 
@@ -194,7 +196,7 @@ function finalizeCausal(parts) {
  *
  * @param {object} input
  * @param {string} input.root 库根
- * @param {string} input.bookId 书 ID（拆解文件名主干）
+ * @param {string} input.bookId 书 ID（故事源文件名主干）
  * @param {object[]} input.entries 事实条目（factFileStore.list 取）
  * @param {object} input.book 书元数据（{id,title,author,word_count,subject_group?…}）
  * @param {({prompt:string, maxTokens?:number}) => Promise<{text:string}>} input.llmPort 模型通道
@@ -741,9 +743,9 @@ export async function enrichBook({ root, bookId, entries, book, llmPort, protago
   // OS-107：写前留原文（写后读不到旧内容）——变更日志的 diff/before 靠它。
   // 只写兄弟 wiki 档：记日志的 file 必须是 `<bookId>.wiki.json`，不能记主档
   // （主档 revision 与派生档 derivedFrom.factRevision 不是同一个版本语义）。
-  const wikiRel = `拆解/${bookId}.wiki.json`
+  const wikiRel = `${FACT_DIR}/${bookId}.wiki.json`
   let beforeWikiRaw = ''
-  try { beforeWikiRaw = readFileSync(join(root, '拆解', `${bookId}.wiki.json`), 'utf-8') } catch { beforeWikiRaw = '' }
+  try { beforeWikiRaw = readFileSync(join(root, FACT_DIR, `${bookId}.wiki.json`), 'utf-8') } catch { beforeWikiRaw = '' }
   const written = await factStore.writeFactFile({
     root,
     bookId,
@@ -756,7 +758,7 @@ export async function enrichBook({ root, bookId, entries, book, llmPort, protago
   } else {
     // 写成功即记（日志失败不阻断 enrich，但进 failures 如实报——不假装记上了）。
     try {
-      const afterWikiRaw = readFileSync(join(root, '拆解', `${bookId}.wiki.json`), 'utf-8')
+      const afterWikiRaw = readFileSync(join(root, FACT_DIR, `${bookId}.wiki.json`), 'utf-8')
       const logged = await recordChange({
         root,
         module: LOG_MODULES.storysource,
@@ -812,10 +814,10 @@ export async function enrichGraph({ root, bookId } = {}) {
     const listed = await store.list({})
     const entries = listed.entries ?? []
     // wiki 旁挂/内嵌双代兼容走 readFactWiki（同 daemon entries 通道口径）
-    const datasetPath = join(root, '拆解', `${bookId}.json`)
+    const datasetPath = join(root, FACT_DIR, `${bookId}.json`)
     let document = null
     try { document = JSON.parse(readFileSync(datasetPath, 'utf8')) } catch { document = null }
-    if (!document) return { ok: false, code: 'NOT_FOUND', message: `拆解文件不存在：${bookId}` }
+    if (!document) return { ok: false, code: 'NOT_FOUND', message: `故事源文件不存在：${bookId}` }
     const { wiki } = factStore.readFactWiki({ root, id: bookId, document })
     const causalGraph = wiki?.causalGraph ?? null
     const metrics = causalGraph ? enrich.causalSummary(causalGraph) : null

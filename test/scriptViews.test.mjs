@@ -135,11 +135,12 @@ test('纯度：scriptViews 零 import、零 DOM、零存储', () => {
 
 test('纯度：app.js 四个剧本函数本体已迁走（只留薄壳）', () => {
   const src = readFileSync(join(REPO, 'public/app.js'), 'utf-8')
+  const referencePageSrc = readFileSync(join(REPO, 'public/views/referencePageViews.mjs'), 'utf-8')
   const targets = [
-    ['scriptBlockToRaw', 'scriptBlockToRaw'],
-    ['scriptPrefs', 'scriptPrefsFrom'],
-    ['scriptCastHtml', 'scriptCastHtml'],
-    ['scriptViewHtml', 'scriptViewHtml']
+    ['scriptBlockToRaw', 'scriptViews.scriptBlockToRaw'],
+    ['scriptPrefs', 'scriptViews.scriptPrefsFrom'],
+    ['scriptCastHtml', 'referencePageViews?.scriptCastHtml'],
+    ['scriptViewHtml', 'scriptViews.scriptViewHtml']
   ]
   for (const [name, delegated] of targets) {
     const start = src.indexOf(`function ${name}(`)
@@ -153,6 +154,7 @@ test('纯度：app.js 四个剧本函数本体已迁走（只留薄壳）', () =
     }
     const shell = src.slice(open + 1, close)
     assert.ok(shell.length < 700, `${name} 应是薄壳（<700 字符），实际 ${shell.length}`)
-    assert.ok(shell.includes(`scriptViews.${delegated}`), `${name} 必须转交 scriptViews`)
+    assert.ok(shell.includes(delegated), `${name} 必须转交 views 模块：${delegated}`)
   }
+  assert.match(referencePageSrc, /scriptViews\(\)\.scriptCastHtml\(/u, '参考资料页取数后仍转交剧本纯视图')
 })

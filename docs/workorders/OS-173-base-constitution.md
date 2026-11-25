@@ -7,7 +7,7 @@
 | 依赖 | OS-172（互认拆除的结论要写进 ADR） |
 | 允许改动 | `docs/**`（只许新建／修改 `docs/adr/0002-base-constitution.md`、`docs/protocol/module-manifest-2.md` 与本工单） |
 | 风险 | 低（不迁代码） |
-| 状态 | 待派 |
+| 状态 | A2 设计已验收；B1–B5、C 批与 D1–D4 已实施，D4 动态装载裁定见 ADR 0003 |
 
 通用规则见 [`COMMON-RULES.md`](COMMON-RULES.md)。
 
@@ -18,7 +18,7 @@
 ## 动工前必读
 
 - 规划文档全文（§1 架构、**§1.3a 分类重捋稿**、§2 协议要点、§3 评审意见 R1–R14）。
-- 当前实现：`src/host/{daemon,http,moduleHooks}.mjs`、`src/protocol/{index,modules,naming,apiErrors}.mjs`、`src/kernel/index.mjs`、14 份 `src/modules/*/module.manifest.json`。
+- A2 开工前实现基线（历史）：`src/host/{daemon,http,moduleHooks}.mjs`、`src/protocol/{index,modules,naming,apiErrors}.mjs`、`src/kernel/index.mjs`、14 份 `src/modules/*/module.manifest.json`。当前清单以 `ARCHITECTURE.md` 生成段为准。
 - 既有裁定：`docs/adr/0001-fact-schema-unification.md`、`docs/LEGACY-ITEMS.md`、`AGENTS.md` 硬规则。
 
 ## 任务
@@ -64,4 +64,34 @@
 
 ## 施工回报（编排器自动归档）
 
+- 2026-11-25：主 agent 完成 A2 设计，未派 CodeBuddy，未改代码/测试/manifest/规划文档。
+- 新建 [ADR 0002](../adr/0002-base-constitution.md)：三名一致表、七内核件、工作台两档＋宿主面、六种套件、底座五件质询、自举、四个开放问题、R1–R14、三条反转留痕、Pinax 收尾落点、待作者裁定。
+- 新建 [module-manifest@2 协议](../protocol/module-manifest-2.md)：class 必填矩阵、能力区间与金样、启动三检查、两条停用语义、覆盖四守卫、单向迁移、底座 API/禁改区、错误信封、装载源、现行机制迁移索引、@1→@2 推断与 B/C/D 必填时点。
+- 证据基线：`openstory-module@1`、14 模块/4 core、105 端点、27 项验收、702 例（700 过/2 跳过/0 挂）、`app.js` 11,838 行；货架覆盖、suite page 模式、runtime kit 命令入口、naming re-export 均按当前代码记录。
+- 设计推荐：新增 `text/media`；runtime kit 作为 suite 的 `runtime` 受控扩展；`生图与识图→imagegen`、`知识库→knowledge`；宿主面不套 workbench；新 suite 禁宿主可执行代码，legacy page 模式隔离。
+- 明确未做：不运行产品测试（纯文档单）；不新建 demo；不立 B 批工单；不 commit/push。
+
 ## 验收记录（主 agent 填）
+
+- 2026-11-25：**文档层验收通过，待作者过目。**
+- 范围核对：本单只改本工单并新建 ADR/协议两份文档；无代码、测试、manifest、`.zcode` 或规划文档改动。
+- 内容核对：三名一致覆盖 15 个用户可见概念；七内核件、12 个工作台、3 个宿主面、六种套件均有归类理由；R1–R14 逐项有处置；四个开放问题有结论；反转留痕与 Pinax 收尾落点齐全。
+- 一致性核对：ADR 与协议的 class、能力 id、slug 建议、hard/optional 依赖、覆盖/迁移边界、错误码和 B/C/D 时点一致。
+- 证据核对：现状结论引用当前 `文件:符号`；未来协议明确标为讨论稿，未冒充已实现。
+- 作者门槛：ADR §九 D1–D8 为请作者过目项；作者点头前 B 批不开工。
+
+## C6 追加实施回报（工具/测试/文档层）
+
+- 范围：只修改 `tools/**`、架构/数字锚相关 `test/**`、`docs/**`、`ARCHITECTURE.md`；未修改
+  `src/**`、`public/**`、`package.json`、`.zcode/**`，未提交，未触碰真实用户库。
+- 当前清单：20 份 manifest＝7 kernel＋11 workbench＋2 宿主组合面；运行时显式 stage C。
+  stage B 双读测试保留为迁移兼容证据，不再代表生产缺字段策略。
+- `tools/arch-stats.mjs` 取消 L2 旧层，按底座/契约/协议/manifest class/服务/资源/前端实测生成；
+  `ARCHITECTURE.md` 生成段由脚本回写，叙述不再手写当前规模。
+- S2.1/S2.4'/S2.7 分别收口能力路由、底座边界与能力归属；S2.7 在独立进程真实调用 activate
+  并校验贡献。27 项验收 id 与全部 endpoint/MCP 名保持不变。
+- `APP_JS_LINE_CEILINGS` 追加 10,500 当前目标，保留 11,886 初始值与只降不升断言；
+  `docs/number-anchors.json` 由脚本生成。
+- 仍需主 agent 处理：统一能力注册漏项、manifest 与 activate 的 hard require 不一致，以及
+  S2.1/S2.4' 点名的 src 直连/反向依赖。它们不得通过删断言或扩大豁免伪装完成。
+- 最终命令与实测结果以本次任务回报为准；本段不把历史 14 模块/702 例/11,838 行改写为当前事实。

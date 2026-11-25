@@ -9,7 +9,7 @@
  *
  * 全程不落库——条目/会话/事件由调用方（daemon）按既有协议写。
  */
-import { analyzeChapter } from '../../../public/analysis.mjs'
+import { analyzeChapter } from '../../protocol/text.mjs'
 import {
   ROLEPLAY_BASE_SYSTEM,
   hostSystemPrompt,
@@ -39,7 +39,7 @@ export function worldbookDigestOf(entries, { limit = 12 } = {}) {
  * @param {(prompt: string, opts?: object) => Promise<string>} opts.chatComplete  文本模型调用（daemon 注入）
  * @param {Array} opts.entries       世界书/事实条目（已按 chapterLimit 过滤）
  * @param {string} opts.premise      前置条件（本局设定为真）
- * @param {Array<{name,identity,archetype,personality}>} opts.cast  可用角色卡（拆解 character 条目）
+ * @param {Array<{name,identity,archetype,personality}>} opts.cast  可用角色卡（故事源 character 条目）
  * @param {string} opts.playerAction 玩家本回合的操作（选项文本或自由输入）
  * @param {string} opts.pov          玩家扮演谁（='主持人' 时玩家就是主持人本人）
  * @param {string} opts.recent       最近几拍的剧情摘要（给上下文）
@@ -240,7 +240,7 @@ export async function compressMemory({ chatComplete, session, batch = 6 } = {}) 
 }
 
 
-/** AI 味过检（OS-102）：世界反馈落稿前跑 analysis.mjs 的四因子；
+/** AI 味过检（OS-102）：世界反馈落稿前跑 text.analyze@1 的四因子；
  *  总分超阈就用提示词重写一次（只改文风，不改事实）。失败则保留原稿。
  *  作者对 AI 味敏感——扮演成文不能绕过这道闸。
  *  OS-144：分析模块停用时由宿主传 enabled:false 跳过（停用＝不过闸），原文逐字返回。 */

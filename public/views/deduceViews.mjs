@@ -52,7 +52,7 @@ export function dedPackHtml({ data = {}, esc } = {}) {
     { ok: rich, label: '候选来源', hint: rich ? [...sources].join('／') : '只有命运骰——补条目才会出「必然」' }
   ]
   return `<section class="ded-card ded-pack">
-      <div class="ded-card-head"><h3>世界底账</h3><span class="sub">扮演的根基在这份拆解里</span></div>
+      <div class="ded-card-head"><h3>世界底账</h3><span class="sub">扮演的根基在这份故事源里</span></div>
       ${items.map((item) => `<div class="ded-pack-row ${item.ok ? 'ok' : 'gap'}">
         <span class="ded-pack-ic">${item.ok ? '✓' : '○'}</span>
         <span class="ded-pack-label">${html(item.label)}</span>
@@ -125,7 +125,7 @@ export function deduceTurnLineHtml(node, { esc, text, fateHuman } = {}) {
   return `<div class="fl-you"><span class="fl-you-text">${html(chosenText)}</span></div>`
 }
 
-/** 待确认事实卡（OS-82）：写进拆解前的最后一道闸。 */
+/** 待确认事实卡（OS-82）：写进故事源前的最后一道闸。 */
 export function deducePendingFactHtml(item, { esc, text } = {}) {
   const html = esc ?? ((value) => String(value ?? ''))
   const asText = text ?? ((value) => String(value ?? ''))
@@ -140,7 +140,7 @@ export function deducePendingFactHtml(item, { esc, text } = {}) {
     <p class="ded-factcard-name">${html(asText(entry.name))}</p>
     <p class="ded-factcard-def">${html(asText(entry.definition))}</p>
     <div class="ded-factcard-ops">
-      <button class="fl-btn is-primary" data-action="deduce-pending-write" data-id="${html(asText(item?.id))}" title="写入库内拆解文件（单条追加，不动其他条目）">写入拆解</button>
+      <button class="fl-btn is-primary" data-action="deduce-pending-write" data-id="${html(asText(item?.id))}" title="写入库内故事源文件（单条追加，不动其他条目）">写入故事源</button>
       <button class="fl-btn" data-action="deduce-pending-dismiss" data-id="${html(asText(item?.id))}" title="不落库，把这张卡移出队列">忽略</button>
     </div>
   </section>`

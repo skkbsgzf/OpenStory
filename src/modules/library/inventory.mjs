@@ -2,7 +2,7 @@
  * 库内盘点与文件清单（OS-8/OS-11/OS-12，OS-141 daemon 拆分落位）——全库只读。
  *
  *   · listArtifacts：顶层目录分组（组内递归文本文件）＋版本与历史——.history/ 里的
- *     bak/deleted 档按原文件归组；.pinax 与隐藏目录绝不进清单。
+ *     bak/deleted 档按原文件归组；.openstory 与隐藏目录绝不进清单。
  *   · listLibraryFiles：业务页的「列」拼图；dir 缺省＝顶层扫描（dirs＋files），
  *     dir＝单段目录名递归深度≤3；读/写文件本体仍走 chapter 通道，本模块只管「列」。
  * 全仓只此一份定义；handler 一律从这里 import，不许复制。
@@ -28,7 +28,7 @@ function fileEntry(root, absPath, stats) {
 /**
  * 全库盘点（OS-12 升级）：顶层目录分组（组内递归文本文件）＋版本与历史——
  * .history/ 里的 bak/deleted 档按原文件归组（file/name/original/kind/size/mtime）。
- * .pinax 与隐藏目录照旧绝不进清单。
+ * .openstory 与隐藏目录照旧绝不进清单。
  */
 export async function listArtifacts(root) {
   const base = canonicalRoot(root)
@@ -116,7 +116,7 @@ export async function listArtifacts(root) {
 
 /**
  * 列库内文本文件。dir 缺省＝顶层扫描（dirs＋files）；dir＝单段目录名，递归深度≤3。
- * 跳过 `.` 开头/`.pinax`/`.history`；只收 md/txt/markdown/json；≤500 个。
+ * 跳过 `.` 开头/`.openstory`/`.history`；只收 md/txt/markdown/json；≤500 个。
  * 目录不存在＝空清单＋warning（空目录是合法形态，不报错）。
  */
 export async function listLibraryFiles(root, dir = '') {

@@ -2,13 +2,13 @@
  * 同源版本检查 ＋ 外部变更检测（OS-107）。
  *
  * 两件事：
- *   A) `checkSameSource()` —— **纯函数，不碰磁盘**：拆解 fact 的修改时间、兄弟 wiki 的
- *      生成时间、参考笔记最新 mtime 三者摆在一起，回答两个问题：
- *      「派生档是不是比 fact 旧」（wikiStale）与「参考笔记最新改动是什么时候」。
+ *   A) `checkSameSource()` —— **纯函数，不碰磁盘**：故事源 fact 的修改时间、兄弟 wiki 的
+ *      生成时间、世界书笔记最新 mtime 三者摆在一起，回答两个问题：
+ *      「派生档是不是比 fact 旧」（wikiStale）与「世界书笔记最新改动是什么时候」。
  *
  *   **对齐口径：一律用时间戳**（OS-114）。revision 是内核内部计数器，作者看不懂
  *   「revision 1 与 4 差几版」；真实写作是频繁小改，需要的是「谁比谁新」。
- *   B) `snapshotAndDiff()` —— 唯一读盘入口：读 `<库>/.pinax/sync-state.json` 的上次快照，
+ *   B) `snapshotAndDiff()` —— 唯一读盘入口：读 `<库>/.openstory/sync-state.json` 的上次快照，
  *      与本次正文快照比对，捞出「hash 变了、但变更日志里没有对应记录」的文件
  *      （＝绕过了写通道被外部改过），然后原子写回新快照（OS-138 归一 hostWrite.atomicWriteFile）。
  *
@@ -24,9 +24,10 @@ import { existsSync, statSync } from 'node:fs'
 import { dirname, join, relative, sep } from 'node:path'
 import { contentHash } from '../protocol/changelog.mjs'
 import { atomicWriteFile } from '../protocol/hostWrite.mjs'
+import { namingEntry } from '../protocol/naming.mjs'
 
-/** 库内固定位置（AGENTS.md 第 9 条：界面/状态类数据都落 `.pinax/` 下）。 */
-export const SYNC_STATE_PATH = '.pinax/sync-state.json'
+/** 库内固定位置（AGENTS.md 第 9 条：界面/状态类数据都落 `.openstory/` 下）。 */
+export const SYNC_STATE_PATH = `${namingEntry('libraryStorage').metadataDir}/sync-state.json`
 
 const text = (value) => String(value ?? '')
 
@@ -55,9 +56,9 @@ function isLaterThan(mtime, loggedAt) {
  *
  * @param {object} opts
  * @param {string} [opts.root]               库根——只作调用方对称（本函数不碰磁盘），不参与计算
- * @param {number} [opts.factRevision]       拆解主档顶层 revision；非安全整数时按条目数兜底（有条目＝1，没有＝0）
+ * @param {number} [opts.factRevision]       故事源主档顶层 revision；非安全整数时按条目数兜底（有条目＝1，没有＝0）
  * @param {object|null} [opts.wikiDerivedFrom] 兄弟 `<id>.wiki.json` 的 `derivedFrom`
- * @param {string|Date|number|null} [opts.refsMtimeMax] 参考笔记最新 mtime
+ * @param {string|Date|number|null} [opts.refsMtimeMax] 世界书笔记最新 mtime
  * @param {Array} [opts.entries]             主档 entries（只用于 revision 缺省时的兜底判定）
  * @returns {{factRevision:number, wikiFactRevision:number|null, wikiStale:boolean, wikiNote:string, refsNewerThan:string|null}}
  */
@@ -102,10 +103,10 @@ export function checkSameSource({
   const factNewerThanWiki = newer(factAt, wikiAt)
   const wikiStale = factNewerThanWiki === true
 
-  // 正文比 fact 新 = 拆解可能没跟上正文（提示，不判错）
+  // 正文比 fact 新 = 故事源可能没跟上正文（提示，不判错）
   const chaptersNewerThanFact = newer(chaptersAt, factAt)
 
-  // 参考笔记比 fact 新 = 跟 fact 无关（笔记是手写设定，随时改），只作展示
+  // 世界书笔记比 fact 新 = 跟 fact 无关（笔记是手写设定，随时改），只作展示
 
   let wikiNote = '无派生档'
   if (!wikiAt) {
@@ -119,7 +120,7 @@ export function checkSameSource({
   }
 
   const chaptersNote = chaptersNewerThanFact === true
-    ? `正文最新改动 ${fmt(chaptersAt)}，晚于事实源 ${fmt(factAt)}——拆解可能没跟上`
+    ? `正文最新改动 ${fmt(chaptersAt)}，晚于事实源 ${fmt(factAt)}——故事源可能没跟上`
     : ''
 
   return {

@@ -1,15 +1,19 @@
 {
-  "spec": "openstory-module@1",
+  "spec": "openstory-module@2",
   "id": "library",
   "name": "库管理",
   "version": "0.1.0",
-  "core": false,
-  "description": "宿主域实现（OS-165 清单收口，OS-167 加自持清单）：建库骨架、Pinax 载体导入、新院 libraries.json 自持与旧清单只读导入都是宿主设施，不是可停用的工作面。端点随模块登记，零页签。",
-  "endpoints": [
-    "pinaxListGet",
-    "pinaxListImport"
+  "builtin": true,
+  "entry": "index.mjs",
+  "requires": [
+    { "id": "storage.roots", "min": 1 },
+    { "id": "library.list", "min": 1 },
+    { "id": "storage.scaffold", "min": 1 },
+    { "id": "fact.store", "min": 3 }
   ],
+  "description": "宿主组合面登记：库管理消费建库骨架、原稿导入与 OpenStory 自持 libraries.json，不随工作台启停。后续拆为 storage 内核件与库管理宿主面，零页签。",
+  "endpoints": [],
   "pages": [],
   "settings": [],
-  "settingsHint": "宿主域实现：库清单在 %LOCALAPPDATA%/OpenStory/libraries.json；旧 Pinax 清单只在设置页里勾选导入，不写回。"
+  "settingsHint": "宿主域实现：库清单在 %LOCALAPPDATA%/OpenStory/libraries.json；旧版桌面端清单不再导入，也不会被写回。"
 }

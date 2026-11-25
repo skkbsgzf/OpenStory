@@ -1,0 +1,18 @@
+{
+  "spec": "openstory-module@2",
+  "id": "media",
+  "name": "媒体引擎",
+  "version": "0.1.0",
+  "builtin": true,
+  "description": "内置内核件：OpenAI/ComfyUI 生图与 DSH 识图执行；识图调用端口由宿主显式注入，不反向依赖 agent.runtime。",
+  "class": "kernel",
+  "entry": "index.mjs",
+  "requires": [
+    { "id": "base.contract", "min": 1 }
+  ],
+  "capabilities": [
+    { "id": "media.generate", "version": 1, "golden": "media-generate-v1" },
+    { "id": "media.describe", "version": 1, "golden": "media-describe-v1" }
+  ],
+  "endpoints": []
+}

@@ -14,7 +14,7 @@
  * 约束：钩子是宿主层组合件——可以 import 模块实现；模块实现本身仍不 reverse-import 宿主。
  */
 import { isModuleEnabled } from '../protocol/modules.mjs'
-import { lintHabits, readHabits } from '../modules/habits/habits.mjs'
+import { lintHabits, readHabits } from '../protocol/habits.mjs'
 
 /** 写盘前的习惯 lint（OS-59）：模块停用 → 空命中（不执行），启用 → 真跑。 */
 export async function habitLint(root, text) {

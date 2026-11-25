@@ -52,6 +52,35 @@ rl.on('line', (line) => {
   return { base, fakeDsh, fakeShim }
 }
 
+/**
+ * OS-169：造一份「本机 dsh runtime 已就绪」的临时夹具——临时 DSH_HOME 下建 openstory profile，
+ * 声明 @open-design/dsh-runtime 依赖，让 probeDshStack 走 ready 分支。
+ * 返回 env（全部指向夹具，绝不回退到本机 dsh/profile）；返回 null 表示夹具不可构造，调用方必须 skip。
+ */
+async function seedDshRuntimeFixture(base, fakeShim) {
+  const dshHome = join(base, 'dshhome')
+  const profileDir = join(dshHome, 'profiles', 'openstory')
+  try {
+    await mkdir(profileDir, { recursive: true })
+    await writeFile(join(profileDir, 'package.json'), JSON.stringify({
+      name: 'openstory-fixture-profile',
+      dependencies: { '@open-design/dsh-runtime': 'file:fake-runtime.tgz' }
+    }), 'utf-8')
+  } catch {
+    return null
+  }
+  return {
+    ...process.env,
+    LOCALAPPDATA: base,
+    APPDATA: base,
+    USERPROFILE: base,
+    HOME: base,
+    DSH_HOME: dshHome,
+    DSH_CLI: fakeShim,
+    DSH_CHAT_ENDPOINT: ''
+  }
+}
+
 /** Windows 上子进程句柄还没释放时 rmdir 会 EBUSY：重试几次，失败就算了（临时目录）。 */
 async function cleanup(base) {
   for (let attempt = 0; attempt < 5; attempt += 1) {
@@ -127,10 +156,14 @@ test('双模探测：有 CLI = cli 模式；无 CLI 无端点 = 人话不可用'
   }
 })
 
-test('resolveDshRun：CLI 优先；manifest.url 直连 HTTP 优先于探测', async () => {
+test('resolveDshRun：CLI 优先；manifest.url 直连 HTTP 优先于探测', async (t) => {
   const { base, fakeShim } = await makeFakeDsh()
+  // OS-169：env 显式指向夹具 runtime，不再继承本机 PATH/USERPROFILE（本机装没装 dsh 都不许改变结论）。
+  const env = await seedDshRuntimeFixture(base, fakeShim)
+  if (!env) { t.skip('守卫：临时 DSH runtime 夹具不可构造（kit 缺失）；拒绝回退本机 dsh/profile'); await cleanup(base); return }
   try {
-    const viaCli = await resolveDshRun({}, { env: { ...process.env }, dshCmd: fakeShim })
+    const viaCli = await resolveDshRun({}, { env, dshCmd: fakeShim })
+    assert.equal(viaCli.ok, true, JSON.stringify(viaCli))
     assert.equal(viaCli.mode, 'cli')
     assert.equal(viaCli.profile, 'openstory')
 
@@ -323,8 +356,12 @@ test('runDshStdio：ready→execute→session/text/result，text 帧边收边回
   }
 })
 
-test('daemon 端到端：dsh kit（假 dsh shim）→ start/delta*/done，会话落档', async () => {
+test('daemon 端到端：dsh kit（假 dsh shim）→ start/delta*/done，会话落档', async (t) => {
   const { base, fakeShim } = await makeFakeDsh()
+  // OS-169：no-runtime 守卫——先确认临时 DSH runtime 夹具可用；缺 kit 就 skip，
+  // 绝不因为本机恰好装了 dsh/profile 而让端到端「假绿」或「假红」。
+  const env = await seedDshRuntimeFixture(base, fakeShim)
+  if (!env) { t.skip('守卫：DSH runtime kit 夹具缺失（no-runtime），跳过端到端；不回退本机 dsh/profile'); await cleanup(base); return }
   const root = join(base, '夹具库')
   await mkdir(join(root, '正文'), { recursive: true })
   await writeFile(join(root, '正文', 'ch1.md'), '第一章。', 'utf-8')
@@ -337,7 +374,7 @@ test('daemon 端到端：dsh kit（假 dsh shim）→ start/delta*/done，会话
     preferencesPath,
     agentConfigPath: join(base, 'agent-config.json'),
     agentSessionsDir: join(base, 'sessions'),
-    env: { ...process.env, LOCALAPPDATA: base, DSH_CLI: fakeShim, DSH_CHAT_ENDPOINT: '' },
+    env,
     logger: { log() {} }
   })
   const origin = `http://127.0.0.1:${daemon.port}`

@@ -1,5 +1,5 @@
 /**
- * OS-61 推演会话存储层用例（node:test）：拍节点／章缓存区／归档／分支切换。
+ * OS-61 扮演会话存储层用例（node:test）：拍节点／章缓存区／归档／分支切换。
  *   node --test test/deduceSession.test.mjs
  */
 import test from 'node:test'
@@ -69,13 +69,13 @@ test('会话：存→读往返一致；二次保存留 .history 备份', async (
     assert.equal(first.backup, null, '首次保存没有旧稿可备')
     const loaded = loadDeduceSession(root, 'book-1')
     assert.deepEqual(loaded, session)
-    // 二次保存：旧稿进 推演/<bookId>/.history/
+    // 二次保存：旧稿进 扮演/<bookId>/.history/
     session.cursor = 99
     const second = await saveDeduceSession(root, 'book-1', session)
     assert.equal(second.ok, true)
     assert.ok(second.backup, '二次保存应回报备份路径')
-    assert.ok(second.backup.replaceAll('\\', '/').startsWith('推演/book-1/.history/'))
-    const backups = await readdir(join(root, '推演', 'book-1', '.history'))
+    assert.ok(second.backup.replaceAll('\\', '/').startsWith('扮演/book-1/.history/'))
+    const backups = await readdir(join(root, '扮演', 'book-1', '.history'))
     assert.equal(backups.length, 1)
     assert.equal(loadDeduceSession(root, 'book-1').cursor, 99)
   } finally {
@@ -135,9 +135,9 @@ test('会话：archiveChapter 写出归档 md＋buffer 清零＋archived 记录'
     const expectedWords = '他推开门，雾涌了进来。'.length + '渡口的钟响了'.length
     const result = await archiveChapter(root, session, { title: '雾起' })
     assert.equal(result.ok, true, result.message)
-    assert.equal(result.path, '推演/book-1/归档/第2章.md')
+    assert.equal(result.path, '扮演/book-1/归档/第2章.md')
     assert.equal(result.words, expectedWords)
-    const abs = join(root, '推演', 'book-1', '归档', '第2章.md')
+    const abs = join(root, '扮演', 'book-1', '归档', '第2章.md')
     assert.ok(existsSync(abs), '归档文件应存在')
     const md = await readFile(abs, 'utf-8')
     assert.ok(md.includes('# 第2章 雾起'), '含章标题')
@@ -197,8 +197,8 @@ test('会话：分支切换——两条分支的拍互不干扰', async () => {
 test('会话：写入失败路径——ok:false 而非抛', async () => {
   const { base, root } = await makeRoot()
   try {
-    // 「推演」占成文件：mkdir 必失败 → save 返回 ok:false
-    await writeFile(join(root, '推演'), '我不是目录', 'utf-8')
+    // 「扮演」占成文件：mkdir 必失败 → save 返回 ok:false
+    await writeFile(join(root, '扮演'), '我不是目录', 'utf-8')
     const saved = await saveDeduceSession(root, 'book-1', newSession())
     assert.equal(saved.ok, false)
     assert.equal(saved.code, 'WRITE_PROTOCOL_IO_FAILED')
@@ -211,9 +211,9 @@ test('会话：写入失败路径——ok:false 而非抛', async () => {
 test('会话：归档写盘失败——ok:false 而非抛', async () => {
   const { base, root } = await makeRoot()
   try {
-    await mkdir(join(root, '推演', 'book-1'), { recursive: true })
+    await mkdir(join(root, '扮演', 'book-1'), { recursive: true })
     // 「归档」占成文件：归档 md 写不进去
-    await writeFile(join(root, '推演', 'book-1', '归档'), '我不是目录', 'utf-8')
+    await writeFile(join(root, '扮演', 'book-1', '归档'), '我不是目录', 'utf-8')
     const session = newSession()
     appendNode(session, { prose: '一拍。' })
     const result = await archiveChapter(root, session, { title: '雾起' })
@@ -238,7 +238,7 @@ test('会话：归一校验与三端点契约形状', async () => {
     assert.equal(normalized.branchId, 'main')
     assert.deepEqual(normalized.buffer, { chapterNo: 1, nodes: [], words: 0 })
     // 坏档读回 null（不抛）
-    await mkdir(join(root, '推演', 'book-1'), { recursive: true })
+    await mkdir(join(root, '扮演', 'book-1'), { recursive: true })
     await writeFile(deduceSessionPath(root, 'book-1'), '{ 坏 json', 'utf-8')
     assert.equal(loadDeduceSession(root, 'book-1'), null)
     // 契约：请求/响应形状
@@ -248,8 +248,8 @@ test('会话：归一校验与三端点契约形状', async () => {
     assert.equal(validateRequest('deduceArchive', { root: root, title: '雾起' }).ok, true)
     assert.equal(validateResponse('deduceSessionGet', { ok: true, session: null }).ok, true)
     assert.equal(validateResponse('deduceSessionGet', { ok: true, session: normalized }).ok, true)
-    assert.equal(validateResponse('deduceSessionPut', { ok: true, session: normalized, backup: '推演/book-1/.history/x.json' }).ok, true)
-    assert.equal(validateResponse('deduceArchive', { ok: true, path: '推演/book-1/归档/第1章.md', words: 12 }).ok, true)
+    assert.equal(validateResponse('deduceSessionPut', { ok: true, session: normalized, backup: '扮演/book-1/.history/x.json' }).ok, true)
+    assert.equal(validateResponse('deduceArchive', { ok: true, path: '扮演/book-1/归档/第1章.md', words: 12 }).ok, true)
   } finally {
     await rm(base, { recursive: true, force: true })
   }
@@ -369,8 +369,8 @@ test('多局：各局文件互相独立；存读往返保 sessionId/title', asyn
     assert.equal(loadA.title, 'A 局')
     // 文件真的分开落
     const { existsSync } = await import('node:fs')
-    assert.equal(existsSync(join(root, '推演', 'book-1', 'sessions', `${a.sessionId}.json`)), true)
-    assert.equal(existsSync(join(root, '推演', 'book-1', 'sessions', `${b.sessionId}.json`)), true)
+    assert.equal(existsSync(join(root, '扮演', 'book-1', 'sessions', `${a.sessionId}.json`)), true)
+    assert.equal(existsSync(join(root, '扮演', 'book-1', 'sessions', `${b.sessionId}.json`)), true)
   } finally {
     await rm(base, { recursive: true, force: true })
   }
@@ -392,8 +392,8 @@ test('多局：删除非破坏（挪 .deleted）＋删激活局回落主线＋�
     assert.equal(removed.ok, true)
     assert.equal(removed.activeId, 'main')
     const { existsSync } = await import('node:fs')
-    assert.equal(existsSync(join(root, '推演', 'book-1', 'sessions', `${a.sessionId}.json`)), false)
-    assert.ok(existsSync(join(root, '推演', 'book-1', '.deleted', 'sessions')), '回收站目录存在')
+    assert.equal(existsSync(join(root, '扮演', 'book-1', 'sessions', `${a.sessionId}.json`)), false)
+    assert.ok(existsSync(join(root, '扮演', 'book-1', '.deleted', 'sessions')), '回收站目录存在')
     // 主线+一局，删主线：主线文件也可删（作者有权清掉 legacy），激活回落剩下的局
     const b = await createDeduceSession(root, 'book-1', {})
     await saveDeduceSession(root, 'book-1', newSession())

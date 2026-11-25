@@ -1,0 +1,18 @@
+{
+  "spec": "openstory-module@2",
+  "id": "agent-runtime",
+  "name": "Agent 运行时",
+  "version": "0.1.0",
+  "builtin": true,
+  "description": "内置内核件：模型配置、凭据掩码、对话探测与 DSH stdio 调用；不拥有界面或端点。",
+  "class": "kernel",
+  "entry": "index.mjs",
+  "requires": [
+    { "id": "base.write", "min": 1 },
+    { "id": "base.contract", "min": 1 }
+  ],
+  "capabilities": [
+    { "id": "agent.runtime", "version": 1, "golden": "agent-runtime-v1" }
+  ],
+  "endpoints": []
+}

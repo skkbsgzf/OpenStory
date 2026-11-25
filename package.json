@@ -1,19 +1,21 @@
 {
   "name": "openstory",
   "version": "0.2.0",
-  "description": "跑在浏览器/DSH 里的小说工作台——文件即真相，daemon 只监听本机；参考双链图谱＋实时写作＋确定性推演＋可插拔 Agent 运行时",
+  "description": "跑在浏览器/DSH 里的本地小说工作台——文件即真相，daemon 只监听本机；世界书双链图谱＋实时写作＋扮演＋确定性推演＋可插拔 Agent 运行时",
   "type": "module",
   "private": true,
   "scripts": {
     "start": "node src/host/daemon.mjs",
     "mcp": "node src/host/mcp.mjs",
+    "modules:migrate": "node tools/migrate-module-manifests.mjs",
     "test": "node --test \"test/*.test.mjs\"",
-    "arch:stats": "node tools/arch-stats.mjs"
+    "arch:stats": "node tools/arch-stats.mjs",
+    "arch:check": "node tools/arch-stats.mjs --check"
   },
   "dependencies": {
     "@xenova/transformers": "^2.17.2"
   },
-  "author": "Pinax 作者（OpenStory 线）",
+  "author": "skkbsgzf <59155174+skkbsgzf@users.noreply.github.com>",
   "license": "SEE LICENSE IN LICENSE",
   "engines": {
     "node": ">=18"

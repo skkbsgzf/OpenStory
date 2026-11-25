@@ -14,8 +14,8 @@ import { computeTabDefs } from '../public/views/registry.mjs'
 async function makeLibrary() {
   const base = await mkdtemp(join(tmpdir(), 'os161-ss-'))
   const root = join(base, '夹具库')
-  await mkdir(join(root, '.pinax'), { recursive: true })
-  await writeFile(join(root, '.pinax', 'ui-state.json'), JSON.stringify({
+  await mkdir(join(root, '.openstory'), { recursive: true })
+  await writeFile(join(root, '.openstory', 'ui-state.json'), JSON.stringify({
     modules: { enabled: { storysource: false } }
   }), 'utf-8')
   return { base, root }
@@ -24,7 +24,7 @@ async function makeLibrary() {
 test('manifest：storysource 非核心、零独占端点，但如实声明共享读端点', () => {
   const manifest = moduleManifest('storysource')
   assert.ok(manifest, 'storysource manifest 必须装载')
-  assert.equal(manifest.core, false)
+  assert.equal(Object.prototype.hasOwnProperty.call(manifest, 'core'), false)
   assert.deepEqual(manifest.endpoints, [], '没有独占端点')
   assert.match(manifest.description, /factCurveGet[／/]factEntriesGet/u, 'description 要如实点名读哪些共享端点')
   assert.ok(manifest.settingsHint.trim())
@@ -45,10 +45,10 @@ test('共享端点永远属于宿主：停用故事源后 fact 读端点无归�
 })
 
 test('页签归属：storysource 停用后故事源页签消失，其他页签不受影响', () => {
-  const ctx = { current: { path: '/lib' }, libDirs: ['拆解', '正文'], brief: null, briefGenre: null, settingsOpen: false }
+  const ctx = { current: { path: '/lib' }, libDirs: ['故事源', '正文'], brief: null, briefGenre: null, settingsOpen: false }
   const enabled = computeTabDefs(ctx).map((def) => def.view)
-  assert.ok(enabled.includes('dir:拆解'), '缺省启用：故事源页签在')
-  const disabled = computeTabDefs({ ...ctx, modulesEnabled: { storysource: false, habits: true } }).map((def) => def.view)
-  assert.ok(!disabled.includes('dir:拆解'), '显式停用：故事源页签消失')
+  assert.ok(enabled.includes('dir:故事源'), '缺省启用：故事源页签在')
+  const disabled = computeTabDefs({ ...ctx, modulesEnabled: { storysource: false, habits: true, chapters: true } }).map((def) => def.view)
+  assert.ok(!disabled.includes('dir:故事源'), '显式停用：故事源页签消失')
   assert.ok(disabled.includes('write'), '正文页签不受影响')
 })

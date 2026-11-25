@@ -8,3 +8,4 @@
 export const KERNEL_ID = 'openstory-kernel@1'
 export const KERNEL_VERSION = 1
 export const KERNEL_NAME = 'OpenStory 内核'
+export const TMP_PREFIX = '.openstory-tmp-'

@@ -116,7 +116,7 @@ export function parseSkillMarkdown(raw, { source, dir, appVersion } = {}) {
       version,
       vendor: text(meta.vendor).trim(),
       stage: text(meta.stage).trim(),
-      // 工具型字段（Pinax 老 frontmatter）：原样带出，供将来工具接线
+      // 工具型字段（历史 frontmatter 兼容键）：原样带出，供将来工具接线
       tools: Array.isArray(meta.tools) ? meta.tools : [],
       output: text(meta.output).trim(),
       domain: text(meta.domain).trim(),

@@ -17,6 +17,7 @@ import {
   listChapters,
   nextChapterNumber,
   parseChapterName,
+  readChapter,
   renameChapter,
   sanitizeChapterTitle
 } from '../src/protocol/chapters.mjs'
@@ -65,6 +66,21 @@ test('清单：有号排序无号排尾、字数现算、跳过隐藏与 .histor
     const missing = await listChapters(root, '构思')
     assert.equal(missing.ok, true)
     assert.ok(missing.warnings.some((warning) => warning.code === 'DIR_MISSING'))
+  } finally {
+    await rm(base, { recursive: true, force: true })
+  }
+})
+
+test('读正文：prose 能力返回原文与字数，目录、缺档、越界分别拒绝', async () => {
+  const { base, root } = await makeFixture()
+  try {
+    assert.deepEqual(await readChapter(root, '正文/001-雨停.md'), {
+      ok: true, name: '001-雨停.md', text: '雨到傍晚才停。', chars: 7
+    })
+    assert.equal((await readChapter(root, '正文')).code, 'NOT_FOUND')
+    assert.equal((await readChapter(root, '正文/999-无.md')).code, 'NOT_FOUND')
+    assert.equal((await readChapter(root, '../库外.md')).code, 'PATH_ESCAPE')
+    assert.equal((await readChapter(root, '.openstory/ui-state.json')).code, 'PATH_ESCAPE')
   } finally {
     await rm(base, { recursive: true, force: true })
   }

@@ -22,15 +22,15 @@ import { startDaemon } from '../src/host/daemon.mjs'
 async function makeFixture() {
   const base = await mkdtemp(join(tmpdir(), 'openstory-os5-'))
   const root = join(base, '夹具库')
-  await mkdir(join(root, '拆解'), { recursive: true })
-  await mkdir(join(root, '.pinax'), { recursive: true })
-  await writeFile(join(root, '拆解', 'book-1.json'), JSON.stringify({
+  await mkdir(join(root, '故事源'), { recursive: true })
+  await mkdir(join(root, '.openstory'), { recursive: true })
+  await writeFile(join(root, '故事源', 'book-1.json'), JSON.stringify({
     book: { id: 'book-1', title: '夹具书<脚本试炼>' },
     entries: [{ schema: 'fact.data/v3', id: 'e1', layer: 'plot', name: '第一段', status: 'draft' }],
     revision: 1
   }), 'utf-8')
-  await writeFile(join(root, '拆解', 'book-1.wiki.json'), JSON.stringify({
-    derivedFrom: { factRevision: 1, schema: 'pinax-wiki-derived@1' },
+  await writeFile(join(root, '故事源', 'book-1.wiki.json'), JSON.stringify({
+    derivedFrom: { factRevision: 1, schema: 'openstory-wiki-derived@2' },
     book: { id: 'book-1', title: '夹具书<脚本试炼>', author: '林某', group: '雾港组' },
     characters: [
       { name: '林砚<script>', identity: '摆渡人', archetype: '引路者', summary: '雾港渡口的摆渡人', appearances: 7 },
@@ -108,8 +108,8 @@ test('风格包目录：内置＋本机合并，本机按 id 覆盖；坏档跳�
 test('风格包路径：内置随仓，本机跟 LOCALAPPDATA', () => {
   assert.ok(builtinStylesDir().includes('styles'), '内置目录在仓内 styles/ 下')
   assert.equal(
-    defaultUserStylesDir({ LOCALAPPDATA: 'C:/Users/x/AppData/Local' }).replaceAll('\\', '/'),
-    'C:/Users/x/AppData/Local/OpenStory/openstory/styles'
+    defaultUserStylesDir({ LOCALAPPDATA: 'X:/fixture-home/AppData/Local' }).replaceAll('\\', '/'),
+    'X:/fixture-home/AppData/Local/OpenStory/openstory/styles'
   )
   assert.equal(defaultUserStylesDir({}), '')
 })

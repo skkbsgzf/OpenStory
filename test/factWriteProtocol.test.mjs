@@ -27,8 +27,8 @@ import {
   FACT_DIR_NAME,
   OPERATIONS_LOG_NAME,
   WIKI_DERIVED_SCHEMA
-} from '../src/kernel/fact/factFileStore.mjs'
-import { stableEntryId } from '../src/kernel/fact/domain/stableId.js'
+} from '../src/modules/fact/fact/factFileStore.mjs'
+import { stableEntryId } from '../src/modules/fact/fact/domain/stableId.js'
 
 const BOOK_ID = 'book-os156'
 

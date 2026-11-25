@@ -1,5 +1,5 @@
 /**
- * OS-61 P2 推演回合层用例（node:test）：结算→成文→缓存区→归档。
+ * OS-61 P2 扮演回合层用例（node:test）：结算→成文→缓存区→归档。
  *   node --test test/deduceTurn.test.mjs
  * LLM 用本机桩替换（endpoint 路），不真调模型；无模型路径验「不伪造正文」。
  */
@@ -42,8 +42,8 @@ async function startStubLlm(responses) {
 async function boot({ prose = null } = {}) {
   const base = await mkdtemp(join(tmpdir(), 'openstory-os61p2-'))
   const root = join(base, '夹具库')
-  await mkdir(join(root, '拆解'), { recursive: true })
-  await writeFile(join(root, '拆解', 'book-1.json'), JSON.stringify({
+  await mkdir(join(root, '故事源'), { recursive: true })
+  await writeFile(join(root, '故事源', 'book-1.json'), JSON.stringify({
     book: { id: 'book-1', title: '夹具书' }, entries: ENTRIES, revision: 1
   }), 'utf-8')
   const preferencesPath = join(base, 'libraries.json')
@@ -175,9 +175,9 @@ test('回合：缓存区累加与「归档本章」清空', async () => {
     // 归档：路径/字数如实回报，md 含两拍内容
     const archived = await (await ctx.post('/api/deduce/archive', { root: ctx.root, bookId: 'book-1', title: '雾起' })).json()
     assert.equal(archived.ok, true, JSON.stringify(archived))
-    assert.equal(archived.path, '推演/book-1/归档/第1章.md')
+    assert.equal(archived.path, '扮演/book-1/归档/第1章.md')
     assert.equal(archived.words, words)
-    const md = await readFile(join(ctx.root, '推演', 'book-1', '归档', '第1章.md'), 'utf-8')
+    const md = await readFile(join(ctx.root, '扮演', 'book-1', '归档', '第1章.md'), 'utf-8')
     assert.ok(md.includes('# 第1章 雾起'))
     assert.ok(md.includes('第一拍，他走上渡船。'))
     assert.ok(md.includes('第二拍，雾涌了过来。'))

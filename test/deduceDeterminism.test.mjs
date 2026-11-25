@@ -99,6 +99,18 @@ for (const seed of [1, 424242]) {
   })
 }
 
+test('规则包：默认数据规则保持原金样；替代 1d6 规则产生独立新金样', async () => {
+  const original = await oneTurn(1)
+  assert.deepEqual(original.candidates.map((candidate) => candidate.trace ?? null), [null, { a: 4, b: 1, sum: 5, success: false }])
+  const opened = openDeduceSession({ entries: ENTRIES, pov: '林砚', runId: 'os-c5-rules' })
+  const alternate = await presentTurn({
+    state: opened.state, entries: ENTRIES, pov: '林砚', seed: 1,
+    rules: { dice: { count: 1, sides: 6, successThreshold: 4, label: '1d6' }, limits: { necessity: 2, fate: 1, drama: 2, mixed: 4, minimum: 2 } }
+  })
+  assert.deepEqual(alternate.candidates.map((candidate) => candidate.trace ?? null), [null, { a: 4, b: 0, sum: 4, success: true, label: '1d6', rolls: [4] }])
+  assert.match(alternate.candidates[1].text, /剧情检定 1d6=4=4：顺遂/u)
+})
+
 test('确定性：换种子＝换骰点（证明 seed 真接进引擎，不是固定输出）', async () => {
   const a = await oneTurn(1)
   const b = await oneTurn(424242)
@@ -158,8 +170,8 @@ test('fronts 只进不退：推进单调不减，满格停摆，结掉后拒推�
 async function makeFixture(tag) {
   const base = await mkdtemp(join(tmpdir(), `openstory-os155-${tag}-`))
   const root = join(base, '夹具库')
-  await mkdir(join(root, '拆解'), { recursive: true })
-  await writeFile(join(root, '拆解', 'book-1.json'), JSON.stringify({
+  await mkdir(join(root, '故事源'), { recursive: true })
+  await writeFile(join(root, '故事源', 'book-1.json'), JSON.stringify({
     book: { id: 'book-1', title: '夹具书' }, entries: ENTRIES, revision: 1
   }), 'utf-8')
   return { base, root }

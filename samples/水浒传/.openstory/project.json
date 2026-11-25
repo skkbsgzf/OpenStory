@@ -1,0 +1,16 @@
+{
+  "spec": "openstory-project@4",
+  "schemaVersion": 4,
+  "projectId": "proj_mwkhfczt3yzn",
+  "name": "水浒传",
+  "kind": "novel",
+  "createdAt": "2026-11-17T09:20:38.537Z",
+  "updatedAt": "2026-11-24T17:44:51.074Z",
+  "carriers": {
+    "primary": "openstory.carrier.novel",
+    "enabled": [
+      "openstory.carrier.novel"
+    ],
+    "revision": 1
+  }
+}

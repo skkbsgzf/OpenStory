@@ -3,7 +3,7 @@
  * 钉宿主写协议唯一入口 atomicWriteFile 的三条硬保证：
  *   ① 目标已存在＝完整替换（不追写、不留旧字节）；
  *   ② 落盘内容逐字节一致（文本含多字节中文；二进制 Buffer 不经 String/utf-8 损坏）；
- *   ③ 写失败＝原文件完好＋目录里不留 .pinax-tmp-* 半成品（内核/分支的失败清场）。
+ *   ③ 写失败＝原文件完好＋目录里不留 .openstory-tmp-* 或旧 .pinax-tmp-* 半成品（失败清场）。
  * 失败注入按平台取确定性手法：win32 用只读属性（MoveFileEx 拒绝替换只读目标），
  * posix 用目录 0o555（临时文件 open 直接 EACCES）。
  */
@@ -21,7 +21,7 @@ async function fixture() {
 }
 
 async function tmpLeftovers(dir) {
-  return (await readdir(dir)).filter((name) => name.startsWith('.pinax-tmp-'))
+  return (await readdir(dir)).filter((name) => name.startsWith('.openstory-tmp-') || name.startsWith('.pinax-tmp-'))
 }
 
 test('目标文件已存在时被完整替换：新内容更短也不残留旧字节', async () => {
@@ -83,7 +83,7 @@ test('写失败时原文件完好且不留半成品（win32：只读目标让 re
     await chmod(target, 0o444) // Windows 只读属性：MOVEFILE_REPLACE_EXISTING 拒绝覆盖只读文件
     await assert.rejects(() => atomicWriteFile(target, '{"new":"覆盖"}'))
     assert.equal(await readFile(target, 'utf-8'), '{"keep":"原稿"}', '原文件完好')
-    assert.deepEqual(await tmpLeftovers(root), [], '失败后不留 .pinax-tmp-* 半成品')
+    assert.deepEqual(await tmpLeftovers(root), [], '失败后不留当前或旧版临时半成品')
   } finally {
     await chmod(join(root, 'config.json'), 0o666).catch(() => {})
     await cleanup()

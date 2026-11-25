@@ -18,10 +18,10 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 
-import * as enrichPseudo from '../src/kernel/enrich/pseudoChapters.mjs'
-import * as enrichMetrics from '../src/kernel/enrich/metrics.mjs'
-import * as wikiDerive from '../src/kernel/fact/wikiDerive.mjs'
-import { buildFactPack } from '../src/kernel/fact/factPack.mjs'
+import * as enrichPseudo from '../src/modules/fact/enrich/pseudoChapters.mjs'
+import * as enrichMetrics from '../src/modules/fact/enrich/metrics.mjs'
+import * as wikiDerive from '../src/modules/fact/fact/wikiDerive.mjs'
+import { buildFactPack } from '../src/modules/fact/fact/factPack.mjs'
 
 /* ---------- ① 伪章数边界 ---------- */
 

@@ -57,19 +57,19 @@ const FACT_ENTRIES = [
 async function makeFixture() {
   const base = await mkdtemp(join(tmpdir(), 'openstory-os-'))
   const root = join(base, '夹具库')
-  await mkdir(join(root, '拆解'), { recursive: true })
+  await mkdir(join(root, '故事源'), { recursive: true })
   await mkdir(join(root, '正文'), { recursive: true })
-  await mkdir(join(root, '.pinax'), { recursive: true })
+  await mkdir(join(root, '.openstory'), { recursive: true })
   const fact = {
     book: { id: 'book-1', title: '夹具书' },
     source: { file: 'ch1.md', chars: 8 },
     entries: FACT_ENTRIES,
     revision: 1
   }
-  await writeFile(join(root, '拆解', 'book-1.json'), JSON.stringify(fact), 'utf-8')
+  await writeFile(join(root, '故事源', 'book-1.json'), JSON.stringify(fact), 'utf-8')
   // 坏档与旁路档：坏档记 warning、整份跳过；没有 entries 的旁路档静默跳过。
-  await writeFile(join(root, '拆解', '坏档.json'), '{ not json', 'utf-8')
-  await writeFile(join(root, '拆解', '旁路.json'), JSON.stringify({ note: '聚合产物' }), 'utf-8')
+  await writeFile(join(root, '故事源', '坏档.json'), '{ not json', 'utf-8')
+  await writeFile(join(root, '故事源', '旁路.json'), JSON.stringify({ note: '聚合产物' }), 'utf-8')
   await writeFile(join(root, '正文', 'ch1.md'), '第一章正文。', 'utf-8')
   const preferencesPath = join(base, 'next-preferences.json')
   await writeFile(preferencesPath, JSON.stringify({
@@ -142,7 +142,7 @@ test('契约：错误码词表齐全且冻结（含 WRITE_PROTOCOL_*）', () => 
 test('契约校验：query 里的 offset/limit 从字符串规整为整数', () => {
   // 规整逻辑随 entries 端点退役（OS-54），落在了 chapterGet 等 query 端点的通用校验里；
   // 这里用仍在役的端点验证同一行为。
-  const result = validateRequest('referenceNoteGet', { root: '/tmp/x', path: '参考/a.md' })
+  const result = validateRequest('referenceNoteGet', { root: '/tmp/x', path: '世界书/a.md' })
   assert.equal(result.ok, true)
 })
 
@@ -244,13 +244,13 @@ test('路径安全：库内相对路径放行，正文目录可读', async () =>
   }
 })
 
-test('路径安全：../ 逃逸、绝对路径、.pinax 全部拒收', () => {
+test('路径安全：../ 逃逸、绝对路径、.openstory 全部拒收', () => {
   const root = 'D:\\Projects\\大梦'
   assert.equal(resolveInsideRoot(root, '../secret.txt').code, API_ERROR_CODES.PATH_ESCAPE)
   assert.equal(resolveInsideRoot(root, '正文/../../secret.txt').code, API_ERROR_CODES.PATH_ESCAPE)
   assert.equal(resolveInsideRoot(root, 'C:\\Windows\\win.ini').code, API_ERROR_CODES.PATH_ESCAPE)
   assert.equal(resolveInsideRoot(root, '/etc/passwd').code, API_ERROR_CODES.PATH_ESCAPE)
-  assert.equal(resolveInsideRoot(root, '.pinax/state/x.json').code, API_ERROR_CODES.PATH_ESCAPE)
+  assert.equal(resolveInsideRoot(root, '.openstory/state/x.json').code, API_ERROR_CODES.PATH_ESCAPE)
   assert.equal(resolveInsideRoot(root, '正文\\ch1.md').ok, true)
 })
 
@@ -293,8 +293,8 @@ test('CLI：端口/root 解析与非法端口回落', () => {
 
 test('默认库清单路径：跟随 LOCALAPPDATA，找不到给空串', () => {
   assert.equal(
-    defaultPreferencesPath({ LOCALAPPDATA: 'C:\\Users\\x\\AppData\\Local' }).replaceAll('\\', '/'),
-    'C:/Users/x/AppData/Local/OpenStory/libraries.json'
+    defaultPreferencesPath({ LOCALAPPDATA: 'X:\\fixture-home\\AppData\\Local' }).replaceAll('\\', '/'),
+    'X:/fixture-home/AppData/Local/OpenStory/libraries.json'
   )
   assert.equal(defaultPreferencesPath({}), '')
 })
@@ -309,7 +309,7 @@ test('daemon 端点：库清单/条目/单条/正文读写/路径拒收/root 白
     assert.equal(libraries.libraries.length, 1)
     assert.equal(libraries.libraries[0].path, root)
 
-    // OS-54：条目/wiki 视图端点已剔除——fact 数据改由推演/曲线/图谱通道消费（各有专属用例）
+    // OS-54：条目/wiki 视图端点已剔除——fact 数据改由扮演/曲线/图谱通道消费（各有专属用例）
     const chapter = await (await fetch(`${origin}/api/chapter?root=${encodeURIComponent(root)}&file=${encodeURIComponent('正文/ch1.md')}`)).json()
     assert.equal(chapter.ok, true)
     assert.equal(chapter.text, '第一章正文。')
@@ -377,7 +377,7 @@ test('真实夹具库（OPENSTORY_FIXTURE）：/api/fact/curve 出 291 条事件
   }
 })
 
-test('daemon 端点：迁入旧目录——搬进参考、源进 .history、白名单外拒绝（OS-48）', async () => {
+test('daemon 端点：迁入旧目录——搬进世界书、源进 .history、白名单外拒绝（OS-48）', async () => {
   const { base, root, preferencesPath } = await makeFixture()
   await mkdir(join(root, '大纲'), { recursive: true })
   await mkdir(join(root, '资料'), { recursive: true })
@@ -391,16 +391,17 @@ test('daemon 端点：迁入旧目录——搬进参考、源进 .history、白�
     body: JSON.stringify(body)
   })
   try {
-    // 白名单外：正文/日志不是可吸收的旧目录，整单拒绝
+    // 白名单外：正文/世界书/日志不是可吸收的旧目录，整单拒绝。
     const bad = await post({ root, dirs: ['正文'] })
     assert.equal(bad.status, 400)
     assert.equal((await bad.json()).error.code, 'INVALID_ENTRY')
-    // OS-164/G8b：世界书/ 升为 Pinax 载体兼容输入，可 absorb 进 参考/世界书/（合法更新）
+    // 世界书已是正式载体目录，不能再当旧 Pinax 输入二次吸收。
     await mkdir(join(root, '世界书'), { recursive: true })
-    await writeFile(join(root, '世界书', '林冲.md'), '兼容输入条目。', 'utf-8')
+    await writeFile(join(root, '世界书', '林冲.md'), '正式世界书条目。', 'utf-8')
     const carrier = await post({ root, dirs: ['世界书'] })
-    assert.equal(carrier.status, 200)
-    assert.equal((await carrier.json()).moved[0].to, '参考/世界书/林冲.md')
+    assert.equal(carrier.status, 400)
+    assert.equal((await carrier.json()).error.code, 'INVALID_ENTRY')
+    assert.equal(await readFile(join(root, '世界书', '林冲.md'), 'utf-8'), '正式世界书条目。')
 
     // 正常迁移：两目录两文件
     const done = await post({ root, dirs: ['大纲', '资料'] })
@@ -410,21 +411,21 @@ test('daemon 端点：迁入旧目录——搬进参考、源进 .history、白�
     assert.equal(payload.moved.length, 2)
     assert.equal(payload.skipped.length, 0)
     const line = payload.moved.find((item) => item.from === '大纲/001-主线.md')
-    assert.equal(line.to, '参考/大纲/001-主线.md')
+    assert.equal(line.to, '世界书/大纲/001-主线.md')
     assert.match(line.backup, /\.history\/001-主线\.md\.deleted-/u)
 
     // 源没了、目标在、备份在
     assert.ok(!existsSync(join(root, '大纲', '001-主线.md')))
-    assert.equal(await readFile(join(root, '参考', '大纲', '001-主线.md'), 'utf-8'), '主线大纲。')
+    assert.equal(await readFile(join(root, '世界书', '大纲', '001-主线.md'), 'utf-8'), '主线大纲。')
     const backups = await readdir(join(root, '大纲', '.history'))
     assert.equal(backups.length, 1)
     assert.equal(await readFile(join(root, '大纲', '.history', backups[0]), 'utf-8'), '主线大纲。')
 
-    // 迁进来的笔记立刻出现在参考索引与图谱里
+    // 迁进来的笔记立刻出现在世界书索引与图谱里
     const index = await (await fetch(`${origin}/api/reference?root=${encodeURIComponent(root)}`)).json()
-    assert.ok(index.notes.some((note) => note.path === '参考/大纲/001-主线.md'))
+    assert.ok(index.notes.some((note) => note.path === '世界书/大纲/001-主线.md'))
     const graph = await (await fetch(`${origin}/api/reference/graph?root=${encodeURIComponent(root)}`)).json()
-    assert.ok(graph.nodes.some((node) => node.id === '参考/大纲/001-主线.md'))
+    assert.ok(graph.nodes.some((node) => node.id === '世界书/大纲/001-主线.md'))
 
     // 二次迁移同目录：目标重名 → 全部 skipped 不覆盖
     await writeFile(join(root, '大纲', '001-主线.md'), '新的大纲。', 'utf-8')
@@ -432,7 +433,7 @@ test('daemon 端点：迁入旧目录——搬进参考、源进 .history、白�
     const againPayload = await again.json()
     assert.equal(againPayload.moved.length, 0)
     assert.equal(againPayload.skipped.length, 1)
-    assert.equal(await readFile(join(root, '参考', '大纲', '001-主线.md'), 'utf-8'), '主线大纲。')
+    assert.equal(await readFile(join(root, '世界书', '大纲', '001-主线.md'), 'utf-8'), '主线大纲。')
   } finally {
     await daemon.close()
     await rm(base, { recursive: true, force: true })
@@ -458,7 +459,7 @@ test('契约校验：deduceAssets/deduceAssetFile 请求/响应形状（OS-61 P4
   assert.equal(validateRequest('deduceAssetFile', { root: '/tmp/x' }).ok, false, 'path 必填')
 })
 
-test('daemon 端点：推演分支——从某拍开新分支，cursor 定位＋分叉溯源＋备份（OS-61 P3）', async () => {
+test('daemon 端点：扮演分支——从某拍开新分支，cursor 定位＋分叉溯源＋备份（OS-61 P3）', async () => {
   const { base, root, preferencesPath } = await makeFixture()
   const daemon = await startDaemon({ port: 0, preferencesPath, logger: { log() {} } })
   const origin = `http://127.0.0.1:${daemon.port}`
@@ -506,9 +507,9 @@ test('daemon 端点：推演分支——从某拍开新分支，cursor 定位＋
     assert.deepEqual(fork.forkBranchIds, ['branch-2'])
     assert.equal(validateResponse('deduceBranch', payload).ok, true)
     // 落盘＋.history 备份
-    const onDisk = JSON.parse(await readFile(join(root, '推演', 'book-1', 'session.json'), 'utf-8'))
+    const onDisk = JSON.parse(await readFile(join(root, '扮演', 'book-1', 'session.json'), 'utf-8'))
     assert.equal(onDisk.branchId, 'branch-2')
-    const history = await readdir(join(root, '推演', 'book-1', '.history'))
+    const history = await readdir(join(root, '扮演', 'book-1', '.history'))
     assert.ok(history.length >= 1, '写前备份在 .history')
 
     // 同拍再开一条：branchId 不复用，溯源累加

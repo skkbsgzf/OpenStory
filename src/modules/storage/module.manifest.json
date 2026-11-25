@@ -1,0 +1,20 @@
+{
+  "spec": "openstory-module@2",
+  "id": "storage",
+  "name": "存储内核",
+  "version": "1.0.0",
+  "builtin": true,
+  "description": "库根、本机院子、库清单与建库骨架的唯一能力供给者；路径防逃逸与物理写管道仍归底座。",
+  "class": "kernel",
+  "entry": "index.mjs",
+  "requires": [
+    { "id": "base.write", "min": 1 },
+    { "id": "base.naming", "min": 1 }
+  ],
+  "capabilities": [
+    { "id": "storage.roots", "version": 1 },
+    { "id": "library.list", "version": 1, "golden": "library-manifest-v1" },
+    { "id": "storage.scaffold", "version": 1, "golden": "project-document-v4" }
+  ],
+  "endpoints": []
+}

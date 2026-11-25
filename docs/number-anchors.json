@@ -1,0 +1,25 @@
+{
+  "schema": "openstory.number-anchors/v1",
+  "appJs": {
+    "lines": 10338,
+    "maxLines": 10500,
+    "convention": "physical-lines; CRLF/LF normalized; blank and comment lines included; trailing newline not counted"
+  },
+  "endpoints": {
+    "total": 105,
+    "moduleOwned": 41,
+    "hostOwned": 64,
+    "hostDomain": 0,
+    "hostDomainIds": []
+  },
+  "testFiles": 102,
+  "gateCount": 27,
+  "tests": {
+    "total": 812,
+    "pass": 810,
+    "fail": 0,
+    "skipped": 2,
+    "ok": true,
+    "command": "node --test test/*.test.mjs"
+  }
+}
