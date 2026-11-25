@@ -32,26 +32,6 @@ jobs:
           npm test 2>&1 | tee test-round-2.log || status=1
           exit "$status"
 
-      # 失败时把失败用例名当注解发出来（公开仓也能查，不必登录取 artifact）。
-      - name: Report failing tests as annotations
-        if: failure()
-        shell: bash
-        run: |
-          shopt -s nullglob
-          for log in test-round-*.log acceptance.log arch-check.log; do
-            [ -f "$log" ] || continue
-            grep -E '^not ok |^✖ |^  ✖ ' "$log" | head -n 30 | while IFS= read -r line; do
-              safe="${line//'%'/'%25'}"
-              safe="${safe//$'\r'/}"
-              safe="${safe//$'\n'/'%0A'}"
-              echo "::error title=${log}::${safe}"
-            done
-          done
-          echo "### 失败摘要（$GITHUB_SHA）" >> "$GITHUB_STEP_SUMMARY"
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
-          grep -hE '^ℹ (tests|pass|fail|skipped)|^not ok |^✖ ' test-round-*.log 2>/dev/null | head -n 40 >> "$GITHUB_STEP_SUMMARY" || true
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
-
       - name: Run acceptance gate
         shell: bash
         run: |
@@ -63,6 +43,26 @@ jobs:
         run: |
           set -o pipefail
           node tools/arch-stats.mjs --check 2>&1 | tee arch-check.log
+
+      # 失败时把失败用例名当注解发出来（公开仓也能查，不必登录取 artifact）。
+      - name: Report failing tests as annotations
+        if: failure()
+        shell: bash
+        run: |
+          shopt -s nullglob
+          for log in test-round-*.log acceptance.log arch-check.log; do
+            [ -f "$log" ] || continue
+            grep -E '^not ok |^✖ |^  ✖ |^✗ ' "$log" | head -n 30 | while IFS= read -r line; do
+              safe="${line//'%'/'%25'}"
+              safe="${safe//$'\r'/}"
+              safe="${safe//$'\n'/'%0A'}"
+              echo "::error title=${log}::${safe}"
+            done
+          done
+          echo "### 失败摘要（$GITHUB_SHA）" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          grep -hE '^ℹ (tests|pass|fail|skipped)|^not ok |^✖ |^✗ |^验收门禁' test-round-*.log acceptance.log 2>/dev/null | head -n 40 >> "$GITHUB_STEP_SUMMARY" || true
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload gate logs
         if: always()
