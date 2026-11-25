@@ -1,7 +1,7 @@
 # 工单交接说明（给 workbuddy / 后续执行者）
 
-> **已推送（2026-11-26）**：`main` → `ad686fd`（39 个提交，`4d8ad95..ad686fd`）。
-> **CI 未触发（待作者在仓库设置里开启）**：工作流 `OpenStory CI` 状态 active，但该提交的 check-suites／check-runs 均为 0，仓库历史上也从未有过任何 run——是 GitHub 侧没触发，不是代码问题。请到仓库 **Settings → Actions → General** 确认选了「Allow all actions and reusable workflows」、且账号没有 Actions 计费限制；开启后推一个提交即可看到首跑。
+> **已推送并过 CI（2026-11-26）**：`main` 推到 `6f4c66b`；GitHub Actions 在 `ubuntu-latest` **首次全绿**（run 45658464076：两轮测试 845／843 过／2 跳过／0 挂 → 验收门禁 29／0／0 → arch check）。
+> 首次接通暴露并修掉 4 类只在 Linux 现形的问题：①假 dsh shim 写死 Windows `.cmd`；②单实例用例假设 `child.kill()` 是硬杀（POSIX 的 SIGTERM 会走清理）；③`courtyardRoot()` 顺手建目录——假路径在 Linux 被当相对路径、把仓根建出 `C:`／`D:`／`X:\…`（S0.1 红），Windows 上则写到了 C 盘根；④两处平台差异让跳过数与文档锚对不上（`ARCHITECTURE.md` 按 CRLF 新克隆、会话目录用例 win32 专属），后者改为两平台都跑、按平台断言。
 > **当前阶段（2026-11-25 晚）：清账批已全部收口**——D 批验收有条件通过，作者裁定「遗留全部做完，不接受妥协」「待定里的 Pinax 业务必须全部退役」。12 张工单在 [`BOARD.md`](BOARD.md)「清账批」段，规划见 [`docs/plan/cleanup-batch-20261125.md`](../plan/cleanup-batch-20261125.md)，验收记录见 [`OS-185-188-batch-d-acceptance.md`](OS-185-188-batch-d-acceptance.md)。
 > **派发方式**：CodeBuddy CLI（`.zcode/os-batch-runner.mjs`，模型 `hy4flash`），每轮由监督线验收后再开下一轮；提交由编排器做，**任何执行者不要自行 push**。
 > **e2e 口径（2026-11-25 起）**：一律走隔离脚本 `tools/verify/verify-os172-e2e.mjs`（临时 daemon＋临时 `LOCALAPPDATA`＋假上游）；编排器不重启也不连接 8807——常驻进程是作者在用的旧 daemon，新版「首次打开即升级真库」，碰它等于替作者升级真库。
