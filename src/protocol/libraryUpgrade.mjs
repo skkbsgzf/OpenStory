@@ -91,13 +91,50 @@ function mapRoute(value) {
   return value
 }
 
+/**
+ * OS-188a：路径改写锚定在库根首段（或已知运行态前缀），路径中间的同名目录一律不动。
+ * 旧行为是「任意位置命中即替换」，会把 `世界书/参考/a.md` 错改成 `世界书/世界书/a.md`。
+ * 正斜杠与反斜杠都认，回写沿用原路径出现的第一种分隔符。
+ */
 function mapStoredPath(value) {
-  return text(value)
-    .replace(/(^|[\\/])参考[\\/]/gu, (_match, lead) => `${lead}世界书/`)
-    .replace(/(^|[\\/])拆解[\\/]/gu, (_match, lead) => `${lead}故事源/`)
-    .replace(/(^|[\\/])推演[\\/]/gu, (_match, lead) => `${lead}扮演/`)
-    .replace(/^导出[\\/]/u, `${namingEntry('exchange').dir}/`)
-    .replace(/(^|[\\/])\.pinax[\\/]/gu, (_match, lead) => `${lead}${STORAGE.metadataDir}/`)
+  const raw = text(value)
+  if (!raw) return raw
+  const parts = raw.split(/[\\/]/u)
+  if (parts.length < 2) return raw
+  const sep = /[\\/]/u.exec(raw)[0]
+  let head = parts[0]
+  let changed = false
+  if (head === '.pinax') {
+    head = STORAGE.metadataDir
+    changed = true
+  } else if (Object.hasOwn(DIR_RENAMES, head)) {
+    head = DIR_RENAMES[head]
+    changed = true
+  }
+  parts[0] = head
+  // 已知运行态前缀：<元数据目录>/drafts|log/<旧模块名>/…
+  if (head === STORAGE.metadataDir && (parts[1] === 'drafts' || parts[1] === 'log')) {
+    const oldModule = parts[2]
+    if (oldModule && Object.hasOwn(MODULE_RENAMES, oldModule) && MODULE_RENAMES[oldModule] !== oldModule) {
+      parts[2] = MODULE_RENAMES[oldModule]
+      changed = true
+    }
+  }
+  return changed ? parts.join(sep) : raw
+}
+
+/** 旧关系扩展键抬升到新键名（只动对象键，不动值）。 */
+function mapStoredKey(key) {
+  return key === 'pinaxRelationExtensions' ? 'relationExtensions' : mapStoredPath(key)
+}
+
+/** JSON.parse 报错行号：优先用 Node 自带的 `(line N column M)`，否则按 position 折算。 */
+function jsonErrorLine(message, source) {
+  const explicit = /line (\d+)/u.exec(message)
+  if (explicit) return Number(explicit[1])
+  const position = /position (\d+)/u.exec(message)
+  if (!position) return 1
+  return source.slice(0, Number(position[1])).split('\n').length
 }
 
 function transformStoredJson(value, key = '') {
@@ -117,7 +154,7 @@ function transformStoredJson(value, key = '') {
   let changed = false
   const next = {}
   for (const [childKey, child] of Object.entries(value)) {
-    const mappedKey = mapStoredPath(childKey)
+    const mappedKey = mapStoredKey(childKey)
     const mappedValue = transformStoredJson(child, childKey)
     if (Object.hasOwn(next, mappedKey)) {
       if (JSON.stringify(next[mappedKey]) !== JSON.stringify(mappedValue)) {
@@ -300,6 +337,8 @@ async function rewriteJson(root, path, transform, journal, io, operation, report
   let document
   try { document = JSON.parse(before.toString('utf-8')) } catch (error) {
     if (strict) throw error
+    const source = before.toString('utf-8')
+    report.skipped.push({ file: relPath(root, path), line: jsonErrorLine(text(error?.message || error), source), reason: text(error?.message || error) })
     return
   }
   const next = transform(document)
@@ -313,10 +352,13 @@ async function rewriteJson(root, path, transform, journal, io, operation, report
 async function rewriteJsonLines(root, path, transform, journal, io, operation, report) {
   const before = await io.readFile(path, 'utf-8')
   let changed = false
-  const after = before.split('\n').map((line) => {
+  const after = before.split('\n').map((line, index) => {
     if (!line.trim()) return line
     let document
-    try { document = JSON.parse(line) } catch { return line }
+    try { document = JSON.parse(line) } catch (error) {
+      report.skipped.push({ file: relPath(root, path), line: index + 1, reason: text(error?.message || error) })
+      return line
+    }
     const next = transform(document)
     if (JSON.stringify(next) === JSON.stringify(document)) return line
     changed = true
@@ -327,6 +369,59 @@ async function rewriteJsonLines(root, path, transform, journal, io, operation, r
   operation(`rewrite:${relPath(root, path)}`)
   await io.atomicWrite(path, after)
   report.rewritten.push(relPath(root, path))
+}
+
+/**
+ * OS-188a：世界书条目 md 的 frontmatter 顶层旧键抬升。只替换键名所在那一行的键，
+ * 其余字节（含 CRLF、缩进、块标量内容）原样保留；改写前过 journal，原文件由整库备份兜底。
+ */
+async function rewriteMarkdownKey(root, path, journal, io, operation, report) {
+  const before = await io.readFile(path, 'utf-8')
+  const lines = before.split('\n')
+  if (lines[0]?.trim() !== '---') return
+  let end = -1
+  for (let index = 1; index < lines.length; index += 1) {
+    if (/^---\r?$/u.test(lines[index])) { end = index; break }
+  }
+  if (end < 1) return
+  let changed = false
+  for (let index = 1; index < end; index += 1) {
+    const match = /^pinaxRelationExtensions(\s*:)/u.exec(lines[index])
+    if (!match) continue
+    lines[index] = `relationExtensions${match[1]}`
+    changed = true
+  }
+  if (!changed) return
+  journal.push({ kind: 'write', path, before })
+  operation(`rewrite-md:${relPath(root, path)}`)
+  await io.atomicWrite(path, lines.join('\n'))
+  report.frontmatter.push(relPath(root, path))
+}
+
+/** OS-188a：把库内 `.pinax-tmp-*` 残留按相对路径挪进备份的 tmp-residue/，不删除。 */
+async function archiveTmpResidue(root, backup, journal, io, operation, report) {
+  const residueRoot = join(backup, 'tmp-residue')
+  async function walk(dir) {
+    if (!await isDirectory(dir)) return
+    const entries = await io.readdir(dir, { withFileTypes: true })
+    entries.sort((a, b) => a.name.localeCompare(b.name))
+    for (const entry of entries) {
+      const path = join(dir, entry.name)
+      if (entry.isDirectory()) {
+        if (SKIP_DIRS.has(entry.name) || entry.name.startsWith('.retired-') || /\.retired-/u.test(entry.name)) continue
+        await walk(path)
+      } else if (entry.isFile() && entry.name.startsWith('.pinax-tmp-')) {
+        const rel = relPath(root, path)
+        const target = join(residueRoot, rel)
+        await ensureDirectory(root, join(target, '..'), journal, io, operation)
+        journal.push({ kind: 'move', from: path, to: target })
+        operation(`archive-tmp:${rel}`)
+        await io.rename(path, target)
+        report.tmpResidue.push(rel)
+      }
+    }
+  }
+  await walk(root)
 }
 
 async function migrateModuleState(root, parentName, journal, io, operation, conflicts, stamp, report) {
@@ -361,7 +456,10 @@ async function runUpgrade(root, options = {}) {
   }
   const journal = []
   const mutations = journalFor(journal)
-  const report = { at: now.toISOString(), backup: '', copied: [], moved: [], retired: [], conflicts: [], rewritten: [] }
+  const report = {
+    at: now.toISOString(), backup: '', copied: [], moved: [], retired: [], conflicts: [], rewritten: [],
+    skipped: [], frontmatter: [], tmpResidue: []
+  }
   let phase = 'inspect'
   let backup = ''
   let historyExisted = false
@@ -423,6 +521,14 @@ async function runUpgrade(root, options = {}) {
       })
     }
 
+    phase = 'frontmatter'
+    await walkJsonFiles(join(root, namingEntry('worldbook').dir), io, async (path) => {
+      if (path.endsWith('.md')) await rewriteMarkdownKey(root, path, journal, io, operation, report)
+    })
+
+    phase = 'tmp-residue'
+    await archiveTmpResidue(root, backup, journal, io, operation, report)
+
     phase = 'upgrade-marker'
     const markerPath = join(root, STORAGE.metadataDir, 'upgrade.json')
     mutations.write(markerPath, null)
@@ -444,7 +550,10 @@ async function runUpgrade(root, options = {}) {
       after: markerContent,
       actor: 'system',
       now,
-      meta: { backup: report.backup, conflicts: report.conflicts.length, rewritten: report.rewritten.length }
+      meta: {
+        backup: report.backup, conflicts: report.conflicts.length, rewritten: report.rewritten.length,
+        skipped: report.skipped.length, frontmatter: report.frontmatter.length, tmpResidue: report.tmpResidue.length
+      }
     })
     if (!logged.ok) throw new Error(`升级变更日志写入失败：${logged.message}`)
     return { ok: true, upgraded: true, report }

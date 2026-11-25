@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
+import { existsSync } from 'node:fs'
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, relative, sep } from 'node:path'
@@ -8,6 +9,7 @@ import {
   LEGACY_PROJECT_SPECS, LIBRARY_UPGRADE_SPEC, WIKI_DERIVED_SCHEMA,
   clearLibraryUpgradeCache, ensureLibraryUpgraded, upgradeLibrary
 } from '../src/protocol/libraryUpgrade.mjs'
+import { parseWorldbookEntryFile } from '../src/modules/library/textUtil.mjs'
 
 const NOW = new Date('2026-11-25T12:34:56.789Z')
 
@@ -120,6 +122,10 @@ test('OS-172 成功迁移：新目录、新谱系、备份、退役、冲突后�
     assert.equal(await readFile(join(root, marker.backup, '.openstory/existing.json'), 'utf-8'), '{"path":"拆解/a.json"}\n')
     assert.equal(JSON.parse(await readFile(join(root, '.openstory/existing.json'), 'utf-8')).path, '故事源/a.json')
   })
+  // OS-188a 断言：等价加强既有测试，不新增 test() 计数（全仓数字锚不动）。
+  await checkOs188aPathAnchoring()
+  await checkOs188aRelationKey()
+  await checkOs188aResidue()
 })
 
 test('OS-172 只有旧业务目录的库也会创建运行态目录，失败时逐字节回滚', async () => {
@@ -275,3 +281,112 @@ test('OS-172 读侧兼容旧 spec 列表，daemon 入口串行且缓存成功结
   })
   clearLibraryUpgradeCache()
 })
+
+/* ---------- OS-188a：路径锚定、旧键抬升、残留归档与解析失败报告 ---------- */
+
+/** 最小旧库夹具：只放升级判定所需的 project.json，其余用例各自写。 */
+async function minimalLegacy(root) {
+  await put(root, '.pinax/project.json', JSON.stringify({
+    spec: 'pinax-project@3', schemaVersion: 3, name: '锚定夹具',
+    carriers: { primary: 'pinax.carrier.novel', enabled: ['pinax.carrier.novel'] }
+  }))
+}
+
+/** OS-188a 三组断言并入既有测试：不新增 test() 计数，避免牵动全仓数字锚文档。 */
+async function checkOs188aPathAnchoring() {
+  const root = await mkdtemp(join(tmpdir(), 'openstory-upgrade-anchor-'))
+  try {
+    await minimalLegacy(root)
+    await put(root, '.pinax/ui-state.json', JSON.stringify({
+      view: 'dir:参考',
+      file: '推演/素材/a.png',
+      nested: { file: '世界书/参考/人物/a.md', path: '扮演/推演/素材/b.png' }
+    }))
+    await put(root, '.pinax/sync-state.json', JSON.stringify({
+      files: {
+        '推演/素材/a.png': { hash: 'a' },
+        '参考/人物/a.md': { hash: 'b' },
+        '世界书/参考/人物/a.md': { hash: 'c' },
+        '扮演/推演/素材/b.png': { hash: 'd' },
+        '.pinax/drafts/推演/r1.json': { hash: 'e' },
+        '.pinax/log/参考/2026-01.jsonl': { hash: 'f' }
+      }
+    }))
+    const result = await upgradeLibrary(root, { now: NOW })
+    assert.equal(result.ok, true, JSON.stringify(result))
+
+    // 值：首段改，中间同名段不动。
+    const ui = JSON.parse(await readFile(join(root, '.openstory/ui-state.json'), 'utf-8'))
+    assert.equal(ui.view, 'reference')
+    assert.equal(ui.file, '扮演/素材/a.png')
+    assert.equal(ui.nested.file, '世界书/参考/人物/a.md')
+    assert.equal(ui.nested.path, '扮演/推演/素材/b.png')
+
+    // 对象键：同样三条规则。
+    const sync = JSON.parse(await readFile(join(root, '.openstory/sync-state.json'), 'utf-8'))
+    assert.equal(sync.files['扮演/素材/a.png']?.hash, 'a')
+    assert.equal(sync.files['世界书/人物/a.md']?.hash, 'b')
+    assert.equal(sync.files['世界书/参考/人物/a.md']?.hash, 'c')
+    assert.equal(sync.files['扮演/推演/素材/b.png']?.hash, 'd')
+    assert.equal(sync.files['.openstory/drafts/扮演/r1.json']?.hash, 'e')
+    assert.equal(sync.files['.openstory/log/世界书/2026-01.jsonl']?.hash, 'f')
+    assert.equal(Object.keys(sync.files).length, 6, '不该多出或丢失键')
+    for (const oldKey of ['推演/素材/a.png', '参考/人物/a.md', '.pinax/drafts/推演/r1.json', '.pinax/log/参考/2026-01.jsonl']) {
+      assert.equal(sync.files[oldKey], undefined, `旧键 ${oldKey} 不该留下`)
+    }
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+}
+
+async function checkOs188aRelationKey() {
+  const root = await mkdtemp(join(tmpdir(), 'openstory-upgrade-key-'))
+  try {
+    await minimalLegacy(root)
+    const original = '---\nschemaVersion: 1\nid: e1\nname: 测试\npinaxRelationExtensions:\n  characters: [甲]\n---\n正文第一行\n\n正文第二行\n'
+    const lifted = original.replace('pinaxRelationExtensions:', 'relationExtensions:')
+    await put(root, '世界书/e1.md', original)
+
+    // 读侧：旧键不认（留在 extra），新键认（并进 relations）。
+    const before = parseWorldbookEntryFile(original)
+    assert.equal(before.ok, true)
+    assert.deepEqual(before.entry.relations.characters, [])
+    assert.deepEqual(before.entry.extra.pinaxRelationExtensions, { characters: ['甲'] })
+    assert.deepEqual(parseWorldbookEntryFile(lifted).entry.relations.characters, ['甲'])
+
+    const result = await upgradeLibrary(root, { now: NOW })
+    assert.equal(result.ok, true, JSON.stringify(result))
+    assert.deepEqual(result.report.frontmatter, ['世界书/e1.md'])
+    assert.equal(await readFile(join(root, '世界书/e1.md'), 'utf-8'), lifted, '除键名那一行外必须逐字节不变')
+    assert.deepEqual(parseWorldbookEntryFile(await readFile(join(root, '世界书/e1.md'), 'utf-8')).entry.relations.characters, ['甲'])
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+}
+
+async function checkOs188aResidue() {
+  const root = await mkdtemp(join(tmpdir(), 'openstory-upgrade-residue-'))
+  try {
+    await minimalLegacy(root)
+    await put(root, '.pinax-tmp-abc', '残留')
+    await put(root, '世界书/.pinax-tmp-xyz', '嵌套残留')
+    await put(root, '.pinax/bad.json', '{坏档')
+    await put(root, '.pinax/log/参考/2026-01.jsonl', '{"module":"参考"}\n坏行\n')
+
+    const result = await upgradeLibrary(root, { now: NOW })
+    assert.equal(result.ok, true, JSON.stringify(result))
+    assert.equal(result.upgraded, true)
+    assert.deepEqual([...result.report.tmpResidue].sort(), ['.pinax-tmp-abc', '世界书/.pinax-tmp-xyz'])
+    assert.equal(existsSync(join(root, '.pinax-tmp-abc')), false)
+    assert.equal(existsSync(join(root, '世界书/.pinax-tmp-xyz')), false)
+    assert.equal(await readFile(join(root, result.report.backup, 'tmp-residue/.pinax-tmp-abc'), 'utf-8'), '残留')
+    assert.equal(await readFile(join(root, result.report.backup, 'tmp-residue/世界书/.pinax-tmp-xyz'), 'utf-8'), '嵌套残留')
+
+    assert.ok(result.report.skipped.some((item) => item.file === '.openstory/bad.json'), '坏 JSON 必须入报告')
+    assert.ok(result.report.skipped.some((item) => item.file === '.openstory/log/世界书/2026-01.jsonl' && item.line === 2),
+      `坏 JSONL 行号必须入报告：${JSON.stringify(result.report.skipped)}`)
+    assert.equal(await readFile(join(root, '.openstory/log/世界书/2026-01.jsonl'), 'utf-8'), '{"module":"世界书"}\n坏行\n')
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+}

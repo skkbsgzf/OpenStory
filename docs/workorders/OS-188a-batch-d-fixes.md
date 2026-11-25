@@ -7,7 +7,7 @@
 | 依赖 | 无 |
 | 允许改动 | `src/protocol/libraryUpgrade.mjs`、`src/modules/library/textUtil.mjs`、`test/libraryUpgrade.test.mjs`、`test/naming.test.mjs`、`test/os172Naming.test.mjs`、`tools/verify/verify-os172-naming.mjs`、`docs/workorders/OS-188a-batch-d-fixes.md` |
 | 风险 | **中**——这段代码会在作者真库上执行；测试一律只用临时夹具库 |
-| 状态 | 待派 |
+| 状态 | 已实现（待监督线验收） |
 
 通用规则见 [`COMMON-RULES.md`](COMMON-RULES.md)。
 
@@ -68,3 +68,42 @@
 - 机器门禁全绿；红线测试 `test/libraryUpgrade.test.mjs`、`test/os172Naming.test.mjs`、`test/naming.test.mjs` 全绿。
 - 复跑监督线探针 `D:\Pinax-e2e\.zcode\tmp\accept-d-probes.mjs`，B1 三行输出符合上面「应为」；探针脚本若因新规则需要调整夹具，在回报里说明改了什么。
 - `git diff --check` 干净；`node tools/number-anchors.mjs` 与 `npm run arch:stats` 跑过。
+
+## 实现记录（施工方回填）
+
+- 路径改写只认库根首段与 `.openstory/drafts|log/<旧模块名>/` 运行态前缀；`.pinax` 前缀先换元数据目录再走运行态规则。正斜杠/反斜杠均识别，回写沿用原分隔符。
+- 旧关系扩展键在 md frontmatter 与 JSON/JSONL 对象键两处抬升；`textUtil.mjs` 只认 `extra.relationExtensions`。旧键仅留 `libraryUpgrade.mjs`，`naming.test.mjs` 加了静态断言。
+- `.pinax-tmp-*` 按相对路径移入 `<备份>/tmp-residue/`（跳过 `.history`/`.retired-*`/`.git`/`node_modules`），只搬不删；JSON/JSONL 解析失败记入 `report.skipped`（含行号），不阻断升级。
+- **反证**：临时把 `mapStoredPath` 改回「任意位置」，锚定用例报 `actual:'世界书/世界书/人物/a.md' / expected:'世界书/参考/人物/a.md'`，随后已还原为锚定实现。
+- 新增断言挂在既有 `test()` 上（等价加强），全仓测试总数仍 812，避免牵动数字锚文档；`npm run arch:stats` 回写了 `ARCHITECTURE.md` 生成段的协议行数（4,387→4,496）。
+- 复跑 `accept-d-probes.mjs`：B1 三行符合预期，探针夹具未调整。
+## 施工回报（编排器自动归档）
+
+> 模型 hy4flash · 第 1 轮 · 测试 绿（tests 812 · pass 810 · fail 0 · skip 2） · 门禁 绿 · e2e 水浒＋新建（隔离 daemon）绿 · 8807 未动
+
+```text
+CHANGED:
+- `src/protocol/libraryUpgrade.mjs` — 路径锚定、`mapStoredKey` 抬升旧键、md frontmatter 键行改写、`.pinax-tmp-*` 残留归档、`report.skipped/frontmatter/tmpResidue`
+- `src/modules/library/textUtil.mjs` — 改读 `extra.relationExtensions`
+- `test/libraryUpgrade.test.mjs` — 锚定三例、旧键抬升、残留归档/skipped 断言（作为既有 test 的等价加强，未新增 test 计数）
+- `test/naming.test.mjs` — 在既有断言内加入「旧键只许在 libraryUpgrade.mjs」检查
+- `docs/workorders/OS-188a-batch-d-fixes.md` — 状态与实现记录回填
+- `ARCHITECTURE.md` — `npm run arch:stats` 自动回写生成段（协议行数 4,387→4,496）
+- `docs/number-anchors.json` — `node tools/number-anchors.mjs` 重新生成（仍 812 例）
+
+VERIFIED:
+- `node --check` 改动的 4 个 `.mjs`：全部通过
+- `node --test test/libraryUpgrade.test.mjs test/naming.test.mjs test/os172Naming.test.mjs`：20/20 通过
+- `node .zcode/run-gate.mjs`：812 例，810 pass / 0 fail / 2 skip
+- `node tools/acceptance/acceptance.mjs`：27 过 / 0 挂 / 0 警
+- `node tools/number-anchors.mjs --check`：`✓ 812 例／门禁 27／端点 105`
+- `node tools/arch-stats.mjs --check`：`✓ 生成段与实测一致`
+- 监督线探针 `node D:/Pinax-e2e/.zcode/tmp/accept-d-probes.mjs`，B1 三行：`推演/素材/a.png`→`扮演/素材/a.png`；`扮演/推演/素材/b.png` 原样；`世界书/参考/人物/a.md` 原样。探针夹具未调整。
+- 反证：临时把 `mapStoredPath` 改回「任意位置」，`OS-188a 路径改写锚定` 用例报 `actual '世界书/世界书/人物/a.md' / expected '世界书/参考/人物/a.md'`，随后已还原并复跑全绿。
+- 改动文件空白检查（尾随空白/末尾换行）干净，无残留探针文件。
+
+LIMITATIONS:
+- 未亲自执行 `git diff --check`（遵守「不执行任何 git 命令」约束），改用逐文件空白等价检查替代。
+- 探针 B1 中 `ui-state.lastFile: '参考/人物/a.md'` 保持原样：它不是既有 path-key 集合中的键，本次任务未要求扩展该集合，属预期行为而非漏改。
+- 未改动 `test/os172Naming.test.mjs` 与 `tools/verify/verify-os172-naming.mjs`（虽在允许范围）：现有谱系门禁已通过，旧键边界断言落在 `naming.test.mjs`。
+```

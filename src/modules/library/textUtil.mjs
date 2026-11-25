@@ -59,7 +59,7 @@ function contractEntryToRuntime(parsed) {
   entry.relations = { tags: tags.slice(), ...buckets }
   if (rich.length) entry.relationsRich = rich
   const extra = worldbookIsPlainObject(parsed.extra) ? { ...parsed.extra } : {}
-  if (worldbookIsPlainObject(extra.pinaxRelationExtensions)) { Object.assign(entry.relations, extra.pinaxRelationExtensions); delete extra.pinaxRelationExtensions }
+  if (worldbookIsPlainObject(extra.relationExtensions)) { Object.assign(entry.relations, extra.relationExtensions); delete extra.relationExtensions }
   if (extra.metadata !== undefined) {
     entry.metadata = extra.metadata
     delete extra.metadata

@@ -55,7 +55,7 @@
 |---|---|---:|---:|
 | 底座 | `src/host/`＋`src/kernel/` | 17 | 2,317 |
 | 契约 | `src/api/` | 18 | 5,080 |
-| 协议 | `src/protocol/` | 49 | 4,387 |
+| 协议 | `src/protocol/` | 49 | 4,496 |
 | 内核件（class: kernel，7） | `src/modules/agent-runtime/`＋`src/modules/deduce/`＋`src/modules/fact/`＋`src/modules/media/`＋`src/modules/prose/`＋`src/modules/storage/`＋`src/modules/text/` | 47 | 8,494 |
 | 工作台（class: workbench，11） | `src/modules/analysis/`＋`src/modules/artifacts/`＋`src/modules/chapters/`＋`src/modules/comfyui/`＋`src/modules/exchange/`＋`src/modules/habits/`＋`src/modules/kb/`＋`src/modules/roleplay/`＋`src/modules/script/`＋`src/modules/storysource/`＋`src/modules/worldbook/` | 21 | 2,862 |
 | 宿主组合面（恒启） | `src/modules/agentbar/`＋`src/modules/library/` | 6 | 1,361 |

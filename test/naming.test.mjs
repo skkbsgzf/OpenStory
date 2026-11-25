@@ -113,6 +113,16 @@ test('表覆盖日志模块：代码用到的模块名 ⊆ 表的模块列，且
   assert.equal(logModuleForDir('导入导出'), '导入导出')
   assert.equal(logModuleForDir('正文'), '正文')
   assert.equal(logModuleForDir('不认识的目录'), null)
+
+  // OS-188a：旧关系扩展键已抬升为 relationExtensions，产品代码只许迁移器认旧名。
+  const oldKeyOffenders = []
+  for (const { rel, src } of walkMjs('src')) {
+    if (rel === 'src/protocol/libraryUpgrade.mjs') continue
+    if (src.includes('pinaxRelationExtensions')) oldKeyOffenders.push(rel)
+  }
+  assert.deepEqual(oldKeyOffenders, [], '旧键只许留在 libraryUpgrade.mjs')
+  const migrator = readFileSync(join(REPO, 'src/protocol/libraryUpgrade.mjs'), 'utf-8')
+  assert.match(migrator, /pinaxRelationExtensions/u, '迁移器必须认得旧键才能升级作者旧库')
 })
 
 /* ---------- ③ 契约域 / MCP 前缀取值真实存在 ---------- */
