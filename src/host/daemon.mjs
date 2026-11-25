@@ -28,7 +28,7 @@
  */
 import { createReadStream, existsSync, mkdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:http'
-import { dirname, extname, join, resolve } from 'node:path'
+import { dirname, extname, join, posix, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { API_ERROR_CODES, isPlainObject } from '../api/contracts.mjs'
 import { HOST_HANDLERS } from '../api/registry.mjs'
@@ -280,6 +280,46 @@ function contentTypeGateFail(req) {
 
 /* ---------- 静态托管 ---------- */
 
+/* OS-198a：模块页面只服务声明的入口与其引用的静态资源——入口不是整个模块目录。 */
+const MODULE_PAGE_ASSET_EXT = /\.(?:js|mjs|css|png|jpg|jpeg|webp|gif|ico|woff2|json)$/iu
+
+/** 模块包内路径归一（只作白名单比对；真正落盘仍走 resolveInsideRoot 的路径逃逸闸）。 */
+function moduleRelPath(value) {
+  return posix.normalize(String(value ?? '').replace(/\\/gu, '/')).replace(/^\.\//u, '').replace(/^\/+/u, '')
+}
+
+/**
+ * 允许清单：manifest `pages[].kind==='iframe'` 声明的入口＋入口内容里引用的白名单资源；
+ * `module.manifest.json`、模块 `entry`、`migrations[].entry` 一律拒绝（永不服务）。
+ * 清单读不出来＝整包拒绝，不放宽成「目录里什么都能取」。
+ */
+function modulePageAllowList(moduleDir, found) {
+  const declared = new Set((found.pages ?? [])
+    .filter((page) => page?.kind === 'iframe' && page?.entry)
+    .map((page) => moduleRelPath(page.entry)))
+  const denied = new Set(['module.manifest.json'])
+  let manifest = null
+  try { manifest = JSON.parse(readFileSync(join(moduleDir, 'module.manifest.json'), 'utf-8')) } catch { /* 读不到＝全拒 */ }
+  if (!manifest) return { declared, denied, refs: new Set(), valid: false }
+  if (manifest.entry) denied.add(moduleRelPath(manifest.entry))
+  for (const migration of manifest.migrations ?? []) if (migration?.entry) denied.add(moduleRelPath(migration.entry))
+  const refs = new Set()
+  for (const page of found.pages ?? []) {
+    if (page?.kind !== 'iframe' || !page?.entry) continue
+    const inside = resolveInsideRoot(moduleDir, page.entry)
+    if (!inside.ok) continue
+    let source
+    try { source = readFileSync(inside.path, 'utf-8') } catch { continue }
+    const base = posix.dirname(moduleRelPath(page.entry))
+    for (const match of source.matchAll(/["'`]([^"'`\n]+)["'`]/gu)) {
+      const raw = match[1].split(/[?#]/u)[0]
+      if (!MODULE_PAGE_ASSET_EXT.test(raw) || /^[a-z][a-z\d+.-]*:/iu.test(raw)) continue
+      refs.add(moduleRelPath(raw.startsWith('/') ? raw.slice(1) : posix.join(base, raw)))
+    }
+  }
+  return { declared, denied, refs, valid: true }
+}
+
 /** OS-198：本机模块自带页面入口（`/module-page/<id>/<entry>`）。只服务已登记且已装载的本机模块。 */
 async function serveModulePage(req, res, url, env) {
   let pathname
@@ -296,8 +336,16 @@ async function serveModulePage(req, res, url, env) {
   const report = await moduleRootsReport(env)
   const found = report.localModules.find((item) => item.id === id && item.status === 'loaded')
   if (!found) return sendError(res, API_ERROR_CODES.NOT_FOUND, `没有已装载的本机模块：${id}`)
-  const resolved = resolveInsideRoot(join(found.rootPath, id), entry)
+  const moduleDir = join(found.rootPath, id)
+  const resolved = resolveInsideRoot(moduleDir, entry)
   if (!resolved.ok) return sendError(res, API_ERROR_CODES.PATH_ESCAPE, '模块页面路径越界')
+  const rel = moduleRelPath(entry)
+  const allow = modulePageAllowList(moduleDir, found)
+  if (!allow.valid || allow.denied.has(rel)) return sendError(res, API_ERROR_CODES.PATH_ESCAPE, '模块页面文件永不服务')
+  if (!allow.declared.has(rel)) {
+    if (!MODULE_PAGE_ASSET_EXT.test(rel)) return sendError(res, API_ERROR_CODES.PATH_ESCAPE, '模块页面资源扩展名不在白名单')
+    if (!allow.refs.has(rel)) return sendError(res, API_ERROR_CODES.NOT_FOUND, `模块页面未引用该资源：${entry}`)
+  }
   let stats
   try {
     stats = statSync(resolved.path)

@@ -359,17 +359,30 @@ export function renderNameForView(view, registry = TAB_REGISTRY) {
 
 /* ---------- 纯函数：「＋增加页签」面板（OS-36/OS-198）---------- */
 
-/** 投影里的可勾选页签（常用区＋目录型），顺序照投影。 */
+/**
+ * 「＋」面板的可勾选项：投影里**所有可关闭页签**（含第三方 iframe 页），顺序照投影。
+ * OS-198a：从 projectedTabDefs 派生，面板与页签栏共用同一份投影名单，不再各列一套；
+ * 宿主自有页签（设置）不进面板；收起后再勾即按投影原位回到页签栏。
+ */
 export function projectedPanelTabs(slots = {}, registry = TAB_REGISTRY, ctx = {}) {
-  const context = tabContext(ctx)
-  const byId = new Map(listOf(registry).map((entry) => [entry.id, entry]))
-  return listOf(slots?.tab).flatMap((placement) => {
-    const entry = byId.get(placement?.page)
-    if (!entry || entry.host) return []
-    if (!entry.panel && !entry.visibleWhen) return []
-    if (entry.visibleWhen && !entry.visibleWhen(context)) return []
-    return [{ view: entry.view ?? entry.id, label: placement.label || entry.id, panel: entry.panel === true }]
-  })
+  const hostViews = new Set(listOf(registry)
+    .filter((entry) => entry.host || entry.slotOnly || entry.routeOnly)
+    .map((entry) => entry.view ?? entry.id))
+  const byView = new Map(listOf(registry).map((entry) => [entry.view ?? entry.id, entry]))
+  return projectedTabDefs({ slots, ctx, registry })
+    .filter((def) => def.closable !== false && !hostViews.has(def.view))
+    .map((def) => ({
+      view: def.view,
+      label: def.label,
+      panel: byView.get(def.view)?.panel === true,
+      ...(def.iframe ? { iframe: def.iframe } : {})
+    }))
+}
+
+/** OS-198a：已退场目录名是死种子——旧库 tabHidden 读时忽略，写时不再追加。 */
+export function sanitizeHiddenTabs(saved) {
+  const dead = new Set(DEFAULT_HIDDEN_TABS)
+  return listOf(saved).filter((view) => !dead.has(view))
 }
 
 /** 已识别但库里还没有的业务目录（OS-83）——清单只由命名表与 DIR_ORDER 给。 */

@@ -54,3 +54,30 @@
 - 监督线复跑 `probe-198.mjs`（15 项全过）并在隔离 daemon 上重做浏览器冒烟：收起「外部台」→「＋」面板能勾回 → 刷新后仍在。
 - 回报里贴：面板与页面路由的改动点（`文件:行`）、门禁反证 (a) 的输出、`app.js` 行数前后。
 - `git diff --check` 干净；`node tools/number-anchors.mjs` 与 `npm run arch:stats` 跑过。
+## 施工回报（编排器自动归档）
+
+> 模型 hy4flash · 第 1 轮 · 测试 绿（tests 843 · pass 841 · fail 0 · skip 2） · 门禁 绿 · e2e 水浒＋新建（隔离 daemon）绿 · 8807 未动
+
+```text
+CHANGED:
+- `public/views/registry.mjs` — `projectedPanelTabs`（:367）改为从 `projectedTabDefs` 派生，列出投影里全部可关闭页签（含 iframe），排除宿主设置页；新增 `sanitizeHiddenTabs`（:383）过滤死种子。
+- `public/app.js` — `hiddenTabs`（:5382）改用 `sanitizeHiddenTabs`，删除 `DEFAULT_HIDDEN_TABS` 引用壳；行数 10,110 → 10,107。
+- `src/host/daemon.mjs` — 新增 `MODULE_PAGE_ASSET_EXT`（:284）/`modulePageAllowList`（:296），`serveModulePage`（:342-347）只服务声明的 iframe 入口及其引用的白名单资源；`module.manifest.json`、模块 `entry`、`migrations[].entry` 永不服务。
+- `tools/acceptance/acceptance.mjs` — S2.12（:444-473）新增前端硬编码页签名单/顺序数组检测（≥3 个页面 id 字面量并列；registry.mjs 真源豁免）。
+- `test/tabRegistry.test.mjs` — 补面板含 iframe、死种子、无世界书目录门控三项断言。
+- `test/os198SlotsWiring.test.mjs` — 补 P3c/P3d 等 403/404 断言、引用资源 200、daemon 级「收起→刷新→面板勾回→页签回来」测试。
+- `README.md`、`AGENTS.md`、`ARCHITECTURE.md`、`docs/number-anchors.json` — 数字锚回写（841 过／843 例／app.js 10,107）。
+
+VERIFIED:
+- 红线测试：`node --test test/tabRegistry.test.mjs test/os198SlotsWiring.test.mjs test/slots.test.mjs test/os172Naming.test.mjs test/moduleManifest2.test.mjs` → 35/35 过。
+- 全量：`node .zcode/run-gate.mjs` → pass=841 / fail=0 / skip=2。
+- 门禁：`node tools/acceptance/acceptance.mjs` → **29 过 / 0 挂 / 0 警**。
+- 反证 (a)：在 `app.js` 原行注入 `const __probeHardcodedTabs = ['artifacts','chapters','worldbook','habits','roleplay']`（行数不变 10,107），门禁输出：`✗ [S2.12] ... 前端出现硬编码页签名单/顺序数组：public/app.js: ['artifacts', 'chapters', 'worldbook', 'habits', 'roleplay']`；已还原，复跑 S2.12 绿。
+- `node tools/number-anchors.mjs --check` → 绿；`npm run arch:stats` / `node tools/arch-stats.mjs --check` → 生成段一致。
+- `git diff --check` → 干净（仅 LF→CRLF 提示）。
+- app.js 行数：改前 10,110 → 改后 10,107（上限 10,108 内，只减不增）。
+
+LIMITATIONS:
+- 仓库内不含 `probe-198.mjs`，无法复跑监督线 15 项探针；其覆盖点已用 daemon 级测试（投影顺序、第三方页收放、路径穿越 403、模块页 403/404、引用资源 200）等价覆盖。
+- 环境无浏览器自动化，未做真浏览器逐帧冒烟；「收起→＋面板勾回→刷新仍在」以真实 daemon＋库内 ui-state 落盘读写＋前端纯函数 round-trip 测试验证。
+```

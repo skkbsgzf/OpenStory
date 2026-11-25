@@ -20,7 +20,7 @@ import {
   DIR_LABELS, DIR_ORDER, READONLY_DIRS, PAGE_TO_DIR_LOCAL,
   DEFAULT_HIDDEN_TABS, RETIRED_DIRS,
   projectedTabDefs, projectedPanelTabs, visibleTabDefs, moduleView, parseModuleView,
-  viewKnown, viewScope, renderNameForView, modulePagePlacement, creatableDirNames
+  viewKnown, viewScope, renderNameForView, modulePagePlacement, creatableDirNames, sanitizeHiddenTabs
 } from '../public/views/registry.mjs'
 import { MODULE_MANIFESTS, slotProjection } from '../src/protocol/modules.mjs'
 
@@ -103,6 +103,31 @@ test('隐藏过滤与「＋」面板：勾选项只在投影内', () => {
   // 体裁裁剪：世界书目录被排除后，正文/世界书页签按 visibleWhen 消失
   const genre = projectedTabDefs({ slots, ctx: ctx({ brief: {}, briefGenre: { excludedPages: ['worldbook', 'entries'] } }) }).map((def) => def.view)
   assert.ok(!genre.includes('worldbook'))
+  // OS-198a：面板列出投影里所有可关闭页签，含第三方 iframe 页；收起后仍可勾回原位。
+  const iframeSlots = { tab: [{ slot: 'tab', module: 'ext', page: 'ext-page', label: '外部工作台', view: 'iframe', entry: 'index.html' }] }
+  const iframeDefs = projectedTabDefs({ slots: iframeSlots, ctx: ctx() })
+  const iframeView = moduleView('ext', 'ext-page')
+  assert.ok(iframeDefs.some((def) => def.view === iframeView && def.closable === true))
+  assert.ok(visibleTabDefs(iframeDefs, new Set([iframeView])).every((def) => def.view !== iframeView), '收起后页签栏没有它')
+  const iframePanel = projectedPanelTabs(iframeSlots, TAB_REGISTRY, ctx())
+  assert.ok(iframePanel.some((item) => item.view === iframeView && item.label === '外部工作台' && item.iframe), '面板必须含第三方 iframe 页')
+  assert.ok(iframePanel.every((item) => item.view !== 'settings'), '宿主设置页不进面板')
+  assert.ok(visibleTabDefs(iframeDefs, new Set()).some((def) => def.view === iframeView), '勾回后按投影原位回页签栏')
+})
+
+test('死种子：已退场目录名读时忽略、写时不再追加', () => {
+  assert.deepEqual(sanitizeHiddenTabs(['dir:大纲', 'chapters', 'dir:约束', 'module:ext/ext-page']), ['chapters', 'module:ext/ext-page'])
+  assert.deepEqual(sanitizeHiddenTabs(null), [])
+  assert.deepEqual(sanitizeHiddenTabs([]), [])
+})
+
+test('场景：库里没有世界书/目录时世界书页签不出（visibleWhen 门控），其余不动', () => {
+  const slots = slotsFor()
+  const base = viewsOf(slots)
+  assert.ok(base.includes('worldbook'))
+  const noWorldbook = viewsOf(slots, ctx({ libDirs: ['正文', '剧本', '故事源', '习惯', '日志'] }))
+  assert.ok(!noWorldbook.includes('worldbook'))
+  assert.deepEqual(noWorldbook, base.filter((view) => view !== 'worldbook'))
 })
 
 test('行为表纯度：没有页签名/目录/模块归属/顺序字段；注册表零 import', () => {

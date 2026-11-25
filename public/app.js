@@ -122,7 +122,7 @@ const uiKitReady = import('./ui-kit.mjs').then((mod) => { uiKit = mod; return mo
    app.js 是经典脚本（index.html 非 module 加载），只能动态 import 注册表；
    boot() 首帧前 await 它，此后 renderTabs/go/openTabAdd/视图分派全部由注册表驱动。
    词表与退场表（DIR_LABELS/DIR_ORDER/READONLY_DIRS/PAGE_TO_DIR_LOCAL/
-   DEFAULT_HIDDEN_TABS/RETIRED_DIRS）唯一真源在注册表，这里只留引用壳。
+   RETIRED_DIRS）唯一真源在注册表，这里只留引用壳。
    增量冻结（OS-143）：本文件此后只许减不许增（修 bug 除外），视图渲染函数只出不进。 */
 let registryModule = null
 /* 注册表词表/退场表的引用壳（真源在 registry.mjs；赋值见上方 registryReady 回调） */
@@ -130,7 +130,6 @@ let DIR_LABELS = {}
 let DIR_ORDER = []
 let READONLY_DIRS = new Set()
 let PAGE_TO_DIR_LOCAL = {}
-let DEFAULT_HIDDEN_TABS = []
 let RETIRED_DIRS = []
 const registryReady = import('./views/registry.mjs').then((mod) => {
   registryModule = mod
@@ -138,7 +137,6 @@ const registryReady = import('./views/registry.mjs').then((mod) => {
   DIR_ORDER = mod.DIR_ORDER
   READONLY_DIRS = mod.READONLY_DIRS
   PAGE_TO_DIR_LOCAL = mod.PAGE_TO_DIR_LOCAL
-  DEFAULT_HIDDEN_TABS = mod.DEFAULT_HIDDEN_TABS
   RETIRED_DIRS = mod.RETIRED_DIRS
   return mod
 }).catch((error) => { console.error('[registry] 页签注册表加载失败', error); return null })
@@ -5380,9 +5378,8 @@ function hiddenTabs() {
   const root = state.current?.path || ''
   if (!state.tabHidden) state.tabHidden = {}
   if (!state.tabHidden[root]) {
-    // OS-89：页签开关落库内 ui-state；键不存在＝作者从未表态 → 用默认种子
-    const saved = uiGet('tabHidden', null)
-    state.tabHidden[root] = Array.isArray(saved) ? saved : [...DEFAULT_HIDDEN_TABS]
+    // OS-198a：页签只来自投影，退场目录名是死条目——读时忽略，写时不再追加
+    state.tabHidden[root] = registryModule?.sanitizeHiddenTabs(uiGet('tabHidden', null)) ?? []
   }
   return new Set(state.tabHidden[root])
 }

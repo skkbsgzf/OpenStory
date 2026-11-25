@@ -12,6 +12,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { startDaemon } from '../src/host/daemon.mjs'
 import { modulePageHtml } from '../public/views/modulePageViews.mjs'
+import { TAB_REGISTRY, projectedTabDefs, projectedPanelTabs, visibleTabDefs, moduleView } from '../public/views/registry.mjs'
 
 async function makeDaemon() {
   const base = await mkdtemp(join(tmpdir(), 'os198-slots-'))
@@ -70,9 +71,13 @@ async function writeIframeModule(moduleRoot) {
   context.resolve('base.write', { min: 1 })
   return { pages: { 'ext-page': { id: 'ext-page', label: '外部页' } } }
 }`, 'utf-8')
-  await writeFile(join(dir, 'page.html'), '<!doctype html><title>外部页</title><p>OS-198 iframe</p>', 'utf-8')
+  await writeFile(join(dir, 'page.html'), '<!doctype html><title>外部页</title><script src="./app.js"></script><p>OS-198 iframe</p>', 'utf-8')
+  await writeFile(join(dir, 'app.js'), 'console.log("OS-198 asset")', 'utf-8')
+  await writeFile(join(dir, 'secret.txt'), 'not a declared entry', 'utf-8')
   return dir
 }
+
+const slotCtx = () => ({ current: { path: '/lib' }, brief: null, briefGenre: null, libDirs: ['正文', '世界书', '剧本', '故事源', '习惯', '日志'], settingsOpen: false })
 
 test('OS-198-daemon：/api/plugins.slots 与 manifest 一致，停用习惯后消失、启用后回来', async () => {
   await withDaemon(async ({ origin, root }) => {
@@ -130,10 +135,58 @@ test('OS-198-daemon：第三方 iframe 页面进投影并可由 /module-page 提
     assert.match(page.headers.get('content-type') || '', /text\/html/u)
     assert.match(await page.text(), /OS-198 iframe/u)
 
+    const asset = await fetch(`${origin}/module-page/ext-frame/app.js`)
+    assert.equal(asset.status, 200, '入口引用的白名单静态资源照常服务')
+    assert.match(await asset.text(), /OS-198 asset/u)
+
     const builtin = await fetch(`${origin}/module-page/chapters/index.html`)
     assert.equal(builtin.status, 404, '内置模块不允许走本机模块页面路由')
 
     const escape = await fetch(`${origin}/module-page/ext-frame/%2e%2e/module.manifest.json`)
     assert.ok([400, 403, 404].includes(escape.status), `包外路径必须拒绝，实际 ${escape.status}`)
+
+    // OS-198a P3c/P3d：未声明入口与 manifest 永不服务。
+    const secret = await fetch(`${origin}/module-page/ext-frame/secret.txt`)
+    assert.equal(secret.status, 403, '非声明入口且扩展名不在白名单 → 拒绝')
+    const manifest = await fetch(`${origin}/module-page/ext-frame/module.manifest.json`)
+    assert.equal(manifest.status, 403, 'module.manifest.json 永不服务')
+    const modEntry = await fetch(`${origin}/module-page/ext-frame/index.mjs`)
+    assert.equal(modEntry.status, 403, '模块 entry 永不服务')
+    const unrelated = await fetch(`${origin}/module-page/ext-frame/other.json`)
+    assert.ok([403, 404].includes(unrelated.status), '入口未引用的资源不放行')
+  })
+})
+
+test('OS-198a-daemon：第三方页签收起后刷新仍在，「＋」面板能勾回并回到原位', async () => {
+  await withDaemon(async ({ base, origin, root }) => {
+    const moduleRoot = join(base, '模块根')
+    await writeIframeModule(moduleRoot)
+    const added = await post(origin, '/api/module-roots/add', { path: moduleRoot, confirm: true })
+    assert.equal(added.status, 200)
+    const view = moduleView('ext-frame', 'ext-page')
+
+    // 收起：写进库内 ui-state（× 的真实落盘动作）。
+    const hidden = await put(origin, root, { tabHidden: [view] })
+    assert.equal(hidden.status, 200)
+    // 刷新重进：从 daemon 读回 ui-state 与 slots 投影，页签栏里没有它，面板里仍有它。
+    const reread = await get(origin, `/api/ui-state?root=${encodeURIComponent(root)}`)
+    assert.equal(reread.status, 200)
+    const saved = reread.payload.state?.tabHidden ?? []
+    assert.ok(saved.includes(view), '收起状态必须落库内 ui-state')
+    const listed = await plugins(origin, root)
+    const slots = listed.payload.slots
+    const defs = projectedTabDefs({ slots, ctx: slotCtx() })
+    assert.ok(defs.some((def) => def.view === view), '投影本身仍含第三方页')
+    assert.ok(visibleTabDefs(defs, new Set(saved)).every((def) => def.view !== view), '收起后页签栏没有它')
+    const panel = projectedPanelTabs(slots, TAB_REGISTRY, slotCtx())
+    assert.ok(panel.some((item) => item.view === view && item.label === '外部页'), '刷新后面板里能勾回')
+
+    // 勾回：去掉死条目后页签按投影原位回来。
+    const restored = await put(origin, root, { tabHidden: saved.filter((item) => item !== view) })
+    assert.equal(restored.status, 200)
+    const back = await get(origin, `/api/ui-state?root=${encodeURIComponent(root)}`)
+    const defsBack = projectedTabDefs({ slots: (await plugins(origin, root)).payload.slots, ctx: slotCtx() })
+    assert.ok(!(back.payload.state?.tabHidden ?? []).includes(view))
+    assert.ok(visibleTabDefs(defsBack, new Set(back.payload.state?.tabHidden ?? [])).some((def) => def.view === view), '勾回后页签回来')
   })
 })

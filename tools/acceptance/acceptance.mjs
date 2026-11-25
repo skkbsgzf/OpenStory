@@ -439,18 +439,39 @@ const projectionMissing = tabPlacements
   .map(({ manifest, placement }) => `${manifest.id}:${placement.page}`)
 const appProjectionSrc = readRepo('public/app.js')
 const appUsesProjection = /projectedTabDefs\(\{/u.test(appProjectionSrc) && /state\.plugins\?\.slots/u.test(appProjectionSrc)
-check('S2.12', 'S2', `OS-198 页签清单只来自投影（manifest 页签 ${tabPlacements.length} 条；投影 ${projectedTabs.length} 条；前端禁字段 ${forbiddenTabFields.length}）`,
-  forbiddenTabFields.length === 0 && unprojectedTabs.length === 0 && projectionMissing.length === 0 && appUsesProjection,
+// OS-198a 反证 (a)：前端不许出现硬编码的页签名单/顺序数组（>=3 个页签 id 字面量并列）。
+// registry.mjs 是命名真源，其 DIR_ORDER 等派生数组不算第二份清单；其余前端文件一律扫。
+const tabListFiles = ['public/app.js', ...readdirSync(join(REPO, 'public', 'views'))
+  .filter((name) => name.endsWith('.mjs') && name !== 'registry.mjs')
+  .map((name) => `public/views/${name}`)]
+const builtinTabIdSet = new Set(BUILTIN_PAGE_IDS)
+function hardcodedTabLists(src) {
+  const hits = []
+  for (const match of src.matchAll(/\[[^\[\]]*(?:\[[^\[\]]*\][^\[\]]*)*\]/gu)) {
+    const ids = new Set()
+    for (const str of match[0].matchAll(/['"`]([A-Za-z][\w-]*)['"`]/gu)) {
+      if (builtinTabIdSet.has(str[1])) ids.add(str[1])
+    }
+    if (ids.size >= 3) hits.push(match[0].length > 100 ? `${match[0].slice(0, 100)}…` : match[0])
+  }
+  return hits
+}
+const tabListHits = tabListFiles.flatMap((rel) =>
+  hardcodedTabLists(readRepo(rel)).map((hit) => `${rel}: ${hit}`))
+check('S2.12', 'S2', `OS-198 页签清单只来自投影（manifest 页签 ${tabPlacements.length} 条；投影 ${projectedTabs.length} 条；前端禁字段 ${forbiddenTabFields.length}；硬编码名单 ${tabListHits.length}）`,
+  forbiddenTabFields.length === 0 && unprojectedTabs.length === 0 && projectionMissing.length === 0 && appUsesProjection && tabListHits.length === 0,
   [
     lineOf('public/views/registry.mjs', 'export const TAB_REGISTRY'),
     lineOf('src/protocol/slots.mjs', 'export function slotProjection'),
     lineOf('src/api/handlers/plugins.mjs', 'slotProjection'),
     lineOf('public/app.js', 'projectedTabDefs({'),
-    ...forbiddenTabFields.slice(0, 3), ...unprojectedTabs.slice(0, 3), ...projectionMissing.slice(0, 3)
+    ...forbiddenTabFields.slice(0, 3), ...unprojectedTabs.slice(0, 3), ...projectionMissing.slice(0, 3), ...tabListHits.slice(0, 3)
   ].filter(Boolean),
-  forbiddenTabFields.length || unprojectedTabs.length || projectionMissing.length
-    ? `前端仍有第二份页签清单：${[...forbiddenTabFields, ...unprojectedTabs, ...projectionMissing].join(', ')}`
-    : (appUsesProjection ? '页签名与顺序只从 /api/plugins.slots.tab 投影取，内置视图优先于 iframe' : 'app.js 未消费 slot 投影'))
+  tabListHits.length
+    ? `前端出现硬编码页签名单/顺序数组：${tabListHits.join('；')}`
+    : (forbiddenTabFields.length || unprojectedTabs.length || projectionMissing.length
+      ? `前端仍有第二份页签清单：${[...forbiddenTabFields, ...unprojectedTabs, ...projectionMissing].join(', ')}`
+      : (appUsesProjection ? '页签名与顺序只从 /api/plugins.slots.tab 投影取，内置视图优先于 iframe' : 'app.js 未消费 slot 投影')))
 
 const fourNameAudit = auditNamingConsistency()
 check('S2.9', 'S2', `OS-172 显示名＝入口名＝磁盘目录名＝日志模块名（${fourNameAudit.concepts} 概念）`,
