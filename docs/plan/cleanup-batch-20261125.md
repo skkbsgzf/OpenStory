@@ -61,6 +61,10 @@
 
 机器门禁全绿（测试、验收、数字锚、架构统计、隔离 e2e）＋本单红线测试＋工单里点名的反证；新机制贴出生产调用点；`VERIFIED` 只写实跑过的东西。
 
+## 5.5 收口（2026-11-25 晚）
+
+19 张单（12 主单＋7 张段内返工）全部已验收；总验收记录见 [`docs/workorders/OS-cleanup-final-acceptance.md`](../workorders/OS-cleanup-final-acceptance.md)。
+
 ## 6. 停线条件
 
 - 任一单让金样测试（`decoupleStep2`／`decoupleStep3`）变红而无法等价恢复——停线，上报作者。
