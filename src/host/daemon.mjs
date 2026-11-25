@@ -54,7 +54,7 @@ import { isModuleDisabledFor, moduleDegradationFor, moduleManifest } from '../pr
 import { ensureLibraryUpgraded } from '../protocol/libraryUpgrade.mjs'
 
 /* ---------- 测试/工具面的再出口（OS-140 垫片契约）：实现迁走了，符号从原处继续拿 ---------- */
-export { browseMemoryPath, defaultBrowseRoot } from '../services/nativePicker.mjs'
+export { browseMemoryPath, defaultBrowseRoot } from './nativePicker.mjs'
 export { defaultPreferencesPath, loadLibraries, createRootAllowlist, resolveInsideRoot } from './authorize.mjs'
 export { listArtifacts, listLibraryFiles } from '../protocol/libraryInventory.mjs'
 // OS-193：原 protocol/chapterWrite.mjs 转供叶并入唯一静态入口 KERNEL_CAPABILITIES。
@@ -70,8 +70,15 @@ export const {
 export { lintHabits } from '../protocol/habits.mjs'
 import { systemPromptFor } from '../services/systemPrompt.mjs'
 import { courtyardPath } from './courtyard.mjs'
-/** 测试钩子（OS-45）：把 systemPromptFor 暴露给单测，验「世界书只给链接不给全文」。 */
-export const __test = { systemPromptFor }
+/** 测试钩子（OS-45）：把 systemPromptFor 暴露给单测，验「世界书只给链接不给全文」。
+ *  OS-195 K4：句柄由 host 入口注入，systemPrompt 服务本体不持有实现登记表引用。 */
+export const __test = {
+  systemPromptFor: (root, libraries, genresDirs, skillsDirs, options = {}) => systemPromptFor(root, libraries, genresDirs, skillsDirs, {
+    ...options,
+    factStore: options.factStore ?? KERNEL_HANDLES.factStore,
+    prose: options.prose ?? KERNEL_HANDLES.proseWrite
+  })
+}
 
 /** OS-140 布局归一：本文件从仓根迁到 src/host/——HERE＝本文件目录（src/host），
  * REPO_ROOT＝仓根（public/ 与货架数据目录、kb-config 都以仓根定位）。 */

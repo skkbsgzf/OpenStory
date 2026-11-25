@@ -9,9 +9,8 @@
  *
  * 全程不落库——条目/会话/事件由调用方（daemon）按既有协议写。
  */
-import { KERNEL_CAPABILITIES as K } from '../../protocol/capabilityImplementations.mjs'
-
-const { analyzeChapter } = K.textAnalyze
+// OS-195：text.analyze 不再经唯一静态入口取——由扮演 handler 从 activate(context)
+// 的 context.resolve('text.analyze') 解析句柄后传入 deAiPass（K2 口径）。
 import {
   ROLEPLAY_BASE_SYSTEM,
   hostSystemPrompt,
@@ -246,12 +245,12 @@ export async function compressMemory({ chatComplete, session, batch = 6 } = {}) 
  *  总分超阈就用提示词重写一次（只改文风，不改事实）。失败则保留原稿。
  *  作者对 AI 味敏感——扮演成文不能绕过这道闸。
  *  OS-144：分析模块停用时由宿主传 enabled:false 跳过（停用＝不过闸），原文逐字返回。 */
-export async function deAiPass({ chatComplete, prose, threshold = 45, enabled = true } = {}) {
+export async function deAiPass({ chatComplete, prose, analyze, threshold = 45, enabled = true } = {}) {
   const text = String(prose ?? '').trim()
   if (!text || enabled === false) return { text, aiSmell: null, rewritten: false }
   let aiSmell = null
   try {
-    aiSmell = analyzeChapter(text)?.aiSmell ?? null
+    aiSmell = analyze?.(text)?.aiSmell ?? null
   } catch { aiSmell = null }
   if (!aiSmell || Number(aiSmell.score ?? 0) < threshold) {
     return { text, aiSmell, rewritten: false }
@@ -275,7 +274,7 @@ export async function deAiPass({ chatComplete, prose, threshold = 45, enabled = 
     if (!rewritten) return { text, aiSmell, rewritten: false }
     // 改写后再测一次（只报告，不无限循环）
     let after = null
-    try { after = analyzeChapter(rewritten)?.aiSmell ?? null } catch { after = null }
+    try { after = analyze?.(rewritten)?.aiSmell ?? null } catch { after = null }
     return { text: rewritten, aiSmell: after ?? aiSmell, before: aiSmell, rewritten: true }
   } catch {
     return { text, aiSmell, rewritten: false }

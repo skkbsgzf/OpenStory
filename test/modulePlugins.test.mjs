@@ -30,6 +30,7 @@ import {
   validateModuleManifest
 } from '../src/protocol/modules.mjs'
 import { deAiPass } from '../src/modules/roleplay/roleplayEngine.mjs'
+import { KERNEL_CAPABILITIES as K } from '../src/protocol/capabilityImplementations.mjs'
 import { startDaemon } from '../src/host/daemon.mjs'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
@@ -302,6 +303,7 @@ test('分析停用：扮演的去 AI 味闸跳过（不调用模型、原文逐�
   const skipped = await deAiPass({
     chatComplete: async () => { calls += 1; return '不该被调用' },
     prose,
+    analyze: K.textAnalyze.analyzeChapter,
     enabled: false
   })
   assert.equal(calls, 0, '停用＝不过闸，模型一次都不该被调')
@@ -312,6 +314,7 @@ test('分析停用：扮演的去 AI 味闸跳过（不调用模型、原文逐�
     chatComplete: async () => { calls += 1; return '改写后的正文。' },
     prose,
     threshold: 0,
+    analyze: K.textAnalyze.analyzeChapter,
     enabled: true
   })
   assert.equal(calls, 1, '启用态照旧调模型做改写')

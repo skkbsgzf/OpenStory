@@ -18,7 +18,7 @@ import {
   normalizeSkin,
   readUiPreferences,
   writeUiSkin
-} from '../src/services/uiPreferences.mjs'
+} from '../src/host/uiPreferences.mjs'
 import { ENDPOINTS, endpointFor } from '../src/api/contracts.mjs'
 
 function fixture() {

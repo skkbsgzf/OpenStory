@@ -13,6 +13,7 @@ import {
   fallbackActivation
 } from '../src/modules/roleplay/roleplayPrompts.mjs'
 import { roleplayTurn, worldbookDigestOf } from '../src/modules/roleplay/roleplayEngine.mjs'
+import { KERNEL_CAPABILITIES as K } from '../src/protocol/capabilityImplementations.mjs'
 
 test('提示词四层：底座铁律/主持人/角色 nudge/世界反馈人称', () => {
   assert.match(ROLEPLAY_BASE_SYSTEM, /不替其他角色/, '底座有越界禁令')
@@ -156,18 +157,18 @@ test('AI 味过检（OS-102）：超阈重写、干净稿直通、模型挂保�
   // 套话堆砌：必须触发重写
   const cliche = '他轻轻地缓缓地走向窗边，仿佛有什么在召唤他。不禁感叹，似乎一切都值得回味。深深地吸了一口气。'
   let calls = 0
-  const r = await deAiPass({ chatComplete: async () => { calls++; return '他走到窗边。风把帘子掀起来。' }, prose: cliche })
+  const r = await deAiPass({ chatComplete: async () => { calls++; return '他走到窗边。风把帘子掀起来。' }, prose: cliche, analyze: K.textAnalyze.analyzeChapter })
   assert.equal(r.rewritten, true, '高 AI 味稿应重写')
   assert.equal(calls, 1, '只重写一次，不无限循环')
   assert.match(r.text, /风把帘子掀起来/)
   assert.ok(Number(r.before?.score) > 45, '原稿分应超阈：' + r.before?.score)
   // 干净稿：不调模型
   let called = 0
-  const r2 = await deAiPass({ chatComplete: async () => { called++; return 'x' }, prose: '他走到窗边，把帘子掀开一条缝。外头没人。' })
+  const r2 = await deAiPass({ chatComplete: async () => { called++; return 'x' }, prose: '他走到窗边，把帘子掀开一条缝。外头没人。', analyze: K.textAnalyze.analyzeChapter })
   assert.equal(r2.rewritten, false)
   assert.equal(called, 0)
   // 模型挂：保留原稿，不炸
-  const r3 = await deAiPass({ chatComplete: async () => { throw new Error('down') }, prose: cliche })
+  const r3 = await deAiPass({ chatComplete: async () => { throw new Error('down') }, prose: cliche, analyze: K.textAnalyze.analyzeChapter })
   assert.equal(r3.rewritten, false)
   assert.equal(r3.text, cliche)
 })

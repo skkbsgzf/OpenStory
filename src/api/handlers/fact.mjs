@@ -25,7 +25,7 @@ import { loadConfigV2 } from '../../services/agentConfig.mjs'
 import { resolveChatUpstream } from '../../services/chatUpstream.mjs'
 import { runCliChat } from '../../services/cli-bridge.mjs'
 import { runDshStdio } from '../../services/dsh-cli.mjs'
-import { pickFile, pickFolder, revealPath, readBrowseMemory, writeBrowseMemory, nativeDialogUnusable, markNativeDialogUnusable, NATIVE_DIALOG_TIMEOUT_MS } from '../../services/nativePicker.mjs'
+import { pickFile, pickFolder, revealPath, readBrowseMemory, writeBrowseMemory, nativeDialogUnusable, markNativeDialogUnusable, NATIVE_DIALOG_TIMEOUT_MS } from '../../host/nativePicker.mjs'
 import { namingEntry } from '../../protocol/naming.mjs'
 const FACT_DIR = namingEntry('storysource').dir
 async function factCapabilityOrError(res, root, id = 'fact.store', range) {

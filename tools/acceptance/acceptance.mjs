@@ -27,7 +27,7 @@ import { NAMING_TABLE, TAB_REGISTRY, LOG_MODULES, computeTabDefs, viewScope } fr
 // OS-150b：S2.1/S2.2 共用同一份说明符扫描器（静态 from／动态 import()／副作用 import／单双引号）。
 // 两份正则必分叉——分叉面就是漏检面（analysisModules.mjs 的惰性 import 曾被整段放过）。
 import { scanImportSpecs, auditPublicEdges } from './importScan.mjs'
-import { auditCapabilityRoutes, auditBaseBoundary, auditTransferDuplication, auditKernelDirectImports } from './capabilityBoundaries.mjs'
+import { auditCapabilityRoutes, auditBaseBoundary, auditTransferDuplication, auditKernelDirectImports, boundaryInventory } from './capabilityBoundaries.mjs'
 // OS-165/G5d：模块覆盖面与 test/moduleCoverage.test.mjs 共用一份口径（端点/页签归属与宿主白名单理由）。
 import { coverageReport } from './moduleCoverage.mjs'
 import { auditLineageNames, auditNamingConsistency } from '../verify/verify-os172-naming.mjs'
@@ -214,19 +214,21 @@ check('S1.6', 'S1', `测试不依赖本机环境（test/** 扫本机绝对路径
  * ================================================================ */
 console.log('\n── S2 可插拔 ──')
 
-// S2.1 C6 能力路由：源码面自动枚举，模块只许 node/protocol/本模块/已声明套件资源；
-// API、服务与底座消费模块只能走 protocol 或能力句柄。兼容转供按“源文件→目标目录”逐条登记，
-// 转供叶同时接受复制实现审计；静态 from/export、动态 import() 与副作用 import 全扫。
+// S2.1 OS-195 新口径：不再按「只准经转供叶」定义，直接数静态 import。
+// src/modules/** 之外 import 模块内部实现＝0（唯一例外：实现登记表）；
+// 工作台之间、底座反向依赖模块内部＝0；协议复制模块实现＝0。
+// 静态 from/export、动态 import()、副作用 import 全扫。
 const srcMjs = walkMjs(join(REPO, 'src'), 'src')
 const scanned = srcMjs
+const boundary = boundaryInventory(srcMjs)
 const routeViolations = auditCapabilityRoutes(srcMjs)
 const transferDuplicates = auditTransferDuplication(srcMjs)
 const routeEvidence = [...routeViolations, ...transferDuplicates]
   .map((item) => `${item.from}:${item.line} -> ${item.to}：${item.reason}`)
-check('S2.1', 'S2', `能力路由边界（${srcMjs.length} 个 src 源文件；跨层直引 ${routeViolations.length}；转供复制 ${transferDuplicates.length}）`,
+check('S2.1', 'S2', `能力路由边界（${srcMjs.length} 个 src 源文件；外部→模块 ${boundary.counts.outsideModuleImports}（例外：实现登记表）；跨模块 ${boundary.counts.crossModuleImports}；底座→工作台 ${boundary.counts.apiHostServicesToWorkbench}；协议复制 ${transferDuplicates.length}）`,
   routeViolations.length === 0 && transferDuplicates.length === 0,
   routeEvidence.slice(0, 6),
-  routeEvidence.length ? `违规：${[...routeViolations, ...transferDuplicates].slice(0, 4).map((item) => `${item.from}→${item.to}`).join('; ')}` : '模块经协议/能力句柄消费；兼容转供叶只转供、不复制实现')
+  routeEvidence.length ? `违规：${routeEvidence.slice(0, 4).join('; ')}` : 'R-a 唯一静态入口＋R-b 工作台内部只触及本模块；零转供叶、零实现复制')
 
 // S2.2 前端模块隔离（public/*.mjs 只共享渲染协议）
 // OS-143：页签注册表 views/registry.mjs 纳入扫描面——它是纯数据＋纯函数（零 import），
@@ -285,9 +287,11 @@ try {
 const ownershipIssues = [
   ...moduleCov.noManifest, ...moduleCov.manifestIssues, ...moduleCov.kernelUiIssues,
   ...moduleCov.workbenchContractIssues, ...moduleCov.endpointOwnerIssues,
-  ...moduleCov.capabilityGraphIssues, ...activationAudit.issues
+  ...moduleCov.capabilityGraphIssues, ...activationAudit.issues,
+  // OS-195：S2.7 并入静态耦合——能力归属之外还要量 R-a～R-d 的真实 import。
+  ...boundary.violations
 ]
-check('S2.7', 'S2', `能力归属（${moduleCov.manifestIds.length} 模块＝内核 ${moduleCov.sourceGroups.kernel.length}＋工作台 ${moduleCov.sourceGroups.workbench.length}＋宿主 ${moduleCov.sourceGroups['host-composition'].length}；动态激活 ${activationAudit.activated}；端点 ${moduleCov.endpointCount}＝独占 ${moduleCov.claimedEndpointCount}＋宿主 ${moduleCov.hostEndpointCount}）`,
+check('S2.7', 'S2', `能力归属与边界（${moduleCov.manifestIds.length} 模块＝内核 ${moduleCov.sourceGroups.kernel.length}＋工作台 ${moduleCov.sourceGroups.workbench.length}＋宿主 ${moduleCov.sourceGroups['host-composition'].length}；动态激活 ${activationAudit.activated}；端点 ${moduleCov.endpointCount}＝独占 ${moduleCov.claimedEndpointCount}＋宿主 ${moduleCov.hostEndpointCount}；外部→模块 ${boundary.counts.outsideModuleImports}／协议转供 ${boundary.counts.protocolLeaves}／内核↔内核 ${boundary.counts.kernelToKernel}／底座→模块 ${boundary.counts.baseViolations}；services ${boundary.serviceFiles.length} 文件）`,
   ownershipIssues.length === 0 && moduleCov.coreFieldOwners.length === 0
     && moduleCov.sourceIssues.length === 0 && moduleCov.manifestIds.length === moduleCov.moduleDirs.length
     && moduleCov.uncoveredEndpoints.length === 0 && moduleCov.uncoveredTabs.length === 0,
@@ -295,9 +299,10 @@ check('S2.7', 'S2', `能力归属（${moduleCov.manifestIds.length} 模块＝内
     ...ownershipIssues.slice(0, 6),
     `内核 UI/端点：${moduleCov.kernelUiIssues.join('/') || '无'}`,
     `工作台契约缺口：${moduleCov.workbenchContractIssues.join('/') || '无'}`,
-    `端点覆盖：${moduleCov.endpointCount - moduleCov.uncoveredEndpoints.length}/${moduleCov.endpointCount}`
+    `端点覆盖：${moduleCov.endpointCount - moduleCov.uncoveredEndpoints.length}/${moduleCov.endpointCount}`,
+    `services 清单：${boundary.serviceFiles.map((rel) => rel.replace('src/services/', '')).join(', ')}`
   ],
-  ownershipIssues.length ? `违规：${ownershipIssues.slice(0, 4).join('; ')}` : 'stage C、能力图、统一注册与动态贡献全部通过；端点/页签均有归属')
+  ownershipIssues.length ? `违规：${ownershipIssues.slice(0, 4).map((item) => (typeof item === 'string' ? item : `${item.from}:${item.line} -> ${item.to}`)).join('; ')}` : 'stage C、能力图、动态贡献与 R-a～R-d 静态边界全部通过；端点/页签均有归属')
 
 // S2.8 OS-170：测试数／端点数／宿主域端点数／app.js 物理行与文档、机器锚、实测三方一致。
 // app.js 上限锚只降不升；数字锚工具会真实复跑 node --test，避免拿旧汇总冒充当前值。
@@ -336,9 +341,9 @@ check('S2.3', 'S2', `契约驱动架构（contracts ${contractCount} 端点；da
   [lineOf(firstSlice, 'method:'), endpointForUse, validateRespUse].filter(Boolean),
   '契约表是模块间调用的唯一底座；新增端点必须先进 contracts（域分片）')
 
-// S2.4' C6 底座边界：进程/网络、装载器、契约壳、物理写管道与命名属于底座。
-// src/kernel 不得反向引协议/模块；host 不得直取模块实现（能力句柄组合根与显式纯转供叶除外）；
-// core/vendor 路径与第二份 writeFileAtomic 实现零容忍。公开面/身份/错误码仍必须在位。
+// S2.4' OS-195 新口径：底座边界直接数静态 import——src/kernel 不得反向引协议/模块，
+// host 不得直取模块实现（转供叶豁免已取消）；core/vendor 路径与第二份 writeFileAtomic
+// 实现零容忍。公开面/身份/错误码仍必须在位。
 const baseViolations = auditBaseBoundary(scanned)
 const kernelSurfaceOk = exists('src/kernel/index.mjs') && exists('src/kernel/identity.mjs') && exists('src/kernel/errors.mjs')
   && exists('src/host/baseCapabilities.mjs') && exists('src/protocol/hostWrite.mjs')
@@ -407,15 +412,15 @@ check('S2.10', 'S2', `OS-172/189 产品谱系名与作者身份（扫描 ${linea
   lineageAudit.ok, lineageAudit.violations.slice(0, 6),
   lineageAudit.ok ? '一次性升级单独放行＋逐行出处白名单，整文件豁免已取消' : `${lineageAudit.violations.length} 处陈旧谱系名或身份声明`)
 
-// S2.11 OS-193「内核直连」：量真实静态耦合（含 export-from / 动态 import / 副作用 import）。
-// api/host 的直连 OS-193 只登记台账；OS-194 起清零并判红，五类都必须为 0。
+// S2.11 OS-193 内核直连（OS-195 并入 S2.1/S2.4'/S2.7 的同一份口径）：
+// 内核↔内核、services/api/host→内核、protocol 转供叶五类都必须为 0。
 const kernelDirect = auditKernelDirectImports(srcMjs)
-check('S2.11', 'S2', `内核直连为零（内核↔内核 ${kernelDirect.counts.kernelToKernel}；services→内核 ${kernelDirect.counts.servicesToKernel}；protocol 转供叶 ${kernelDirect.counts.protocolLeaves}；台账 api→内核 ${kernelDirect.counts.apiToKernel}／host→内核 ${kernelDirect.counts.hostToKernel}）`,
+check('S2.11', 'S2', `内核直连与转供叶为零（内核↔内核 ${kernelDirect.counts.kernelToKernel}；services→内核 ${kernelDirect.counts.servicesToKernel}；protocol 转供叶 ${kernelDirect.counts.protocolLeaves}；api→内核 ${kernelDirect.counts.apiToKernel}／host→内核 ${kernelDirect.counts.hostToKernel}）`,
   kernelDirect.violations.length === 0,
   kernelDirect.violations.slice(0, 6).map((item) => `${item.from}:${item.line} -> ${item.to}：${item.reason}`),
   kernelDirect.violations.length
     ? `直连未清：${kernelDirect.violations.slice(0, 4).map((item) => `${item.from}→${item.to}`).join('; ')}`
-    : 'K1 唯一静态入口＋K2 句柄＋K3 归位＋K4 传句柄＋OS-194 api/host 直连清零，全部落地')
+    : 'R-a 唯一静态入口＋R-b 工作台去直连＋R-c 零转供叶，五类计数全为 0')
 
 console.log('\n── S3 前端一致性 ──')
 

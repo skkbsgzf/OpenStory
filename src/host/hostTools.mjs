@@ -13,7 +13,7 @@ import { API_ERROR_CODES, isPlainObject, validateRequest, validateResponse } fro
 import { sendError, sendJson, text, DEFAULT_PORT } from './http.mjs'
 import { authorizeRoot, resolveInsideRoot } from './authorize.mjs'
 import { suiteValue } from '../services/suites.mjs'
-import { submitJob } from '../services/jobCenter.mjs'
+import { submitJob } from './jobCenter.mjs'
 
 export const HOST_TOOLS = Object.freeze({
   apiErrors: API_ERROR_CODES,

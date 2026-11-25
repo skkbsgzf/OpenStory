@@ -19,7 +19,6 @@ import { loadSkills, craftSkillsForPrompt, craftInstructionBlock, readAgentPicks
 import { precedentPromptSectionForGenre } from '../protocol/knowledgeRouter.mjs'
 import { scanReferences, notesVisibleAt, buildReferenceGraph } from '../protocol/referenceStore.mjs'
 import { courtyardPath } from '../protocol/courtyard.mjs'
-import { KERNEL_CAPABILITIES as K } from '../protocol/capabilityImplementations.mjs'
 
 /** 生效技能目录（OS-68）：内置＋本机之外，再叠加启用中套件捆绑的 skills/。 */
 export function effectiveSkillsDirs({ skillsDirs, suitesDirs, suiteStatePath, env }) {
@@ -27,11 +26,11 @@ export function effectiveSkillsDirs({ skillsDirs, suitesDirs, suiteStatePath, en
 }
 
 /**
- * OS-193 K4：跨内核底座服务不持有实现——fact/prose 能力由调用方在请求入口
- * `resolveFactCapability(root, 'fact.store')` / `resolveProseCapability(root)` 取句柄后传入。
- * 缺省回落只服务不带库上下文的测试钩子（__test.systemPromptFor），生产路径一律显式传句柄。
+ * OS-193/195 K4：跨内核底座服务不持有实现、也不在模块顶层引用实现登记表。
+ * fact/prose 能力由调用方在请求入口 `resolveFactCapability(root, 'fact.store')` /
+ * `resolveProseCapability(root)` 取句柄后显式传入；测试钩子由 host 入口注入同一份句柄。
  */
-export async function systemPromptFor(root, libraries, genresDirs, skillsDirs, { canReadFiles = false, chineseReasoning = false, suitesDirs = null, suiteStatePath = '', env = process.env, factStore = K.factStore, prose = K.proseWrite } = {}) {
+export async function systemPromptFor(root, libraries, genresDirs, skillsDirs, { canReadFiles = false, chineseReasoning = false, suitesDirs = null, suiteStatePath = '', env = process.env, factStore, prose } = {}) {
   const key = rootKey(root)
   const record = (Array.isArray(libraries) ? libraries : []).find((library) => rootKey(library.path) === key)
   const name = record?.name || basename(root) || '未命名库'

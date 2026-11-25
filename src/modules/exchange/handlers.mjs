@@ -7,7 +7,7 @@ import { mkdir } from 'node:fs/promises'
 import { atomicWriteFile } from '../../protocol/hostWrite.mjs'
 import { recordChange } from '../../protocol/changelog.mjs'
 import { LOG_MODULES, namingEntry } from '../../protocol/naming.mjs'
-import { pediaToFactEntry, factEntryToPedia } from '../../protocol/pediaAdapter.mjs'
+import { createPediaAdapter } from './pediaAdapter.mjs'
 
 const FORMATS = new Set(['pedia/v1', 'jsonl'])
 const EXCHANGE_DIR = namingEntry('exchange').dir
@@ -38,8 +38,10 @@ function parseInput(format, raw, { text, isPlainObject }) {
   }
 }
 
-export function createHandlers({ host, factStore, factWrite }) {
+export function createHandlers({ host, factStore, factWrite, factDomain }) {
   const { apiErrors, sendError, sendJson, text, isPlainObject, authorizeRoot } = host
+  // OS-195：字段映射所需的 fact.domain 由入口解析句柄后注入，不在模块顶层持有内核实现。
+  const { pediaToFactEntry, factEntryToPedia } = createPediaAdapter(factDomain)
 
   async function exchangeImport(ctx) {
     const { res, request, allowlist } = ctx

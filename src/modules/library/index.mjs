@@ -6,7 +6,7 @@
  * 冻结出口，供 libraryManage.mjs 与金样护栏 test/decoupleStep3.test.mjs 取用。
  * 实现文件逐字未动，出处见 docs/kernel-provenance.md。
  */
-import { planImport, runImport } from './importAdapter.mjs'
+import { planImport, runImport } from '../../protocol/importAdapter.mjs'
 import { parseChapterNumber } from '../../protocol/chapterNumber.mjs'
 
 /** 整目录导入（源只读、只新增不覆盖、不替作者编号）。 */

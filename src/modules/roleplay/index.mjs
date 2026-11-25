@@ -15,6 +15,7 @@ export const activate = workbenchEntry({
     factStore: context.resolve('fact.store', { min: 3 }),
     factBooks: context.resolve('fact.books', { min: 1 }),
     prose: context.resolve('prose.write', { min: 1 }),
-    agentRuntime: context.resolve('agent.runtime', { min: 1 })
+    agentRuntime: context.resolve('agent.runtime', { min: 1 }),
+    textAnalyze: context.resolve('text.analyze', { min: 1 })
   })
 })

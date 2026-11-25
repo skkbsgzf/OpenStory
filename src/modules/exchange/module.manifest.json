@@ -18,7 +18,7 @@
   "settings": [],
   "class": "workbench",
   "entry": "index.mjs",
-  "requires": [{ "id": "fact.store", "min": 3 }, { "id": "storage.roots", "min": 1 }, { "id": "prose.write", "min": 1 }],
+  "requires": [{ "id": "fact.store", "min": 3 }, { "id": "fact.domain", "min": 1 }, { "id": "storage.roots", "min": 1 }, { "id": "prose.write", "min": 1 }],
   "slots": [
     {
       "slot": "host-actions",

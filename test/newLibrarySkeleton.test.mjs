@@ -18,7 +18,7 @@ import { fileURLToPath } from 'node:url'
 import {
   createCarrierRegistry, createProject, PROJECT_KINDS, skeletonDirs
 } from '../src/modules/storage/projectDoc.mjs'
-import { planImport, runImport } from '../src/modules/library/importAdapter.mjs'
+import { planImport, runImport } from '../src/protocol/importAdapter.mjs'
 import { absorbLegacyDirs } from '../src/modules/worldbook/referenceStore.mjs'
 
 const RETIRED = ['大纲', '构思', '资料', '约束']
@@ -91,7 +91,7 @@ test('导入白名单：世界书/ 可写；退场目录仍留给旧载体兼容
 
     // 白名单口径：世界书/ 必须可写；退场目录仍在只为兼容旧载体导入。
     // 运行时证据见下一条测试：旧目录经 absorb 进 世界书/<原名>/。
-    const adapterSrc = await readFile(join(REPO, 'src/modules/library/importAdapter.mjs'), 'utf-8')
+    const adapterSrc = await readFile(join(REPO, 'src/protocol/importAdapter.mjs'), 'utf-8')
     const allow = /const ALLOWED_PROJECT_DIRS = new Set\(\[([^\]]+)\]\)/u.exec(adapterSrc)?.[1] ?? ''
     assert.match(allow, /\bWORLDBOOK_DIR\b/u, '导入白名单必须含命名表中的世界书目录')
   } finally {

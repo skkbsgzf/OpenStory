@@ -18,14 +18,14 @@ import { API_ERROR_CODES, isPlainObject, validateResponse } from '../contracts.m
 import { sendError, sendJson, text } from '../../host/http.mjs'
 import { authorizeRoot, RESERVED_LIB_DIRS } from '../../host/authorize.mjs'
 import { loadGenres, readBrief, writeBrief } from '../../services/genres.mjs'
-import { listJobs, cancelJob, clearSettled, activeCount } from '../../services/jobCenter.mjs'
-import { readBrowseMemory, writeBrowseMemory, defaultBrowseRoot } from '../../services/nativePicker.mjs'
+import { listJobs, cancelJob, clearSettled, activeCount } from '../../host/jobCenter.mjs'
+import { readBrowseMemory, writeBrowseMemory, defaultBrowseRoot } from '../../host/nativePicker.mjs'
 import { loadConfigV2, saveConfigV2, configPublicV2, validateConfigPatch, normalizeConfigBlock, probeTextConfig } from '../../services/agentConfig.mjs'
 import { resolveMediaCapability } from '../../host/capabilityBindings.mjs'
 import { listLibraryFiles } from '../../protocol/libraryInventory.mjs'
 import { readUiState, writeUiState } from '../../protocol/libState.mjs'
 import { BASE_GRAPH, MODULE_MANIFESTS, deriveModuleStateChange } from '../../protocol/modules.mjs'
-import { defaultUiPreferencesPath, readUiPreferences, writeUiSkin } from '../../services/uiPreferences.mjs'
+import { defaultUiPreferencesPath, readUiPreferences, writeUiSkin } from '../../host/uiPreferences.mjs'
 
 /* OS-127 健康端点：免 root 授权（不碰库清单、不落任何库信息，只报进程事实），
  * 放在最前面——探活要轻，而且这是「还没授权 root」时唯一有用的 API。

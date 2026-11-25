@@ -66,13 +66,14 @@ test('C6 能力归属：kernel 零端点/UI，workbench 有 requires/slots，能
     { rel: 'src/modules/prose/index.mjs', src: "import 'node:fs'\nimport '../../protocol/index.mjs'\nimport './write.mjs'" },
     { rel: 'src/modules/prose/bad.mjs', src: "import '../fact/index.mjs'" },
     { rel: 'src/api/handlers/bad.mjs', src: "import '../../modules/prose/index.mjs'" },
-    // OS-193：内核转供叶已退役；用仍在工作台层的 worldbookContract 叶验证「协议放行」。
+    // OS-195：协议转供叶不再放行——新口径直接数静态 import，这条必须报红。
     { rel: 'src/protocol/worldbookContract.mjs', src: "export * from '../modules/worldbook/worldbookFileContract.mjs'" }
   ]
   assert.deepEqual(auditCapabilityRoutes(routeFixtures).map((item) => `${item.from} -> ${item.to}`), [
     'src/modules/prose/bad.mjs -> src/modules/fact/index.mjs',
-    'src/api/handlers/bad.mjs -> src/modules/prose/index.mjs'
-  ], '协议/本模块放行，跨模块与 API 直连必须报错')
+    'src/api/handlers/bad.mjs -> src/modules/prose/index.mjs',
+    'src/protocol/worldbookContract.mjs -> src/modules/worldbook/worldbookFileContract.mjs'
+  ], '本模块/协议放行，跨模块、API 直连与协议转供叶必须报错')
 
   const copiedBody = `\n  const values = input.map((value) => value * 2).filter((value) => value > 10)\n  return { values, total: values.reduce((sum, value) => sum + value, 0) }\n`
   const duplicateFixtures = [

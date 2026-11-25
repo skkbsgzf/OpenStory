@@ -30,18 +30,25 @@ L4 自持层→L2 自有内核 `src/kernel/`→L1 磁盘库；OS-157 起 L2/L3 �
    金样与迁移夹具一起评估。旧名只作一次性迁移输入：旧库先备份，再迁到新运行态与目录，
    成功后旧目录改名留档；读侧只认新布局，不维护 `.pinax/` 与 `.openstory/` 长期双读。
    写协议只经 `factFileStore.writeFactFile`，宿主写通道只经 `src/protocol/hostWrite.mjs`；模块不直引
-   内核，只经协议层（`src/protocol/index.mjs` 的 `fact` 命名空间与 `factDomain.mjs` 等转供叶）。
+   内核，只经能力句柄（`activate(context)` 的 `context.resolve`）或底座契约（OS-195 转供叶已清零）。
    推演 8 件（opening/turn/settle/candidates/fronts/patchChannel/sceneContext/sessionState）
    归 `src/modules/deduce/engine/`——它是产品引擎，不是内核；Host API `host-api@2` 五键定稿。
 2. **daemon 只监听 127.0.0.1**；凭据只存本机（agent-config.json），响应只回掩码。
 3. **世界书单向性**：正文不反向进世界书上下文；世界书不能全量丢进 Agent 上下文。
 4. **absorb 不开 MCP**：旧目录迁入世界书是显式动稿操作，只走界面按钮。
 5. **MCP 不开 agent 对话**（不套娃）；写操作一律有 .history 备份。
-6. **模块不耦合**：功能模块间禁止直接 import——只经协议层（`src/api/contracts.mjs`/`src/protocol/chapters.mjs`/
-   `src/protocol/changelog.mjs`/`src/protocol/versionGate.mjs`/`src/protocol/plugins.mjs`/`src/kernel/index.mjs`，门禁 S2.1 白名单）；
-   依赖注入解（范例见 `src/modules/knowledge/knowledgeHealth.mjs` 的 resolveCollections 注入）。
-   建库/导入/章节号解析已**本仓自持**（`src/modules/storage/projectDoc.mjs`/`src/modules/library/importAdapter.mjs`/`textUtil.mjs`，
-   OS-123/124 fork 点），不再复用上游内核。
+6. **边界四条（OS-195；门禁 S2.1／S2.4'／S2.7／S2.11 直接数静态 import，无白名单）**：
+   - **R-a 内核实现只有一个静态入口**：只有 `src/protocol/capabilityImplementations.mjs`（实现登记表）可静态
+     import 内核实现；其余位置（含工作台、宿主、服务、协议其他文件）＝0。内核之间只经 `context.resolve` 句柄。
+   - **R-b 工作台内部实现只许本模块的 handler 与前端视图触及**：宿主、底座服务、别的工作台静态 import 它＝0；
+     要复用就经能力句柄，或把无工作台归属的纯函数/格式契约下沉 `src/protocol/`。
+   - **R-c `src/protocol/` 只留底座契约**：形状/错误信封、路径安全、授权、写管道、装载协议、能力图与迁移、
+     slots、命名取表口、旧库一次性升级、进程内事件词表，以及与工作台无关的格式/路径纯函数；
+     `export ... from '../modules/…'` 转供叶＝0，复制模块实现函数体＝0（逐文件理由见 `src/protocol/README.md`）。
+   - **R-d `src/services/` 只留底座服务**：进程任务/原生选择器/界面偏好已归 `src/host/`；剩下的是货架资源装载、
+     跨内核底座服务与 OS-193 遗留的兼容叶（调用方在 `tools/verify/**` 与 `tools/eval/**`，不在本批改动范围）。
+   建库/导入/章节号解析已**本仓自持**（`src/modules/storage/projectDoc.mjs`；格式适配在 `src/protocol/importAdapter.mjs`
+   与 `libraryTextUtil.mjs`，OS-123/124 fork 点），不再复用上游内核。
    > **模块插件（OS-144；B1–B5 已升级，OS-192 单规则收口）**：工作面使用 `src/modules/<id>/module.manifest.json`
    > （`openstory-module@2`：`id/name/version/class/endpoints/pages/slots/settings`；@1 直接拒收，迁移脚手架已删）。
    > 五类货架（skills/styles/genres/runtimes/suites）经 `src/protocol/shelfManifests.mjs` 投影成同一份 module@2 套件清单，
@@ -75,10 +82,10 @@ L4 自持层→L2 自有内核 `src/kernel/`→L1 磁盘库；OS-157 起 L2/L3 �
    |---|---|
    | `src/host/` | daemon/mcp 实现（组合根：路由、进程治理、路径解析） |
    | `src/api/` | 契约层 `contracts.mjs` ＋ `contracts/` 八域分片（API 形状唯一真源） |
-   | `src/protocol/` | 文件与协议层：chapters/chapterNumber/changelog/versionGate/plugins/agentEvents/factGuard/dependencyGraph/hostWrite/libState/courtyard（本机院子唯一解析）/libraryManifest（OpenStory 自持库清单）/libraryUpgrade（旧库一次性升级与回滚）/naming（命名表转供）/modules（manifest@2 装载与来源）/capabilityGraph（能力图与状态事务）/capabilityResolver（快照薄代理） |
+   | `src/protocol/` | 底座契约层（逐文件理由见 `src/protocol/README.md`）：形状/错误信封、路径安全、授权、写管道、装载协议、能力图与迁移、slots、命名取表口、旧库一次性升级、进程内事件词表，以及与工作台无关的格式/路径纯函数；零转供叶 |
    | `src/kernel/` | 自有物理内核（`openstory-kernel@1`）：公开面 `index.mjs`＋身份 `identity.mjs`，管道件 `errors.mjs`/`atomicWrite.mjs`/`fsDurability.mjs`；业务 fact/enrich 已降为模块内核，core/、vendor/ 已退役 |
    | `src/modules/` | 21 份 `module.manifest.json`：12 个 workbench（chapters/script/worldbook/storysource/roleplay/analysis/imagegen/knowledge/habits/artifacts/log/exchange）、7 个 kernel（storage/fact/prose/text/deduce/agent-runtime/media）、2 个宿主组合面（agentbar/library，恒启用）；library/ 建库导入、storage/ 库骨架、deduce/ 推演、roleplay/ 扮演、worldbook/ 世界书、agentbar/ Agent 存储 |
-   | `src/services/` | 外围服务：embedding-server/embeddingPaths、cli-bridge/dsh-*/runtimes（模型驱动）、stylePacks/style-check/suites/skills/genres（货架）、jobCenter/nativePicker/syncCheck/enrichEngine |
+   | `src/services/` | 底座服务与货架资源装载：货架（skills/styles/genres/runtimes/suites/stylePacks）、跨内核底座服务（systemPrompt/syncCheck）与 OS-193 遗留内核兼容叶；jobCenter/nativePicker/uiPreferences 已归 `src/host/` |
 
    实现文件不得再放仓根；仓根 `.mjs` 计数必须为零。门禁 S0.1 钉死仓根零 `.mjs`。
 8. **前端令牌单一真源**：颜色进 `public/index.html` 的 `:root`（同步 `design-system/tokens.css`）；
@@ -263,18 +270,20 @@ node tools/acceptance/acceptance.mjs        # ② 交付标准 S0–S4 门禁（
 - 自有物理内核：`src/kernel/index.mjs`（身份常量＋ok/fail/writeFileAtomic）＋ `identity.mjs`（`openstory-kernel@1`）；
   业务内核能力由 `src/protocol/capabilityImplementations.mjs` 统一注册，经 `src/host/capabilityBindings.mjs` 按库快照解析。
   `core/`、`vendor/` 已退役；逐文件出处见 `docs/kernel-provenance.md`，改名见 `docs/error-code-rename.md`
-- 协议层（`src/protocol/`）：chapters（章节协议）/ chapterNumber（章节号解析）/ changelog（变更日志）/ versionGate（版本闸）/
-  plugins（插件聚合）/ agentEvents（AG-UI 事件）/ factGuard（事实守护）/ hostWrite（宿主写协议唯一入口，OS-138）/ libState（库内状态）/
-  naming（命名表转供）/ libraryManifest（OpenStory 自持库清单）/ libraryUpgrade（旧库一次性备份、迁移、退役留档与回滚）/ courtyard（本机院子唯一解析）
+- 底座契约（`src/protocol/`，逐文件一句理由见 `src/protocol/README.md`）：hostWrite（宿主写协议唯一入口，OS-138）/
+  changelog（变更日志）/ authorize（路径授权）/ modules＋capabilityGraph＋capabilityResolver（装载与能力图）/
+  naming（命名取表口）/ libraryUpgrade（旧库一次性备份、迁移、退役留档与回滚）/ slots / agentEvents（进程内事件词表）
+  ／与工作台无关的格式与路径纯函数；零转供叶、零实现复制
 - 建库/导入自持（OS-123/124 fork 点）：`src/modules/storage/projectDoc.mjs`（`.openstory/project.json` 的
-  `openstory-project@4` 合同＋建库骨架）／`src/modules/library/{importAdapter,textUtil}.mjs`（整目录导入＋章节号与世界书契约判定）；
+  `openstory-project@4` 合同＋建库骨架）／`src/protocol/{importAdapter,libraryTextUtil,worldbookContract}.mjs`
+  （整目录导入＋章节号与世界书契约判定，OS-195 由 library/workbook 模块下沉）；
   `src/protocol/libraryUpgrade.mjs` 负责旧库一次性升级，不提供 Pinax 互认或清单导入
 - `src/modules/deduce/`：`deduceEngine.mjs`（推演核封装，端子走模块内 `engine/index.mjs`）/
-  `engine/`（OS-155 自上游平移到本模块的确定性推演链 8 件＋出口 index.mjs）/
-  `deduceSession.mjs`（会话容器，扮演/<bookId>/session.json）
-- `src/modules/worldbook/referenceStore.mjs`（世界书索引/图谱）· `src/services/enrichEngine.mjs`（语义富化 6 窗）· `src/protocol/factGuard.mjs`
-- 外围服务（`src/services/`）：kb*（知识库三件套）＋ embedding-server ＋ cli-bridge/dsh-cli/dsh-bridge/runtimes（模型驱动）
-  ＋ stylePacks/style-check/suites/skills/genres（货架）＋ jobCenter/nativePicker/comfyEngine/syncCheck
+  `engine/`（OS-155 自上游平移到本模块的确定性推演链 8 件＋出口 index.mjs）；
+  会话容器自 OS-195 起在底座契约 `src/protocol/deduceSession.mjs`（扮演/<bookId>/session.json）
+- `src/protocol/referenceStore.mjs`（世界书索引/图谱）· `src/services/enrichEngine.mjs`（语义富化 6 窗）· `src/protocol/factGuard.mjs`
+- 底座服务（`src/services/`）：货架装载（skills/genres/stylePacks/suites/runtimes）＋ 跨内核底座服务（systemPrompt/
+  syncCheck）＋ OS-193 遗留兼容叶；jobCenter/nativePicker/uiPreferences 已迁 `src/host/`
 - `skills/` 创作知识库 31 包＋套件捆绑 2（SKILL.md 制）· `docs/mcp/` 对外分发材料 · `design-system/` 设计令牌包
 - `tools/acceptance/` 验收门禁 · `.ua/` UA 知识图谱（intermediate/ 与 tmp/ 是运行产物不入库）
 - `test/` node --test 全覆盖；跑法统一走 `.zcode/run-gate.mjs`（它会 chdir 到仓根）

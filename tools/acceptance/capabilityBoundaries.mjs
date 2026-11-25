@@ -1,43 +1,30 @@
 /**
- * C6 能力路由与底座边界的纯扫描器。
+ * OS-195 边界门禁的纯扫描器：量真实静态耦合，不再按「只准经转供叶」定义出来的零。
+ *
+ * 四条规则（AGENTS.md R-a～R-d）：
+ *   R-a 内核实现只有一个静态入口（实现登记表 capabilityImplementations.mjs）；
+ *   R-b 工作台内部实现只许被本模块的 handler 与前端视图触及；
+ *   R-c src/protocol/ 零转供叶（export ... from '../modules/...'）；
+ *   R-d src/services/ 只留底座服务（本文件给出清单与归属，供 S2.7 如实呈现）。
  *
  * 规则只依赖源码文本，不执行模块；动态 activate 的真实执行由
- * checkModuleActivation.mjs 在独立进程里验证，避免门禁自身被导入环拖死。
+ * checkModuleActivation.mjs 在独立进程里验证。
  */
 import { scanImportSpecs, resolveSpec } from './importScan.mjs'
 
 const RESOURCE_ROOTS = ['suites/', 'styles/', 'runtimes/', 'genres/', 'skills/']
 const KERNEL_IDS = ['agent-runtime', 'deduce', 'fact', 'media', 'prose', 'storage', 'text']
+/** OS-195：唯一允许静态 import 内核实现的位置——实现登记表。 */
+const IMPLEMENTATION_REGISTRY = 'src/protocol/capabilityImplementations.mjs'
 
-/** 兼容转供叶：只登记“谁可以转供哪一块实现”，不按整个 modules 目录放行。 */
-export const TRANSFER_LEAVES = Object.freeze({
-  // OS-193：七个内核件转供叶已并入唯一静态入口 capabilityImplementations.mjs
-  // （KERNEL_CAPABILITIES）；这里只留工作台内部与非内核转供叶。
-  'src/protocol/worldbookContract.mjs': ['src/modules/worldbook/'],
-  // C6 兼容转供叶逐文件点名；叶内只允许 re-export/显式绑定，复制实现由下方审计拒绝。
-  'src/protocol/agentStore.mjs': ['src/modules/agentbar/agentStore.mjs'],
-  'src/protocol/courtyard.mjs': ['src/modules/storage/courtyard.mjs'],
-  'src/protocol/deduceSession.mjs': ['src/modules/deduce/deduceSession.mjs'],
-  'src/protocol/habits.mjs': ['src/modules/habits/habits.mjs'],
-  'src/protocol/knowledgeAdapter.mjs': ['src/modules/knowledge/knowledgeAdapter.mjs'],
-  'src/protocol/knowledgeHealth.mjs': ['src/modules/knowledge/knowledgeHealth.mjs'],
-  'src/protocol/knowledgeRouter.mjs': ['src/modules/knowledge/knowledgeRouter.mjs'],
-  'src/protocol/libraryImport.mjs': ['src/modules/library/index.mjs'],
-  'src/protocol/libraryInventory.mjs': ['src/modules/library/inventory.mjs'],
-  'src/protocol/pediaAdapter.mjs': ['src/modules/exchange/pediaAdapter.mjs'],
-  'src/protocol/referenceStore.mjs': ['src/modules/worldbook/referenceStore.mjs'],
-  'src/protocol/roleplayEngine.mjs': ['src/modules/roleplay/roleplayEngine.mjs'],
-  'src/protocol/capabilityImplementations.mjs': KERNEL_IDS.map((id) => `src/modules/${id}/`),
-  // 能力句柄组合根与旧院子纯转供叶是显式兼容点，不放开其它 host 文件。
-  'src/host/capabilityBindings.mjs': KERNEL_IDS.map((id) => `src/modules/${id}/`),
-  'src/host/courtyard.mjs': ['src/modules/storage/']
-})
-
-const startsWithAny = (value, prefixes) => prefixes.some((prefix) => value.startsWith(prefix))
-const isResource = (dep) => /\.(?:json|md|css|html)$/u.test(dep) && startsWithAny(dep, RESOURCE_ROOTS)
-const moduleDirOf = (rel) => {
+const isResource = (dep) => /\.(?:json|md|css|html)$/u.test(dep) && RESOURCE_ROOTS.some((root) => dep.startsWith(root))
+export const moduleDirOf = (rel) => {
   const match = /^src\/modules\/([^/]+)\//u.exec(rel)
   return match ? `src/modules/${match[1]}/` : null
+}
+const kernelIdOf = (rel) => {
+  const match = /^src\/modules\/([^/]+)\//u.exec(rel)
+  return match && KERNEL_IDS.includes(match[1]) ? match[1] : null
 }
 
 function relativeEdges(files) {
@@ -52,8 +39,10 @@ function relativeEdges(files) {
 }
 
 /**
- * S2.1：模块只能 node/protocol/本模块；API、服务、宿主消费模块必须经协议或能力句柄。
- * 协议只允许上表转供；动态 import() 与静态 from/export 使用同一扫描器。
+ * S2.1（新口径）：直接数静态 import。
+ *  · src/modules/** 之内：只许 node:/协议/本模块/套件资源；跨模块、反向依赖宿主/服务＝红；
+ *  · src/modules/** 之外：只许实现登记表静态 import 模块内部实现；其余＝红；
+ *  · src/protocol/** 里 export ... from '../modules/...' 单独由 auditKernelDirectImports 计。
  */
 export function auditCapabilityRoutes(files) {
   const violations = []
@@ -63,13 +52,15 @@ export function auditCapabilityRoutes(files) {
     const moduleDir = moduleDirOf(from)
     if (moduleDir) {
       if (to.startsWith('src/protocol/') || to.startsWith(moduleDir)) continue
-      violations.push({ ...edge, reason: '模块跨层/跨模块直引；改经 protocol 或能力句柄' })
+      if (to.startsWith('src/modules/') || to.startsWith('src/host/') || to.startsWith('src/api/') || to.startsWith('src/services/')) {
+        violations.push({ ...edge, reason: '工作台内部实现只许本模块 handler/前端视图触及；跨模块或反向依赖底座＝红（R-b）' })
+      }
       continue
     }
-    if (!to.startsWith('src/modules/')) continue
-    const allowed = TRANSFER_LEAVES[from]
-    if (allowed && startsWithAny(to, allowed)) continue
-    violations.push({ ...edge, reason: '底座/契约/服务/协议直引模块实现；改经协议转供或能力句柄' })
+    if (to.startsWith('src/modules/')) {
+      if (from === IMPLEMENTATION_REGISTRY) continue // 唯一静态入口（R-a）
+      violations.push({ ...edge, reason: 'src/modules/** 之外只有实现登记表可静态 import 模块内部实现（R-a/R-b）' })
+    }
   }
   for (const { rel, src } of files) {
     if (!rel.startsWith('src/modules/')) continue
@@ -82,60 +73,47 @@ export function auditCapabilityRoutes(files) {
 }
 
 /**
- * OS-193 S2.11「内核直连」：量的是真实静态耦合，不是按转供叶定义出来的零。
- * ① 七个内核件之间互相静态 import ＝ 0（只许经 activate(context) 的 context.resolve 句柄）；
- * ② src/services/** 静态 import 内核实现 ＝ 0（归位后只经唯一静态入口/句柄）；
- * ③ src/protocol/** 不许再出现指向内核模块的 `export ... from '../modules/…'` 转供叶；
- * ④ api/host 对内核的直连在 OS-193 只统计入台账；OS-194 已清零，本单起同样判红。
+ * S2.11（并入 S2.1/S2.4'/S2.7）：内核↔内核零直连；protocol 零转供叶；
+ * services/api/host 对模块内部实现零静态 import。五类计数都必须是 0。
  */
-const OS193_LEAVES = Object.freeze(new Set([
-  'src/protocol/factDomain.mjs', 'src/protocol/chapters.mjs', 'src/protocol/chapterWrite.mjs',
-  'src/protocol/text.mjs', 'src/protocol/agentRuntime.mjs', 'src/protocol/media.mjs',
-  'src/protocol/factStore.mjs'
-]))
-
 export function auditKernelDirectImports(files) {
   const violations = []
   const counts = { kernelToKernel: 0, servicesToKernel: 0, protocolLeaves: 0, apiToKernel: 0, hostToKernel: 0 }
-  const byRel = new Map(files.map((file) => [file.rel, file.src]))
-  const kernelIdOf = (rel) => {
-    const match = /^src\/modules\/([^/]+)\//u.exec(rel)
-    return match && KERNEL_IDS.includes(match[1]) ? match[1] : null
-  }
   for (const edge of relativeEdges(files)) {
     const { from, to, line } = edge
     const fromKernel = kernelIdOf(from)
     const toKernel = kernelIdOf(to)
     if (fromKernel && toKernel && fromKernel !== toKernel) {
       counts.kernelToKernel += 1
-      violations.push({ ...edge, reason: '内核件之间只许经 context.resolve 句柄（K2）' })
+      violations.push({ ...edge, reason: '内核件之间只许经 context.resolve 句柄（K2/R-a）' })
     }
     if (from.startsWith('src/services/') && toKernel) {
       counts.servicesToKernel += 1
-      violations.push({ ...edge, reason: '内核代码已归位；底座服务只经实现登记表/句柄取能力（K3/K4）' })
+      violations.push({ ...edge, reason: '底座服务只经实现登记表/句柄取能力；不在顶层持有内核实现（K4）' })
     }
     if (from.startsWith('src/api/') && toKernel) {
       counts.apiToKernel += 1
-      violations.push({ ...edge, reason: 'OS-194：契约壳只注册与分派，handler 归插件，api 不得直连内核实现' })
+      violations.push({ ...edge, reason: '契约壳只注册与分派，不得直连内核实现' })
     }
     if (from.startsWith('src/host/') && toKernel) {
       counts.hostToKernel += 1
-      violations.push({ ...edge, reason: 'OS-194：宿主只走能力句柄/协议转供，不得直连内核实现' })
+      violations.push({ ...edge, reason: '宿主只走能力句柄/底座契约，不得直连内核实现' })
     }
-    // courtyard / deduceSession / worldbookContract 等工作台内部叶是 OS-195 的范围，
-    // 本单只钉 OS-193 点名的七个内核件转供叶，不替下一张单清账。
-    if (OS193_LEAVES.has(from) && toKernel) {
-      const sourceLine = (byRel.get(from) ?? '').split('\n')[line - 1] ?? ''
+    if (from.startsWith('src/protocol/') && to.startsWith('src/modules/')) {
+      const sourceLine = (files.find((file) => file.rel === from)?.src ?? '').split('\n')[line - 1] ?? ''
       if (/\bexport\b/u.test(sourceLine)) {
         counts.protocolLeaves += 1
-        violations.push({ ...edge, reason: '内核转供叶已并入实现登记表（K1），不许再开 export-from' })
+        violations.push({ ...edge, reason: 'src/protocol 零转供叶（R-c）' })
       }
     }
   }
   return { violations, counts }
 }
 
-/** S2.4'：内核管道件不得反向依赖协议/模块；宿主不得直取模块实现；core/vendor 不得回潮。 */
+/**
+ * S2.4'（新口径）：内核管道件不得反向依赖协议/模块；host 不得直取模块实现；
+ * core/vendor 不得回潮；物理原子写只有内核一份实现。不再有转供叶豁免。
+ */
 export function auditBaseBoundary(files) {
   const violations = []
   for (const edge of relativeEdges(files)) {
@@ -147,10 +125,7 @@ export function auditBaseBoundary(files) {
       violations.push({ ...edge, reason: 'src/kernel 管道件只能依赖 node: 与内核内部文件' })
     }
     if (from.startsWith('src/host/') && to.startsWith('src/modules/')) {
-      const allowed = TRANSFER_LEAVES[from]
-      if (!allowed || !startsWithAny(to, allowed)) {
-        violations.push({ ...edge, reason: '底座宿主直引模块实现；动态装载/能力句柄/显式转供叶以外均拒绝' })
-      }
+      violations.push({ ...edge, reason: '底座宿主直引模块实现；OS-195 起无转供叶豁免（R-b）' })
     }
     if (from.startsWith('src/host/') && to.startsWith('public/')) {
       violations.push({ ...edge, reason: '底座不得反向依赖前端' })
@@ -164,7 +139,7 @@ export function auditBaseBoundary(files) {
   return violations
 }
 
-/** 提取足够大的函数声明/箭头函数体，用于识别兼容叶是否抄了一份实现而不是 re-export。 */
+/** 提取足够大的函数声明/箭头函数体，用于识别协议是否抄了一份模块实现。 */
 function functions(src) {
   const out = []
   const re = /\b(?:async\s+)?function\s+([A-Za-z_$][\w$]*)\s*\([^)]*\)\s*\{|(?:^|[;\n])\s*(?:export\s+)?(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?(?:\([^)]*\)|[A-Za-z_$][\w$]*)\s*=>\s*\{/gmu
@@ -183,21 +158,50 @@ function functions(src) {
   return out
 }
 
-/** 转供叶不得出现与目标实现相同的完整函数体（改名/函数改箭头也不能绕过）；薄 resolver 包装允许存在。 */
+/** 协议文件不得复制任何模块实现的完整函数体（改名/改箭头也拒绝）；薄 resolver 包装允许。 */
 export function auditTransferDuplication(files) {
-  const byRel = new Map(files.map((file) => [file.rel, file.src]))
+  const modules = files.filter((file) => file.rel.startsWith('src/modules/'))
   const violations = []
-  for (const [leaf, prefixes] of Object.entries(TRANSFER_LEAVES).filter(([rel]) => rel.startsWith('src/protocol/'))) {
-    const source = byRel.get(leaf)
-    if (!source) continue
-    const targets = files.filter((file) => startsWithAny(file.rel, prefixes))
-    for (const fn of functions(source)) {
-      const copied = targets.find((target) => functions(target.src).some((candidate) => candidate.body === fn.body))
+  for (const file of files.filter((item) => item.rel.startsWith('src/protocol/'))) {
+    for (const fn of functions(file.src)) {
+      const copied = modules.find((target) => functions(target.src).some((candidate) => candidate.body === fn.body))
       if (copied) {
         const candidate = functions(copied.src).find((item) => item.body === fn.body)
-        violations.push({ from: leaf, to: copied.rel, line: 1, reason: `转供叶复制了实现函数 ${fn.name}${candidate.name !== fn.name ? `（目标名 ${candidate.name}）` : ''}，必须 re-export` })
+        violations.push({ from: file.rel, to: copied.rel, line: 1, reason: `协议复制了模块实现函数 ${fn.name}${candidate.name !== fn.name ? `（目标名 ${candidate.name}）` : ''}，底座契约必须自有实现或纯转供` })
       }
     }
   }
   return violations
+}
+
+/**
+ * OS-195 四条规则的实测数字（供 S2.7 直接呈现；无白名单）。
+ * R-d 用清单+出处说明而不是放行表：src/services/ 里剩下的文件逐个归类为
+ * 「底座资源装载」「跨内核底座服务」或「OS-193 遗留兼容叶」。
+ */
+export function boundaryInventory(files) {
+  const direct = auditKernelDirectImports(files)
+  const routes = auditCapabilityRoutes(files)
+  const base = auditBaseBoundary(files)
+  const duplicates = auditTransferDuplication(files)
+  const outsideModuleImports = routes.filter((item) => !item.from.startsWith('src/modules/')).length
+  const crossModuleImports = routes.filter((item) => item.from.startsWith('src/modules/') && item.to.startsWith('src/modules/')).length
+  const apiHostServicesToWorkbench = routes.filter((item) => /^src\/(api|host|services)\//u.test(item.from) && item.to.startsWith('src/modules/') && !KERNEL_IDS.includes(moduleDirOf(item.to)?.split('/').pop())).length
+  const serviceFiles = files.filter((file) => file.rel.startsWith('src/services/')).map((file) => file.rel).sort()
+  return {
+    counts: {
+      outsideModuleImports,
+      crossModuleImports,
+      apiHostServicesToWorkbench,
+      protocolLeaves: direct.counts.protocolLeaves,
+      kernelToKernel: direct.counts.kernelToKernel,
+      servicesToKernel: direct.counts.servicesToKernel,
+      apiToKernel: direct.counts.apiToKernel,
+      hostToKernel: direct.counts.hostToKernel,
+      baseViolations: base.length,
+      transferDuplicates: duplicates.length
+    },
+    serviceFiles,
+    violations: [...routes, ...direct.violations, ...base, ...duplicates]
+  }
 }

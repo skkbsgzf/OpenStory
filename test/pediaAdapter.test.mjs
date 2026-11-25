@@ -8,9 +8,9 @@ import assert from 'node:assert/strict'
 import { KERNEL_CAPABILITIES as K } from '../src/protocol/capabilityImplementations.mjs'
 
 const { stableEntryId } = K.factDomain
-import {
-  pediaToFactEntry, factEntryToPedia, PEDIA_LOSS_FIELDS
-} from '../src/modules/exchange/pediaAdapter.mjs'
+import { createPediaAdapter, PEDIA_LOSS_FIELDS } from '../src/modules/exchange/pediaAdapter.mjs'
+// OS-195：适配器不再顶层持有内核实现——测试与生产一样由入口解析 fact.domain 句柄后注入。
+const { pediaToFactEntry, factEntryToPedia } = createPediaAdapter(K.factDomain)
 const FACT_SCHEMA = K.factDomain.factSchema()
 
 const PROV = { book: '水浒传', book_id: 'shuihu', chapters: [1], scenes: [], extractor: 'pedia-fixture', quote_hash: 'a'.repeat(40) }

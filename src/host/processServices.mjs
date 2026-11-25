@@ -5,7 +5,7 @@
  * 汇成一张只读句柄，插件经 `base.process` 取用，不直接 import host 实现。
  * 全部是进程内服务：重启即清，不落盘；锁文件只读探测，不在这里抢占或改写。
  */
-import * as jobCenter from '../services/jobCenter.mjs'
+import * as jobCenter from './jobCenter.mjs'
 import * as agentEvents from '../protocol/agentEvents.mjs'
 import { sseFrame, sseOpen } from './sse.mjs'
 
