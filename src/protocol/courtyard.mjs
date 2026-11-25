@@ -30,13 +30,17 @@ export function ensureCourtyard(base) {
 }
 
 /**
- * 新院根：`LOCALAPPDATA` 优先、`APPDATA` 兜底；两者都没有返回空串，并由
- * ensureCourtyard('') 给出 `no-base` 可观测原因——绝不静默回落到猜出来的路径。
+ * 新院根：`LOCALAPPDATA` 优先、`APPDATA` 兜底；两者都没有返回空串——绝不静默回落到猜出来的路径。
+ *
+ * **纯函数，不建目录**（2026-11-26 修）：以前这里顺手 `ensureCourtyard`，于是任何「只算路径」的调用
+ * （`daemonLockPath`、`browseMemoryPath` 这类）都会在磁盘上建出目录；测试拿 `C:\L` 之类假路径做
+ * 纯字符串断言时，Windows 上会在 C 盘根建出 `C:\L`，Linux 上则把 `C:\L` 当相对路径建在**仓根**，
+ * 直接把 CI 的根目录白名单门禁（S0.1）打红。要目录的地方（锁、偏好、会话、库清单…）都在自己的
+ * 写点 `mkdir` 父目录，不依赖这里。
  */
 export function courtyardRoot(env = process.env) {
   const base = courtyardBase(env)
   if (!base) return ''
-  ensureCourtyard(base)
   return join(base, COURTYARD_DIR)
 }
 

@@ -8,6 +8,10 @@ on:
 permissions:
   contents: read
 
+env:
+  # 门禁日志写到 runner 临时目录——写仓根会把根目录白名单门禁（S0.1）打红。
+  CI_LOG_DIR: ${{ runner.temp }}/openstory-ci
+
 jobs:
   gates:
     runs-on: ubuntu-latest
@@ -27,31 +31,34 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
+          mkdir -p "$CI_LOG_DIR"
           status=0
-          npm test 2>&1 | tee test-round-1.log || status=1
-          npm test 2>&1 | tee test-round-2.log || status=1
+          npm test 2>&1 | tee "$CI_LOG_DIR/test-round-1.log" || status=1
+          npm test 2>&1 | tee "$CI_LOG_DIR/test-round-2.log" || status=1
           exit "$status"
 
       - name: Run acceptance gate
         shell: bash
         run: |
           set -o pipefail
-          node tools/acceptance/acceptance.mjs 2>&1 | tee acceptance.log
+          mkdir -p "$CI_LOG_DIR"
+          node tools/acceptance/acceptance.mjs 2>&1 | tee "$CI_LOG_DIR/acceptance.log"
 
       - name: Check architecture numbers
         shell: bash
         run: |
           set -o pipefail
-          node tools/arch-stats.mjs --check 2>&1 | tee arch-check.log
+          mkdir -p "$CI_LOG_DIR"
+          node tools/arch-stats.mjs --check 2>&1 | tee "$CI_LOG_DIR/arch-check.log"
 
-      # 失败时把失败用例名当注解发出来（公开仓也能查，不必登录取 artifact）。
-      # GitHub 的 bash 默认带 -e -o pipefail：grep 没命中会让步骤自己变红，所以这里显式 set +e。
+      # 失败时把失败行当注解发出来（公开仓免登录可查，不必下 artifact）。
+      # GitHub 的 bash 默认带 -e -o pipefail：grep 没命中会让步骤自红，故显式 set +e。
       - name: Report failing tests as annotations
         if: failure()
         shell: bash
         run: |
           set +e
-          shopt -s nullglob
+          cd "$CI_LOG_DIR" 2>/dev/null || exit 0
           for log in test-round-1.log test-round-2.log acceptance.log arch-check.log; do
             [ -f "$log" ] || continue
             while IFS= read -r line; do
@@ -59,12 +66,12 @@ jobs:
               safe="${line//'%'/'%25'}"
               safe="${safe//$'\r'/}"
               echo "::error title=${log}::${safe}"
-            done < <(grep -E '^not ok |^✖ |^✗ ' "$log" | head -n 30)
+            done < <(grep -E '^not ok |^✖ |^✗ |^ +· ' "$log" | head -n 40)
           done
           {
             echo "### 失败摘要（$GITHUB_SHA）"
             echo '```'
-            grep -hE '^ℹ (tests|pass|fail|skipped)|^not ok |^✖ |^✗ |^验收门禁' test-round-1.log test-round-2.log acceptance.log arch-check.log 2>/dev/null | head -n 40
+            grep -hE '^ℹ (tests|pass|fail|skipped)|^not ok |^✖ |^✗ |^ +· |^验收门禁' *.log 2>/dev/null | head -n 50
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
           exit 0
@@ -74,9 +81,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ci-gate-logs
-          path: |
-            test-round-1.log
-            test-round-2.log
-            acceptance.log
-            arch-check.log
+          path: ${{ runner.temp }}/openstory-ci
           retention-days: 7

@@ -129,7 +129,11 @@ test('APPDATA 兜底与路径拼接：所有调用点都从新院根派生', () 
     const env = { LOCALAPPDATA: '', APPDATA: f.base }
     const root = courtyardRoot(env)
     assert.equal(root.replaceAll('\\', '/'), join(f.base, COURTYARD_DIR).replaceAll('\\', '/'))
-    assert.equal(existsSync(root), true)
+    // 2026-11-26：courtyardRoot 是纯函数——只算路径、不建目录（建目录归 ensureCourtyard）。
+    // 旧断言「调用即 existsSync(root)===true」正是 CI 根目录被污染的来源（假路径被当真目录建出来）。
+    assert.equal(existsSync(root), false, '纯路径解析不应创建目录')
+    assert.equal(ensureCourtyard(f.base).created, true)
+    assert.equal(existsSync(root), true, 'ensureCourtyard 才负责创建')
     assert.equal(
       courtyardPath(env, 'openstory', 'agent-config.json').replaceAll('\\', '/'),
       join(root, 'openstory', 'agent-config.json').replaceAll('\\', '/')
