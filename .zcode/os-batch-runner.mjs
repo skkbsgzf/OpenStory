@@ -53,9 +53,8 @@ function firstExisting(candidates) {
   }
   return ''
 }
-const SHUIHU_SCRIPT = () => firstExisting(['scripts/verify-shuihu.mjs', 'tools/verify/verify-shuihu.mjs', 'tools/verify-shuihu.mjs'])
-const NEWPROJ_SCRIPT = () => firstExisting(['scripts/verify-newproj.mjs', 'tools/verify/verify-newproj.mjs', 'tools/verify-newproj.mjs'])
-const VENDOR_SCRIPT = () => firstExisting(['scripts/vendor-drift.mjs', 'tools/verify/vendor-drift.mjs', 'tools/vendor-drift.mjs'])
+/** 隔离 e2e：脚本自己起临时 daemon（端口 0＋临时 LOCALAPPDATA＋假上游），水浒与新建两条都在里面。 */
+const ISOLATED_E2E_SCRIPT = () => firstExisting(['tools/verify/verify-os172-e2e.mjs'])
 /** daemon 入口：取 package.json 的 start 脚本（`node <path>`），读不到回落根目录垫片。 */
 function daemonEntry() {
   try {
@@ -202,30 +201,6 @@ function packageFingerprint() {
   })
 }
 
-/* ---------- daemon（两条 e2e 门禁要连它） ---------- */
-
-function daemonHealthy() {
-  const probe = run(process.execPath, ['-e', "fetch('http://127.0.0.1:8807/api/health',{signal:AbortSignal.timeout(3000)}).then(function(r){process.exit(r.ok?0:1)}).catch(function(){process.exit(1)})"], 20_000)
-  return probe.code === 0
-}
-
-/** 坑（2026-11-24 实录）：daemon 挂在宿主进程树下，宿主一退就跟着死，门禁于是报「水浒红／新建红」——看着像代码坏了。
- *  所以门禁前先自检，不在就拉起来，并把「重启过」写进门禁汇总（不静默）。 */
-function ensureDaemon() {
-  if (daemonHealthy()) return 'daemon 在跑'
-  try {
-    const child = spawn(process.execPath, [daemonEntry(), '--port=8807'], { cwd: REPO, detached: true, stdio: 'ignore' })
-    child.unref()
-  } catch (error) {
-    return 'daemon 拉不起来：' + String(error?.message || error)
-  }
-  for (let i = 0; i < 20; i += 1) {
-    spawnSync(process.execPath, ['-e', 'setTimeout(function(){},300)'], { timeout: 5000 })
-    if (daemonHealthy()) return 'daemon 曾掉线，已重启'
-  }
-  return 'daemon 重启后仍不健康（两条 e2e 门禁会红）'
-}
-
 /* ---------- 门禁 ---------- */
 
 function testFiles() {
@@ -240,54 +215,26 @@ function testSummary(out) {
   return match ? `tests ${match[1]} · pass ${match[2]} · fail ${match[3]} · skip ${match[4]}` : '(没读到测试汇总)'
 }
 
-/** 五道门禁：全量测试 / 验收 / 水浒 / 新建 / vendor 漂移。
- *  坑（2026-11-24 实录，第二条）：daemon 常驻，改了 src/ 不重启，两条 e2e 门禁会对着**旧进程**跑出假绿
- *  （OS-150a 踩过：新脚本期望 FACT_EMPTY、旧进程回 INVALID_ENTRY，编排器却报「新建绿」）。
- *  所以本批改动碰到后端时先重启 daemon 再跑门禁，并把「重启过」写进门禁汇总。 */
-function restartDaemon(reason) {
-  const probe = run(process.execPath, ['-e', "fetch('http://127.0.0.1:8807/api/health',{signal:AbortSignal.timeout(3000)}).then(r=>r.json()).then(d=>{console.log(String(d.pid||''))}).catch(function(){console.log('')})"], 20_000)
-  const pid = probe.out.trim()
-  if (pid) spawnSync('taskkill', ['/PID', pid, '/F'], { encoding: 'utf8', timeout: 20_000 })
-  spawnSync(process.execPath, ['-e', 'setTimeout(function(){},1200)'], { timeout: 8000 })
-  try {
-    const child = spawn(process.execPath, [daemonEntry(), '--port=8807'], { cwd: REPO, detached: true, stdio: 'ignore' })
-    child.unref()
-  } catch (error) {
-    return 'daemon 重启失败：' + String(error?.message || error)
-  }
-  for (let i = 0; i < 30; i += 1) {
-    spawnSync(process.execPath, ['-e', 'setTimeout(function(){},300)'], { timeout: 5000 })
-    if (daemonHealthy()) return 'daemon 已重启（' + reason + '）'
-  }
-  return 'daemon 重启后仍不健康（' + reason + '）'
-}
-
-/** 本批改动碰没碰后端（碰了就必须重启 daemon 再跑 e2e 门禁）。 */
-function needsDaemonRestart() {
-  return changedPaths().some((path) => path.startsWith('src/') || path.startsWith('contracts/') || path === 'daemon.mjs' || path === 'mcp.mjs')
-}
-
-function gates(options = {}) {
-  const daemonNote = options.restartDaemon ? restartDaemon(options.reason || '本批改了后端') : ensureDaemon()
+/** 门禁：全量测试 / 验收 / 隔离 e2e（水浒＋新建）。
+ *  坑（2026-11-24 实录）：daemon 常驻，改了 src/ 不重启，e2e 会对着旧进程跑出假绿——所以从 2026-11-25 起
+ *  e2e 一律走隔离脚本（临时 daemon，每次都是磁盘上的新代码），编排器**不再重启也不再连接 8807**：
+ *  新版里「首次打开即升级真库」，重启常驻进程会让作者浏览器里开着的真库被立刻升级，这一步只归作者。
+ *  隔离脚本找不到就判红（宁可停线，也不退回直连 8807）。 */
+function gates() {
   const tests = run(process.execPath, ['--test', ...testFiles()], 420_000)
   const acceptance = run(process.execPath, [join('tools', 'acceptance', 'acceptance.mjs')], 420_000)
-  const shuihuScript = SHUIHU_SCRIPT()
-  const newprojScript = NEWPROJ_SCRIPT()
-  const vendorScript = VENDOR_SCRIPT()
-  const shuihu = run(process.execPath, [shuihuScript], 900_000)
-  const newproj = run(process.execPath, [newprojScript], 900_000)
-  // vendor 漂移脚本随 OS-157 退役：脚本不在了就不跑这一道（如实写「已退役」，不是「未动」）
-  const vendor = vendorScript ? run(process.execPath, [vendorScript, 'check'], 180_000) : { code: 0, out: '' }
-  const ok = [tests, acceptance, shuihu, newproj, vendor].every((item) => item.code === 0)
+  const isolated = ISOLATED_E2E_SCRIPT()
+  const e2e = isolated
+    ? run(process.execPath, [isolated], 900_000)
+    : { code: 1, out: '隔离 e2e 脚本缺失：tools/verify/verify-os172-e2e.mjs' }
+  const ok = [tests, acceptance, e2e].every((item) => item.code === 0)
   const summary = [
     '测试 ' + (tests.code === 0 ? '绿' : '红') + '（' + testSummary(tests.out) + '）',
     '门禁 ' + (acceptance.code === 0 ? '绿' : '红'),
-    '水浒 ' + (shuihu.code === 0 ? '绿' : '红') + (shuihuScript ? '' : '（找不到脚本）'),
-    '新建 ' + (newproj.code === 0 ? '绿' : '红') + (newprojScript ? '' : '（找不到脚本）'),
-    'vendor ' + (vendorScript ? (vendor.code === 0 ? '未动' : '被改') : '已退役'),
-    daemonNote,
+    'e2e 水浒＋新建（隔离 daemon）' + (e2e.code === 0 ? '绿' : '红'),
+    '8807 未动'
   ].join(' · ')
-  const failed = [tests, acceptance, shuihu, newproj, vendor].filter((item) => item.code !== 0)
+  const failed = [tests, acceptance, e2e].filter((item) => item.code !== 0)
   return { ok, summary, failTail: failed.map((item) => tail(item.out)).join('\n─────\n') }
 }
 
@@ -438,7 +385,7 @@ for (const batch of plan.batches) {
     }
     note(batch.id, { state: '检查中', lastReport: String(outcome.result || '').slice(0, 2500) })
     problems = scopeProblems(batch, packageBefore)
-    gate = problems.length ? { ok: false, summary: '范围检查未过，门禁未跑', failTail: '' } : gates({ restartDaemon: needsDaemonRestart(), reason: batch.id + ' 改了后端' })
+    gate = problems.length ? { ok: false, summary: '范围检查未过，门禁未跑', failTail: '' } : gates()
     note(batch.id, { gates: gate.summary, outOfScope: problems, redLines: problems.length ? [] : redLines(batch.mustPass) })
     if (gate.ok) break
     if (round < ROUNDS) {

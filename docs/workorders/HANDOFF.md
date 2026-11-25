@@ -1,41 +1,33 @@
 # 工单交接说明（给 workbuddy / 后续执行者）
 
-> **第三批已立项（2026-11-24 晚，只立单、未开发）**：微内核·三层半。规划与评审意见在
-> [`docs/plan/batch3-microkernel-plan.md`](../plan/batch3-microkernel-plan.md)，工单**只立到批次 A**（OS-169～173）；B／C／D 批只是工作包，等分类排比重捋定稿、作者过目后再逐批立单，
-> 通用纪律与门禁在 [`COMMON-RULES.md`](COMMON-RULES.md)（工单里不再重复）。
-> **先做 OS-169（修 5 红）→ OS-170（数字锚）**：这两张验收通过即满足出口条件 S5，前两批关闭、准予上 CI（OS-171）。
-> OS-172（去 Pinax 化：库的一次性升级＋谱系名清扫）与 OS-173（底座宪法与分类定稿）**要等作者确认／过目**后才派；遗留项复查见规划 §5.1。
-
-> **接手进度更新（2026-11-24，接手 agent 回填）**：HANDOFF 写就时的待办已推进——
-> **OS-157 验收补齐**（独立复核 8/8 确认，`PINAX_KB_WATCH` 遗留收口）；
-> **段 B⁺ 三张全部施工＋验收完成**：OS-158（`7aabd9d`）、OS-159（`bc8122f`）、OS-160（`ab854be`）；
-> **段 C 五张全部完成**：OS-161（`510366b`/`46f220e`/`569d6f7`）、OS-162（`21259fc`）、
-> OS-163（`1410567`）、OS-164（`79ec0f9`）、OS-165（`db4da00`）；
-> **段 D 两张已验收**：OS-166（本机院子双院分家＋首启只拷贝迁移）、OS-167
-> （库清单自持 `libraries.json`＋旧 Pinax 清单只读勾选导入），真实院子/真库均未触碰。
-> 当前测试 682 例（680 过 / 2 跳）、门禁 23 过 / 0 挂 / 0 警、`app.js` 11,886 行、端点 107。
-> **OS-168 总收口已验收**：路线 G8/G9/G10 共 14 条全部归档，23 项门禁表与 7 条复核命令见
-> `docs/plan/final-audit.md`，遗留台账四档 4/2/10/5。
-> **作者最新口径：跑完再 push**——OS-157～168 已全部验收，等待统一推送；真库 e2e/双端口一致性由作者在真实环境复跑。
-> 下文是当初的交接原文（派单方式、踩坑预告、搁置项明细），仍供后续接手者参考。
+> **当前阶段（2026-11-25）：清账批**——D 批验收有条件通过，作者裁定「遗留全部做完，不接受妥协」「待定里的 Pinax 业务必须全部退役」。12 张工单在 [`BOARD.md`](BOARD.md)「清账批」段，规划见 [`docs/plan/cleanup-batch-20261125.md`](../plan/cleanup-batch-20261125.md)，验收记录见 [`OS-185-188-batch-d-acceptance.md`](OS-185-188-batch-d-acceptance.md)。
+> **派发方式**：CodeBuddy CLI（`.zcode/os-batch-runner.mjs`，模型 `hy4flash`），每轮由监督线验收后再开下一轮；提交由编排器做，**任何执行者不要自行 push**。
+> **e2e 口径（2026-11-25 起）**：一律走隔离脚本 `tools/verify/verify-os172-e2e.mjs`（临时 daemon＋临时 `LOCALAPPDATA`＋假上游）；编排器不重启也不连接 8807——常驻进程是作者在用的旧 daemon，新版「首次打开即升级真库」，碰它等于替作者升级真库。
+> **当前数字锚**：测试 812 例（810 过 / 0 挂 / 2 条件跳过）、门禁 27 过 / 0 挂 / 0 警、`app.js` 10,338 行（上限 10,500）、端点 105、41 个独占端点、宿主域端点 0、测试文件 102。机器真源见 `docs/number-anchors.json`。
+> **OS-172 口径**：运行态只有 `.openstory/`；目录为 `世界书/`、`故事源/`、`扮演/`、`导入导出/`；新库为 `openstory-project@4`／`openstory.carrier.*`／`openstory-wiki-derived@2`；旧库首次打开时一次性升级，备份、冲突后缀与 retired 留档齐全，不删旧数据。
+> **作者的库**：真库升级与切换由作者亲自做（先停旧 daemon 再开新版）；测试一律临时夹具库，绝不碰 `D:/Projects/**` 与真实院子。
 >
-> 主 agent（本会话）额度吃紧，验收工作暂时搁置。本文件是**接手所需的全部信息**：
-> 剩下的工单在哪、怎么派、每张单要注意什么、还有哪些不走工单的遗留。
-> 体系全貌见 [`docs/plan/workorder-system-20261124.md`](../plan/workorder-system-20261124.md)，实时状态见 [`BOARD.md`](BOARD.md)。
+> 本文件保留派单方式、每单踩坑预告与历史交接原文。体系全貌见 [`docs/plan/workorder-system-20261124.md`](../plan/workorder-system-20261124.md)，实时状态见 [`BOARD.md`](BOARD.md)。
 
-## 1. 现在的真实状态（OS-168 收口复验）
+## 1. 当前真实状态（2026-11-25）
 
-- 分支 `main`，工作树干净；提交**未推送**（作者口径：跑完再 push，OS-168 验收完后统一推）。
-- 测试 682 例（680 过 / 2 条件跳过）、验收门禁 23 项、端口与 MCP 冒烟见 `docs/plan/final-audit.md`。
-- `core/`、`vendor/`、`pinaxAdapter` **已从仓里消失**；Host API = `host-api@2`（五键）；内核在 `src/kernel/`（身份 `openstory-kernel@1`）。
+- 分支 `main`；**整批未提交**：HEAD 仍是 `ce44e43`，第三批全部改动在工作树里（施工会话未执行 commit、push）。验收前快照 `refs/backup/batch3-d-worktree-20261125`（`e773d1f`），bundle 在 `D:\_openstory-backup\`。
+- OS-169～173 的设计与 B1–B5 已完成；当前 20 份 manifest＝7 kernel＋11 workbench＋2 宿主组合面，生产 stage C。C 批实现与 src 边界清账已完成；D1–D4 已实现（套件升格 module@2、slot 注册表、覆盖路由、迁移器），第三方可执行模块装载按 ADR 0003 暂不开放。细节见 `BOARD.md`、ADR 0002/0003 与各工单。
+- `core/`、`vendor/`、`pinaxAdapter` **已从仓里消失**；Host API = `host-api@2`（七命名空间）；物理内核在 `src/kernel/`（身份 `openstory-kernel@1`），七内核件作为 module@2 kernel 提供业务能力。
+- 旧库迁移入口在 `src/protocol/libraryUpgrade.mjs`；daemon 在授权 root 后、读取模块状态前执行一次性升级，失败返回 `LIBRARY_UPGRADE_FAILED`。
 - 错误码已去 `PINAX_` 前缀（`src/kernel/errors.mjs` 25 条值无前缀；对照表 `docs/error-code-rename.md`）。
 - **OS-157 验收已补齐**（独立复核 8/8、`PINAX_KB_WATCH` 收口，见工单 §验收记录）；OS-158～167 全部已验收提交，见 `BOARD.md`。
 
-## 2. 剩下要派的工单（全部已写好，文件在 `docs/workorders/`）
+## 2. 第三批工单索引与后续顺序
 
 | 顺序 | 工单 | 文件 | 风险 | 一句话 |
 |---|---|---|---|---|
-| 1 | OS-158 | `OS-158-no-browser-storage.md` | 低 | 浏览器端存储清零（皮肤进服务端）＋门禁 |
+| C6 工具层已完成 | OS-173 | `OS-173-base-constitution.md` | 低 | ADR/协议、stage C、能力边界与动态激活门禁；src 清账已完成 |
+| 已完成 | OS-172 | `OS-172-interop-retire.md` | 高 | 去 Pinax 化：旧库一次性升级、目录正名、谱系名清扫与导入通道退役 |
+| 已完成 | OS-171 | `OS-171-ci-pipeline.md` | 低 | CI 就绪流水线（`npm test` 两轮＋验收门禁） |
+| 已完成 | OS-170 | `OS-170-doc-number-anchors.md` | 低 | 数字锚自动化与 `app.js` 行数上限锚 |
+| 已完成 | OS-169 | `OS-169-test-hermetic.md` | 低 | 测试环境健壮性：修 5 红，测试不依赖本机环境 |
+| 历史 1 | OS-158 | `OS-158-no-browser-storage.md` | 低 | 浏览器端存储清零（皮肤进服务端）＋门禁 |
 | 2 | OS-159 | `OS-159-root-layout.md` | 中 | 仓根不散落 .mjs、文档入 `docs/`、`scripts/` 并入 `tools/` |
 | 3 | OS-160 | `OS-160-sample-hidden-data.md` | 中 | 样例库自带隐藏数据与插件配置；套件状态库级化 |
 | 4 | OS-161 | `OS-161-modules-habits-source-artifacts.md` | 中 | 习惯／故事源／产物中心升格模块插件 |
@@ -108,9 +100,9 @@ node .zcode/os-batch-runner.mjs \
 
 | 事项 | 说明 |
 |---|---|
-| git push | **段 B⁺（OS-158~160）做完后由作者下令**；目前未推送 |
+| git push | 作者口径「跑完再 push」。建议顺序：先提交第三批整体 → 派 OS-188a 修完 → 再推；目前未推送 |
 | 打 tag | 是否要 `v0.3.0` 之类的版本 tag，作者定 |
-| 桌面端开新库 | 作者原话已把验收标准改为「内部代码质量」，此项降为可选 |
+| 桌面端开新库 | **随互认拆除作废**（OS-172）；改为作者用新版首次打开既有真库时看升级报告 |
 
 ## 8. 工作纪律（对任何执行者都适用）
 
