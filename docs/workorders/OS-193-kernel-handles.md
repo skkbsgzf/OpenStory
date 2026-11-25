@@ -95,3 +95,14 @@ LIMITATIONS:
 - `docs/plan/final-audit.md`、`docs/PUBLISHING.md` 不在允许范围且被冻结在 27 门禁；为新增 S2.11，`test/finalAudit.test.mjs` 对该门禁号与 PUBLISHING 冻结值加了逐条注明的窄例外，其余断言未动。
 - `src/protocol/README.md` 仍描述已删除的叶子与更早的 `src/kernel/` 路径，文档对齐留 OS-199。
 ```
+
+## 验收记录（监督线，2026-11-25）
+
+- 提交 `7f28172`；工作树干净；全量 812／810 过／2 条件跳过／0 挂；门禁 28／0／0（新增 S2.11）；数字锚与架构统计一致；隔离 e2e 全绿；金样测试（`decoupleStep2` 7/7、`decoupleStep3` 9/9）**文件未动、全绿**。
+- 逐条核 K1–K3：
+  - **K1 唯一静态入口**：`src/api`／`src/host`／`src/protocol`／`src/services` 里静态 import 内核模块内部实现＝0；`src/services/` 里原来的内核件全部变成 4–18 行的兼容转供叶，只经 `KERNEL_CAPABILITIES`（实现登记表）取句柄——`enrichEngine`（833 行）等实现已搬进 `src/modules/fact/enrich/engine.mjs` 等位置。
+  - **K2 内核之间零静态**：跨内核 import＝0；`deduce` 对 fact 的 7 处词表依赖改为 `activate(context)` 里 `context.resolve('fact.store'|'fact.pack'|'fact.domain')`，经 `engine/factPort.mjs` 注入；fact manifest 新增 `fact.engine`／`fact.books`／`fact.write`／`fact.domain` 四项供给。
+  - **K3 services 归位**：`services/embedding-server.mjs` 删除（移入 agent-runtime）；新实现落在 fact／agent-runtime／text 三个内核件内。
+- 转供叶：`factDomain/chapters/chapterWrite/text/agentRuntime/media/factStore` 七个已删；剩余 11 个均属工作台与 storage（`deduceSession`／`referenceStore`／`roleplayEngine`／`knowledge*`／`pediaAdapter`／`courtyard`／`habits`／`agentStore`／`library*`），按工单留给 OS-195。
+- **偏差（如实记录）**：K4 的「函数签名显式接收能力句柄」一半未做——`systemPrompt.mjs` 仍经 `KERNEL_CAPABILITIES` 注册表取实现（不静态 import 内核模块，S2.11 为绿），没有改成调用方传句柄。已把这一条并入 OS-195 任务。
+- 结论：**已验收**（K1–K3 达标；K4 签名一半转 OS-195）。
