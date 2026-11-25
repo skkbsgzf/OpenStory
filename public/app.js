@@ -348,13 +348,13 @@ async function loadAnalysisModules() {
 }
 loadAnalysisModules()
   .then(() => {
-    if (state.view === 'write' && state.analyze.open) renderAnalyzePanel()
+    if (state.view === 'chapters' && state.analyze.open) renderAnalyzePanel()
     if (state.view === 'dir:故事源') render()
   })
   .catch(() => {})
 
 let mdReady = false
-loadMd().then(() => { mdReady = true; if (state.view === 'write') render() }).catch(() => {})
+loadMd().then(() => { mdReady = true; if (state.view === 'chapters') render() }).catch(() => {})
 
 
 
@@ -574,12 +574,12 @@ function render() {
   // 正文页自己管滚动（页头吸顶＋纸面/右栏各自滚），外层不再滚动
   // OS-76：剧本页也用沉浸式排版（与正文页同构：铺满视口、左中右三栏）
   // OS-84：推演全形态（叙事流/剧情树/Agent）同一壳——铺满视口、内容区自己滚
-  viewEl.classList.toggle('content-locked', state.view === 'write' || state.view === 'dir:剧本'
-    || state.view === 'deduce')
-  if (state.view !== 'deduce') dedTypewriterStop()
+  viewEl.classList.toggle('content-locked', state.view === 'chapters' || state.view === 'dir:剧本'
+    || state.view === 'roleplay')
+  if (state.view !== 'roleplay') dedTypewriterStop()
   if (state.view === 'libraries') viewEl.innerHTML = viewHtml('libraries')
-  else if (state.view === 'write') {
-    viewEl.innerHTML = viewHtml('write')
+  else if (state.view === 'chapters') {
+    viewEl.innerHTML = viewHtml('chapters')
     // 版面换了 DOM：批注面板要重挂（否则右栏是空的），标注与吸顶也要重算
     renderAnalyzePanel()
     paintDocAnnotations()
@@ -588,8 +588,8 @@ function render() {
   else if (state.view === 'habits') {
     viewEl.innerHTML = viewHtml('habits')
   }
-  else if (state.view === 'reference') {
-    viewEl.innerHTML = viewHtml('reference')
+  else if (state.view === 'worldbook') {
+    viewEl.innerHTML = viewHtml('worldbook')
     // 图谱视图：挂大画布（focus 模式）；笔记视图：详情页右上角小图谱（本词条邻域）
     if ((state.reference.view || 'graph') === 'graph') {
       // 无数据时先拉再重渲——loading 态没有 canvas，mountReferenceGraph 会早退，
@@ -597,7 +597,7 @@ function render() {
       if (!state.refCol.graph && !state.refCol.graphLoading) {
         // 不能在外面预设 graphLoading——loadRefGraph 的防重入 guard 会直接 return，
         // then 里 render 又进本分支 = 无限循环（OS-54 修）
-        loadRefGraph().then(() => { if (state.view === 'reference') render() })
+        loadRefGraph().then(() => { if (state.view === 'worldbook') render() })
       } else {
         mountReferenceGraph()
       }
@@ -608,8 +608,8 @@ function render() {
   else if (state.view === 'lib-create') viewEl.innerHTML = viewHtml('lib-create')
   else if (state.view === 'lib-import') viewEl.innerHTML = viewHtml('lib-import')
   else if (state.view === 'repair') viewEl.innerHTML = viewHtml('repair')
-  else if (state.view === 'deduce') {
-    viewEl.innerHTML = viewHtml('deduce')
+  else if (state.view === 'roleplay') {
+    viewEl.innerHTML = viewHtml('roleplay')
     // 进入推演页自动续上已有局面（OS-60）：以前进来永远是空态，库里推过的拍看不到，
     // 得手动点「开始推演」——但那会额外推一拍，语义是错的。
     const engine = state.deduce.engine
@@ -626,7 +626,7 @@ function render() {
             if (engine.session) engine.roleplayStarted = true
           })
           .catch(() => {})
-          .finally(() => { if (state.view === 'deduce') render() })
+          .finally(() => { if (state.view === 'roleplay') render() })
       } else if (engine.session) {
         engine.roleplayStarted = true
       }
@@ -640,7 +640,7 @@ function render() {
           deduceRestoreDraft()
         })
         .catch(() => { /* 没有会话就当空态，不报错 */ })
-        .finally(() => { engine.busy = false; if (state.view === 'deduce') render() })
+        .finally(() => { engine.busy = false; if (state.view === 'roleplay') render() })
     }
     // 回合层（OS-61 P2）：会话缓存区进度＋续上没写完的正文草稿
     if (!engine.sessionLoaded) {
@@ -652,7 +652,7 @@ function render() {
           deduceRestoreDraft()
         })
         .catch(() => { /* 读不到会话不拦推演 */ })
-        .finally(() => { if (state.view === 'deduce') render() })
+        .finally(() => { if (state.view === 'roleplay') render() })
       // OS-86 多局清单：设置浮层里的局列表（切换/新建/删除）
       api(`/api/deduce/sessions?root=${encodeURIComponent(state.current.path)}`)
         .then((payload) => { engine.sessions = { activeId: payload.activeId, sessions: payload.sessions ?? [] } })
@@ -665,7 +665,7 @@ function render() {
             engine.opening = { loaded: true, loading: false, ...payload, selPov: payload.characters?.[0]?.name ?? '', selBook: payload.books?.[0]?.bookId ?? '', selOpen: 'free' }
           })
           .catch(() => { engine.opening.loading = false })
-          .finally(() => { if (state.view === 'deduce') render() })
+          .finally(() => { if (state.view === 'roleplay') render() })
       }
     }
     // 剧情树（OS-61 P3）：树视图挂 SVG 导图；离开树视图就清理（mode 在 state.deduce 上，不在 engine 上）
@@ -684,7 +684,7 @@ function render() {
           engine.assetBookId = text(payload.bookId)
         })
         .catch(() => { engine.assets = { characters: [], scenes: [], bgm: [] } })
-        .finally(() => { if (state.view === 'deduce') render() })
+        .finally(() => { if (state.view === 'roleplay') render() })
     }
     if (state.deduce.mode === 'engine' && engine.view !== 'tree') mountDedFlow()
     else dedTypewriterStop()
@@ -702,7 +702,7 @@ function render() {
     }
   }
   // OS-114：窄面板里世界书资料左栏按抽屉处理（宽面板无副作用）
-  if (state.view === 'write' || state.view === 'dir:剧本') applyNarrowRefDrawer()
+  if (state.view === 'chapters' || state.view === 'dir:剧本') applyNarrowRefDrawer()
 }
 
 function errorHtml() {
@@ -841,7 +841,7 @@ async function loadWriteChapters({ force = false } = {}) {
   if (!state.current) return
   // OS-89：模块加载时检索自己的 log；必须 await 且在缓存早退之前（早退就再也拉不到）
   await loadModuleLog('正文', { limit: 20 })
-  if (state.view === 'write' && document.getElementById('ref-col')) renderRefCol() // 日志到位后重排左栏
+  if (state.view === 'chapters' && document.getElementById('ref-col')) renderRefCol() // 日志到位后重排左栏
   const cl = await chapterLoadReady
   if (!cl) { state.write.listLoading = false; state.error = '章节加载状态机没装上（装包不完整）——刷新或重装即可'; render(); return }
   const step = cl.beginChapterLoad(state.write, { force, hasChapters: state.write.chapters.length > 0 })
@@ -1654,7 +1654,7 @@ function openStorySourceModule(moduleId) {
 async function jumpToWriteChapter(no) {
   const chapterNo = Number(no)
   if (!chapterNo || !state.current) return
-  go('write')
+  go('chapters')
   await loadWriteChapters()
   const file = (state.write.chapters || []).find((chapter) => chapterNoFromFile(chapter.file) === chapterNo)?.file
   if (file) loadChapter(file)
@@ -2226,7 +2226,7 @@ async function pickGenre(id) {
     // 当前页签若被新体裁裁掉 → 落回正文
     if (state.view.startsWith('dir:')) {
       const dir = state.view.slice(4)
-      if (!(state.libDirs || []).includes(dir)) state.view = 'write'
+      if (!(state.libDirs || []).includes(dir)) state.view = 'chapters'
     }
     state.agent.picksFlashAt = Date.now()
     closeComposerMenus()
@@ -3899,7 +3899,7 @@ async function previewArtifact(file) {
 function editArtifact(file) {
   const topDir = file.includes('/') ? file.split('/')[0] : ''
   if (topDir === '正文') {
-    go('write')
+    go('chapters')
     loadChapter(file)
     return
   }
@@ -3942,7 +3942,7 @@ async function loadReferences({ force = false } = {}) {
     api('/api/fact/entries?root=' + encodeURIComponent(state.current.path))
       .then((fact) => {
         ref.factEntries = Array.isArray(fact.entries) ? fact.entries : []
-        if (state.view === 'reference') render()
+        if (state.view === 'worldbook') render()
       })
       .catch(() => { ref.factEntries = [] })
     // OS-89：模块加载时自己检索自己的 log（AGENTS.md 第 10 条）
@@ -3954,7 +3954,7 @@ async function loadReferences({ force = false } = {}) {
   }
   ref.loading = false
   // OS-147：自己收口——早退（ref.loading）时靠这次 render 把占位换成真内容/如实报错
-  if (state.view === 'reference') render()
+  if (state.view === 'worldbook') render()
 }
 
 /**
@@ -4081,7 +4081,7 @@ async function commitRefBlock(blockEl) {
     clearTimeout(refRescanTimer)
     refRescanTimer = setTimeout(() => {
       loadReferences({ force: true }).then(() => {
-        if (state.view === 'reference') render()
+        if (state.view === 'worldbook') render()
       }).catch(() => {})
     }, 1600)
     void payload
@@ -4252,7 +4252,7 @@ async function loadSyncCheck({ force = false } = {}) {
     // 只有「这次请求仍是最后一次」时才复位标志，避免旧请求把新请求的 loading 抹掉
     if (state.current?.path === startedFor) sync.loading = false
   }
-  if (state.view === 'reference' || state.view === 'dir:故事源') render()
+  if (state.view === 'worldbook' || state.view === 'dir:故事源') render()
 }
 
 /** 同步策略（OS-115）：默认「进页面查 + 提醒我」（最不打扰、又不会漏）。 */
@@ -4491,14 +4491,14 @@ function navigateFromGraphNode(node) {
   if (node.kind === 'worldbook') {
     state.reference.view = 'note'
     // 正文页小图也走这里（OS-52）：不在世界书页时先切页签
-    if (state.view !== 'reference') go('reference')
+    if (state.view !== 'worldbook') go('worldbook')
     openReference(node.id, { from: 'graph' })
     return
   }
   if (node.kind === 'artifact') {
     if (node.id.startsWith('正文/')) {
       loadChapter(node.id)
-      go('write')
+      go('chapters')
     } else {
       const dir = node.id.split('/')[0]
       if (state.libDirs.includes(dir)) go(`dir:${dir}`)
@@ -4514,13 +4514,13 @@ function navigateFromGraphNode(node) {
     ref.note = null
     ref.activePath = ''
     ref.from = ''
-    if (state.view !== 'reference') go('reference')
+    if (state.view !== 'worldbook') go('worldbook')
     else render()
     return
   }
   if (node.kind === 'entry') {
     // 条目工作面已剔除（OS-54）：条目数据的消费方是推演——切过去
-    go('deduce')
+    go('roleplay')
   }
 }
 
@@ -4767,7 +4767,7 @@ function setModuleHidden(id, hidden) {
   // 在正文/世界书页上就地重排左栏（不整页重绘：正文滚动位置不该因为开关卡片被重置）；
   // 设置页等其它页面走常规 render，才能同步勾选态。
   const host = document.getElementById('ref-col')
-  if (host && (state.view === 'write' || state.view === 'reference')) {
+  if (host && (state.view === 'chapters' || state.view === 'worldbook')) {
     rerenderRefCol()
     return
   }
@@ -4839,7 +4839,7 @@ async function loadRefGraph({ force = false } = {}) {
   rc.graphLoading = true
   rc.graphError = ''
   // 图谱模块在题材页内部：重画左栏要走对应页面的重绘，而不是改全局容器
-  if (state.view === 'write' || state.view === 'reference') render()
+  if (state.view === 'chapters' || state.view === 'worldbook') render()
   else renderRefCol()
   try {
     const payload = await api(`/api/reference/graph?root=${encodeURIComponent(state.current.path)}`)
@@ -4849,7 +4849,7 @@ async function loadRefGraph({ force = false } = {}) {
     rc.graphError = `${error?.code ? `${error.code} · ` : ''}${text(error?.message || error)}`
   }
   rc.graphLoading = false
-  if (state.view === 'write' || state.view === 'reference') render()
+  if (state.view === 'chapters' || state.view === 'worldbook') render()
   else renderRefCol()
 }
 
@@ -5243,7 +5243,7 @@ async function adoptCard(cardId, { confirmed = false } = {}) {
     // 正文被 Agent 改了：正文页签缓存作废，正开着就重读。
     state.chapterLoaded = false
     state.savedAt = ''
-    if (state.view === 'write' && state.chapterFile) loadChapter(state.chapterFile)
+    if (state.view === 'chapters' && state.chapterFile) loadChapter(state.chapterFile)
   } catch (error) {
     // 习惯表命中（OS-59）：不是错误——弹一次确认，作者点头再带 confirm 重发
     if (error?.details?.needsConfirm && !confirmed) {
@@ -5611,7 +5611,7 @@ function setTabHidden(view, hidden) {
   uiSet('tabHidden', [...set]) // OS-89：落库内
   // 关掉当前正在看的页签 → 退到第一个还开着的
   if (hidden && state.view === view) {
-    const next = state.current ? 'write' : 'libraries'
+    const next = state.current ? 'chapters' : 'libraries'
     state.view = next
   }
   render()
@@ -7304,12 +7304,12 @@ function deduceBgmToggle() {
   dedBgmAudio = new Audio(dedAssetUrl(pick))
   dedBgmAudio.loop = true
   dedBgmAudio.play()
-    .then(() => { engine.bgmOn = true; if (state.view === 'deduce') render() })
+    .then(() => { engine.bgmOn = true; if (state.view === 'roleplay') render() })
     .catch(() => {
       engine.bgmOn = false
       deduceBgmStop()
       engine.error = 'BGM 播放失败——文件可能损坏，或浏览器拦了自动播放（再点一次试试）。'
-      if (state.view === 'deduce') render()
+      if (state.view === 'roleplay') render()
     })
 }
 
@@ -7710,7 +7710,7 @@ function deduceEngineHtml() {
       ${sessHtml}
       <div class="ded-set-head">推演设置<span class="sub">POV / 种子 / 推进</span></div>
       ${controls}
-      ${moduleLogHtml(registryModule?.logModuleForView('deduce') ?? '', { title: '扮演修改记录', limit: 6 })}
+      ${moduleLogHtml(registryModule?.logModuleForView('roleplay') ?? '', { title: '扮演修改记录', limit: 6 })}
     </div>`
 
   /* —— OS-84：非叙事流形态（Agent 表单／剧情树）——同一壳同一工具栏，只换内容区 —— */
@@ -8065,7 +8065,7 @@ async function openLibrary(path) {
   state.layerFilter = ''
   state.search = ''
   state.error = ''
-  state.view = 'write'
+  state.view = 'chapters'
   // OS-8/10：按库扫描顶层目录（动态页签）＋章节清单（正文工作面）＋文件直列（转卡兜底）。
   state.libDirs = []
   state.dirWork = {}
@@ -8143,15 +8143,15 @@ async function openLibrary(path) {
   renderAgent()
   render()
   // OS-84 修：清单里顺手指了第一章却没有载入内容——正文页首进＝空态
-  // （标题在、正文不在），切走再切回来才被 go('write') 的自动载入链补上。
+  // （标题在、正文不在），切走再切回来才被 go('chapters') 的自动载入链补上。
   // 这里直接载入：首进即有正文。只读操作，不写盘。
-  if (state.view === 'write' && state.chapterFile && !state.chapterLoaded) {
+  if (state.view === 'chapters' && state.chapterFile && !state.chapterLoaded) {
     loadChapter(state.chapterFile)
   }
   // OS-89：进库时按当前模块检索它自己的 log（AGENTS.md 第 10 条）。
-  // 进库不走 go('write')，所以必须在这里补——否则「本模块修改」永远是 0。
+  // 进库不走 go('chapters')，所以必须在这里补——否则「本模块修改」永远是 0。
   await loadModuleLog(moduleOfCurrentView(), { limit: 20 })
-  if (state.view === 'write' && document.getElementById('ref-col')) renderRefCol()
+  if (state.view === 'chapters' && document.getElementById('ref-col')) renderRefCol()
   await loadSessions()
   // 默认会话：接着这个库上次那条聊（OS-39），不用手动去下拉里点
   await restoreAgentSession()
@@ -8236,7 +8236,7 @@ async function saveChapter() {
 function openSettingsTab() {
   if (!state.settings.open) {
     state.settings.open = true
-    state.settings.prevView = state.view && state.view !== 'settings' ? state.view : (state.current ? 'write' : 'libraries')
+    state.settings.prevView = state.view && state.view !== 'settings' ? state.view : (state.current ? 'chapters' : 'libraries')
   }
   state.settings.helpOpen = false
   go('settings')
@@ -8245,9 +8245,9 @@ function openSettingsTab() {
 function closeSettingsTab() {
   state.settings.open = false
   state.settings.helpOpen = false
-  const back = state.settings.prevView || (state.current ? 'write' : 'libraries')
+  const back = state.settings.prevView || (state.current ? 'chapters' : 'libraries')
   state.settings.prevView = ''
-  state.view = back === 'settings' ? (state.current ? 'write' : 'libraries') : back
+  state.view = back === 'settings' ? (state.current ? 'chapters' : 'libraries') : back
   render()
 }
 
@@ -8259,12 +8259,12 @@ function ssOpenReference(name) {
     const hit = findReferenceByRef(wanted)
     if (hit) {
       state.reference.activePath = hit.path
-      if (state.view !== 'reference') go('reference')
+      if (state.view !== 'worldbook') go('worldbook')
       openReference(hit.path)
       return
     }
     state.reference.q = wanted
-    if (state.view !== 'reference') go('reference')
+    if (state.view !== 'worldbook') go('worldbook')
     else render()
   }
   if (state.reference.loaded) jump()
@@ -8343,9 +8343,9 @@ function handleSsClick(target) {
       ss.chartError = ''
       render()
     } else if (ds.ssRadiate === 'deduce') {
-      go('deduce')
+      go('roleplay')
     } else {
-      go('write')
+      go('chapters')
     }
     return
   }
@@ -8362,9 +8362,9 @@ function go(view) {
     openDirWork(view.slice(4))
     return
   }
-  // OS-143：视图作用域校验由注册表驱动——flow（建库/导入）与 global（设置/库管理）
-  // 不需要先打开库；library 作用域与未知视图（null）没库就退回库清单页。
-  // OS-78 修：deduce 需要 state.current.path（peek 会话要 root），不能当无库可进的全局页。
+  // OS-143/190a：作用域由注册表驱动；未注册视图留日志并退回第一个可见页签，不静默留白。
+  // 不需要先打开库；library 作用域没库就退回库清单（扮演也要 root）。
+  if (registryModule && !registryModule.registryEntry(view)) { console.error(`[go] 未注册视图：${view}`); go(registryModule.visibleTabDefs(registryModule.computeTabDefs({ current: state.current, brief: state.brief, briefGenre: state.briefGenre, libDirs: state.libDirs, settingsOpen: state.settings.open }), hiddenTabs())[0]?.view ?? 'chapters'); return }
   const scope = registryModule ? registryModule.viewScope(view) : null
   if (scope !== 'global' && scope !== 'flow' && !state.current) {
     state.view = 'libraries'
@@ -8382,17 +8382,17 @@ function go(view) {
       .catch(() => render())
     return
   }
-  if (view === 'reference') {
+  if (view === 'worldbook') {
     // 世界书页：拉索引，并预挂载模块。loadReferences 内部已含 OS-89 的日志检索。
     // OS-147：收口在 loadReferences 自己身上——索引在途时再进本页会走 ref.loading 早退
     loadReferences().catch((e) => console.error('[ref-render]', e))
-    loadRefModule().then(() => { if (state.view === 'reference') render() }).catch(() => {})
+    loadRefModule().then(() => { if (state.view === 'worldbook') render() }).catch(() => {})
     return
   }
-  if (view === 'deduce') {
+  if (view === 'roleplay') {
     // OS-89：推演模块加载时检索自己的 log
     loadModuleLog(registryModule.namingEntry('roleplay').logModule, { limit: 20 }).then(() => {
-      if (state.view === 'deduce') render()
+      if (state.view === 'roleplay') render()
     })
     return
   }
@@ -8400,14 +8400,14 @@ function go(view) {
     openArtifacts()
     return
   }
-  if (view === 'write') {
+  if (view === 'chapters') {
     // 章节工作面自带清单（不再依赖故事源）；有当前章且在清单里就自动载入。
     loadWriteChapters().then(() => {
       if (!state.chapterLoaded && state.chapterFile && state.write.chapters.some((chapter) => chapter.file === state.chapterFile)) {
         loadChapter(state.chapterFile)
       }
       // OS-89：日志是异步拉的，到位后重排左栏（否则「本模块修改」停在 0）
-      if (state.view === 'write' && document.getElementById('ref-col')) renderRefCol()
+      if (state.view === 'chapters' && document.getElementById('ref-col')) renderRefCol()
     })
     // 左栏图谱与世界书索引：写小说时要能看到关联的世界书（OS-45）。
     // 注意 loadReferences 有「已加载就短路」的分支，所以图谱要单独保证被拉一次——
@@ -8423,7 +8423,7 @@ function go(view) {
 document.addEventListener('click', (event) => {
   // OS-103：世界书·故事源词条点击——切 note 视图并展示词条详情（只读，来源 故事源/）
   const refEntryBtn = event.target.closest?.('[data-ref-entry]')
-  if (refEntryBtn && state.view === 'reference') {
+  if (refEntryBtn && state.view === 'worldbook') {
     state.reference.activeEntry = refEntryBtn.dataset.refEntry || ''
     state.reference.activePath = ''
     state.reference.view = 'note'
@@ -8447,13 +8447,13 @@ document.addEventListener('click', (event) => {
       if (raw.startsWith('正文/') || /^[0-9]{3}[-_—]/u.test(raw)) {
         const file = raw.startsWith('正文/') ? raw : `正文/${raw}`
         loadChapter(file)
-        go('write')
+        go('chapters')
         return
       }
       if (raw.startsWith(`${registryModule.namingEntry('worldbook').dir}/`) || raw.startsWith('参考/')) {
         const jumpTo = (hit) => {
           state.reference.activePath = hit.path
-          if (state.view !== 'reference') go('reference')
+          if (state.view !== 'worldbook') go('worldbook')
           openReference(hit.path)
         }
         const promptNew = () => {
@@ -8510,18 +8510,18 @@ document.addEventListener('click', (event) => {
     if (!ref) return
     // 目录型目标（正文/剧本/…）→ 跳对应工作面
     if (/^(?:正文|剧本|人物|场景|大纲|素材|漫画|视频|体验|联机|资料|约束|构思)[\\/]/u.test(ref)) {
-      if (ref.startsWith('正文/')) { loadChapter(ref); go('write'); return }
+      if (ref.startsWith('正文/')) { loadChapter(ref); go('chapters'); return }
       const dir = ref.split('/')[0]
       if (state.libDirs.includes(dir)) { go(`dir:${dir}`); return }
       return
     }
     // 条目链接：条目工作面已剔除，条目数据的消费方是推演
-    if (/^条目[:：]/u.test(ref)) { go('deduce'); return }
+    if (/^条目[:：]/u.test(ref)) { go('roleplay'); return }
     // 否则当世界书笔记：标题/相对路径/「参考/」旧路径前缀都能认（OS-51）
     const hit = findReferenceByRef(ref)
     if (hit) {
       state.reference.activePath = hit.path
-      if (state.view !== 'reference') go('reference')
+      if (state.view !== 'worldbook') go('worldbook')
       openReference(hit.path)
       return
     }
@@ -8824,13 +8824,13 @@ document.addEventListener('click', (event) => {
     if (raw.startsWith('正文/') || /^[0-9]{3}[-_—]/u.test(raw)) {
       const file = raw.startsWith('正文/') ? raw : `正文/${raw}`
       loadChapter(file)
-      go('write')
+      go('chapters')
       return
     }
     if (raw.startsWith(`${registryModule.namingEntry('worldbook').dir}/`)) {
       const jumpTo = (hit) => {
         state.reference.activePath = hit.path
-        if (state.view !== 'reference') go('reference')
+        if (state.view !== 'worldbook') go('worldbook')
         openReference(hit.path)
       }
       const tryJump = () => {
@@ -9623,7 +9623,7 @@ document.addEventListener('keydown', (event) => {
   // OS-92：标签输入框——空格/回车/逗号成标签，空框退格删最后一个
   if (chipInputKeydown(event)) return
   if (event.key === 'Escape') {
-    if (state.view === 'write' && state.write.mode === 'edit') { leaveDocEdit(); return }
+    if (state.view === 'chapters' && state.write.mode === 'edit') { leaveDocEdit(); return }
     closeModal()
   }
 })
@@ -9656,7 +9656,7 @@ document.addEventListener('focusout', (event) => {
   if (!blockEl) return
   // 正文页 / 世界书详情页 / 剧本页共用同一套逐块实时编辑（OS-53/OS-76）；按所在容器与视图分流写回
   if (blockEl.closest('#ref-reader')) commitRefBlock(blockEl)
-  else if (state.view === 'write' || state.view === 'dir:剧本') commitDocBlock(blockEl)
+  else if (state.view === 'chapters' || state.view === 'dir:剧本') commitDocBlock(blockEl)
 })
 
 // 文档内拖选文字 → 上方浮窗（润笔 / 与 Agent 讨论）
@@ -9664,7 +9664,7 @@ document.addEventListener('focusout', (event) => {
 // 注意：不要监听 scroll 收浮窗——contenteditable 聚焦会触发滚动，会把刚弹出的浮窗立刻收掉。
 let selBarTimer = null
 document.addEventListener('selectionchange', () => {
-  if (state.view !== 'write') return
+  if (state.view !== 'chapters') return
   const picked = readDocSelection()
   if (picked) {
     // 整段被 Range 全选（右键走的路径）时不再弹横条——那是段操作，不是文字级操作
@@ -9700,7 +9700,7 @@ document.addEventListener('mousedown', (event) => {
 
 // 右键一段 ＝ 把这一段「框选」出来，并给出三个动作（润笔 / 添加到 Agent / 分析这一段）
 document.addEventListener('contextmenu', (event) => {
-  if (state.view !== 'write') return
+  if (state.view !== 'chapters') return
   const blockEl = event.target?.closest?.('.doc-block')
   if (!blockEl) return
   event.preventDefault() // 不要系统右键菜单
@@ -9710,7 +9710,7 @@ document.addEventListener('contextmenu', (event) => {
 
 // 左键点一行：把这一段标成「选中」（视觉高亮），但不动光标——contenteditable 里还要正常打字
 document.addEventListener('click', (event) => {
-  if (state.view !== 'write') return
+  if (state.view !== 'chapters') return
   if (event.button !== 0) return
   if (event.target.closest?.('.doc-gutter, [data-paramenu], .para-result, .sel-bar')) return
   const blockEl = event.target?.closest?.('.doc-block')
@@ -9759,7 +9759,7 @@ function setSkin(id) {
     graphCleanup?.()
     graphCleanup = null
     requestAnimationFrame(() => {
-      if (state.view === 'reference' && (state.reference.view || 'graph') === 'graph') mountReferenceGraph()
+      if (state.view === 'worldbook' && (state.reference.view || 'graph') === 'graph') mountReferenceGraph()
       else mountRefGraph()
     })
   }

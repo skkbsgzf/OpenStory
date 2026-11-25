@@ -6,9 +6,10 @@ import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promis
 import { tmpdir } from 'node:os'
 import { dirname, join, relative, sep } from 'node:path'
 import {
-  LEGACY_PROJECT_SPECS, LIBRARY_UPGRADE_SPEC, WIKI_DERIVED_SCHEMA,
+  LEGACY_PROJECT_SPECS, LIBRARY_UPGRADE_SPEC, WIKI_DERIVED_SCHEMA, VIEW_ID_RENAMES,
   clearLibraryUpgradeCache, ensureLibraryUpgraded, upgradeLibrary
 } from '../src/protocol/libraryUpgrade.mjs'
+import { TAB_REGISTRY } from '../public/views/registry.mjs'
 import { parseWorldbookEntryFile } from '../src/modules/library/textUtil.mjs'
 
 const NOW = new Date('2026-11-25T12:34:56.789Z')
@@ -93,8 +94,8 @@ test('OS-172 成功迁移：新目录、新谱系、备份、退役、冲突后�
     const wiki = JSON.parse(await readFile(join(root, '故事源/book.wiki.json'), 'utf-8'))
     assert.equal(wiki.derivedFrom.schema, WIKI_DERIVED_SCHEMA)
     const ui = JSON.parse(await readFile(join(root, '.openstory/ui-state.json'), 'utf-8'))
-    assert.equal(ui.view, 'storysource')
-    assert.deepEqual(ui.tabHidden, ['storysource'])
+    assert.equal(ui.view, 'dir:故事源')
+    assert.deepEqual(ui.tabHidden, ['dir:故事源'])
     const syncState = JSON.parse(await readFile(join(root, '.openstory/sync-state.json'), 'utf-8'))
     assert.equal(syncState.files['故事源/a.json'].hash, 'x')
     assert.equal(syncState.files['拆解/a.json'], undefined)
@@ -285,6 +286,14 @@ test('OS-172 读侧兼容旧 spec 列表，daemon 入口串行且缓存成功结
 
 /** OS-190：旧 id 直接映射到新 id（扁平/嵌套键都认，重复打开幂等）。并入既有测试计数。 */
 async function checkOs190IdMapping() {
+  // OS-190a：升级目标值必须是前端认得的视图键（目录型 dir: 视图也算）。
+  const views = new Set([
+    ...TAB_REGISTRY.map((entry) => entry.view),
+    ...TAB_REGISTRY.filter((entry) => entry.dir).map((entry) => `dir:${entry.dir}`)
+  ])
+  for (const [from, to] of Object.entries(VIEW_ID_RENAMES)) {
+    assert.ok(views.has(to), `VIEW_ID_RENAMES[${from}]＝${to} 不在前端视图集合`)
+  }
   const root = await mkdtemp(join(tmpdir(), 'openstory-upgrade-os190-'))
   try {
     await minimalLegacy(root)
@@ -309,7 +318,7 @@ async function checkOs190IdMapping() {
     const ui = JSON.parse(await readFile(join(root, '.openstory/ui-state.json'), 'utf-8'))
     // 视图键直接映射到新页面 id
     assert.equal(ui.view, 'chapters')
-    assert.deepEqual(ui.tabHidden, ['worldbook', 'roleplay', 'storysource'])
+    assert.deepEqual(ui.tabHidden, ['worldbook', 'roleplay', 'dir:故事源'])
     assert.equal(ui.selectedTab, 'roleplay')
     // 扁平启停/设置键
     assert.equal(ui['modules.enabled.imagegen'], false)

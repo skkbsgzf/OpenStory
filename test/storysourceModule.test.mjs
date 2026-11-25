@@ -50,5 +50,5 @@ test('页签归属：storysource 停用后故事源页签消失，其他页签�
   assert.ok(enabled.includes('dir:故事源'), '缺省启用：故事源页签在')
   const disabled = computeTabDefs({ ...ctx, modulesEnabled: { storysource: false, habits: true, chapters: true } }).map((def) => def.view)
   assert.ok(!disabled.includes('dir:故事源'), '显式停用：故事源页签消失')
-  assert.ok(disabled.includes('write'), '正文页签不受影响')
+  assert.ok(disabled.includes('chapters'), '正文页签不受影响')
 })

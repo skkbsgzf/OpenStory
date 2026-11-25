@@ -13,8 +13,8 @@
  *     kind        'fixed' 固定入口页签 ｜ 'dir' 目录型页签 ｜ 'module' 未来可插拔模块页签
  *     label       页签显示名（无 label ＝ 纯路由条目，只服务 go() 的作用域校验，不进页签栏）
  *     icon?       页签图标字（目录型旧算法取 label 首字，这里显式写死以保真）
- *     dir?        对应库内目录名（write 双角色：固定页签＋声明它依赖的目录）
- *     view        go() 用的视图名（'write' / 'dir:剧本' / 'reference'…）
+ *     dir?        对应库内目录名（chapters 双角色：固定页签＋声明它依赖的目录）
+ *     view        go() 用的视图名（'chapters' / 'dir:剧本' / 'worldbook'…；目录型保留 dir: 前缀）
  *     core?       核心载体页签（OS-88 三载体＋世界书/扮演；验收 S4.1 的顶栏可达面）
  *     retired?    已退场条目（OS-84/86）——computeTabDefs 无条件过滤，任何输入下都不出
  *     dirScan?    目录型页签：由「磁盘目录 × 词表」扫描物化；第一个 dirScan 条目的声明位
@@ -183,11 +183,13 @@ export const DIR_ORDER = Object.freeze(['chapters', 'worldbook', 'script', 'log'
 /** 只读目录（页签挂「只读」牌，工作面禁编辑）。 */
 export const READONLY_DIRS = new Set(NAMING_TABLE.filter((row) => row.readonly && row.dir).map((row) => row.dir))
 
-/** 页签名 → 库内目录名（体裁 excludedPages 裁剪用；只留真正有 view 的映射）。 */
+/** 页签名 → 库内目录名（体裁 excludedPages 裁剪用；只留真正有 view 的映射）。
+ * OS-190a：正名键用页面 id（chapters/worldbook/script）；write/entries 只作旧体裁包的输入别名。 */
 export const PAGE_TO_DIR_LOCAL = Object.freeze({
+  chapters: namingEntry('chapters')?.dir,
   write: namingEntry('chapters')?.dir,
-  entries: namingEntry('worldbook')?.dir,
   worldbook: namingEntry('worldbook')?.dir,
+  entries: namingEntry('worldbook')?.dir,
   script: namingEntry('script')?.dir
 })
 
@@ -225,10 +227,10 @@ export const TAB_REGISTRY = Object.freeze([
   // OS-12：页签首格固定＝产物（产出物＋多版本＋历史）；「库」上移顶栏。
   { id: 'artifacts', kind: 'fixed', core: true, module: 'artifacts', view: 'artifacts', ...tabNaming('artifacts'), icon: '产', render: 'artifactsHtml', panel: true, closable: true, scope: 'library' },
   // OS-19：正文走 libDirs 判断——体裁声明后（如短故事）没有 正文/ 目录就不出。
-  { id: 'write', kind: 'fixed', core: true, module: 'chapters', view: 'write', ...tabNaming('chapters'), icon: '章', render: 'writeHtml', panel: true, closable: true, scope: 'library',
+  { id: 'chapters', kind: 'fixed', core: true, module: 'chapters', view: 'chapters', ...tabNaming('chapters'), icon: '章', render: 'writeHtml', panel: true, closable: true, scope: 'library',
     visibleWhen: (ctx) => !ctx.brief || ctx.hasDir(namingEntry('chapters').dir) },
   // 目录型组插入点：从这里到下一个非 dirScan 条目之间，全部按「磁盘目录 × 词表」扫描物化。
-  { id: 'reference', kind: 'fixed', core: true, module: 'worldbook', view: 'reference', ...tabNaming('worldbook'), dirScan: true, icon: '世', render: 'referencePageHtml', closable: true, scope: 'library' },
+  { id: 'worldbook', kind: 'fixed', core: true, module: 'worldbook', view: 'worldbook', ...tabNaming('worldbook'), dirScan: true, icon: '世', render: 'referencePageHtml', closable: true, scope: 'library' },
   // OS-75：剧本页 fork 正文页（dir:剧本 视图，剧本版式渲染）。
   { id: 'script', kind: 'fixed', core: true, module: 'script', view: 'dir:剧本', ...tabNaming('script'), dirScan: true, icon: '剧', render: 'dirViewHtml', closable: true, scope: 'library' },
   { id: 'storysource', kind: 'fixed', core: true, module: 'storysource', view: `dir:${namingEntry('storysource').dir}`, ...tabNaming('storysource'), dirScan: true, icon: '故', render: 'dirViewHtml', closable: true, scope: 'library' },
@@ -245,7 +247,7 @@ export const TAB_REGISTRY = Object.freeze([
   { id: 'retired-material', kind: 'dir', view: 'dir:资料', dir: '资料', dirScan: true, label: '资料', retired: true },
   { id: 'retired-constraint', kind: 'dir', view: 'dir:约束', dir: '约束', dirScan: true, label: '约束', retired: true },
   // OS-86/100：扮演——推演全形态（叙事流/剧情树/Agent）同一壳，页签名「扮演」。
-  { id: 'deduce', kind: 'fixed', core: true, module: 'roleplay', view: 'deduce', ...tabNaming('roleplay'), icon: '扮', render: 'deduceHtml', panel: true, closable: true, scope: 'library' },
+  { id: 'roleplay', kind: 'fixed', core: true, module: 'roleplay', view: 'roleplay', ...tabNaming('roleplay'), icon: '扮', render: 'deduceHtml', panel: true, closable: true, scope: 'library' },
   // OS-32：设置是可关闭页签——跟正文/产物同级，打开才出现，× 关掉回到原页。
   { id: 'settings', kind: 'fixed', view: 'settings', ...tabNaming('settings'), icon: '设', render: 'settingsHtml', closable: true, scope: 'global',
     visibleWhen: (ctx) => Boolean(ctx.settingsOpen) },

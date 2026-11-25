@@ -77,7 +77,7 @@ test('页签可见性：ctx 没给 modulesEnabled 视为全启用；给了且缺
 
   const disabled = computeTabDefs({ ...ctx, modulesEnabled: new Set(['analysis', 'chapters']) }).map((def) => def.view)
   assert.ok(!disabled.includes('habits'), '显式启用集合缺 habits：页签消失')
-  assert.ok(disabled.includes('write'), '其他页签不受影响')
+  assert.ok(disabled.includes('chapters'), '其他页签不受影响')
 
   // 对象/数组两种形态也认（与 isModuleEnabled 的嵌套/扁平兼容同口径）
   assert.ok(!computeTabDefs({ ...ctx, modulesEnabled: ['analysis'] }).map((d) => d.view).includes('habits'))

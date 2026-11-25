@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { NAMING_TABLE } from '../public/views/registry.mjs'
+import { NAMING_TABLE, TAB_REGISTRY } from '../public/views/registry.mjs'
 import { auditAgentName, auditLineageNames, auditNamingConsistency } from '../tools/verify/verify-os172-naming.mjs'
 
 const TOOL_SKILLS = [
@@ -37,6 +37,11 @@ test('OS-172 当前命名表、页签与模块显示名四向一致', () => {
   const ids = NAMING_TABLE.map((row) => row.id)
   assert.ok(ids.includes('imagegen') && ids.includes('knowledge'))
   assert.ok(!ids.includes('vision') && !ids.includes('kb'), '散布的旧概念 id 已删')
+  // OS-190a 反证：页签视图键退回旧名，门禁必须红（正例已由上面的 audit 覆盖）。
+  const badTabs = TAB_REGISTRY.map((entry) => entry.id === 'worldbook' ? { ...entry, view: 'reference' } : entry)
+  const tabResult = auditNamingConsistency({ tabs: badTabs })
+  assert.equal(tabResult.ok, false)
+  assert.ok(tabResult.violations.includes('TAB_REGISTRY:worldbook: view「reference」≠ id'))
 })
 
 test('OS-172 目录名退回旧名时四名一致门禁必须报红', () => {

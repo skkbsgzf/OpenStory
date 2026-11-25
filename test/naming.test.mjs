@@ -160,16 +160,17 @@ test('单一来源：DIR_LABELS/DIR_ORDER/READONLY_DIRS/PAGE_TO_DIR_LOCAL 全部
     'DIR_ORDER 必须取命名表的目录列')
   assert.deepEqual([...READONLY_DIRS], NAMING_TABLE.filter((row) => row.readonly && row.dir).map((row) => row.dir))
   assert.deepEqual({ ...PAGE_TO_DIR_LOCAL }, {
+    chapters: namingEntry('chapters').dir,
     write: namingEntry('chapters').dir,
-    entries: namingEntry('worldbook').dir,
     worldbook: namingEntry('worldbook').dir,
+    entries: namingEntry('worldbook').dir,
     script: namingEntry('script').dir
   })
   // 视图→日志模块名：页签层走表，不再在 app.js 里堆 if
-  assert.equal(logModuleForView('write'), '正文')
-  assert.equal(logModuleForView('reference'), '世界书')
+  assert.equal(logModuleForView('chapters'), '正文')
+  assert.equal(logModuleForView('worldbook'), '世界书')
   assert.equal(logModuleForView('habits'), '习惯')
-  assert.equal(logModuleForView('deduce'), '扮演')
+  assert.equal(logModuleForView('roleplay'), '扮演')
   assert.equal(logModuleForView('dir:故事源'), '故事源')
   assert.equal(logModuleForView('dir:日志'), '日志')
   assert.equal(logModuleForView('artifacts'), '', '没有日志维度的视图返回空串')
@@ -248,9 +249,9 @@ test('OS-172：有目录的模块显示名、入口名、目录名与日志模�
 /* ---------- ⑥ 扮演页读自己的日志（OS-150a） ---------- */
 
 test('OS-150a / OS-172：扮演页的「本模块修改」查的是扮演模块（取表，不写死）', () => {
-  assert.equal(logModuleForView('deduce'), '扮演')
+  assert.equal(logModuleForView('roleplay'), '扮演')
   const appSrc = readFileSync(join(REPO, 'public/app.js'), 'utf-8')
   assert.doesNotMatch(appSrc, /moduleLogHtml\('扮演'/u, '扮演页不许写死一个不存在的日志模块名')
-  assert.match(appSrc, /moduleLogHtml\(registryModule\?\.logModuleForView\('deduce'\)/u,
+  assert.match(appSrc, /moduleLogHtml\(registryModule\?\.logModuleForView\('roleplay'\)/u,
     '扮演页的日志模块名必须经注册表 logModuleForView 取')
 })

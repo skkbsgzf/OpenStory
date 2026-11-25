@@ -104,6 +104,18 @@ export function auditNamingConsistency({ repo = REPO, naming = NAMING_TABLE, tab
       if (slot.page !== manifest.id) violations.push(`${rel}: slot.page「${slot.page}」≠ slug「${manifest.id}」`)
     }
   }
+  // OS-190a 断言④：前端页签 id/视图键与 manifest 页面 id 对齐（目录型 view 保留 dir: 前缀）。
+  for (const entry of tabs) {
+    if (entry.module) {
+      const rel = `src/modules/${entry.module}/module.manifest.json`
+      let manifest
+      try { manifest = JSON.parse(readFileSync(join(repo, rel), 'utf-8')) } catch { violations.push(`${rel}: 模块 manifest 缺失（页签 ${entry.id}）`); continue }
+      if (manifest.id !== entry.id) violations.push(`TAB_REGISTRY:${entry.id}: id ≠ manifest.id「${manifest.id}」`)
+    }
+    if (entry.view && !entry.view.startsWith('dir:') && entry.view !== entry.id) {
+      violations.push(`TAB_REGISTRY:${entry.id}: view「${entry.view}」≠ id`)
+    }
+  }
   return { ok: violations.length === 0, violations, concepts: naming.length }
 }
 

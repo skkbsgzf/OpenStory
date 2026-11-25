@@ -11,6 +11,9 @@
  *   ④ 解耦契约——registry 零 import（不可能反向依赖 app.js），render 只存注册名，
  *      app.js 的 VIEW_RENDERERS 插座覆盖全部注册名（读源码校验，不在 node 里加载 app.js）。
  *
+ * OS-190a：视图键随页签 id 归一（write→chapters / reference→worldbook / deduce→roleplay），
+ * 旧算法对拍仍比的是同一套扫描/过滤语义，只是期望值换成新键。
+ *
  * 跑法：node --test test/tabRegistry.test.mjs
  */
 import test from 'node:test'
@@ -50,7 +53,7 @@ function legacyTabDefs(ctx = {}) {
     const hasDir = (name) => libDirs.includes(name)
     const excluded = new Set((ctx.briefGenre?.excludedPages ?? []).map((page) => PAGE_TO_DIR_LOCAL[page] ?? page))
     // OS-19：体裁声明后（如短故事）没有 正文/ 目录就不出正文页签
-    if (!ctx.brief || hasDir('正文')) defs.push({ view: 'write', label: '正文', ic: '章', closable: true })
+    if (!ctx.brief || hasDir('正文')) defs.push({ view: 'chapters', label: '正文', ic: '章', closable: true })
     const extra = libDirs
       // OS-88：正文/世界书/扮演都有内置页签，不能再按目录重复出一个
       .filter((dir) => dir !== '正文' && dir !== '扮演' && !excluded.has(dir))
@@ -64,15 +67,15 @@ function legacyTabDefs(ctx = {}) {
         return (li === -1 ? 99 : li) - (ri === -1 ? 99 : ri)
       })
       .map((dir) => ({
-        // OS-172：世界书走 reference 视图；故事源按目录视图，显示名与磁盘名一致
-        view: dir === '世界书' ? 'reference' : (dir === '习惯' ? 'habits' : `dir:${dir}`),
+        // OS-172/190a：世界书走 worldbook 视图；故事源按目录视图，显示名与磁盘名一致
+        view: dir === '世界书' ? 'worldbook' : (dir === '习惯' ? 'habits' : `dir:${dir}`),
         label: DIR_LABELS[dir] || dir,
         ic: (DIR_LABELS[dir] || dir).slice(0, 1),
         readonly: READONLY_DIRS.has(dir),
         closable: true
       }))
     defs.push(...extra)
-    defs.push({ view: 'deduce', label: '扮演', ic: '扮', closable: true })
+    defs.push({ view: 'roleplay', label: '扮演', ic: '扮', closable: true })
   }
   // OS-32：设置是可关闭页签，打开才出现
   if (ctx.settingsOpen) defs.push({ view: 'settings', label: '设置', ic: '设', closable: true })
@@ -94,16 +97,16 @@ test('快照：默认小说库的页签集合与顺序（产物/正文/剧本/�
     settingsOpen: false
   })
   assert.deepEqual(defs.map((def) => def.view),
-    ['artifacts', 'write', 'reference', 'dir:剧本', 'dir:日志', 'dir:故事源', 'habits', 'deduce'])
+    ['artifacts', 'chapters', 'worldbook', 'dir:剧本', 'dir:日志', 'dir:故事源', 'habits', 'roleplay'])
   assert.deepEqual(defs.map((def) => def.label),
     ['产物', '正文', '世界书', '剧本', '日志', '故事源', '习惯', '扮演'])
   // OS-89：日志页签挂「只读」牌
   const logTab = defs.find((def) => def.view === 'dir:日志')
   assert.equal(logTab.readonly, true)
-  assert.equal(defs.find((def) => def.view === 'write').readonly, false)
+  assert.equal(defs.find((def) => def.view === 'chapters').readonly, false)
   // 设置未打开不出现；打开了补在末尾（OS-32 可关闭页签）
   const openDefs = computeTabDefs({ current: { path: '/lib' }, brief: null, briefGenre: null, libDirs: ['正文'], settingsOpen: true })
-  assert.deepEqual(openDefs.map((def) => def.view), ['artifacts', 'write', 'deduce', 'settings'])
+  assert.deepEqual(openDefs.map((def) => def.view), ['artifacts', 'chapters', 'roleplay', 'settings'])
 })
 
 test('快照：无库时只剩设置页；正文页签受体裁裁剪（OS-19）', () => {
@@ -111,10 +114,10 @@ test('快照：无库时只剩设置页；正文页签受体裁裁剪（OS-19）
   assert.deepEqual(computeTabDefs({ current: null, settingsOpen: true }).map((def) => def.view), ['settings'])
   // 短故事体裁：声明了 brief 且磁盘无 正文/ 目录 → 不出正文页签
   const noWrite = computeTabDefs({ current: true, brief: { genre: 'short' }, briefGenre: null, libDirs: ['世界书', '日志'], settingsOpen: false })
-  assert.ok(!noWrite.some((def) => def.view === 'write'))
+  assert.ok(!noWrite.some((def) => def.view === 'chapters'))
   // 没声明体裁：即便 正文/ 目录不在，正文页签照出（OS-8 行为）
   const keepWrite = computeTabDefs({ current: true, brief: null, briefGenre: null, libDirs: [], settingsOpen: false })
-  assert.deepEqual(keepWrite.map((def) => def.view), ['artifacts', 'write', 'deduce'])
+  assert.deepEqual(keepWrite.map((def) => def.view), ['artifacts', 'chapters', 'roleplay'])
 })
 
 /* ---------- ② 行为保真：与迁移前旧算法逐字段对拍 ---------- */
@@ -147,7 +150,7 @@ test('扩展性：注册表副本加一条目录型页签，页签列表就多�
     label: '分镜', icon: '分', render: 'dirViewHtml', closable: true, scope: 'library'
   }]
   const defs = computeTabDefs({ current: true, brief: null, briefGenre: null, libDirs: ['正文', '分镜'], settingsOpen: false }, extended)
-  assert.deepEqual(defs.map((def) => def.view), ['artifacts', 'write', 'dir:分镜', 'deduce'])
+  assert.deepEqual(defs.map((def) => def.view), ['artifacts', 'chapters', 'dir:分镜', 'roleplay'])
   assert.equal(defs.find((def) => def.view === 'dir:分镜').label, '分镜')
   // 磁盘上没有该目录 → 不出（目录型页签的既有语义）
   const absent = computeTabDefs({ current: true, brief: null, briefGenre: null, libDirs: ['正文'], settingsOpen: false }, extended)
@@ -165,9 +168,9 @@ test('扩展性：副本加一条模块页签（visibleWhen 门控）＋隐藏/�
   const gated = computeTabDefs({ current: true, brief: null, briefGenre: null, libDirs: ['正文'], settingsOpen: false }, extended)
   assert.ok(!gated.some((def) => def.view === 'analysis'), '门控条件不满足时不出现')
   // OS-36 的 × 只收页签不动磁盘：隐藏过滤照常生效（对注册表新条目同样适用）
-  const visible = visibleTabDefs(defs, new Set(['analysis', 'write']))
+  const visible = visibleTabDefs(defs, new Set(['analysis', 'chapters']))
   assert.deepEqual(visible.map((def) => def.view),
-    ['artifacts', 'dir:剧本', 'deduce'].filter((view) => defs.some((def) => def.view === view)))
+    ['artifacts', 'dir:剧本', 'roleplay'].filter((view) => defs.some((def) => def.view === view)))
   // 默认隐藏种子（OS-48）恰好是四个退场目录的 dir 视图
   assert.deepEqual([...DEFAULT_HIDDEN_TABS], ['dir:大纲', 'dir:构思', 'dir:资料', 'dir:约束'])
 })
@@ -192,14 +195,14 @@ test('退场目录（大纲/构思/资料/约束）在任何输入下都不出�
   }
   // dirTabDefs 直呼也滤（双保险的另一半）
   const direct = dirTabDefs({ libDirs: ['大纲', '世界书'], excluded: new Set(), registry: TAB_REGISTRY })
-  assert.deepEqual(direct.map((def) => def.view), ['reference'])
+  assert.deepEqual(direct.map((def) => def.view), ['worldbook'])
 })
 
 /* ---------- 词表 / 面板 / 作用域 / 渲染插座 ---------- */
 
 test('OS-92 词表外目录不出页签；「＋」面板的识别判定与显示名与旧词表一致', () => {
   const defs = computeTabDefs({ current: true, brief: null, briefGenre: null, libDirs: ['素材', '漫画', '视频', '体验', '联机', '文档', '人物', '场景'], settingsOpen: false })
-  assert.deepEqual(defs.map((def) => def.view), ['artifacts', 'write', 'deduce'])
+  assert.deepEqual(defs.map((def) => def.view), ['artifacts', 'chapters', 'roleplay'])
   for (const dir of ['素材', '漫画', '分镜', '人物', '场景']) {
     assert.equal(isKnownDir(dir), false)
     assert.equal(dirTabEntry(dir), null)
@@ -211,12 +214,12 @@ test('OS-92 词表外目录不出页签；「＋」面板的识别判定与显�
   assert.equal(dirPanelLabel('故事源'), '故事源')
   const refEntry = dirTabEntry('世界书')
   assert.equal(refEntry.label, '世界书')
-  assert.equal(refEntry.view, 'reference')
+  assert.equal(refEntry.view, 'worldbook')
   // OS-36：面板「常用」区＝产物/正文/扮演，need＝勾选要求的目录
   assert.deepEqual(builtinPanelTabs(), [
     { view: 'artifacts', label: '产物', need: null },
-    { view: 'write', label: '正文', need: '正文' },
-    { view: 'deduce', label: '扮演', need: null }
+    { view: 'chapters', label: '正文', need: '正文' },
+    { view: 'roleplay', label: '扮演', need: null }
   ])
 })
 
@@ -239,7 +242,7 @@ test('go() 作用域校验：flow/global 不需要库；library/未知视图没�
   assert.equal(viewScope('lib-create'), 'flow')
   assert.equal(viewScope('lib-import'), 'flow')
   assert.equal(viewScope('repair'), 'flow')
-  for (const view of ['write', 'artifacts', 'deduce', 'reference', 'habits']) assert.equal(viewScope(view), 'library')
+  for (const view of ['chapters', 'artifacts', 'roleplay', 'worldbook', 'habits']) assert.equal(viewScope(view), 'library')
   assert.equal(viewScope('dir:剧本'), 'library')
   assert.equal(viewScope('dir:不认识的目录'), 'library')
   assert.equal(viewScope('nope'), null, '未知视图按「需要库」处理——与旧算法同语义')
@@ -249,7 +252,7 @@ test('go() 作用域校验：flow/global 不需要库；library/未知视图没�
 test('渲染插座：registry 只存注册名，app.js 的 VIEW_RENDERERS 覆盖全部注册名', () => {
   const renderNames = [...new Set(TAB_REGISTRY.filter((entry) => entry.render).map((entry) => entry.render))]
   assert.ok(renderNames.length >= 8)
-  assert.equal(renderNameForView('write'), 'writeHtml')
+  assert.equal(renderNameForView('chapters'), 'writeHtml')
   assert.equal(renderNameForView('settings'), 'settingsHtml')
   assert.equal(renderNameForView('dir:剧本'), 'dirViewHtml', 'dir:* 统一走 dirViewHtml（剧本/故事源 fork 在其内部）')
   assert.equal(renderNameForView('dir:日志'), 'dirViewHtml')
@@ -276,11 +279,19 @@ test('registry 纯度：零 import、零 DOM/存储——不可能反向依赖 a
 })
 
 test('词表映射原样保真：PAGE_TO_DIR_LOCAL/READONLY_DIRS/DIR_ORDER/DIR_LABELS', () => {
-  assert.deepEqual({ ...PAGE_TO_DIR_LOCAL }, { write: '正文', entries: '世界书', worldbook: '世界书', script: '剧本' })
+  assert.deepEqual({ ...PAGE_TO_DIR_LOCAL }, { chapters: '正文', write: '正文', worldbook: '世界书', entries: '世界书', script: '剧本' })
   assert.deepEqual([...DIR_ORDER], ['正文', '世界书', '剧本', '日志'])
   assert.deepEqual([...RETIRED_DIRS], ['大纲', '构思', '资料', '约束'])
   assert.ok(READONLY_DIRS.has('日志'))
   assert.equal(READONLY_DIRS.size, 1)
   assert.equal(DIR_LABELS['故事源'], '故事源')
   assert.equal(DIR_LABELS['正文'], '正文')
+  // OS-190a：页签 id／视图键与模块 manifest 的页面 id 对齐（目录型 view 保留 dir: 前缀）。
+  for (const entry of TAB_REGISTRY) {
+    if (entry.module) {
+      const manifest = JSON.parse(readFileSync(join(HERE, '..', 'src', 'modules', entry.module, 'module.manifest.json'), 'utf-8'))
+      assert.equal(manifest.id, entry.id, `TAB_REGISTRY:${entry.id} 的 id ≠ manifest.id`)
+    }
+    if (entry.view && !entry.view.startsWith('dir:')) assert.equal(entry.view, entry.id, `TAB_REGISTRY:${entry.id} 的 view ≠ id`)
+  }
 })

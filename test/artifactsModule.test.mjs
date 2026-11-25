@@ -65,7 +65,7 @@ test('页签归属：artifacts 停用后产物页签消失', () => {
   assert.ok(computeTabDefs(ctx).map((d) => d.view).includes('artifacts'))
   const disabled = computeTabDefs({ ...ctx, modulesEnabled: { artifacts: false, chapters: true } }).map((d) => d.view)
   assert.ok(!disabled.includes('artifacts'))
-  assert.ok(disabled.includes('write'), '其他页签不受影响')
+  assert.ok(disabled.includes('chapters'), '其他页签不受影响')
 })
 
 test('artifactsHtml 金样：纯函数固定夹具 → 稳定 HTML，无副作用', () => {

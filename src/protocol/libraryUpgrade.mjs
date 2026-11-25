@@ -95,15 +95,16 @@ function mapProjectDocument(document, now) {
 }
 
 /**
- * OS-190：旧页面的 id → 新页面 id（＝正名 slug）。旧库里既可能存旧「视图键」
+ * OS-190/190a：旧 id／旧视图键 → 前端认得的视图键。旧库里既可能存旧「视图键」
  * （dir:参考 / dir:推演 / dir:拆解），也可能存旧 manifest 页 id
- * （reference / deduce / storySource / write），两者都直接映射到新 id，
- * 不再经过中间词（OS-190 任务 3）。
+ * （reference / deduce / storySource / write）。页面型落到正名 slug（chapters/worldbook/
+ * roleplay），目录型落到 dir: 视图（故事源没有独立页面视图，走 dir:故事源）。
  */
-const VIEW_ID_RENAMES = Object.freeze({
-  'dir:参考': 'worldbook', 'dir:推演': 'roleplay', 'dir:拆解': 'storysource',
-  reference: 'worldbook', deduce: 'roleplay', storySource: 'storysource', write: 'chapters',
-  worldbook: 'worldbook', roleplay: 'roleplay', storysource: 'storysource', chapters: 'chapters'
+export const VIEW_ID_RENAMES = Object.freeze({
+  'dir:参考': 'worldbook', 'dir:推演': 'roleplay', 'dir:拆解': 'dir:故事源',
+  reference: 'worldbook', deduce: 'roleplay', storySource: 'dir:故事源', write: 'chapters',
+  worldbook: 'worldbook', roleplay: 'roleplay', storysource: 'dir:故事源', chapters: 'chapters',
+  '正文': 'chapters'
 })
 function mapRoute(value) {
   return VIEW_ID_RENAMES[value] ?? value

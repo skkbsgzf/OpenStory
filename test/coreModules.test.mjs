@@ -122,7 +122,7 @@ test('证据②可写：daemon uiStatePut 接收四工作台停用键并原样�
 })
 
 test('证据③slot 跟随模块：页签级 core 保留，但停用后四个归属页签消失', () => {
-  for (const [tabId, moduleId] of [['write', 'chapters'], ['script', 'script'], ['reference', 'worldbook'], ['deduce', 'roleplay']]) {
+  for (const [tabId, moduleId] of [['chapters', 'chapters'], ['script', 'script'], ['worldbook', 'worldbook'], ['roleplay', 'roleplay']]) {
     const tab = TAB_REGISTRY.find((entry) => entry.id === tabId)
     assert.equal(tab.module, moduleId)
     assert.equal(tab.core, true, `${tabId} 仍属顶栏可达面`)
@@ -130,9 +130,9 @@ test('证据③slot 跟随模块：页签级 core 保留，但停用后四个归
   }
   const ctx = { current: { path: '/lib' }, libDirs: ['正文', '剧本', '世界书', '习惯'], brief: null, briefGenre: null, settingsOpen: false }
   const empty = computeTabDefs({ ...ctx, modulesEnabled: new Set() }).map((def) => def.view)
-  for (const view of ['write', 'dir:剧本', 'reference', 'deduce', 'habits']) assert.ok(!empty.includes(view), `${view} 应随模块停用消失`)
+  for (const view of ['chapters', 'dir:剧本', 'worldbook', 'roleplay', 'habits']) assert.ok(!empty.includes(view), `${view} 应随模块停用消失`)
   const enabled = computeTabDefs({ ...ctx, modulesEnabled: new Set([...FORMER_CORE_IDS, 'habits']) }).map((def) => def.view)
-  for (const view of ['write', 'dir:剧本', 'reference', 'deduce', 'habits']) assert.ok(enabled.includes(view), `${view} 启用后应恢复`)
+  for (const view of ['chapters', 'dir:剧本', 'worldbook', 'roleplay', 'habits']) assert.ok(enabled.includes(view), `${view} 启用后应恢复`)
   assert.ok(!dirTabDefs({ libDirs: ['正文', '剧本', '习惯'], excluded: new Set(), modulesEnabled: new Set() })
     .some((def) => def.view === 'dir:剧本'), 'dirScan 分支同样跟随模块状态')
 })
