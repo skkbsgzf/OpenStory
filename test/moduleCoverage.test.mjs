@@ -117,8 +117,8 @@ test('b) 端点覆盖：全量 handler 键 100% 有归属或宿主白名单理�
       assert.ok(!hostOwnedEndpointIds().has(endpoint), `工作台端点 ${endpoint} 不该在宿主白名单`)
     }
   }
-  assert.equal(report.endpointCount, 103)
-  assert.equal(report.claimedEndpointCount + report.hostEndpointCount, 103)
+  assert.equal(report.endpointCount, 108)
+  assert.equal(report.claimedEndpointCount + report.hostEndpointCount, 108)
 })
 
 test('c) 页签覆盖：每个未退场页签归属模块或宿主保留（带理由）', () => {

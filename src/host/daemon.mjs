@@ -48,7 +48,7 @@ import { builtinRuntimesDir, defaultUserRuntimesDir } from '../services/runtimes
 import { builtinSuitesDir, defaultSuiteStatePath, defaultUserSuitesDir } from '../services/suites.mjs'
 import { builtinGenresDir, defaultUserGenresDir } from '../services/genres.mjs'
 import { builtinSkillsDir, defaultUserSkillsDir } from '../services/skills.mjs'
-import { isModuleDisabledFor, moduleDegradationFor, moduleManifest } from '../protocol/modules.mjs'
+import { moduleDisabledOwnerFor, degradationFor, moduleManifestFor } from './moduleRuntime.mjs'
 import { ensureLibraryUpgraded } from '../protocol/libraryUpgrade.mjs'
 import {
   resolveAgentRuntimeCapability, resolveFactCapability, resolveProseCapability
@@ -379,21 +379,21 @@ async function handleApi(req, res, url, context) {
   // 库根取法（OS-146）：请求 root（已授权）优先——多库时按调用方自己的库判定；
   // 启动默认库/库清单第一条只是没带 root 时的兜底，不是语义。一个库都没有时无法判定，按启用处理。
   const gateRoot = moduleGateRoot(checked.value, context, allowlist)
-  const owner = await isModuleDisabledFor(endpointId, gateRoot)
+  const owner = await moduleDisabledOwnerFor(endpointId, gateRoot, context.env)
   if (owner) {
-    const label = moduleManifest(owner)?.name ?? owner
+    const label = (await moduleManifestFor(owner, context.env))?.name ?? owner
     return sendError(res, API_ERROR_CODES.MODULE_DISABLED, `「${label}」模块已停用——重新启用后可用，已存的值与数据都还在`)
   }
-  const degraded = await moduleDegradationFor(endpointId, gateRoot)
+  const degraded = await degradationFor(endpointId, gateRoot, context.env)
   if (degraded) {
-    const label = moduleManifest(degraded.module)?.name ?? degraded.module
+    const label = (await moduleManifestFor(degraded.module, context.env))?.name ?? degraded.module
     return sendError(res, API_ERROR_CODES.PLUGIN_DEGRADED, `「${label}」缺少所需能力，当前不可用`, degraded)
   }
   // OS-194：模块端点按库快照从 activate() 贡献取 handler；宿主端点走静态表。
   // 快照重建后新请求换表；这里先取到 handler 引用，在途请求持旧句柄不受换表影响。
   let handler
   try {
-    handler = await handlerFor(endpointId, gateRoot)
+    handler = await handlerFor(endpointId, gateRoot, context.env)
   } catch (error) {
     if (error?.code === 'PLUGIN_DEGRADED') {
       return sendError(res, API_ERROR_CODES.PLUGIN_DEGRADED, error.message, error.details)

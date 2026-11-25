@@ -1,4 +1,4 @@
-const CONTRIBUTION_KEYS = Object.freeze(['capabilities', 'handlers', 'pages', 'settingsConsumers', 'hooks'])
+const CONTRIBUTION_KEYS = Object.freeze(['capabilities', 'handlers', 'pages', 'slots', 'settingsConsumers', 'hooks'])
 /**
  * OS-195a：工作台给宿主（含 Agent 栏）的东西只能经 activate() 贡献钩子。
  * 钩子名登记在此，未登记的拒收——钩子不是随手挂的全局变量。
@@ -40,6 +40,17 @@ export function validateModuleContribution(manifest, contribution) {
   }
   if (manifest.class === 'kernel' && Object.keys(contribution.capabilities ?? {}).length === 0) {
     errors.push('kernel activate 必须返回已声明能力')
+  }
+  // OS-196 G3：页面与 slot 贡献也必须来自 manifest 声明（端点已在下面双向校验）。
+  const declaredPages = new Set((manifest.pages ?? []).map((item) => item.id))
+  for (const id of Object.keys(contribution.pages ?? {})) {
+    if (!declaredPages.has(id)) errors.push(`页面 ${id} 未在 manifest pages 声明`)
+  }
+  const declaredSlots = new Set((manifest.slots ?? []).map((item) => item.slot))
+  for (const slot of Object.keys(contribution.slots ?? {})) {
+    if (!declaredSlots.has(slot)) errors.push(`slot ${slot} 未在 manifest slots 声明`)
+    const value = contribution.slots[slot]
+    if (!plainObject(value) && typeof value !== 'function') errors.push(`slot ${slot} 必须是函数或 { 局部名: fn } 对象`)
   }
   // OS-194：handler 贡献与 manifest.endpoints 双向对齐——多一个越界键、少一个声明端点都拒收。
   const declaredEndpoints = new Set(manifest.endpoints ?? [])

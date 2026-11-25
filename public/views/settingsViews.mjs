@@ -1,6 +1,12 @@
 /** C6：从 public/app.js 逐字迁出的settingsViews渲染面。副作用仍由 app.js 持有。 */
 export function createSettingsViews(scope) {
-  const { state, agent, esc, text, uiKit, runtimeShelf, moduleOn, hiddenModules, WORKBENCH_MODULES, SETTINGS_GROUPS, scriptPrefs, dirWork, castColorOf, settingsScriptSectionHtml, settingRuntimeKind, probeBadgeLabel, comfyNodeMapText, typographyState, docPrefSlidersHtml, syncPolicy, syncProblemsFrom, warningsHtml, uiMemory, settingsAggregation, suitesSectionHtml, pluginsOverviewHtml, errorHtml } = scope
+  const { state, agent, esc, text, uiKit, runtimeShelf, moduleOn, hiddenModules, WORKBENCH_MODULES, SETTINGS_GROUPS, scriptPrefs, dirWork, castColorOf, settingsScriptSectionHtml, settingRuntimeKind, probeBadgeLabel, comfyNodeMapText, typographyState, docPrefSlidersHtml, syncPolicy, syncProblemsFrom, warningsHtml, uiMemory, settingsAggregation, suitesSectionHtml, pluginsOverviewHtml, errorHtml, api, render } = scope
+
+  // OS-196：本机模块区的临时视图态只在内存里；登记状态一律在 daemon 的机器级信任表。
+  let localPath = ''
+  let localBrowse = null
+  let localPreview = null
+  let localNotice = ''
 
 function settingsModulesSectionHtml({ suiteId = '' } = {}) {
   const hidden = hiddenModules()
@@ -34,7 +40,8 @@ const SETTINGS_HELP = Object.freeze({
   kb: '知识库给 Agent 供弹药：技法配方、文风指纹、题材套路、读者信号、同型案例分库存放。写东西时 Agent 会自动取用，这里只看连接是否健康、每个库装了多少，不用做任何操作。',
   about: 'OpenStory 是给写小说用的本地工作台。稿件、草稿、会话与密钥都只留在本机，所有修改都有备份与日志，不上传也不联网同步。',
   suiteSettings: '这里的每一项都是这个套件自己的规则。停用它，规则会退回程序内置的默认值，但你现在填的内容会保留下来，重新启用就回到你设的样子。',
-  moduleSettings: '模块是工作面插件：分析、生图与识图、知识库。停用只是把入口和独占能力收起来，稿件、已存配置和卡片勾选都不会丢，重新启用就回来。生图/识图与知识库的真配置在「引擎与存储」里（本卡片只指路）；内核设置（端口、库路径、凭据）归宿主，不随模块走。'
+  moduleSettings: '模块是工作面插件：分析、生图与识图、知识库。停用只是把入口和独占能力收起来，稿件、已存配置和卡片勾选都不会丢，重新启用就回来。生图/识图与知识库的真配置在「引擎与存储」里（本卡片只指路）；内核设置（端口、库路径、凭据）归宿主，不随模块走。',
+  localModules: '本机模块是可以给 daemon 增加能力/工作台/端点的可执行代码——和 daemon 同进程、同权限。这里没有「扫描任意目录」：只有你亲自选定并确认过的模块根才会被读取。先预览清单，确认后才生效；移除即回到内置层。套件仍然只许放数据，不放可执行代码。'
 })
 
 const RUNTIME_STATUS_LABEL = {
@@ -580,6 +587,65 @@ function settingsModuleSettingsSectionHtml() {
   }) ?? '<div class="step"><h3>模块</h3><p class="sub">正在读取模块清单…</p></div>'
 }
 
+function localStatusLabel(item) {
+  if (item.status === 'loaded') return item.contentChanged ? '已生效 · 内容已变' : '已生效'
+  if (item.status === 'invalid') return `${item.gate || 'identity'} 门拒绝：${item.reason || '未知原因'}`
+  if (item.status === 'skipped') return `跳过（${item.gate || 'trust'}）：${item.reason || ''}`
+  return item.status || '未知'
+}
+
+function settingsLocalModulesSectionHtml() {
+  const roots = state.plugins?.moduleRoots ?? []
+  const modules = state.plugins?.localModules ?? []
+  const rootRows = roots.length ? roots.map((root) => `
+    <div class="mod-row">
+      <div><b>${esc(root.path)}</b><i>${esc(root.registeredAt || '')} · ${Number(root.moduleCount) || 0} 个模块</i></div>
+      <button type="button" class="uikit-btn uikit-btn-ghost" data-action="local-root-remove" data-path="${esc(root.path)}">移除</button>
+    </div>`).join('') : '<div class="uikit-empty">还没有登记模块根——只认你亲自确认过的目录。</div>'
+  const moduleRows = modules.length ? modules.map((item) => `
+    <div class="mod-row">
+      <div><b>${esc(item.name || item.id)}</b><i>v${esc(item.version || '—')} · ${esc(item.class || '—')} · ${esc(item.sourceDir || '')}</i>
+        <span class="sub">${esc(localStatusLabel(item))}</span>
+        <span class="sub">供给 ${esc((item.capabilities || []).join('、') || '—')} · 依赖 ${esc((item.requires || []).join('、') || '—')}</span>
+        <span class="sub">摘要 ${esc((item.contentSha256 || '').slice(0, 12) || '—')}</span>
+      </div>
+    </div>`).join('') : '<div class="uikit-empty">模块清单为空，当前只用内置层。</div>'
+  const browseRows = localBrowse?.entries?.length
+    ? localBrowse.entries.map((entry) => `
+      <div class="mod-row"><span>${esc(entry.name || entry.path || entry)}</span>
+        <button type="button" class="uikit-btn uikit-btn-ghost" data-action="local-root-enter" data-path="${esc(entry.path || entry.name || entry)}">进入</button>
+        <button type="button" class="uikit-btn uikit-btn-ghost" data-action="local-root-choose" data-path="${esc(entry.path || entry.name || entry)}">选这个</button>
+      </div>`).join('')
+    : '<div class="uikit-empty">点「浏览目录」列出可选文件夹。</div>'
+  const previewRows = localPreview?.modules?.length
+    ? localPreview.modules.map((item) => `
+      <div class="mod-row"><span><b>${esc(item.name || item.id)}</b> · v${esc(item.version || '—')} · ${esc(item.class || '—')}</span>
+        <span class="sub">${esc(item.status === 'ok' ? '可装载' : localStatusLabel(item))} · 摘要 ${esc((item.contentSha256 || '').slice(0, 12) || '—')}</span>
+        <span class="sub">供给 ${esc((item.capabilities || []).join('、') || '—')} · 依赖 ${esc((item.requires || []).join('、') || '—')}</span>
+      </div>`).join('')
+    : '<div class="uikit-empty">选好目录后先点「预览清单」。</div>'
+  return [
+    `<div class="step"><h3>信任说明<span class="sub">登记之前请先读完</span></h3>
+      <p class="sub">${esc(localPreview?.risk || '可执行模块与 daemon 同进程、同权限：登记一个模块根，等于信任这个根目录下的所有代码。只预览不生效，必须点确认才登记。')}</p></div>`,
+    `<div class="step"><h3>已登记的根<span class="sub">机器级，不属于任何一个库</span></h3>
+      ${rootRows}
+      <div class="uikit-toolbar"><span class="uikit-toolbar-left">
+        <input type="text" class="uikit-input" data-local-root-path value="${esc(localPath)}" placeholder="模块根目录（绝对路径）">
+      </span><span class="uikit-toolbar-right">
+        <button type="button" class="uikit-btn uikit-btn-ghost" data-action="local-root-browse">浏览目录</button>
+        <button type="button" class="uikit-btn uikit-btn-ghost" data-action="local-root-preview">预览清单</button>
+        <button type="button" class="uikit-btn uikit-btn-primary" data-action="local-root-confirm"${localPreview ? '' : ' disabled'}>确认登记</button>
+        <button type="button" class="uikit-btn uikit-btn-ghost" data-action="local-root-refresh">刷新快照</button>
+      </span></div>
+      ${localNotice ? `<p class="sub">${esc(localNotice)}</p>` : ''}
+    </div>`,
+    `<div class="step"><h3>目录浏览<span class="sub">内建浏览器，不依赖桌面权限</span></h3>
+      <p class="sub">${esc(localBrowse?.path || '尚未浏览')}</p>${browseRows}</div>`,
+    `<div class="step"><h3>预览清单<span class="sub">确认前不写盘、不装载</span></h3>${previewRows}</div>`,
+    `<div class="step"><h3>模块状态<span class="sub">摘要变化＝同版本改代码，快照随之更新</span></h3>${moduleRows}</div>`
+  ].join('')
+}
+
 function settingsHtml() {
   const sectionRenderers = {
     // —— 本体设置（OS-98 合并：相关概念归一处）——
@@ -597,6 +663,8 @@ function settingsHtml() {
     // 旧 id 重定向到统一的套件主面
     pluginsOverview: pluginsOverviewHtml,
     moduleSettings: settingsModuleSettingsSectionHtml,
+    // OS-196：本机模块根的信任入口（视图在 views 里，app.js 只负责接线）。
+    localModules: settingsLocalModulesSectionHtml,
     suite: suitesSectionHtml,
     suiteSettings: suitesSectionHtml,
     suiteDetail: suitesSectionHtml,
@@ -615,7 +683,7 @@ function settingsHtml() {
   const sectionHtml = (sectionRenderers[sectionId] ?? settingsAppearanceSectionHtml)()
   // OS-101：左导航按组渲染——本体设置 / 插件中心。
   // 插件中心不再是二级壳：它直接把**每个套件**列成一行（作者：「插件中心就是很多套件排列」）。
-  const nav = SETTINGS_GROUPS.map((group) => {
+  let nav = SETTINGS_GROUPS.map((group) => {
     const isPluginGroup = group.id === 'plugins'
     // OS-192：插件组固定节（模块启停）在前；其后五类货架按供给类型六组排列。
     const fixedEntries = isPluginGroup
@@ -649,6 +717,13 @@ function settingsHtml() {
       ${items}
     </div>`
   }).join('')
+  // OS-196：导航项由本视图追加（app.js 的 SETTINGS_GROUPS 冻结，增长只许在 views 里）。
+  nav += `<div class="settings-nav-group">
+    <div class="settings-nav-grouphead">本机模块<span>登记即信任，预览后确认</span></div>
+    <button class="settings-nav-item${sectionId === 'localModules' ? ' on' : ''}" data-settings-section="localModules">
+      <b>本机模块</b><span>模块根 · 摘要 · 失败门</span>
+    </button>
+  </div>`
   const help = SETTINGS_HELP[sectionId] || SETTINGS_HELP.plugins
   const helpOpen = state.settings.helpOpen === true
   return `<div class="lib-wrap">
@@ -667,5 +742,69 @@ function settingsHtml() {
   </div>`
 }
 
-  return { settingsModulesSectionHtml, SETTINGS_HELP, RUNTIME_STATUS_LABEL, runtimeCard, settingsRuntimeSectionHtml, dshDepthFieldHtml, cfgBadgeHtml, dshModelValue, dshModelOptionsHtml, dshModelFieldHtml, settingsModelsSectionHtml, skinCardsHtml, settingsAppearanceSectionHtml, settingsTypographySectionHtml, settingsWritingSectionHtml, settingsDiscoverSectionHtml, settingsCombinedDataSectionHtml, settingsSyncSectionHtml, settingsDataSectionHtml, settingsAboutSectionHtml, settingsKbSectionHtml, settingsCombinedAppearanceHtml, settingsCombinedEnginesHtml, settingsModuleSettingsSectionHtml, settingsHtml }
+  // OS-196：本机模块的交互只在这里接线——app.js 不新增动作分支（OS-143 增量冻结）。
+  if (typeof document !== 'undefined' && typeof api === 'function' && typeof render === 'function') {
+    async function reloadLocalState() {
+      const payload = await api('/api/plugins')
+      state.plugins = {
+        ...(state.plugins || {}),
+        loaded: true,
+        moduleRoots: Array.isArray(payload.moduleRoots) ? payload.moduleRoots : [],
+        localModules: Array.isArray(payload.localModules) ? payload.localModules : []
+      }
+      render()
+    }
+    function readPath() {
+      return document.querySelector('[data-local-root-path]')?.value?.trim() || localPath
+    }
+    document.addEventListener('click', async (event) => {
+      const target = event.target?.closest?.('[data-action^="local-root-"]')
+      if (!target) return
+      const action = target.dataset.action
+      try {
+        if (action === 'local-root-browse') {
+          const payload = await api('/api/fs/browse', { method: 'POST', body: JSON.stringify({ path: localBrowse?.path || '' }) })
+          localBrowse = payload
+          localNotice = ''
+        } else if (action === 'local-root-enter') {
+          const payload = await api('/api/fs/browse', { method: 'POST', body: JSON.stringify({ path: target.dataset.path || '' }) })
+          localBrowse = payload
+          localPath = payload.path || target.dataset.path || ''
+          localNotice = ''
+        } else if (action === 'local-root-choose') {
+          localPath = target.dataset.path || ''
+          localPreview = null
+          localNotice = `已选：${localPath}——先预览清单再确认。`
+        } else if (action === 'local-root-preview') {
+          localPath = readPath()
+          localPreview = await api('/api/module-roots/preview', { method: 'POST', body: JSON.stringify({ path: localPath }) })
+          localNotice = (localPreview.warnings || []).map((item) => item.message).join('；')
+        } else if (action === 'local-root-confirm') {
+          if (!localPreview) return
+          await api('/api/module-roots/add', { method: 'POST', body: JSON.stringify({ path: localPath, confirm: true }) })
+          localPreview = null
+          localBrowse = null
+          localNotice = '已登记，新快照生效。'
+          await reloadLocalState()
+          return
+        } else if (action === 'local-root-remove') {
+          await api('/api/module-roots/remove', { method: 'POST', body: JSON.stringify({ path: target.dataset.path || '' }) })
+          localNotice = '已移除，回到内置层。'
+          await reloadLocalState()
+          return
+        } else if (action === 'local-root-refresh') {
+          const payload = await api('/api/module-roots/refresh', { method: 'POST', body: '{}' })
+          localNotice = payload.blocked ? `${payload.blocked.gate} 门：${payload.blocked.reason}` : `快照 ${payload.id} 已生效。`
+          await reloadLocalState()
+          return
+        } else return
+        render()
+      } catch (error) {
+        localNotice = (error && error.message) ? String(error.message) : String(error)
+        render()
+      }
+    })
+  }
+
+  return { settingsModulesSectionHtml, SETTINGS_HELP, RUNTIME_STATUS_LABEL, runtimeCard, settingsRuntimeSectionHtml, dshDepthFieldHtml, cfgBadgeHtml, dshModelValue, dshModelOptionsHtml, dshModelFieldHtml, settingsModelsSectionHtml, skinCardsHtml, settingsAppearanceSectionHtml, settingsTypographySectionHtml, settingsWritingSectionHtml, settingsDiscoverSectionHtml, settingsCombinedDataSectionHtml, settingsSyncSectionHtml, settingsDataSectionHtml, settingsAboutSectionHtml, settingsKbSectionHtml, settingsCombinedAppearanceHtml, settingsCombinedEnginesHtml, settingsModuleSettingsSectionHtml, settingsLocalModulesSectionHtml, settingsHtml }
 }

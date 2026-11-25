@@ -6,17 +6,17 @@
     "convention": "physical-lines; CRLF/LF normalized; blank and comment lines included; trailing newline not counted"
   },
   "endpoints": {
-    "total": 103,
+    "total": 108,
     "moduleOwned": 41,
-    "hostOwned": 62,
+    "hostOwned": 67,
     "hostDomain": 0,
     "hostDomainIds": []
   },
-  "testFiles": 105,
+  "testFiles": 106,
   "gateCount": 28,
   "tests": {
-    "total": 817,
-    "pass": 815,
+    "total": 824,
+    "pass": 822,
     "fail": 0,
     "skipped": 2,
     "ok": true,

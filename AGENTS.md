@@ -103,6 +103,24 @@ L4 自持层→L2 自有内核 `src/kernel/`→L1 磁盘库；OS-157 起 L2/L3 �
    样式令牌区外禁止裸色值。侧栏=绝对定位浮层，正文恒居中（OS-48 宪法）。
    组件约定见 `docs/UX-STRUCTURE.md`。
 
+## 本机模块（OS-196 立；可执行代码的四道门）
+
+**信任模型：可执行模块与 daemon 同进程、同权限。登记一个模块根，等于信任这个根目录下所有模块的代码。**
+登记入口必须有清单预览与明确确认（`confirm:true`），不提供「扫描任意目录」的捷径。
+内置 `src/modules/` 永远是内置层；本机层同 id 覆盖内置层，`/api/plugins` 显式列出来源与摘要。
+套件照旧只许数据，本机模块根里发现的 `class:suite` 一律跳过。
+
+| 门 | 守护点 | 判定 |
+|---|---|---|
+| **G1 信任门** | `src/host/moduleRoots.mjs` 读写机器级信任表；设置页「本机模块」区先预览后确认 | 只枚举显式登记的根；未登记的根不扫描、不装载、不出现在报告里 |
+| **G2 身份门** | `manifestSha256`＋入口与包内传递依赖的 `contentSha256` 进快照 id 与激活缓存键 | 同版本改代码＝新快照，旧激活结果不复用；与登记摘要不符标「内容已变」 |
+| **G3 边界门** | `src/protocol/localModuleBoundary.mjs` 静态扫 import 图；`activate(context)` 只给 `manifest/resolve/base` | 只许 `node:` 内置与包内相对路径；裸包名、越出包目录、非字面量动态 `import()`、`createRequire`/`eval`/`new Function` 一律拒装；能力/端点/页面/slot 必须来自 manifest 声明 |
+| **G4 切换门** | `src/host/moduleRuntime.mjs`：候选快照 → 三检查（端点唯一／底座能力路由不动／内置路由不丢）→ 一次同步赋值 | 新请求用新层；在途请求持旧句柄到底；端点与 slot 归属随层回收 |
+| **失败门** | 任一门失败＝当前快照不动、坏模块跳过、warning 进报告 | `/api/plugins` 与 `/api/module-roots` 如实报出是哪一门（`gate`）与原因；同包其它模块照常装载 |
+
+五件底座能力经 `context.base` 以只读句柄给本机模块：`process / contract / write / naming / loader`
+（loader 只给 snapshot/manifests/sources，不提供 `activate`）。内置模块仍按 OS-193～195 口径。
+
 ## 本地化与可追溯（OS-89 作者立宪，不可协商）
 
 作者口径原文：「所有的内容必须放在本地。对于已经落盘的内容，应该放在固定的落盘位置。
@@ -137,6 +155,7 @@ L4 自持层→L2 自有内核 `src/kernel/`→L1 磁盘库；OS-157 起 L2/L3 �
    | 本机凭据/模型端点 | `%LOCALAPPDATA%/OpenStory/openstory/agent-config.json`（含密钥，不入库） |
    | 机器级界面偏好（皮肤，无库也生效） | `%LOCALAPPDATA%/OpenStory/openstory/ui-preferences.json`（OS-158，不入库；任何端口共用一份） |
    | 本机库清单（root 白名单来源） | `%LOCALAPPDATA%/OpenStory/libraries.json`（OS-167/189：只认 `{schemaVersion,libraries:[{path,name,addedAt,source}]}`；`source=openstory\|imported`。非本产品形状只读告警、拒绝覆盖（按内容形状不按文件名）；库身份靠库内 `.openstory/project.json`，不靠本机清单） |
+   | 本机模块根信任表（OS-196，机器级） | `%LOCALAPPDATA%/OpenStory/openstory/module-roots.json`（`openstory.module-roots/v1`：根路径、登记时间、登记时每个模块的 manifest／内容摘要；未登记的根不扫描、不装载） |
 
    旧库升级只针对请求中显式指定且已授权的 root，由 daemon 在模块闸与业务 handler 前调用
    `ensureLibraryUpgraded()`：先备份到 `.history/upgrade-<时间戳>/`，再迁移 `.pinax/` 运行态、
@@ -256,7 +275,7 @@ L4 自持层→L2 自有内核 `src/kernel/`→L1 磁盘库；OS-157 起 L2/L3 �
 ## 改完必跑（验收线，详见 `docs/ACCEPTANCE.md`）
 
 ```bash
-node .zcode/run-gate.mjs                    # ① 全量单测（817 例）
+node .zcode/run-gate.mjs                    # ① 全量单测（824 例）
 node tools/acceptance/acceptance.mjs        # ② 交付标准 S0–S4 门禁（28 检查，Rea 式证据；S0=布局宪法）
 # ③ .ua/ 知识图谱增量（/understand，skill 在 ~/.zcode/skills/understand*）
 # ④ 前端批次给作者截图讲场景（对照 design-system/DESIGN.md + docs/UX-STRUCTURE.md）

@@ -58,6 +58,54 @@ export const pluginsEndpoints = {
     errors: []
   },
 
+  // OS-196：本机可执行模块根的机器级治理（与库无关；登记即信任）。
+  // 五个端点只是「预览 → 确认 → 生效 → 刷新 → 移除」的显式流程，不提供扫描任意目录的捷径。
+  moduleRootsGet: {
+    method: 'GET',
+    path: '/api/module-roots',
+    request: { query: {} },
+    response: {
+      ok: 'true', roots: 'array', localModules: 'array', slotPlacements: 'object',
+      warnings: 'array', path: 'string', blocked: 'object?'
+    },
+    errors: []
+  },
+
+  moduleRootsPreview: {
+    method: 'POST',
+    path: '/api/module-roots/preview',
+    // 只读预览：列模块的名/版本/类别/能力/依赖/摘要＋风险说明，不写表、不装载。
+    request: { body: { path: 'string' } },
+    response: { ok: 'true', path: 'string', modules: 'array', risk: 'string', warnings: 'array' },
+    errors: ['INVALID_ENTRY']
+  },
+
+  moduleRootsAdd: {
+    method: 'POST',
+    path: '/api/module-roots/add',
+    // confirm:true 是作者亲眼看过预览后的明确确认；没有它绝不登记。
+    request: { body: { path: 'string', confirm: 'true' } },
+    response: { ok: 'true', path: 'string', roots: 'array', localModules: 'array', warnings: 'array' },
+    errors: ['INVALID_ENTRY', 'WRITE_PROTOCOL_IO_FAILED']
+  },
+
+  moduleRootsRemove: {
+    method: 'POST',
+    path: '/api/module-roots/remove',
+    request: { body: { path: 'string' } },
+    response: { ok: 'true', path: 'string', roots: 'array', localModules: 'array', warnings: 'array' },
+    errors: ['INVALID_ENTRY', 'WRITE_PROTOCOL_IO_FAILED']
+  },
+
+  moduleRootsRefresh: {
+    method: 'POST',
+    path: '/api/module-roots/refresh',
+    // 只重建快照、不改登记摘要：同版本改代码后报告「内容已变」并让新代码生效。
+    request: { body: {} },
+    response: { ok: 'true', id: 'string', roots: 'array', localModules: 'array', warnings: 'array', blocked: 'object?' },
+    errors: []
+  },
+
   suitesGet: {
     method: 'GET',
     path: '/api/suites',

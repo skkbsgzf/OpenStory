@@ -49,12 +49,14 @@ function enabledMap(manifests, state, enabled, forceEnabled, suiteState) {
   ]))
 }
 
-function snapshotId(manifests, enabled, routes, surfaces, issues) {
+function snapshotId(manifests, enabled, routes, surfaces, issues, digests) {
   const source = JSON.stringify([
     manifests.map((manifest) => [manifest.id, manifest.version, enabled[manifest.id]]),
     Object.entries(routes).map(([id, route]) => [id, route.provider, route.version]),
     surfaces,
-    issues.map((item) => [item.code, item.details])
+    issues.map((item) => [item.code, item.details]),
+    // OS-196 G2：同版本改代码＝新快照。摘要入 id，激活缓存也按摘要分键。
+    digests
   ])
   let hash = 2166136261
   for (let index = 0; index < source.length; index += 1) {
@@ -281,9 +283,18 @@ function publicRoute(provider) {
 }
 
 export function buildCapabilitySnapshot({
-  manifests = [], state = {}, suiteState = {}, enabled, base = {}, forceEnabled = [], warnings = []
+  manifests = [], state = {}, suiteState = {}, enabled, base = {}, forceEnabled = [], warnings = [], sources = []
 } = {}) {
   const enabledById = enabledMap(manifests, state, enabled, forceEnabled, suiteState)
+  const digests = Object.fromEntries((Array.isArray(sources) ? sources : [])
+    .filter((item) => item && item.id)
+    .map((item) => [item.id, [
+      item.manifestSha256 ?? '',
+      item.contentSha256 ?? '',
+      item.source ?? '',
+      item.registeredContentSha256 ?? ''
+    ]])
+    .sort(([left], [right]) => left.localeCompare(right)))
   const baseCapabilities = list(base.capabilities)
   const providers = capabilityProviders(manifests, enabledById, baseCapabilities)
   const allProviders = capabilityProviders(manifests, Object.fromEntries(manifests.map((manifest) => [manifest.id, true])), baseCapabilities)
@@ -383,7 +394,7 @@ export function buildCapabilitySnapshot({
   }
   const snapshot = deepFreeze({
     spec: 'openstory-capability-graph@1',
-    id: snapshotId(manifests, enabledById, routes, surfaceRoutes, issues),
+    id: snapshotId(manifests, enabledById, routes, surfaceRoutes, issues, digests),
     ok: issues.length === 0,
     enabled: enabledById,
     loaded,
@@ -394,6 +405,7 @@ export function buildCapabilitySnapshot({
     surfaces: surfaceRoutes,
     issues,
     optionalMissing,
+    moduleDigests: digests,
     warnings: list(warnings)
   })
   return snapshot
@@ -410,6 +422,7 @@ export function capabilityStartupReport(snapshot) {
     routes: snapshot.routes,
     issues: snapshot.issues,
     optionalMissing: snapshot.optionalMissing,
+    moduleDigests: snapshot.moduleDigests,
     warnings: snapshot.warnings
   })
 }

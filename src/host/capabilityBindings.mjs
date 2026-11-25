@@ -1,16 +1,25 @@
 import { createCapabilityResolver } from '../protocol/capabilityResolver.mjs'
-import { capabilitySnapshotFor } from '../protocol/modules.mjs'
 import { MODULE_IMPLEMENTATIONS } from '../protocol/capabilityImplementations.mjs'
 import { baseCapabilities } from './baseCapabilities.mjs'
 
 const IMPLEMENTATIONS = Object.freeze({ base: baseCapabilities, ...MODULE_IMPLEMENTATIONS })
 
-export function capabilityResolver(snapshot) {
-  return createCapabilityResolver({ snapshot, implementations: IMPLEMENTATIONS })
+/** 内置实现表 ＋ 本机模块 activate() 贡献的实现（OS-196）。 */
+export function capabilityResolver(snapshot, extraImplementations = {}) {
+  const implementations = Object.keys(extraImplementations ?? {}).length
+    ? Object.freeze({ ...IMPLEMENTATIONS, ...extraImplementations })
+    : IMPLEMENTATIONS
+  return createCapabilityResolver({ snapshot, implementations })
 }
 
-export async function resolveCapability(root, id, range = { min: 1 }) {
-  return capabilityResolver(await capabilitySnapshotFor(root)).resolve(id, range)
+/**
+ * OS-196：按库快照解析能力时经本机运行时拿「当前层」的 manifests 与本机实现。
+ * 动态 import 只为了断开 moduleLoader → capabilityBindings → moduleRuntime 的静态环。
+ */
+export async function resolveCapability(root, id, range = { min: 1 }, env = process.env) {
+  const { snapshotFor, localImplementations } = await import('./moduleRuntime.mjs')
+  const [snapshot, implementations] = await Promise.all([snapshotFor(root, env), localImplementations(env)])
+  return capabilityResolver(snapshot, implementations).resolve(id, range)
 }
 
 export async function resolveDeduceCapability(root) {

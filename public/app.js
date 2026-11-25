@@ -184,7 +184,7 @@ const suiteShelfViewsReady = import('./views/suiteShelfViews.mjs').then((mod) =>
 
 /* C6：前端壳渲染面迁出——行为/API/事件仍留本文件，boot 首帧前await全部factory */
 let settingsViews = null
-const settingsViewsReady = import('./views/settingsViews.mjs').then((mod) => { settingsViews = mod.createSettingsViews({ state, agent, esc, text, uiKit: () => uiKit, runtimeShelf: () => runtimeShelf, moduleOn, hiddenModules, WORKBENCH_MODULES, SETTINGS_GROUPS, scriptPrefs, dirWork, castColorOf, settingsScriptSectionHtml, settingRuntimeKind, probeBadgeLabel, comfyNodeMapText, typographyState, docPrefSlidersHtml, syncPolicy, syncProblemsFrom, warningsHtml, uiMemory, settingsAggregation: () => settingsAggregation, suitesSectionHtml, pluginsOverviewHtml, errorHtml }); return settingsViews })
+const settingsViewsReady = import('./views/settingsViews.mjs').then((mod) => { settingsViews = mod.createSettingsViews({ state, agent, esc, text, uiKit: () => uiKit, runtimeShelf: () => runtimeShelf, moduleOn, hiddenModules, WORKBENCH_MODULES, SETTINGS_GROUPS, scriptPrefs, dirWork, castColorOf, settingsScriptSectionHtml, settingRuntimeKind, probeBadgeLabel, comfyNodeMapText, typographyState, docPrefSlidersHtml, syncPolicy, syncProblemsFrom, warningsHtml, uiMemory, settingsAggregation: () => settingsAggregation, suitesSectionHtml, pluginsOverviewHtml, errorHtml, api, render }); return settingsViews })
 let analysisViews = null
 const analysisViewsReady = import('./views/analysisViews.mjs').then((mod) => { analysisViews = mod.createAnalysisViews({ state, esc, hiddenModules, chapterNoFromFile, analyzeEnabled, analyzeModulesFor, analyzeModuleById, chartsModule: () => chartsModule, analysisModules: () => analysisModules }); return analysisViews })
 let agentViews = null
@@ -3520,7 +3520,7 @@ async function loadPlugins() {
       list: Array.isArray(payload.plugins) ? payload.plugins : [],
       byKind: payload.byKind && typeof payload.byKind === 'object' ? payload.byKind : {},
       stats: payload.stats && typeof payload.stats === 'object' ? payload.stats : null,
-      modules: Array.isArray(payload.modules) ? payload.modules : [],
+      modules: Array.isArray(payload.modules) ? payload.modules : [], moduleRoots: Array.isArray(payload.moduleRoots) ? payload.moduleRoots : [], localModules: Array.isArray(payload.localModules) ? payload.localModules : [],
       warnings: Array.isArray(payload.warnings) ? payload.warnings : []
     }
   } catch (error) {
@@ -3529,7 +3529,7 @@ async function loadPlugins() {
       list: [],
       byKind: {},
       stats: null,
-      modules: [],
+      modules: [], moduleRoots: [], localModules: [],
       warnings: [],
       error: (error && error.code ? error.code + ' · ' : '') + text((error && error.message) || error)
     }

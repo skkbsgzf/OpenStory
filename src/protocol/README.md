@@ -45,7 +45,9 @@
 | `moduleManifest.mjs` | manifest 形状校验，决定谁有资格被装载。 |
 | `moduleIdentity.mjs` | 模块身份与来源记录，冲突裁决由底座而非冲突双方做。 |
 | `moduleEntry.mjs` | 工作台 `activate()` 样板，解析 hard requires 并登记 handlers／hooks 贡献。 |
-| `moduleActivation.mjs` | 贡献形状双向校验（handler 键↔manifest 端点；钩子名↔登记钩子表），声明与实现不许分叉。 |
+| `moduleActivation.mjs` | 贡献形状双向校验（handler 键↔manifest 端点／page；钩子名↔登记钩子表），声明与实现不许分叉。 |
+| `localModuleContract.mjs` | 本机模块信任表形状与 manifest／内容摘要的唯一口径（OS-196 G1/G2，纯函数）。 |
+| `localModuleBoundary.mjs` | 本机模块 import 图静态扫描（入口＋包内传递依赖；G3，纯函数，无 I/O）。 |
 | `capabilityGraph.mjs` | 不可变能力快照与三检查＋候选启停事务，覆盖冲突不能由被覆盖方裁决。 |
 | `capabilityResolver.mjs` | 按区间解析 provider 的冻结薄代理，句柄绑定不可变快照。 |
 | `capabilityImplementations.mjs` | 内核实现的唯一静态入口登记表（R-a 的唯一例外）。 |

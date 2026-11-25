@@ -417,6 +417,28 @@ export async function activate(context) {
 - 不得让 suite 携带 `.mjs/.js/.cjs`、内联脚本 HTML、WASM、shell 片段或迁移器。
 - 不得把浏览器缓存/localStorage/sessionStorage/IndexedDB 当状态存储；未确认内容仍落本地固定位置。
 
+### 8.5 本机模块的 import 边界与 context（OS-196）
+
+内置模块沿 OS-193～195 的口径：`context.resolve` 取内核句柄，另可直接 import `src/protocol/`
+的底座契约与 `src/host/baseCapabilities.mjs`。**本机模块不同**：它来自作者显式登记的本机
+模块根，与 daemon 同进程同权限，因此只有一条交互通道。
+
+- **import 边界**：装载前由 `src/protocol/localModuleBoundary.mjs` 从 `entry` 沿包内相对路径
+  扫传递闭包。只许 `node:` 内置模块与包内相对路径；越出包目录（`../../src/…`）、裸包名、
+  非字面量动态 `import()`、`createRequire`／`eval`／`new Function` 任一条命中即拒装。
+- **交互面**：只经 `activate(context)`。`context.manifest` 是当前 manifest；
+  `context.resolve(id, range)` 取按快照绑定的能力句柄；`context.base` 是五件底座能力的只读句柄
+  （`process / contract / write / naming / loader`，其中 loader 只有 snapshot/manifests/sources，
+  不提供 `activate`）。本机模块不许 import 仓库里的任何文件，也不许静态 import 宿主实现。
+- **贡献白名单**：`capabilities / handlers / pages / slots / hooks` 的键都必须能在 manifest 的
+  `capabilities / endpoints / pages / slots` 里找到（端点与能力的双向校验见 §8.2；页面与 slot
+  同口径）；钩子名还须在 `moduleActivation.mjs` 登记。
+- **身份与快照**：`manifestSha256` ＋ 入口和传递依赖的 `contentSha256` 进快照 id 与激活缓存键；
+  同版本改代码＝新快照、新代码，不复用旧激活结果。登记摘要与当前摘要不符时 `/api/plugins`
+  标「内容已变」。
+- **失败门**：任一门失败＝当前快照不动、坏模块跳过并记 warning，报告点名是哪一门（identity /
+  boundary / contribution / capability / switch）与原因；同包其它模块照常装载。
+
 ---
 
 ## 9. 错误信封与 HTTP 映射

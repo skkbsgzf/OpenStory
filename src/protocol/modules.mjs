@@ -103,7 +103,8 @@ export const CAPABILITY_SNAPSHOT = buildCapabilitySnapshot({
   manifests: ALL_CAPABILITY_MANIFESTS,
   base: BASE_GRAPH,
   suiteState: readShelfSuiteState({}),
-  warnings: MODULE_MANIFEST_WARNINGS
+  warnings: MODULE_MANIFEST_WARNINGS,
+  sources: MODULE_SOURCES
 })
 export const CAPABILITY_STARTUP_REPORT = capabilityStartupReport(CAPABILITY_SNAPSHOT)
 export const MODULE_IDS = Object.freeze(MODULE_MANIFESTS.map((manifest) => manifest.id))
@@ -153,7 +154,8 @@ export async function capabilitySnapshotFor(root) {
       manifests: ALL_CAPABILITY_MANIFESTS,
       state,
       suiteState: readShelfSuiteState({ root }),
-      base: BASE_GRAPH
+      base: BASE_GRAPH,
+      sources: MODULE_SOURCES
     })
   } catch {
     return CAPABILITY_SNAPSHOT

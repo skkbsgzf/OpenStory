@@ -4,7 +4,7 @@
  * 契约壳现在只持有宿主端点（62）；模块声明的 41 个端点经 activate() 贡献登记。
  * 这里钉死三条：
  *   ① 宿主表键集合＝宿主端点集合，全量表（宿主＋贡献）键集合＝ENDPOINTS 键集合；
- *   ② 每个 handler 调用后返回 Promise——用隔离夹具真实调用全部 103 个 handler；
+ *   ② 每个 handler 调用后返回 Promise——用隔离夹具真实调用全部 108 个 handler；
  *   ③ 宿主表与贡献表都冻结，路由层不能被运行期改表。
  *
  * 夹具纪律：LOCALAPPDATA 指向临时目录；fs-browse.json 预写 nativeDialog=NO_DESKTOP

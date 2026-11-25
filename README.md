@@ -81,7 +81,7 @@ CI 是合入门禁：推送与合并请求在 Node 24 上跑 `npm test` 两轮�
 | `src/api/` | 契约层 `contracts.mjs` ＋ `contracts/` 八域分片（OS-130 起分域，OS-162 加 `exchange`，纯数据，两端共享） |
 | `src/protocol/` | 文件与协议层：chapters / changelog / versionGate / plugins / agentEvents / factGuard / dependencyGraph / hostWrite / libState / naming（命名表转供） / courtyard（本机院子唯一解析） / libraryManifest（OpenStory 自持库清单） / libraryUpgrade（旧库一次性备份、迁移、退役留档与回滚） |
 | `src/kernel/` | 自有内核（`openstory-kernel@1`：管道件＋fact 链＋enrich，公开面 `index.mjs`；出处与文件对应见 [docs/kernel-provenance.md](./docs/kernel-provenance.md)） |
-| `src/modules/` | 域模块与工作面插件：21 份 `module.manifest.json`（`openstory-module@2`）——12 个 workbench（chapters / worldbook / script / storysource / roleplay / analysis / imagegen / knowledge / habits / artifacts / log / exchange）、7 个 kernel（storage / fact / prose / text / deduce / agent-runtime / media）、2 个恒启用宿主组合面（agentbar / library）；模块级 `core` 与 `MODULE_CORE` 已退役，工作台停用回 `MODULE_DISABLED`，能力缺失回 `PLUGIN_DEGRADED`。library/ 建库导入自持（library 声明 0 个宿主域端点，Pinax 清单导入端点已退役；`.openstory/project.json` 使用 `openstory-project@4`）、deduce/ 推演、roleplay/ 扮演调度＋四层提示词、worldbook/ 世界书索引、agentbar/ Agent 存储。端点归属 103/103 有主，见 `ARCHITECTURE.md`「模块插件清单」 |
+| `src/modules/` | 域模块与工作面插件：21 份 `module.manifest.json`（`openstory-module@2`）——12 个 workbench（chapters / worldbook / script / storysource / roleplay / analysis / imagegen / knowledge / habits / artifacts / log / exchange）、7 个 kernel（storage / fact / prose / text / deduce / agent-runtime / media）、2 个恒启用宿主组合面（agentbar / library）；模块级 `core` 与 `MODULE_CORE` 已退役，工作台停用回 `MODULE_DISABLED`，能力缺失回 `PLUGIN_DEGRADED`。library/ 建库导入自持（library 声明 0 个宿主域端点，Pinax 清单导入端点已退役；`.openstory/project.json` 使用 `openstory-project@4`）、deduce/ 推演、roleplay/ 扮演调度＋四层提示词、worldbook/ 世界书索引、agentbar/ Agent 存储。端点归属 108/108 有主，见 `ARCHITECTURE.md`「模块插件清单」 |
 | `src/services/` | 外围服务：kb*（知识库）、embedding-server、cli-bridge/dsh-*/runtimes（模型驱动）、suites/stylePacks/style-check/skills/genres（货架装载）、jobCenter / nativePicker / comfyEngine / syncCheck / enrichEngine |
 | `public/` | 工作台单页（app.js＋reference/graph/md/analysis/charts/ui-kit/storySource 等零依赖模块；echarts 本地 vendor） |
 | `suites/` `styles/` `runtimes/` `genres/` `skills/`（31＋套件捆绑 2） | 五类货架数据目录（内置样例）：经 `loadSuiteCapabilityManifests()` 投影成 module@2 一等套件，一个装载入口、一套启停与状态（`.openstory/plugins/suite-state.json`）、依赖闭包；设置页按六组供给类型管理。协议见 [suites/PROTOCOL.md](suites/PROTOCOL.md) 与 [docs/protocol/module-manifest-2.md](docs/protocol/module-manifest-2.md)。legacy `openstory-suite@1/@2` 页面模式与漫剧占位套件已退役 |
@@ -90,6 +90,14 @@ CI 是合入门禁：推送与合并请求在 Node 24 上跑 `npm test` 两轮�
 | `samples/水浒传/` | 公版演示库（导入即体验） |
 | `test/` | 全量 `node --test`（含 daemon 端到端、入口直跑契约、解耦金样与旧库迁移护栏） |
 | `docs/` | 架构与规划（[ARCHITECTURE.md](./ARCHITECTURE.md) 分层与实测、[内核出处](./docs/kernel-provenance.md)、[错误码改名](./docs/error-code-rename.md)、[遗留台账](./docs/LEGACY-ITEMS.md) 等） |
+
+## 本机模块
+
+作者登记的本机模块根可以提供 kernel 与工作台（套件仍只许数据）。**可执行模块与 daemon 同进程、同权限：登记即信任这个根下的所有代码。** 所以只走「预览清单 → 明确确认 → 生效」，不扫描任意目录。
+
+- 信任表：`%LOCALAPPDATA%/OpenStory/openstory/module-roots.json`（机器级，不属于任何库），记录根路径、登记时间与每个模块的 manifest／内容摘要。
+- 设置页「插件中心 → 本机模块」可浏览目录、预览清单、确认登记、移除模块根与刷新快照；每个模块显示状态、失败门、摘要与「内容已变」。
+- 四道门：信任门（只认登记过的根）、身份门（摘要进快照与激活缓存）、边界门（只许 node 内置与包内相对 import，交互只经 `activate(context)`）、切换门（候选快照三检查后原子切换，在途请求持旧句柄）。任一门失败＝当前快照不动、坏模块跳过并在 `/api/plugins` 如实报告。详见 [AGENTS.md](./AGENTS.md)「本机模块」与 [module-manifest@2](./docs/protocol/module-manifest-2.md) §8.5。
 
 ## 出处与致谢
 

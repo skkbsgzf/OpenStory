@@ -14,9 +14,14 @@ import { effectiveSkillsDirs } from '../../services/systemPrompt.mjs'
 import { shelfDomainData } from '../../protocol/shelfManifests.mjs'
 import { listAllPlugins } from '../../protocol/plugins.mjs'
 import {
-  MODULE_MANIFESTS, MODULE_MANIFEST_WARNINGS, MODULE_MANIFEST_NOTICES, MODULE_SOURCE_GROUPS,
-  CAPABILITY_STARTUP_REPORT, moduleRole, moduleSource
+  MODULE_MANIFEST_WARNINGS, MODULE_MANIFEST_NOTICES, MODULE_SOURCE_GROUPS,
+  moduleRole, moduleSource
 } from '../../protocol/modules.mjs'
+import { capabilityStartupReport } from '../../protocol/capabilityGraph.mjs'
+import {
+  moduleRootsReport, manifestsFor, sourcesFor, rebuildRuntime, snapshotFor
+} from '../../host/moduleRuntime.mjs'
+import { previewRoot, addRoot, removeRoot, moduleRootsPath } from '../../host/moduleRoots.mjs'
 import {
   listSuitesPublic,
   saveSuiteSettings,
@@ -87,6 +92,11 @@ export async function pluginsGet(ctx) {
     genresDirs: context.genresDirs,
     runtimesDirs: context.runtimesDirs
   })
+  // OS-196：模块清单与能力报告取当前层（本机同 id 覆盖内置，摘要如实上报）。
+  const manifests = await manifestsFor(context.env)
+  const sources = new Map((await sourcesFor(context.env)).map((source) => [source.id, source]))
+  const report = await moduleRootsReport(context.env)
+  const sourceOf = (id) => sources.get(id) ?? moduleSource(id) ?? {}
   return sendJson(res, 200, {
     ok: true,
     plugins: listed.plugins,
@@ -96,16 +106,18 @@ export async function pluginsGet(ctx) {
     stats: listed.stats,
     // OS-145：模块插件自报设置（设置页「模块」组的数据底；启停状态由前端按库内 ui-state 判定）
     // OS-146：settingsHint/settingsJump ＝真配置在别处时的指路（设置页只指路，不摆第二份输入框）
-    modules: MODULE_MANIFESTS.map((manifest) => ({
+    modules: manifests.map((manifest) => ({
       spec: manifest.spec,
       id: manifest.id,
       name: manifest.name,
       class: manifest.class,
       role: moduleRole(manifest),
       builtin: manifest.builtin,
-      source: moduleSource(manifest.id)?.source ?? '',
-      sourceDir: moduleSource(manifest.id)?.sourceDir ?? '',
-      manifestSha256: moduleSource(manifest.id)?.manifestSha256 ?? '',
+      source: sourceOf(manifest.id).source ?? '',
+      sourceDir: sourceOf(manifest.id).sourceDir ?? '',
+      manifestSha256: sourceOf(manifest.id).manifestSha256 ?? '',
+      contentSha256: sourceOf(manifest.id).contentSha256 ?? '',
+      contentChanged: Boolean(sourceOf(manifest.id).contentChanged),
       description: manifest.description,
       endpoints: manifest.endpoints,
       pages: manifest.pages,
@@ -117,9 +129,70 @@ export async function pluginsGet(ctx) {
     moduleManifestWarnings: MODULE_MANIFEST_WARNINGS,
     moduleManifestNotices: MODULE_MANIFEST_NOTICES,
     moduleSourceGroups: MODULE_SOURCE_GROUPS,
-    capabilityReport: CAPABILITY_STARTUP_REPORT,
+    capabilityReport: capabilityStartupReport(await snapshotFor(auth.root, context.env)),
+    // OS-196 G1/G2/G5：本机层报告（含每个模块的摘要、状态与失败门原因）。
+    moduleRoots: report.roots,
+    localModules: report.localModules,
+    moduleSlotPlacements: report.slotPlacements,
+    moduleRootWarnings: report.warnings,
+    ...(report.blocked ? { moduleRootBlocked: report.blocked } : {}),
     ...(listed.warnings.length ? { warnings: listed.warnings } : {})
   })
+}
+
+/** 五个本机模块根端点共用的视图：读报告，不触发重建。 */
+async function rootsView(ctx) {
+  const report = await moduleRootsReport(ctx.context.env)
+  const modules = Object.fromEntries(report.localModules.map((item) => [item.id, item]))
+  return {
+    ok: true,
+    path: moduleRootsPath(ctx.context.env),
+    roots: report.roots.map((root) => ({
+      ...root,
+      modules: root.modules.map((item) => modules[item.id] ?? item)
+    })),
+    localModules: report.localModules,
+    slotPlacements: report.slotPlacements,
+    warnings: report.warnings,
+    ...(report.blocked ? { blocked: report.blocked } : {})
+  }
+}
+
+export async function moduleRootsGet(ctx) {
+  return sendJson(ctx.res, 200, await rootsView(ctx))
+}
+
+export async function moduleRootsPreview(ctx) {
+  const { res, request, context } = ctx
+  const preview = previewRoot(request.path, context.env)
+  if (!preview.ok) return sendError(res, API_ERROR_CODES.INVALID_ENTRY, preview.warnings.map((item) => item.message).join('；'))
+  return sendJson(res, 200, preview)
+}
+
+export async function moduleRootsAdd(ctx) {
+  const { res, request, context } = ctx
+  if (request.confirm !== true) {
+    return sendError(res, API_ERROR_CODES.INVALID_ENTRY, '必须先预览清单并显式确认，才能登记模块根')
+  }
+  const added = await addRoot(request.path, context.env)
+  if (!added.ok) return sendError(res, added.code ?? API_ERROR_CODES.INVALID_ENTRY, added.message)
+  await rebuildRuntime(context.env)
+  return sendJson(res, 200, await rootsView(ctx))
+}
+
+export async function moduleRootsRemove(ctx) {
+  const { res, request, context } = ctx
+  const removed = await removeRoot(request.path, context.env)
+  if (!removed.ok) return sendError(res, removed.code ?? API_ERROR_CODES.INVALID_ENTRY, removed.message)
+  await rebuildRuntime(context.env)
+  return sendJson(res, 200, await rootsView(ctx))
+}
+
+export async function moduleRootsRefresh(ctx) {
+  const { res, context } = ctx
+  const rebuilt = await rebuildRuntime(context.env)
+  if (!rebuilt.ok) return sendJson(res, 200, { ...(await rootsView(ctx)), blocked: { gate: rebuilt.gate, reason: rebuilt.reason } })
+  return sendJson(res, 200, { ...(await rootsView(ctx)), id: rebuilt.id })
 }
 
 export async function suitesGet(ctx) {
@@ -165,6 +238,11 @@ export const handlers = {
   skillGet,
   genresGet,
   pluginsGet,
+  moduleRootsGet,
+  moduleRootsPreview,
+  moduleRootsAdd,
+  moduleRootsRemove,
+  moduleRootsRefresh,
   suitesGet,
   suiteSettingsPut,
   suiteStatePut
