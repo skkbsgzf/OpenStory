@@ -51,6 +51,16 @@
 - `docs/plan/batch3-microkernel-plan.md` §4：B／C／D 与清账批的状态按实际写；里程碑口径按实际。
 - `docs/plan/workorder-system-20261124.md`：编排器口径更新（隔离 e2e、不重启 8807、通用规则 11–13）。
 
+### 6a. 第三批施工中新增、必须写进文档的东西（逐条核对，不许漏）
+
+- **钩子贡献**：`activate()` 的 `hooks` 贡献、钩子名登记表、宿主按库快照取用（OS-195a）。
+- **新增能力**：`fact.engine`／`fact.books`／`fact.write`／`fact.domain`、`storage.inventory` 等，以最终 manifest 为准逐项进 ADR 0002 §2.3。
+- **边界规则**：四条消费路径（能力句柄／宿主组合面／钩子贡献／端点分派）、R-a～R-f、宿主只对两个宿主组合面放行、`src/protocol/` 文件白名单与 I/O 例外登记表、`host-api@2` 退役的记录（OS-195、195a、195b）。
+- **货架**：五类货架投影成 module@2 套件的来源表；漫剧占位套件已删、legacy 页面模式退役（OS-192）。
+- **分类**：页面 id＝slug、`imagegen`／`knowledge`、「日志」manifest（OS-190、190a）。
+- **本机模块**：信任模型（登记即信任，不是沙箱）、边界门的运行期强制口径、端点归属规则与模块自带端点契约、钩子接入（OS-196、196a）；第三方工作台的页面（OS-198）。
+- **迁移器**：执行时机、失败安全阀、回退保护（OS-197）。
+
 ### 7. 发布前检查
 
 跑发布检查器 `C:\Users\Administrator\.zcode\skills\repo-publish\scripts\publish-scan.mjs`（先看它的用法说明再跑），全绿；有红项逐条处理或如实上报。

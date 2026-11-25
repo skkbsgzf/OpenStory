@@ -140,8 +140,9 @@
 | 7 | [OS-194](OS-194-handlers-to-plugins.md) | 端点实现归插件：handler 搬进模块、经 `activate()` 登记、daemon 按库快照分派 | 高 | **已验收** `826e75e`（activate 生产调用点✓ 停用 409✓ 契约零变✓） |
 | 8 | [OS-195](OS-195-boundary-gates.md) | 边界收口：工作台之间去直连、`protocol` 只留底座契约、门禁改量真实耦合 | 高 | **返工**（`50dccae`：把约 4,000 行实现搬进 `protocol`、13 个模块变空壳，门禁是倒着做绿的） |
 | 8a | [OS-195a](OS-195a-boundary-rework.md) | 边界收口返工：搬回模块、四条消费路径、钩子贡献、`services` 只留七个底座服务、门禁补三条断言 | 高 | **主体已验收** `2e17198`（空壳 0✓ 跨模块 0✓ 钩子贡献✓ 反证红✓）；余项 → OS-195b |
-| 8b | [OS-195b](OS-195b-boundary-tails.md) | 边界收口返工（二）：`factGuard` 回内核、`host-api@2` 退役、经 protocol 绕行的叶子清零、门禁加「protocol 不许经登记表取能力」 | 中 | 待派（第 6 轮，与 OS-196 连派） |
-| 9 | [OS-196](OS-196-dynamic-loading.md) | 动态装载开放：本机模块根的信任门、身份门、边界门、切换门、失败门 | 高 | 待派（第 6 轮） |
+| 8b | [OS-195b](OS-195b-boundary-tails.md) | 边界收口返工（二）：`factGuard` 回内核、`host-api@2` 退役、经 protocol 绕行的叶子清零、门禁加「protocol 不许经登记表取能力」 | 中 | **已验收** `b3342f8`（登记表持有者只剩自身✓ 绕行叶子清零✓） |
+| 9 | [OS-196](OS-196-dynamic-loading.md) | 动态装载开放：本机模块根的信任门、身份门、边界门、切换门、失败门 | 高 | **返工**（`4532448`：信任门与来源闸✓；边界门可绕过、先激活后检查、依赖文件改了不生效、能接管宿主端点——均端到端实证） |
+| 9a | [OS-196a](OS-196a-dynamic-loading-rework.md) | 动态装载返工：边界门运行期强制、先检查后激活、整图缓存失效、端点归属规则＋模块自带端点契约、钩子接入 | 高 | 待派（第 6b 轮） |
 | 10 | [OS-197](OS-197-migration-wiring.md) | 迁移器接线：生产调用点、失败安全阀、回退保护 | 中高 | 待派（第 7 轮） |
 | 11 | [OS-198](OS-198-slots-wiring.md) | slot 编排接线：前端消费 manifest 投影；第三方工作台的页面 | 高 | 待派（第 7 轮） |
 | 12 | [OS-199](OS-199-docs-settle.md) | 文档与门禁收口：ADR／协议／README／AGENTS 对齐，数字锚扩到 README | 低 | 待派（第 8 轮） |

@@ -73,3 +73,13 @@ VERIFIED:
 
 LIMITATIONS: 无
 ```
+
+## 验收记录（监督线，2026-11-25）
+
+- 提交 `b3342f8`；全量 817／815 过／2 条件跳过／0 挂；门禁 28／0／0；隔离 e2e 全绿。
+- 监督线独立探针（不依赖施工方门禁）实测：
+  - 实现登记表（`KERNEL_CAPABILITIES`）的全仓持有者只剩 `src/protocol/capabilityImplementations.mjs` 自身；`src/modules/deduce/engine/factPort.mjs` 不再留登记表兜底。
+  - `src/protocol/index.mjs`（`host-api@2`）、`upstream.mjs`、`embeddingBackend.mjs`、`runtimeShelf.mjs` 已删除；`factGuard` 回到 `src/modules/prose/factGuard.mjs`。
+  - 模块→别的模块静态 import 0；宿主→其它模块内部 0（只对两个宿主组合面放行 3 条）；protocol 清单与 `README` 逐一对上，做 I/O 的只有登记在册的 12 个。
+  - `tools/eval` 两处失效 import 已指向 `src/modules/text/lint.mjs`。
+- 结论：**已验收**。边界收口（OS-195、195a、195b 三单）至此完成。

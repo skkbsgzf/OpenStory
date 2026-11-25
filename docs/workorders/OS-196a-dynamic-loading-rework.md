@@ -1,0 +1,89 @@
+# OS-196a · 动态装载返工：三道门的真缺陷＋端点归属规则
+
+| 项 | 值 |
+|---|---|
+| 批次 | 清账批（E）·段内返工，接 OS-196（`4532448`，监督线判返工） |
+| 对应 | OS-196 的身份门 G2、边界门 G3、切换门 G4；ADR 0003 §三 G3「运行期拒绝越出包目录的 import/require」 |
+| 依赖 | OS-196 |
+| 允许改动 | `src/**`、`public/**`、`test/**`、`tools/**`、`docs/**`、`ARCHITECTURE.md`、`AGENTS.md`、`README.md`、`package.json`（只在确需调整 `engines` 时改，并写明理由） |
+| 风险 | **高**——开放的是往 daemon 进程里装载可执行代码；每一条返工都要有端到端守护测试 |
+| 状态 | 待派 |
+
+通用规则见 [`COMMON-RULES.md`](COMMON-RULES.md)。
+
+## 已经站得住、不要动坏的部分（监督线实测）
+
+- 信任门：登记表在院子（机器级，不属于任何库）；预览只读；登记必须 `confirm: true`；未登记的根不扫描；本机同 id 覆盖内置；刷新端点；预览里的风险说明文案。
+- 来源闸：外站 `Origin` → 403；伪造 `Host`（DNS 重绑定）→ 403；`text/plain` → 400；缺 `confirm` → 400。
+- 失败门：坏 manifest / 越界 / 激活抛错的模块被跳过，其余照常；移除根后在途请求持旧句柄。
+
+## 为什么返工（监督线在隔离 daemon 上端到端实证，脚本在 `D:\Pinax-e2e\.zcode\tmp\`：`probe-boundary.mjs`、`probe-196-e2e.mjs`、`probe-196-e2e-c.mjs`）
+
+### 1. 边界门只是正则扫描，能被绕过
+
+`src/protocol/localModuleBoundary.mjs` 用正则找 import。九个对抗样例里七个放行：
+
+- 字符串里放 `/*`，后面的 import 被当注释吃掉（`withoutComments` 先于扫描）；
+- `import { createRequire as mk } from 'node:module'` 之后 `mk(...)`；
+- 标识符用 unicode 转义写 `eval`；`(0, eval)(...)`；`Function(...)` 不带 `new`；取 `AsyncFunction` 构造器；计算属性名取 `createRequire`。
+
+端到端：用第一种写法的模块走真实「预览 → 登记」流程，预览 `ok`、装载 `loaded`，并且真的 import 到了仓库的内核登记表（模块写的标记文件里列出了全部内核入口）。
+
+### 2. 切换门次序反了
+
+两个合法工作台都声明 `stylesGet`：报告 `blocked: { gate: 'switch' }`、两个模块都标 `invalid/switch`，**但两个模块的 `activate()` 都已经跑过**（`src/host/moduleRuntime.mjs:189-235`：先逐个激活，之后才 `checkCandidate`）。另外，一个模块违规会连累同根其它本机模块一起被丢（`contributions` 整体清空）。
+
+### 3. 身份门对依赖文件不生效
+
+改 `helper.mjs`（入口不动）再刷新：报告 `contentChanged=true`、摘要变了、状态 `loaded`，而 `activate()` 看到的仍是旧版。原因：缓存失效的 `?v=<摘要>` 只加在入口 URL 上（`src/host/moduleLoader.mjs:103`），包内相对 import 的依赖仍走 Node 的模块缓存。JSON 数据依赖也没进内容摘要。
+
+### 4. 本机模块能接管任意宿主自有端点，却没有自己的端点
+
+一个 id 全新的模块在 manifest 里写 `endpoints: ['uiStatePut']` → 装载后 `PUT /api/ui-state` 返回的是它写的响应。`checkCandidate` 只在「另一个模块已占有该端点」时才拒，宿主自有端点谁都能认领。反过来，契约表是静态的，第三方模块没法注册自己的端点——OS-196 的「端点生效」测试是靠覆盖内置端点过的。
+
+### 5. 本机模块的钩子贡献没接入
+
+`hooksFor()` 只认内置模块的贡献。
+
+## 任务
+
+### 1. 边界门改成运行期强制
+
+- 给「已登记模块根下的文件」装解析钩子（Node 的 `module.registerHooks()`，或等价手段）：任何从包内发出的 import / require，只许解析到 node 内置模块或**同一个包目录内**的真实路径（按 realpath 比，防符号链接指到包外）；其余在加载那一刻抛错。
+- 静态扫描保留，降级为预览里的**提示**（哪一行可疑），不再作为边界门的唯一依据；上面七个绕法要能被点名。
+- **文档如实**（AGENTS.md、ADR 0003、`docs/protocol/module-manifest-2.md`）：边界门挡的是越界耦合与误用，**不是沙箱**——登记的模块与本进程同权限，代码生成在进程内无法可靠禁止。
+- 守护测试（daemon 级、端到端）：七个绕法逐个登记，期望「装载失败、点名边界门、当前层不变、模块的标记文件没被写」。
+
+### 2. 先检查、后激活
+
+- 三检查与端点归属检查先在 **manifest 层面**做（不跑代码就能判），淘汰违规模块；只激活过了检查的；激活后校验贡献；任何一步淘汰了模块就重做检查；全部通过才原子切换。
+- 淘汰按模块算：违规的模块被跳过并点名，同根其它模块照常（除非它们硬依赖被淘汰者）。
+- 守护测试：两个工作台抢同一端点 → 两者的 `activate()` 都没跑（标记文件不存在），报告点名谁因为什么被拒。
+
+### 3. 整图缓存失效
+
+- 在同一个解析钩子里，给包内每个 import 追加**逐文件**的内容摘要；JSON 数据依赖计入内容摘要。
+- 运行中的 Node 不支持解析钩子时（`package.json` 的 `engines` 现为 `>=18`），如实报告「依赖文件已变，需重启 daemon 才生效」，不许显示成已加载新代码。若选择抬高 `engines`，在回报里写明理由与最低版本。
+- 守护测试：改依赖文件后刷新拿到新值；改 JSON 依赖后同样。
+
+### 4. 端点归属规则＋模块自带端点契约
+
+- **归属规则**：本机模块只能 (a) 注册自己的新端点，或 (b) 按 id 覆盖某个内置模块时接管那个模块的端点。不许接管宿主自有端点，也不许接管别的模块的端点。
+- **自带契约**：`activate()` 的贡献里可以带 `contracts: { <endpointId>: { method, path, request, response, errors } }`（形状语言沿用现有契约表），路径必须在 `/api/modules/<模块 id>/…` 之下；登记进当前层的契约表，分派、请求校验、错误信封与内置端点同一套；停用模块后 409。静态数字锚不统计运行期端点。
+- 守护测试：第三方工作台注册一个自己的端点，真实请求打通并经过请求校验；声明 `uiStatePut` 的模块被拒且 `PUT /api/ui-state` 仍是宿主行为；按 id 覆盖内置模块时端点跟着换人。
+
+### 5. 钩子贡献接入
+
+`hooksFor()` 与 handler 用同一张贡献表，合并本机层。守护测试：本机工作台贡献一个 `promptContext` 钩子，宿主取得到；停用后消失。
+
+## 不做
+
+- 不改既有 103 个端点的 id、路径、请求/响应形状、错误码与 MCP 工具名；不改落盘格式；金样测试一个字不动。
+- 不自动扫描任何目录；套件仍然只许数据。不碰作者真库与真实院子；不重启、不连接 8807。
+
+## 验收
+
+- 机器门禁全绿；红线测试 `test/localModules.test.mjs`、`test/handlerDispatch.test.mjs`、`test/moduleActivation.test.mjs`、`test/capabilityGraph.test.mjs`、`test/originGuard.test.mjs` 全绿。
+- 监督线复跑自己的探针，四个场景必须翻转：注释吞 import 的模块装载失败且标记文件没被写；抢端点的两个模块标记文件都不存在；改依赖文件后拿到 `v2`；声明 `uiStatePut` 的模块被拒且宿主端点行为不变；`probe-boundary.mjs` 九例里八例「拒绝或装载失败」（合规那例放行）。
+- 回报里贴：解析钩子的生产调用点（`文件:行`）、三检查前移后的调用顺序、端点归属规则的判定点、新增守护测试清单。
+- `git diff --check` 干净；`node tools/number-anchors.mjs` 与 `npm run arch:stats` 跑过。
