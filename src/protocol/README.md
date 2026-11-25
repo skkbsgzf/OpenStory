@@ -1,15 +1,19 @@
-# src/protocol —— 底座契约清单（OS-195）
+# src/protocol —— 底座契约清单（OS-195 / OS-195a）
 
 `src/protocol/` 只放**底座契约**：请求/响应形状与错误信封、路径安全、授权、写管道、装载协议、
 能力图与迁移、slots、命名取表口、旧库一次性升级、进程内事件词表，以及与任何工作台无关的
-格式/路径纯函数。转发叶（`export ... from '../modules/…'`）已全部清零（门禁 S2.1／S2.7／S2.11 直接数
-静态 import 验证）；模块内部实现只许被本模块 handler 与前端视图触及，宿主与服务只经底座契约或
-`activate(context)` 的 `context.resolve` 句柄取能力。
+格式/路径纯函数。**模块自己的实现住在自己的目录里**——OS-195a 把 OS-195 倒过来的转供改回去，
+实现从本目录搬回 `src/modules/**`，模块文件不再是空壳。
+
+本清单是门禁 `tools/acceptance/capabilityBoundaries.mjs` 的**唯一登记口**：本目录下每个 `.mjs`
+文件都必须在下表逐字登记，多一个没登记的文件就红；表里也不许留已删文件。
 
 实现登记表 `src/protocol/capabilityImplementations.mjs` 是**唯一**允许静态 import 内核实现的位置
 （R-a）；其余位置（含工作台、宿主、服务、协议其他文件）静态 import 内核实现＝0。
+工作台给宿主的东西一律经 `activate()` 贡献钩子（`moduleActivation.mjs` 登记钩子名），
+宿主按库快照从同一张贡献表取（`src/host/handlerTable.mjs`）。
 
-## 逐个文件：为什么是宪法
+## 逐个文件：为什么是底座契约
 
 ### 形状、错误与进程内词表
 
@@ -20,7 +24,6 @@
 | `apiErrors.mjs` | `API_ERROR_CODES` 错误码词表，前端与 MCP 靠它稳定识别 404/409/503。 |
 | `httpText.mjs` | HTTP 文本/JSON 响应的纯编码约定，契约壳与各域共用。 |
 | `agentEvents.mjs` | AG-UI 事件词表与 SSE 帧投影，进程内事件不落盘、格式全仓唯一。 |
-| `deduceRules.mjs` | 确定性推演规则包的只读装载与校验，规则是数据而非工作台内部。 |
 
 ### 路径安全、授权与写管道
 
@@ -28,11 +31,11 @@
 |---|---|
 | `rootPath.mjs` | 库根解析的唯一纯函数入口，所有库内路径必须由此锚定。 |
 | `authorize.mjs` | 路径授权与逃逸拒绝，任何写操作都绕不过这道闸。 |
-| `courtyard.mjs` | 本机院子唯一路径来源（路径安全），本机其余目录不读、不写、不删。 |
-| `hostWrite.mjs` | 宿主写协议唯一入口（tmp＋fsync＋rename＋目录 fsync），落盘不可绕过。 |
+| `courtyard.mjs` | 本机院子唯一路径来源（路径安全，I/O 例外：确保目录存在），装载任何模块之前就要知道院子在哪。 |
+| `hostWrite.mjs` | 宿主写协议唯一入口（I/O 例外：tmp＋fsync＋rename＋目录 fsync），落盘不可绕过。 |
 | `kernelPlumber.mjs` | 内核 `ok/fail/writeFileAtomic` 的只读转供，供 OS-123 fork 点维持函数体逐字不动。 |
 | `kernelErrors.mjs` | 内核错误信封词表，内核与底座共用的错误语言。 |
-| `changelog.mjs` | 库内唯一 diff/log 留痕通道（月度 jsonl＋内容哈希），每次修改可自检索。 |
+| `changelog.mjs` | 库内唯一 diff/log 留痕通道（I/O 例外：月度 jsonl＋内容哈希），每次修改可自检索。 |
 | `libState.mjs` | 库内 `ui-state.json` 的读写协议，界面状态只能落这里。 |
 
 ### 装载协议、能力图与迁移
@@ -42,12 +45,12 @@
 | `modules.mjs` | `openstory-module@2` 装载/校验/启停/端点归属的唯一判定入口。 |
 | `moduleManifest.mjs` | manifest 形状校验，决定谁有资格被装载。 |
 | `moduleIdentity.mjs` | 模块身份与来源记录，冲突裁决由底座而非冲突双方做。 |
-| `moduleEntry.mjs` | 工作台 `activate()` 样板，解析 hard requires 并登记贡献。 |
-| `moduleActivation.mjs` | 贡献形状双向校验（handler 键↔manifest 端点），声明与实现不许分叉。 |
+| `moduleEntry.mjs` | 工作台 `activate()` 样板，解析 hard requires 并登记 handlers／hooks 贡献。 |
+| `moduleActivation.mjs` | 贡献形状双向校验（handler 键↔manifest 端点；钩子名↔登记钩子表），声明与实现不许分叉。 |
 | `capabilityGraph.mjs` | 不可变能力快照与三检查＋候选启停事务，覆盖冲突不能由被覆盖方裁决。 |
 | `capabilityResolver.mjs` | 按区间解析 provider 的冻结薄代理，句柄绑定不可变快照。 |
 | `capabilityImplementations.mjs` | 内核实现的唯一静态入口登记表（R-a 的唯一例外）。 |
-| `capabilityMigration.mjs` | 覆盖迁移器的失败安全阀与 journal，升级失败必须如实回滚。 |
+| `capabilityMigration.mjs` | 覆盖迁移器的失败安全阀与 journal（I/O 例外），升级失败必须如实回滚。 |
 | `baseCapabilities.mjs` | `base.process/loader/contract/write/naming` 五项底座句柄的装配处。 |
 | `dependencyGraph.mjs` | 套件依赖闭包，装载前解析依赖而不在执行时猜。 |
 | `plugins.mjs` | 插件/货架只读聚合与来源投影，插件系统自身不能被插件管理。 |
@@ -56,35 +59,50 @@
 | `runtimeShelf.mjs` | 运行时套件的受控命令描述解析，命令执行只在 agent.runtime 内。 |
 | `slots.mjs` | slot 注册表，页面嵌入点只有一处声明。 |
 | `naming.mjs` | 命名单一真源取表口（`public/views/registry.mjs` 只读 re-export），四层同名。 |
-| `libraryUpgrade.mjs` | 旧库一次性升级（备份/迁移/退役留档/回滚），旧名只允许在这里出现。 |
+| `libraryUpgrade.mjs` | 旧库一次性升级（I/O 例外：备份/迁移/退役留档/回滚），旧名只允许在这里出现。 |
 | `embeddingBackend.mjs` | embedding 后端配置的只读解析，知识库与运行时共用。 |
-| `upstream.mjs` | 上游模型通道的底座约定，跨运行时共用同一份解析口径。 |
+| `upstream.mjs` | 上游模型通道的底座约定（经能力句柄转出，不落盘、不复制实现），跨运行时共用同一份解析口径。 |
 
-### 与工作台无关的格式/路径纯函数（OS-195 由模块下沉）
+### 与工作台无关的格式/路径纯函数（OS-195 由模块下沉，OS-195a 保留在底座的两件）
 
 | 文件 | 一句话 |
 |---|---|
 | `worldbookContract.mjs` | 世界书条目 md 文件格式（worldbook-file@2）的纯解析/序列化，导入与世界书共用同一判定。 |
-| `libraryTextUtil.mjs` | 库内文本解析纯函数（章节号与世界书条目投影），无任何工作台归属。 |
-| `libraryImport.mjs` | 整目录导入的格式适配（源只读/目标只新增），库管理端点与金样共用。 |
-| `importAdapter.mjs` | 整目录导入适配实现本体，格式契约不随工作台启停变化。 |
-| `libraryInventory.mjs` | 库内只读盘点与文件清单，产物/系统页面共用同一份「列」。 |
-| `referenceStore.mjs` | 库内世界书索引的只读投影，宿主同步检查与世界书视图共用。 |
-| `deduceSession.mjs` | 扮演会话容器与 id 安全（落盘格式与工作台无关）。 |
-| `deduceRules.mjs` | （见上）推演规则包只读装载。 |
-| `habits.mjs` | 习惯表读写与文本 lint 的底座实现，习惯工作台只拥有编辑入口。 |
-| `agentStore.mjs` | Agent 会话 JSONL 与凭据配置，宿主对话面的共享设施。 |
-| `agentCredentials.mjs` | 凭据尾号掩码的纯函数，响应永不回显完整 key。 |
-| `knowledgeAdapter.mjs` | 本机 kb-config 的只读读取，知识库与提示词装配共用。 |
-| `knowledgeHealth.mjs` | 本机 KB/embedding 服务探活，设置面板与对话链路共用降级口径。 |
-| `knowledgeRouter.mjs` | 体裁×意图→知识块的确定性拼装，无 LLM、无工作台归属。 |
+| `deduceRules.mjs` | 确定性推演规则包的只读装载与校验（只读读盘），规则是数据而非工作台内部。 |
 | `chapterNumber.mjs` | 章节号解析纯函数（OS-157 从 textUtil 上移），全仓唯一口径。 |
-| `factGuard.mjs` | FACT-FIRST 上下文只读装配与直读审计，默认拒绝、点名放行。 |
+| `factGuard.mjs` | FACT-FIRST 上下文只读装配与直读审计（只读），默认拒绝、点名放行。 |
+
+## 登记在册的 I/O 例外
+
+底座契约原则上不读写文件；下列文件是**登记在册**的例外，门禁据此放行 `node:fs` 等导入。
+前五件是 OS-195a 工点名的写/迁移/目录管道；后六件是 OS-195 之前就存在的只读路径与形状判定，
+本单不动其函数体，如实登记，不许借登记之名新加业务 I/O。
+
+| 文件 | 放行范围 | 理由 |
+|---|---|---|
+| `hostWrite.mjs` | 文件写 | 宿主唯一物理写管道 |
+| `changelog.mjs` | 文件写 | 库内唯一 diff/log 留痕通道 |
+| `libraryUpgrade.mjs` | 读写/迁移 | 旧库一次性升级与回滚 |
+| `capabilityMigration.mjs` | 读写/迁移 | 覆盖迁移 journal 与失败安全阀 |
+| `courtyard.mjs` | 目录确保 | 装载任何模块前必须知道院子在哪 |
+| `libState.mjs` | 只读/原子写 | 库内 `ui-state.json` 唯一读写协议 |
+| `modules.mjs` | 只读 | manifest/启停状态只读判定 |
+| `rootPath.mjs` | 只读 | 库根 realpath 解析 |
+| `shelfManifests.mjs` | 只读 | 货架资源清单只读投影 |
+| `versionGate.mjs` | 只读 | 宿主版本标记只读判定 |
+| `deduceRules.mjs` | 只读 | 推演规则包只读装载 |
+| `factGuard.mjs` | 只读 | FACT-FIRST 只读审计 |
+
+> 任何协议文件都不许调用 `fetch`／`spawn`，也不许 import `node:child_process`／`node:http`／
+> `node:net`；本目录当前零命中。网络与子进程只许留在 `agent-runtime`／`knowledge` 模块实现里。
 
 ## 边界纪律
 
 - 插件只准经契约入口消费底座；模块只准 `node:`／`src/protocol/**`／本模块目录／已声明套件资源。
-- `src/api`、`src/host`、`src/services` 不得静态 import 工作台内部实现；宿主组合根只经能力句柄装配。
+- `src/api`、`src/host`、`src/services` 不得静态 import 工作台内部实现；唯一放行的跨目录 import
+  是「宿主 → 宿主组合面」（`src/modules/agentbar/`、`src/modules/library/` 两个目录）。
+- 宿主要用工作台能力（习惯 lint、提示词片段、世界书索引、KB 探活）只经 `activate()` 贡献的钩子，
+  钩子名必须在 `src/protocol/moduleActivation.mjs` 登记；模块停用＝贡献消失。
 - `src/protocol/**` 不得出现指向 `src/modules/**` 的 `export ... from`，也不得复制模块实现的函数体。
 - `src/kernel/**` 管道件只依赖 `node:` 与内核内部；物理原子写实现全仓只有一份。
 - 对外契约（端点、MCP 工具名、错误码、落盘格式）不随本清单调整。

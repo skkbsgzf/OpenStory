@@ -8,7 +8,7 @@ import assert from 'node:assert/strict'
 import { readFileSync, existsSync } from 'node:fs'
 import { isAbsolute, join, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { resolveEmbeddingPaths, resolveRepoRoot } from '../src/services/embeddingPaths.mjs'
+import { resolveEmbeddingPaths, resolveRepoRoot } from '../src/modules/agent-runtime/embeddingPaths.mjs'
 
 test('纯函数：任意仓根 → 缓存目录与 transformers 发行目录，绝对路径、无副作用', () => {
   const fakeRoot = join(fileURLToPath(new URL('.', import.meta.url)), 'fixtures')

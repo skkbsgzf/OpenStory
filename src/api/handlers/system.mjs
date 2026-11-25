@@ -20,9 +20,19 @@ import { authorizeRoot, RESERVED_LIB_DIRS } from '../../host/authorize.mjs'
 import { loadGenres, readBrief, writeBrief } from '../../services/genres.mjs'
 import { listJobs, cancelJob, clearSettled, activeCount } from '../../host/jobCenter.mjs'
 import { readBrowseMemory, writeBrowseMemory, defaultBrowseRoot } from '../../host/nativePicker.mjs'
-import { loadConfigV2, saveConfigV2, configPublicV2, validateConfigPatch, normalizeConfigBlock, probeTextConfig } from '../../services/agentConfig.mjs'
-import { resolveMediaCapability } from '../../host/capabilityBindings.mjs'
-import { listLibraryFiles } from '../../protocol/libraryInventory.mjs'
+import {
+  resolveAgentRuntimeCapability, resolveMediaCapability, resolveStorageCapability
+} from '../../host/capabilityBindings.mjs'
+
+/** OS-195a：配置真源在 agent.runtime 内核件，契约层经句柄取，不 import 兼容叶。 */
+async function agentRuntimeOrError(res) {
+  const resolved = await resolveAgentRuntimeCapability('')
+  if (!resolved.ok) {
+    sendError(res, API_ERROR_CODES.PLUGIN_DEGRADED, resolved.message, resolved.details)
+    return null
+  }
+  return resolved.capability
+}
 import { readUiState, writeUiState } from '../../protocol/libState.mjs'
 import { BASE_GRAPH, MODULE_MANIFESTS, deriveModuleStateChange } from '../../protocol/modules.mjs'
 import { defaultUiPreferencesPath, readUiPreferences, writeUiSkin } from '../../host/uiPreferences.mjs'
@@ -51,8 +61,10 @@ export async function healthGet(ctx) {
 /* Agent 配置与风格包清单不碰库文件，不做 root 校验。 */
 export async function configGet(ctx) {
   const { res, context } = ctx
-  const { config } = await loadConfigV2(context.agentConfigPath)
-  const payload = configPublicV2(config, context.agentConfigPath)
+  const runtime = await agentRuntimeOrError(res)
+  if (!runtime) return null
+  const { config } = await runtime.loadConfigV2(context.agentConfigPath)
+  const payload = runtime.configPublicV2(config, context.agentConfigPath)
   const checked = validateResponse('configGet', payload)
   if (!checked.ok) return sendError(res, API_ERROR_CODES.INVALID_ENTRY, '配置响应形状不符合契约', { errors: checked.errors })
   return sendJson(res, 200, payload)
@@ -60,10 +72,12 @@ export async function configGet(ctx) {
 
 export async function configPut(ctx) {
   const { res, request, context } = ctx
-  const errors = validateConfigPatch(request)
+  const runtime = await agentRuntimeOrError(res)
+  if (!runtime) return null
+  const errors = runtime.validateConfigPatch(request)
   if (errors.length) return sendError(res, API_ERROR_CODES.INVALID_ENTRY, '配置不符合契约', { errors })
-  const config = await saveConfigV2(context.agentConfigPath, request)
-  const payload = configPublicV2(config, context.agentConfigPath)
+  const config = await runtime.saveConfigV2(context.agentConfigPath, request)
+  const payload = runtime.configPublicV2(config, context.agentConfigPath)
   const checked = validateResponse('configPut', payload)
   if (!checked.ok) return sendError(res, API_ERROR_CODES.INVALID_ENTRY, '配置响应形状不符合契约', { errors: checked.errors })
   return sendJson(res, 200, payload)
@@ -103,12 +117,14 @@ export async function configProbe(ctx) {
   if (kind !== 'text' && kind !== 'image' && kind !== 'vision') {
     return sendError(res, API_ERROR_CODES.INVALID_ENTRY, `kind 只能是 text / image / vision：${text(request.kind)}`)
   }
-  const { config } = await loadConfigV2(context.agentConfigPath)
+  const runtime = await agentRuntimeOrError(res)
+  if (!runtime) return null
+  const { config } = await runtime.loadConfigV2(context.agentConfigPath)
   // overrides：用未保存的块值试连（只认同块字段，其余丢弃）
-  const block = normalizeConfigBlock(kind, isPlainObject(request.overrides) ? { ...config[kind], ...request.overrides } : config[kind])
+  const block = runtime.normalizeConfigBlock(kind, isPlainObject(request.overrides) ? { ...config[kind], ...request.overrides } : config[kind])
   let probed
   if (kind === 'text') {
-    probed = await probeTextConfig(block)
+    probed = await runtime.probeTextConfig(block)
   } else {
     const capabilityId = kind === 'image' ? 'media.generate' : 'media.describe'
     const resolved = await resolveMediaCapability('', capabilityId)
@@ -224,7 +240,10 @@ export async function filesGet(ctx) {
   const { res, request, allowlist } = ctx
   const authorized = authorizeRoot(allowlist, request.root)
   if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
-  const listed = await listLibraryFiles(authorized.root, request.dir)
+  // OS-195a：库内盘点经 storage.inventory 句柄取，宿主/契约层不 import 模块内部实现。
+  const inventory = await resolveStorageCapability(authorized.root, 'storage.inventory')
+  if (!inventory.ok) return sendError(res, API_ERROR_CODES.PLUGIN_DEGRADED, inventory.message, inventory.details)
+  const listed = await inventory.capability.listLibraryFiles(authorized.root, request.dir)
   if (!listed.ok) return sendError(res, listed.code ?? API_ERROR_CODES.INVALID_ENTRY, listed.message, listed.details)
   const payload = { ok: true, files: listed.files, ...(listed.dirs ? { dirs: listed.dirs } : {}), ...(listed.warnings?.length ? { warnings: listed.warnings } : {}) }
   return sendJson(res, 200, payload)

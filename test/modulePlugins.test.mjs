@@ -107,7 +107,7 @@ test('端点归属：只登记独占端点，共用端点没有归属', async ()
   assert.equal(moduleOfEndpoint('kbStatusGet'), 'knowledge')
   assert.equal(moduleOfEndpoint('kbConfigPut'), 'knowledge')
   assert.equal(moduleOfEndpoint('deduceImage'), 'imagegen')
-  assert.equal(moduleOfEndpoint('referenceImageGenerate'), 'imagegen')
+  assert.equal(moduleOfEndpoint('referenceImageGenerate'), 'worldbook')
   assert.equal(moduleOfEndpoint('visionDescribe'), 'imagegen')
   // 共用端点：任何模块停用都不该影响
   assert.equal(moduleOfEndpoint('factCurveGet'), null)
@@ -275,7 +275,8 @@ test('daemon 推演能力：活跃消费者拦住停用，存量断链端点回 
     assert.equal(denied.status, 409)
     const deniedPayload = await denied.json()
     assert.equal(deniedPayload.error.code, 'CAPABILITY_IN_USE')
-    assert.deepEqual(deniedPayload.error.details.consumers, ['roleplay'])
+    // OS-195a：imagegen 也经能力句柄消费 deduce.session（现并进 deduce.engine），不再是直接 import。
+    assert.deepEqual(deniedPayload.error.details.consumers, ['imagegen', 'roleplay'])
 
     await writeUiState(root, { 'modules.enabled.deduce': false })
     const present = await fetch(`${origin}/api/deduce/present`, {

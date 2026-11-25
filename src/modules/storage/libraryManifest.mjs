@@ -11,7 +11,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { mkdir } from 'node:fs/promises'
 import { basename, dirname, resolve } from 'node:path'
 import { atomicWriteFile } from '../../protocol/hostWrite.mjs'
-import { courtyardPath } from './courtyard.mjs'
+import { courtyardPath } from '../../protocol/courtyard.mjs'
 
 export const LIBRARY_MANIFEST_FILE = 'libraries.json'
 export const LIBRARY_MANIFEST_SCHEMA = 'openstory.library-manifest/v1'

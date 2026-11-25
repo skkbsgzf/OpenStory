@@ -1,7 +1,7 @@
 /**
  * habits 端点 handler（OS-194 从 src/api/handlers/system.mjs 归位）。
  */
-import { readHabits, normalizeHabits, writeHabitsWithBackup } from '../../protocol/habits.mjs'
+import { readHabits, normalizeHabits, writeHabitsWithBackup } from './habits.mjs'
 
 export function createHandlers({ host }) {
   const { apiErrors, sendError, sendJson, authorizeRoot } = host

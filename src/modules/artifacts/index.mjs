@@ -2,7 +2,10 @@ import { workbenchEntry } from '../../protocol/moduleEntry.mjs'
 import { createHandlers } from './handlers.mjs'
 
 export const activate = workbenchEntry({
-  requires: [{ id: 'storage.roots', min: 1 }],
+  requires: [{ id: 'storage.roots', min: 1 }, { id: 'storage.inventory', min: 1 }],
   pages: { artifacts: { id: 'artifacts', label: '产物' } },
-  handlers: (context) => createHandlers({ host: context.host })
+  handlers: (context) => createHandlers({
+    host: context.host,
+    inventory: context.resolve('storage.inventory', { min: 1 })
+  })
 })

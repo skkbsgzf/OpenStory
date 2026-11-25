@@ -41,24 +41,22 @@ import { HOST_HANDLERS } from '../api/registry.mjs'
 import { handlerFor } from './handlerTable.mjs'
 import { sendError, sendJson, readJson, text, DEFAULT_PORT } from './http.mjs'
 import { canonicalRoot, createRootAllowlist, loadLibraries, resolveInsideRoot } from './authorize.mjs'
-import { defaultAgentConfigPath, defaultSessionsDir } from '../protocol/agentStore.mjs'
+// OS-195a：Agent 存储是宿主组合面，宿主可直接 import；宿主钩子由 moduleHooks 统一取。
+import { defaultAgentConfigPath, defaultSessionsDir } from '../modules/agentbar/agentStore.mjs'
 import { builtinStylesDir, defaultUserStylesDir } from '../services/stylePacks.mjs'
 import { builtinRuntimesDir, defaultUserRuntimesDir, stopAllSidecars } from '../services/runtimes.mjs'
 import { builtinSuitesDir, defaultSuiteStatePath, defaultUserSuitesDir } from '../services/suites.mjs'
 import { builtinGenresDir, defaultUserGenresDir } from '../services/genres.mjs'
 import { builtinSkillsDir, defaultUserSkillsDir } from '../services/skills.mjs'
-import { bootstrapKbHealth } from '../protocol/knowledgeHealth.mjs'
-import { defaultKbConfigPath } from '../protocol/knowledgeAdapter.mjs'
-import { resolveCollections } from '../protocol/knowledgeRouter.mjs'
 import { isModuleDisabledFor, moduleDegradationFor, moduleManifest } from '../protocol/modules.mjs'
 import { ensureLibraryUpgraded } from '../protocol/libraryUpgrade.mjs'
 
 /* ---------- 测试/工具面的再出口（OS-140 垫片契约）：实现迁走了，符号从原处继续拿 ---------- */
 export { browseMemoryPath, defaultBrowseRoot } from './nativePicker.mjs'
 export { defaultPreferencesPath, loadLibraries, createRootAllowlist, resolveInsideRoot } from './authorize.mjs'
-export { listArtifacts, listLibraryFiles } from '../protocol/libraryInventory.mjs'
-// OS-193：原 protocol/chapterWrite.mjs 转供叶并入唯一静态入口 KERNEL_CAPABILITIES。
+// OS-195a：库内盘点经唯一静态入口 KERNEL_CAPABILITIES 转供（宿主不直引模块内部实现）。
 import { KERNEL_CAPABILITIES as KERNEL_HANDLES } from '../protocol/capabilityImplementations.mjs'
+export const { listArtifacts, listLibraryFiles } = KERNEL_HANDLES.storageInventory
 export const {
   historyBackupPath,
   mapWriteErrorCode,
@@ -67,7 +65,9 @@ export const {
   pruneHistoryBackups,
   resolveHistoryKeepPerFile
 } = KERNEL_HANDLES.proseWrite
-export { lintHabits } from '../protocol/habits.mjs'
+// OS-195a：习惯 lint 由习惯模块贡献钩子，宿主只经 moduleHooks 取，不 import 模块实现。
+export { habitLint as lintHabits } from './moduleHooks.mjs'
+import { startupHooks } from './moduleHooks.mjs'
 import { systemPromptFor } from '../services/systemPrompt.mjs'
 import { courtyardPath } from './courtyard.mjs'
 /** 测试钩子（OS-45）：把 systemPromptFor 暴露给单测，验「世界书只给链接不给全文」。
@@ -535,7 +535,7 @@ export function startDaemon({
   })
   return new Promise((resolvePromise, rejectPromise) => {
     server.once('error', rejectPromise)
-    server.listen(port, bindHost, () => {
+    server.listen(port, bindHost, async () => {
       const actualPort = server.address().port
       __currentPort = actualPort
       // OS-127：CLI 闸已在启动前写好 generation/startedAt；测试内嵌 startDaemon 没走闸，
@@ -550,8 +550,9 @@ export function startDaemon({
       // KB-ARCH P1：知识库服务自愈探活——kb-config 存在才管（测试临时环境无配置＝不启动），close 时停表不留悬挂定时器
       let kbHealthStop = null
       try {
-        const health = bootstrapKbHealth({ env, repoRoot: REPO_ROOT, logger, defaultKbConfigPath, resolveCollections })
-        if (health) kbHealthStop = health
+        // OS-195a：知识库探活由知识库模块以 startup 钩子贡献；停用＝不启动，宿主不 import 模块实现。
+        const stops = await startupHooks({ env, repoRoot: REPO_ROOT, logger })
+        kbHealthStop = () => stops.forEach((stop) => stop())
       } catch { /* 不阻塞启动 */ }
       resolvePromise({
         server,

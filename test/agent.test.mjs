@@ -24,7 +24,6 @@ import {
   isValidSessionId,
   listSessions,
   loadAgentConfig,
-  maskApiKey,
   newCardId,
   readSession,
   renameSession,
@@ -34,6 +33,8 @@ import {
   updateCard,
   appendSession
 } from '../src/modules/agentbar/agentStore.mjs'
+import { KERNEL_CAPABILITIES as K } from '../src/protocol/capabilityImplementations.mjs'
+import { maskApiKey } from '../src/modules/agent-runtime/credentials.mjs'
 import { startDaemon } from '../src/host/daemon.mjs'
 
 const FACT_ENTRIES = [
@@ -155,7 +156,7 @@ test('配置：坏档按未配置＋warning，不拦启动', async () => {
 })
 
 test('配置：configPublic 永不含完整 key', () => {
-  const payload = configPublic({ endpoint: 'http://x', model: 'm', apiKey: 'sk-abcdef1234567890' }, 'C:/cfg.json')
+  const payload = configPublic({ endpoint: 'http://x', model: 'm', apiKey: 'sk-abcdef1234567890' }, 'C:/cfg.json', K.agentRuntime.maskApiKey)
   assert.equal(payload.configured, true)
   assert.equal(payload.apiKeyMasked, '••••7890')
   assert.ok(!JSON.stringify(payload).includes('abcdef1234567890'))

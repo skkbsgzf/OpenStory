@@ -17,7 +17,10 @@
   "settings": [],
   "class": "workbench",
   "entry": "index.mjs",
-  "requires": [{ "id": "storage.roots", "min": 1 }],
+  "requires": [
+    { "id": "storage.roots", "min": 1 },
+    { "id": "storage.inventory", "min": 1 }
+  ],
   "slots": [
     {
       "slot": "tab",

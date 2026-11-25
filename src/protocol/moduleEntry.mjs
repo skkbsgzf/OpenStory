@@ -5,7 +5,7 @@
  * 工厂里再用 `context.resolve(id)` 取内核句柄（OS-193 K2），宿主工具从 `context.host` 取。
  * 贡献形状由 validateModuleContribution 校验（键必须在 manifest.endpoints、声明端点必须有 handler）。
  */
-export function workbenchEntry({ requires = [], pages = {}, handlers = null } = {}) {
+export function workbenchEntry({ requires = [], pages = {}, handlers = null, hooks = null } = {}) {
   return async function activate(context) {
     for (const requirement of requires) {
       const resolved = context.resolve(requirement.id, requirement)
@@ -14,6 +14,9 @@ export function workbenchEntry({ requires = [], pages = {}, handlers = null } = 
     const contribution = { pages }
     if (handlers !== null) {
       contribution.handlers = typeof handlers === 'function' ? await handlers(context) : handlers
+    }
+    if (hooks !== null) {
+      contribution.hooks = typeof hooks === 'function' ? await hooks(context) : hooks
     }
     return contribution
   }

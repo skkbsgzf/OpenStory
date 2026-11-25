@@ -12,11 +12,11 @@ import { readFile } from 'node:fs/promises'
 import { API_ERROR_CODES, isPlainObject, validateResponse } from '../contracts.mjs'
 import { sendError, sendJson, text } from '../../host/http.mjs'
 import { authorizeRoot } from '../../host/authorize.mjs'
-import { scanReferences } from '../../protocol/referenceStore.mjs'
 import { checkSameSource, snapshotAndDiff, scanProseFiles } from '../../services/syncCheck.mjs'
-import { resolveFactBookId } from '../../services/factBooks.mjs'
 import { readLatestByFile } from '../../protocol/changelog.mjs'
 import { resolveFactCapability, resolveProseCapability } from '../../host/capabilityBindings.mjs'
+// OS-195a：世界书索引经钩子贡献取；故事源书目盘点经 fact.books 句柄取。
+import { referenceIndexFor } from '../../host/moduleHooks.mjs'
 import { namingEntry } from '../../protocol/naming.mjs'
 
 const FACT_DIR = namingEntry('storysource').dir
@@ -50,7 +50,12 @@ export async function syncCheck(ctx) {
   const root = authorized.root
 
   // ① 故事源：最新一本书的主档 revision ＋ 兄弟 wiki 的派生基准（两代兼容走 readFactWiki）
-  let bookId = await resolveFactBookId(root, '')
+  const factBooks = await resolveFactCapability(root, 'fact.books')
+  if (!factBooks.ok) {
+    sendError(res, API_ERROR_CODES.PLUGIN_DEGRADED, factBooks.message, factBooks.details)
+    return null
+  }
+  let bookId = await factBooks.capability.resolveFactBookId(root, '')
   // resolveFactBookId 挑「最新 .json」时会把兄弟 `<id>.wiki.json` 也算进去（同样以 .json 结尾）。
   // 同源检查要的是主档：命中派生档就退回同 id 的主档（主档存在时）。
   if (/\.wiki$/u.test(bookId) && existsSync(join(root, FACT_DIR, `${bookId.slice(0, -'.wiki'.length)}.json`))) {
@@ -86,7 +91,7 @@ export async function syncCheck(ctx) {
   } catch { wikiAt = null }
 
   // ② 世界书笔记最新 mtime（scanReferences 已导出，索引里就是 ISO 串）
-  const referenceIndex = await scanReferences(root)
+  const referenceIndex = await referenceIndexFor(root)
   const refsMtimeMax = (Array.isArray(referenceIndex.notes) ? referenceIndex.notes : [])
     .map((note) => text(note?.mtime))
     .filter(Boolean)

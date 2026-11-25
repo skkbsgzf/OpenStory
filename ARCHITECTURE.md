@@ -53,14 +53,14 @@
 <!-- arch-stats:start -->
 | 分工 | 范围 | 文件数 | 行数 |
 |---|---|---:|---:|
-| 底座 | `src/host/`＋`src/kernel/` | 22 | 2,868 |
-| 契约 | `src/api/` | 17 | 3,619 |
-| 协议 | `src/protocol/` | 49 | 9,062 |
-| 内核件（class: kernel，7） | `src/modules/agent-runtime/`＋`src/modules/deduce/`＋`src/modules/fact/`＋`src/modules/media/`＋`src/modules/prose/`＋`src/modules/storage/`＋`src/modules/text/` | 57 | 10,016 |
-| 工作台（class: workbench，12） | `src/modules/analysis/`＋`src/modules/artifacts/`＋`src/modules/chapters/`＋`src/modules/exchange/`＋`src/modules/habits/`＋`src/modules/imagegen/`＋`src/modules/knowledge/`＋`src/modules/log/`＋`src/modules/roleplay/`＋`src/modules/script/`＋`src/modules/storysource/`＋`src/modules/worldbook/` | 30 | 2,197 |
-| 宿主组合面（恒启） | `src/modules/agentbar/`＋`src/modules/library/` | 6 | 51 |
+| 底座 | `src/host/`＋`src/kernel/` | 22 | 2,916 |
+| 契约 | `src/api/` | 17 | 3,685 |
+| 协议 | `src/protocol/` | 37 | 5,976 |
+| 内核件（class: kernel，7） | `src/modules/agent-runtime/`＋`src/modules/deduce/`＋`src/modules/fact/`＋`src/modules/media/`＋`src/modules/prose/`＋`src/modules/storage/`＋`src/modules/text/` | 57 | 10,736 |
+| 工作台（class: workbench，12） | `src/modules/analysis/`＋`src/modules/artifacts/`＋`src/modules/chapters/`＋`src/modules/exchange/`＋`src/modules/habits/`＋`src/modules/imagegen/`＋`src/modules/knowledge/`＋`src/modules/log/`＋`src/modules/roleplay/`＋`src/modules/script/`＋`src/modules/storysource/`＋`src/modules/worldbook/` | 30 | 3,536 |
+| 宿主组合面（恒启） | `src/modules/agentbar/`＋`src/modules/library/` | 5 | 1,172 |
 | 套件模块（class: suite） | `src/modules/` | 0 | 0 |
-| 服务 | `src/services/` | 17 | 2,020 |
+| 服务 | `src/services/` | 7 | 1,868 |
 | 套件资源 | `suites/`＋`styles/`＋`runtimes/`＋`genres/`＋`skills/` | 58 | 2,785 |
 | 设计令牌 | `design-system/` | 3 | 133 |
 | 前端 | `public/` | 30 | 20,825 |
@@ -86,7 +86,7 @@
 | exchange | workbench | 2 | exchange | 0 |
 | fact | kernel | 0 | — | 0 |
 | habits | workbench | 2 | habits | 0 |
-| imagegen | workbench | 3 | imagegen | 0 |
+| imagegen | workbench | 2 | imagegen | 0 |
 | knowledge | workbench | 4 | knowledge | 0 |
 | library | host-composition | 0 | — | 0 |
 | log | workbench | 0 | log | 0 |
@@ -97,10 +97,10 @@
 | storage | kernel | 0 | — | 0 |
 | storysource | workbench | 0 | storysource | 0 |
 | text | kernel | 0 | — | 0 |
-| worldbook | workbench | 5 | worldbook | 0 |
+| worldbook | workbench | 6 | worldbook | 0 |
 
 合计 21 份 manifest（7 kernel + 12 workbench + 2 host-composition）；41 个模块独占端点，62 个宿主自有端点，端点覆盖 103/103。
-kernel 能力声明：agent.runtime@1 / deduce.engine@1 / fact.store@3 / fact.pack@1 / fact.enrich@1 / fact.engine@1 / fact.books@1 / fact.write@1 / fact.domain@1 / media.generate@1 / media.describe@1 / prose.write@1 / storage.roots@1 / library.list@1 / storage.scaffold@1 / text.analyze@1。
+kernel 能力声明：agent.runtime@1 / deduce.engine@1 / fact.store@3 / fact.pack@1 / fact.enrich@1 / fact.engine@1 / fact.books@1 / fact.write@1 / fact.domain@1 / media.generate@1 / media.describe@1 / prose.write@1 / storage.roots@1 / library.list@1 / storage.scaffold@1 / storage.inventory@1 / text.analyze@1。
 `app.js` 当前上限 10,500 行（只降不升），当前实测 10,108 行。
 <!-- arch-stats:end -->
 

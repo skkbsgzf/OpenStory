@@ -1,32 +1,43 @@
 /**
  * OS-194：daemon / MCP 共用的端点分派表。
  *
- * 宿主端点直接取 registry.HOST_HANDLERS；模块端点按库快照从 activate() 贡献里取——
+ * 宿主端点直接取 registry.HOST_HANDLERS；模块端点与宿主钩子都按库快照从 activate() 贡献里取——
  * 这就是 activate() 的生产调用点（启动装载由本表首次触发，每次库快照重建按 snapshot.id 换表）。
- * 在途请求在 await 前已持有旧 handler 引用，换表不影响它。
+ * 在途请求在 await 前已持有旧 handler/hook 引用，换表不影响它。
  */
 import { HOST_HANDLERS } from '../api/registry.mjs'
 import { activateModules } from './moduleLoader.mjs'
 import { capabilitySnapshotFor, moduleOfEndpoint } from '../protocol/modules.mjs'
 
-/** snapshot.id → { moduleId → { endpointId → handler } }（冻结，按快照整体替换）。 */
+/** snapshot.id → { moduleId → { handlers, hooks } }（冻结，按快照整体替换）。 */
 const contributionCache = new Map()
 
 /**
- * 取该库当前快照的模块贡献表。缓存键＝capabilitySnapshotFor(root).id，
+ * 取该库当前快照的完整贡献（handlers ＋ hooks）。缓存键＝capabilitySnapshotFor(root).id，
  * 其中已编码启停/路由/图问题；状态一变 id 就变，新请求自然拿到新贡献。
  */
-export async function contributionTable(root) {
+async function snapshotContributions(root) {
   const snapshot = await capabilitySnapshotFor(root)
   let table = contributionCache.get(snapshot.id)
   if (!table) {
     const { activated } = await activateModules({ snapshot })
     table = Object.freeze(Object.fromEntries(
-      activated.map((item) => [item.id, Object.freeze(item.contribution.handlers ?? {})])
+      activated.map((item) => [item.id, Object.freeze({
+        handlers: Object.freeze(item.contribution.handlers ?? {}),
+        hooks: Object.freeze(item.contribution.hooks ?? {})
+      })])
     ))
     contributionCache.set(snapshot.id, table)
   }
   return table
+}
+
+/** 端点贡献视图（沿用 OS-194 的 module → handlers 形状）。 */
+export async function contributionTable(root) {
+  const full = await snapshotContributions(root)
+  return Object.freeze(Object.fromEntries(
+    Object.entries(full).map(([moduleId, contribution]) => [moduleId, contribution.handlers])
+  ))
 }
 
 /**
@@ -56,6 +67,17 @@ export async function allHandlers(root = '') {
   const table = await contributionTable(root)
   const contributed = Object.values(table).flatMap((handlers) => Object.entries(handlers))
   return Object.freeze({ ...HOST_HANDLERS, ...Object.fromEntries(contributed) })
+}
+
+/**
+ * OS-195a：按库快照取宿主钩子。
+ * 与 handlerFor 同一张贡献表、同一套按 snapshot.id 换表机制——模块停用＝贡献消失；
+ * 返回的 { <模块局部名>: fn } 由调用方按名字取（钩子名已在底座登记，见 moduleActivation）。
+ */
+export async function hooksFor(root, hookName) {
+  const table = await snapshotContributions(root)
+  const slots = Object.values(table).map((entry) => entry.hooks?.[hookName]).filter(Boolean)
+  return Object.freeze(Object.assign({}, ...slots))
 }
 
 /** 测试钩子：当前已缓存的贡献快照数（验证「快照重建后换表」）。 */

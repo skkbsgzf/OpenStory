@@ -102,7 +102,7 @@ test('生产能力图：20 个内置入口全部真实激活，七内核贡献�
   assert.deepEqual(
     result.activated.filter((item) => MODULE_MANIFESTS.find((manifest) => manifest.id === item.id)?.class === 'kernel')
       .flatMap((item) => Object.keys(item.contribution.capabilities)).sort(),
-    ['agent.runtime', 'deduce.engine', 'fact.books', 'fact.domain', 'fact.engine', 'fact.enrich', 'fact.pack', 'fact.store', 'fact.write', 'media.describe', 'media.generate', 'prose.write', 'storage.roots', 'storage.scaffold', 'library.list', 'text.analyze'].sort()
+    ['agent.runtime', 'deduce.engine', 'fact.books', 'fact.domain', 'fact.engine', 'fact.enrich', 'fact.pack', 'fact.store', 'fact.write', 'media.describe', 'media.generate', 'prose.write', 'storage.inventory', 'storage.roots', 'storage.scaffold', 'library.list', 'text.analyze'].sort()
   )
   for (const item of result.activated) {
     assert.ok(item.resolved.length > 0, `${item.id} 必须真实解析依赖`)

@@ -17,6 +17,24 @@ const KERNEL_IDS = ['agent-runtime', 'deduce', 'fact', 'media', 'prose', 'storag
 /** OS-195：唯一允许静态 import 内核实现的位置——实现登记表。 */
 const IMPLEMENTATION_REGISTRY = 'src/protocol/capabilityImplementations.mjs'
 
+/**
+ * OS-195a 三条新断言的登记口（全部在源码文本上量，无白名单、不放宽旧断言）：
+ *  ① 模块不是壳：src/modules/** 不许有只从 protocol 转供的文件；
+ *  ② protocol 是契约层：文件清单必须与 src/protocol/README.md 逐一对上；除登记在册的
+ *     I/O 例外，不许 import node:fs / child_process / http / net，不许调用 fetch / spawn；
+ *  ③ 宿主 → 宿主组合面是唯一放行的跨目录 import（写死 agentbar / library 两个目录）。
+ */
+const HOST_COMPOSITION_DIRS = ['src/modules/agentbar/', 'src/modules/library/']
+const PROTOCOL_IO_EXCEPTIONS = new Set([
+  'hostWrite.mjs', 'changelog.mjs', 'libraryUpgrade.mjs', 'capabilityMigration.mjs', 'courtyard.mjs',
+  'libState.mjs', 'modules.mjs', 'rootPath.mjs', 'shelfManifests.mjs', 'versionGate.mjs',
+  'deduceRules.mjs', 'factGuard.mjs'
+])
+const PROTOCOL_FORBIDDEN_IO = /\bfrom\s*['"]node:(?:fs|child_process|http|net)(?:\/[^'"]*)?['"]/u
+const PROTOCOL_FORBIDDEN_CALLS = /\b(?:fetch|spawn)\s*\(/u
+
+const stripComments = (src) => src.replace(/\/\*[\s\S]*?\*\//gu, '').replace(/^\s*\/\/.*$/gmu, '')
+
 const isResource = (dep) => /\.(?:json|md|css|html)$/u.test(dep) && RESOURCE_ROOTS.some((root) => dep.startsWith(root))
 export const moduleDirOf = (rel) => {
   const match = /^src\/modules\/([^/]+)\//u.exec(rel)
@@ -59,7 +77,9 @@ export function auditCapabilityRoutes(files) {
     }
     if (to.startsWith('src/modules/')) {
       if (from === IMPLEMENTATION_REGISTRY) continue // 唯一静态入口（R-a）
-      violations.push({ ...edge, reason: 'src/modules/** 之外只有实现登记表可静态 import 模块内部实现（R-a/R-b）' })
+      // OS-195a：宿主 → 宿主组合面（agentbar / library）是唯一放行的跨目录 import。
+      if (/^src\/(?:api|host|services)\//u.test(from) && HOST_COMPOSITION_DIRS.some((dir) => to.startsWith(dir))) continue
+      violations.push({ ...edge, reason: 'src/modules/** 之外只有实现登记表与宿主→宿主组合面可静态 import（R-a/R-b）' })
     }
   }
   for (const { rel, src } of files) {
@@ -124,8 +144,9 @@ export function auditBaseBoundary(files) {
     if (from.startsWith('src/kernel/') && !to.startsWith('src/kernel/')) {
       violations.push({ ...edge, reason: 'src/kernel 管道件只能依赖 node: 与内核内部文件' })
     }
-    if (from.startsWith('src/host/') && to.startsWith('src/modules/')) {
-      violations.push({ ...edge, reason: '底座宿主直引模块实现；OS-195 起无转供叶豁免（R-b）' })
+    if (from.startsWith('src/host/') && to.startsWith('src/modules/')
+      && !HOST_COMPOSITION_DIRS.some((dir) => to.startsWith(dir))) {
+      violations.push({ ...edge, reason: '底座宿主直引模块实现；OS-195a 只放行宿主组合面（R-b）' })
     }
     if (from.startsWith('src/host/') && to.startsWith('public/')) {
       violations.push({ ...edge, reason: '底座不得反向依赖前端' })
@@ -204,4 +225,72 @@ export function boundaryInventory(files) {
     serviceFiles,
     violations: [...routes, ...direct.violations, ...base, ...duplicates]
   }
+}
+
+/* ================================================================
+ * OS-195a 三条新断言：缺一门禁就是假的（在源码文本上量，无白名单）
+ * ================================================================ */
+
+/** ① 模块不是壳：src/modules/** 里不许有「只从 src/protocol/ 转供」的文件。 */
+export function auditModuleShells(files) {
+  const violations = []
+  for (const { rel, src } of files) {
+    if (!rel.startsWith('src/modules/') || !rel.endsWith('.mjs')) continue
+    const code = stripComments(src).trim()
+    if (!code) continue
+    const lines = code.split('\n').map((line) => line.trim()).filter(Boolean)
+    const isShell = lines.every((line) => /^export\s+(?:\*|\{[^}]*\})\s+from\s+['"]\.\.\/\.\.\/protocol\/[^'"]+\.mjs['"];?$/u.test(line))
+    if (isShell) {
+      violations.push({ from: rel, to: 'src/protocol/', line: 1, reason: '模块文件只是从 protocol 转供的空壳（OS-195a：实现应住在模块目录）' })
+    }
+  }
+  return violations
+}
+
+/**
+ * ② protocol 是契约层：文件清单与 README 登记逐一对上；除登记在册的 I/O 例外，
+ *    不许 import node:fs / child_process / http / net，不许调用 fetch / spawn。
+ */
+export function auditProtocolContractLayer(files, readmeSrc) {
+  const violations = []
+  const registered = new Set([...String(readmeSrc ?? '').matchAll(/`([A-Za-z0-9_-]+\.mjs)`/gu)].map((match) => match[1]))
+  const protocolFiles = files.filter((file) => file.rel.startsWith('src/protocol/') && file.rel.endsWith('.mjs'))
+  const names = new Set()
+  for (const { rel, src } of protocolFiles) {
+    const base = rel.slice('src/protocol/'.length)
+    names.add(base)
+    if (!registered.has(base)) {
+      violations.push({ from: rel, to: 'src/protocol/README.md', line: 1, reason: `协议文件 ${base} 没登记（多一个没登记的就红）` })
+    }
+    if (PROTOCOL_IO_EXCEPTIONS.has(base)) continue
+    const code = stripComments(src)
+    if (PROTOCOL_FORBIDDEN_IO.test(code)) {
+      violations.push({ from: rel, to: 'node: I/O', line: 1, reason: '未登记的协议文件不许 import node:fs / child_process / http / net' })
+    }
+    if (PROTOCOL_FORBIDDEN_CALLS.test(code)) {
+      violations.push({ from: rel, to: 'fetch/spawn', line: 1, reason: '协议层不许调用 fetch / spawn（网络与子进程只在模块实现里）' })
+    }
+  }
+  for (const name of registered) {
+    if (!names.has(name)) {
+      violations.push({ from: 'src/protocol/README.md', to: `src/protocol/${name}`, line: 1, reason: `登记了不存在的文件 ${name}` })
+    }
+  }
+  return { violations, files: protocolFiles.length, registered: registered.size, ioExceptions: PROTOCOL_IO_EXCEPTIONS.size }
+}
+
+/** ③ 宿主 → 宿主组合面是唯一放行的跨目录 import；api/host/services 引其余模块内部＝0。 */
+export function auditHostCompositionImports(files) {
+  const violations = []
+  let allowed = 0
+  for (const edge of relativeEdges(files)) {
+    const { from, to } = edge
+    if (!/^src\/(?:api|host|services)\//u.test(from) || !to.startsWith('src/modules/')) continue
+    if (HOST_COMPOSITION_DIRS.some((dir) => to.startsWith(dir))) {
+      allowed += 1
+      continue
+    }
+    violations.push({ ...edge, reason: '宿主/契约/服务只可 import 宿主组合面（agentbar / library），其余模块内部＝0' })
+  }
+  return { violations, allowed }
 }

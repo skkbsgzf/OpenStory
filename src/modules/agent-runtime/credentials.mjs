@@ -1,5 +1,12 @@
 /**
- * agent.runtime 凭据掩码出口：实现自 OS-195 起在底座契约 protocol/agentCredentials.mjs。
- * 本文件只转供，不复制实现（凭据本体仍只存本机 agent-config.json）。
+ * 底座契约：本机凭据对外只回尾号掩码（OS-195 下沉）。
+ *
+ * 纯函数、无 I/O、无工作台归属；凭据本体仍只存本机 agent-config.json，
+ * 任何响应只回本文件产出的掩码。agent-runtime 内核与 Agent 存储共用这一份。
  */
-export { maskApiKey } from '../../protocol/agentCredentials.mjs'
+export function maskApiKey(key) {
+  const raw = String(key ?? '').trim()
+  if (!raw) return ''
+  if (raw.length <= 8) return '••••'
+  return `••••${raw.slice(-4)}`
+}

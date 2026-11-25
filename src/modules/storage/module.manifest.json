@@ -14,7 +14,8 @@
   "capabilities": [
     { "id": "storage.roots", "version": 1 },
     { "id": "library.list", "version": 1, "golden": "library-manifest-v1" },
-    { "id": "storage.scaffold", "version": 1, "golden": "project-document-v4" }
+    { "id": "storage.scaffold", "version": 1, "golden": "project-document-v4" },
+    { "id": "storage.inventory", "version": 1 }
   ],
   "endpoints": []
 }

@@ -17,19 +17,24 @@ import { basename, extname, join } from 'node:path'
 import { API_ERROR_CODES, isPlainObject, validateResponse } from '../contracts.mjs'
 import { sendError, sendJson, text } from '../../host/http.mjs'
 import { authorizeRoot, resolveInsideRoot } from '../../host/authorize.mjs'
-import { resolveFactCapability } from '../../host/capabilityBindings.mjs'
-import { listFactBooks, factOffsetOf, factLimitOf } from '../../services/factBooks.mjs'
-import { writeFactEntries } from '../../services/factImportWrite.mjs' // OS-162：fact 写通道唯一实现
-import { enrichBook, enrichGraph as enrichGraphEngine } from '../../services/enrichEngine.mjs'
-import { loadConfigV2 } from '../../services/agentConfig.mjs'
-import { resolveChatUpstream } from '../../services/chatUpstream.mjs'
-import { runCliChat } from '../../services/cli-bridge.mjs'
-import { runDshStdio } from '../../services/dsh-cli.mjs'
+import {
+  resolveFactCapability, resolveAgentRuntimeCapability
+} from '../../host/capabilityBindings.mjs'
 import { pickFile, pickFolder, revealPath, readBrowseMemory, writeBrowseMemory, nativeDialogUnusable, markNativeDialogUnusable, NATIVE_DIALOG_TIMEOUT_MS } from '../../host/nativePicker.mjs'
 import { namingEntry } from '../../protocol/naming.mjs'
 const FACT_DIR = namingEntry('storysource').dir
 async function factCapabilityOrError(res, root, id = 'fact.store', range) {
   const resolved = await resolveFactCapability(root, id, range)
+  if (!resolved.ok) {
+    sendError(res, API_ERROR_CODES.PLUGIN_DEGRADED, resolved.message, resolved.details)
+    return null
+  }
+  return resolved.capability
+}
+
+/** OS-195a：模型配置与上游通道经 agent.runtime 句柄取，契约层不 import 兼容叶。 */
+async function agentRuntimeOrError(res) {
+  const resolved = await resolveAgentRuntimeCapability('')
   if (!resolved.ok) {
     sendError(res, API_ERROR_CODES.PLUGIN_DEGRADED, resolved.message, resolved.details)
     return null
@@ -120,6 +125,9 @@ export async function factEntriesGet(ctx) {
   const { res, request, allowlist } = ctx
   const authorized = authorizeRoot(allowlist, request.root)
   if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
+  const factBooks = await factCapabilityOrError(res, authorized.root, 'fact.books')
+  if (!factBooks) return null
+  const { listFactBooks, factOffsetOf, factLimitOf } = factBooks
   const books = await listFactBooks(authorized.root)
   const wantedBookId = text(request.bookId).trim()
   let book = null
@@ -190,7 +198,9 @@ export async function factBooksGet(ctx) {
   const { res, request, allowlist } = ctx
   const authorized = authorizeRoot(allowlist, request.root)
   if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
-  const books = await listFactBooks(authorized.root)
+  const factBooks = await factCapabilityOrError(res, authorized.root, 'fact.books')
+  if (!factBooks) return null
+  const books = await factBooks.listFactBooks(authorized.root)
   const payload = {
     ok: true,
     books: books.map((item) => ({
@@ -272,7 +282,7 @@ export async function nativeReveal(ctx) {
 /* ---------- 故事源整包导入（OS-78/OS-135 修）---------- */
 
 export async function factEntriesImport(ctx) {
-  // OS-162：写逻辑抽入 src/services/factImportWrite.mjs（exchange 适配器共用同一份）——
+  // OS-162/OS-195a：写逻辑在 fact 内核件的 fact.write 能力面（exchange 适配器共用同一份）——
   // 这里只做授权、参数整形与响应，不再自己碰 writeFactFile。
   const { res, request, allowlist } = ctx
   const authorized = authorizeRoot(allowlist, request.root)
@@ -281,7 +291,9 @@ export async function factEntriesImport(ctx) {
     || `screenplay-import-${text(request.bookId).trim()}-${Date.now().toString(36)}`
   const factStore = await factCapabilityOrError(res, authorized.root)
   if (!factStore) return null
-  const result = await writeFactEntries({
+  const factWrite = await factCapabilityOrError(res, authorized.root, 'fact.write')
+  if (!factWrite) return null
+  const result = await factWrite.writeFactEntries({
     root: authorized.root,
     factStore,
     bookId: request.bookId,
@@ -320,6 +332,9 @@ export async function enrichRun(ctx) {
   const root = authorized.root
   const bookId = text(request.bookId).trim()
   if (!bookId) return sendError(res, API_ERROR_CODES.INVALID_ENTRY, 'bookId 必填')
+  const runtime = await agentRuntimeOrError(res)
+  if (!runtime) return null
+  const { loadConfigV2, resolveChatUpstream, runCliChat, runDshStdio } = runtime
   const { config } = await loadConfigV2(context.agentConfigPath)
   const upstream = await resolveChatUpstream(config, context)
   if (!upstream.ok) return sendError(res, API_ERROR_CODES.AGENT_UPSTREAM_ERROR, upstream.message)
@@ -381,7 +396,9 @@ export async function enrichRun(ctx) {
   const job = { jobId, bookId, root: authorized.root, state: 'running', progress: [], summary: null, error: null, startedAt: new Date().toISOString() }
   enrichJobs.set(jobId, job)
   // 异步跑：HTTP 立即回 jobId；进度走 enrichStatus 轮询（6 窗逐窗更新）。
-  enrichBook({
+  const factEngine = await factCapabilityOrError(res, root, 'fact.engine')
+  if (!factEngine) return null
+  factEngine.enrichBook({
     root: authorized.root,
     bookId,
     entries: listed.entries,
@@ -405,7 +422,9 @@ export async function enrichGraph(ctx) {
   if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
   const bookId = text(request.bookId).trim()
   if (!bookId) return sendError(res, API_ERROR_CODES.INVALID_ENTRY, 'bookId 必填')
-  const result = await enrichGraphEngine({ root: authorized.root, bookId })
+  const factEngine = await factCapabilityOrError(res, authorized.root, 'fact.engine')
+  if (!factEngine) return null
+  const result = await factEngine.enrichGraph({ root: authorized.root, bookId })
   if (!result.ok) return sendError(res, result.code ?? API_ERROR_CODES.INVALID_ENTRY, result.message)
   return sendJson(res, 200, { ok: true, ...result })
 }

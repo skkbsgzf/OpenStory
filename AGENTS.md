@@ -37,18 +37,28 @@ L4 自持层→L2 自有内核 `src/kernel/`→L1 磁盘库；OS-157 起 L2/L3 �
 3. **世界书单向性**：正文不反向进世界书上下文；世界书不能全量丢进 Agent 上下文。
 4. **absorb 不开 MCP**：旧目录迁入世界书是显式动稿操作，只走界面按钮。
 5. **MCP 不开 agent 对话**（不套娃）；写操作一律有 .history 备份。
-6. **边界四条（OS-195；门禁 S2.1／S2.4'／S2.7／S2.11 直接数静态 import，无白名单）**：
+6. **边界四条（OS-195 立，OS-195a 收口；门禁 S2.1／S2.4'／S2.7／S2.11 直接数静态 import，无白名单）**：
+   - **归属（OS-195a）**：模块自己的实现住在自己的目录里，`src/modules/**` 不许有「只从 protocol 转供」的空壳。
+     `src/protocol/` 只放底座契约——纯函数或只读的路径／形状／词表／校验逻辑；做 I/O 的只有
+     `src/protocol/README.md`「登记在册的 I/O 例外」表里的那些文件，协议层零 `fetch`／`spawn`。
+   - **消费路径（OS-195a，谁要用别人模块的东西只有这四条）**：
+     ① 内核件的东西 → 能力句柄（`context.resolve(id)`）；
+     ② 宿主组合面（`agentbar`／`library`）的东西 → 只有宿主可直接 import，别的模块走端点分派；
+     ③ 工作台要给宿主（含 Agent 栏）东西 → 经 `activate()` 贡献**钩子**，宿主按库快照取（模块停用＝钩子消失）；
+     ④ 工作台要用别的工作台的东西 → 经底座端点分派（`handlerFor(endpointId, root)`），不 import 对方内部。
+     钩子名登记在 `src/protocol/moduleActivation.mjs`（`beforeWrite`／`promptContext`／`referenceIndex`／`startup`），
+     未登记拒收；宿主取钩子的唯一口是 `src/host/moduleHooks.mjs` → `handlerTable.hooksFor()`，不留第二套注册方式。
    - **R-a 内核实现只有一个静态入口**：只有 `src/protocol/capabilityImplementations.mjs`（实现登记表）可静态
      import 内核实现；其余位置（含工作台、宿主、服务、协议其他文件）＝0。内核之间只经 `context.resolve` 句柄。
    - **R-b 工作台内部实现只许本模块的 handler 与前端视图触及**：宿主、底座服务、别的工作台静态 import 它＝0；
-     要复用就经能力句柄，或把无工作台归属的纯函数/格式契约下沉 `src/protocol/`。
-   - **R-c `src/protocol/` 只留底座契约**：形状/错误信封、路径安全、授权、写管道、装载协议、能力图与迁移、
-     slots、命名取表口、旧库一次性升级、进程内事件词表，以及与工作台无关的格式/路径纯函数；
-     `export ... from '../modules/…'` 转供叶＝0，复制模块实现函数体＝0（逐文件理由见 `src/protocol/README.md`）。
-   - **R-d `src/services/` 只留底座服务**：进程任务/原生选择器/界面偏好已归 `src/host/`；剩下的是货架资源装载、
-     跨内核底座服务与 OS-193 遗留的兼容叶（调用方在 `tools/verify/**` 与 `tools/eval/**`，不在本批改动范围）。
-   建库/导入/章节号解析已**本仓自持**（`src/modules/storage/projectDoc.mjs`；格式适配在 `src/protocol/importAdapter.mjs`
-   与 `libraryTextUtil.mjs`，OS-123/124 fork 点），不再复用上游内核。
+     唯一放行的跨目录 import 是「宿主 → 宿主组合面」（`src/modules/agentbar/`、`src/modules/library/`）。
+   - **R-c `src/protocol/` 只留底座契约**：文件清单与 `src/protocol/README.md` 逐一对上（多一个没登记就红）；
+     `export ... from '../modules/…'` 转供叶＝0，复制模块实现函数体＝0。
+   - **R-d `src/services/` 只留底座服务**：只留五个货架装载（`genres`／`runtimes`／`skills`／`stylePacks`／`suites`）
+     ＋ `systemPrompt`／`syncCheck`；OS-193 的十个内核兼容叶已删，一律改经 `resolve*Capability(root, …)` 句柄。
+   建库/导入/章节号解析已**本仓自持**（`src/modules/storage/projectDoc.mjs`）；整目录导入实现在
+   `src/modules/library/importAdapter.mjs`，格式适配在 `src/modules/library/textUtil.mjs` 与
+   `src/protocol/worldbookContract.mjs`（OS-123/124 fork 点），不再复用上游内核。
    > **模块插件（OS-144；B1–B5 已升级，OS-192 单规则收口）**：工作面使用 `src/modules/<id>/module.manifest.json`
    > （`openstory-module@2`：`id/name/version/class/endpoints/pages/slots/settings`；@1 直接拒收，迁移脚手架已删）。
    > 五类货架（skills/styles/genres/runtimes/suites）经 `src/protocol/shelfManifests.mjs` 投影成同一份 module@2 套件清单，
@@ -280,8 +290,8 @@ node tools/acceptance/acceptance.mjs        # ② 交付标准 S0–S4 门禁（
   `src/protocol/libraryUpgrade.mjs` 负责旧库一次性升级，不提供 Pinax 互认或清单导入
 - `src/modules/deduce/`：`deduceEngine.mjs`（推演核封装，端子走模块内 `engine/index.mjs`）/
   `engine/`（OS-155 自上游平移到本模块的确定性推演链 8 件＋出口 index.mjs）；
-  会话容器自 OS-195 起在底座契约 `src/protocol/deduceSession.mjs`（扮演/<bookId>/session.json）
-- `src/protocol/referenceStore.mjs`（世界书索引/图谱）· `src/services/enrichEngine.mjs`（语义富化 6 窗）· `src/protocol/factGuard.mjs`
+  会话容器自 OS-195a 起归 `src/modules/deduce/deduceSession.mjs`（扮演/<bookId>/session.json），经 deduce 能力句柄取用
+- `src/modules/worldbook/referenceStore.mjs`（世界书索引/图谱）· `src/modules/fact/enrich/engine.mjs`（语义富化 6 窗）· `src/protocol/factGuard.mjs`
 - 底座服务（`src/services/`）：货架装载（skills/genres/stylePacks/suites/runtimes）＋ 跨内核底座服务（systemPrompt/
   syncCheck）＋ OS-193 遗留兼容叶；jobCenter/nativePicker/uiPreferences 已迁 `src/host/`
 - `skills/` 创作知识库 31 包＋套件捆绑 2（SKILL.md 制）· `docs/mcp/` 对外分发材料 · `design-system/` 设计令牌包

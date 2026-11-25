@@ -27,7 +27,10 @@ import { NAMING_TABLE, TAB_REGISTRY, LOG_MODULES, computeTabDefs, viewScope } fr
 // OS-150b：S2.1/S2.2 共用同一份说明符扫描器（静态 from／动态 import()／副作用 import／单双引号）。
 // 两份正则必分叉——分叉面就是漏检面（analysisModules.mjs 的惰性 import 曾被整段放过）。
 import { scanImportSpecs, auditPublicEdges } from './importScan.mjs'
-import { auditCapabilityRoutes, auditBaseBoundary, auditTransferDuplication, auditKernelDirectImports, boundaryInventory } from './capabilityBoundaries.mjs'
+import {
+  auditCapabilityRoutes, auditBaseBoundary, auditTransferDuplication, auditKernelDirectImports,
+  boundaryInventory, auditModuleShells, auditProtocolContractLayer, auditHostCompositionImports
+} from './capabilityBoundaries.mjs'
 // OS-165/G5d：模块覆盖面与 test/moduleCoverage.test.mjs 共用一份口径（端点/页签归属与宿主白名单理由）。
 import { coverageReport } from './moduleCoverage.mjs'
 import { auditLineageNames, auditNamingConsistency } from '../verify/verify-os172-naming.mjs'
@@ -169,8 +172,8 @@ check('S1.3', 'S1', `skills/ 知识库包完整（${skillPacks} 包）`,
   skillMissing.length ? `缺 SKILL.md：${skillMissing.join(', ')}` : '全部包有 SKILL.md')
 
 // S1.4 dsh native runtime 适配（dsh-cli 一次一进程型 + runtimes 注册 dsh kind）
-// OS-140：四件套全部在 src/services/
-const dshPieces = ['src/services/dsh-cli.mjs', 'src/services/dsh-bridge.mjs', 'src/services/cli-bridge.mjs', 'src/services/runtimes.mjs']
+// OS-140：实现在 agent-runtime 内核件（OS-195a 兼容叶已删），货架注册仍在 src/services/runtimes.mjs。
+const dshPieces = ['src/modules/agent-runtime/dsh-cli.mjs', 'src/modules/agent-runtime/dsh-bridge.mjs', 'src/modules/agent-runtime/cli-bridge.mjs', 'src/services/runtimes.mjs']
 const dshMissing = dshPieces.filter((f) => !exists(f))
 const dshKindReg = grepLine('src/services/runtimes.mjs', /kind\s*===\s*'dsh'|'sidecar',\s*'endpoint',\s*'cli',\s*'dsh'/)
 check('S1.4', 'S1', 'dsh native runtime 适配件齐全（dsh-cli 一次一进程型已注册）',
@@ -223,12 +226,19 @@ const scanned = srcMjs
 const boundary = boundaryInventory(srcMjs)
 const routeViolations = auditCapabilityRoutes(srcMjs)
 const transferDuplicates = auditTransferDuplication(srcMjs)
-const routeEvidence = [...routeViolations, ...transferDuplicates]
+// OS-195a 三条新断言（与旧断言同在 S2.1，缺一条就红）：
+//   ① 模块不是壳 ② protocol 文件清单与 README 登记逐一对上且无非登记 I/O/fetch/spawn
+//   ③ 宿主→宿主组合面是唯一放行的跨目录 import
+const moduleShells = auditModuleShells(srcMjs)
+const protocolAudit = auditProtocolContractLayer(srcMjs, readRepo('src/protocol/README.md'))
+const hostCompositionAudit = auditHostCompositionImports(srcMjs)
+const newBoundaryViolations = [...moduleShells, ...protocolAudit.violations, ...hostCompositionAudit.violations]
+const routeEvidence = [...routeViolations, ...transferDuplicates, ...newBoundaryViolations]
   .map((item) => `${item.from}:${item.line} -> ${item.to}：${item.reason}`)
-check('S2.1', 'S2', `能力路由边界（${srcMjs.length} 个 src 源文件；外部→模块 ${boundary.counts.outsideModuleImports}（例外：实现登记表）；跨模块 ${boundary.counts.crossModuleImports}；底座→工作台 ${boundary.counts.apiHostServicesToWorkbench}；协议复制 ${transferDuplicates.length}）`,
-  routeViolations.length === 0 && transferDuplicates.length === 0,
+check('S2.1', 'S2', `能力路由边界（${srcMjs.length} 个 src 源文件；外部→模块 ${boundary.counts.outsideModuleImports}（例外：实现登记表＋宿主组合面）；跨模块 ${boundary.counts.crossModuleImports}；底座→工作台 ${boundary.counts.apiHostServicesToWorkbench}；协议复制 ${transferDuplicates.length}；OS-195a 新断言：模块壳 ${moduleShells.length}／协议清单 ${protocolAudit.files} 文件（登记 ${protocolAudit.registered}，I/O 例外 ${protocolAudit.ioExceptions}）越界 ${protocolAudit.violations.length}／宿主组合面放行 ${hostCompositionAudit.allowed} 条越界 ${hostCompositionAudit.violations.length}）`,
+  routeViolations.length === 0 && transferDuplicates.length === 0 && newBoundaryViolations.length === 0,
   routeEvidence.slice(0, 6),
-  routeEvidence.length ? `违规：${routeEvidence.slice(0, 4).join('; ')}` : 'R-a 唯一静态入口＋R-b 工作台内部只触及本模块；零转供叶、零实现复制')
+  routeEvidence.length ? `违规：${routeEvidence.slice(0, 4).join('; ')}` : 'R-a 唯一静态入口＋R-b 工作台内部只触及本模块；三新断言全绿；零转供叶、零实现复制')
 
 // S2.2 前端模块隔离（public/*.mjs 只共享渲染协议）
 // OS-143：页签注册表 views/registry.mjs 纳入扫描面——它是纯数据＋纯函数（零 import），

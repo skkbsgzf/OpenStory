@@ -1,10 +1,9 @@
 /**
  * artifacts 端点 handler（OS-194 从 src/api/handlers/system.mjs 归位）。
- * 宿主工具经 activate(context) 的 context.host 注入；本文件只 import node:/protocol。
+ * 宿主工具经 context.host 注入；库内盘点经 storage.inventory 句柄（OS-195a：跨模块只走句柄）。
  */
-import { listArtifacts } from '../../protocol/libraryInventory.mjs'
-
-export function createHandlers({ host }) {
+export function createHandlers({ host, inventory }) {
+  const { listArtifacts } = inventory
   const { apiErrors, sendError, sendJson, authorizeRoot } = host
 
   async function artifactsGet(ctx) {

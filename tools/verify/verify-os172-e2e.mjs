@@ -5,8 +5,8 @@ import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { startDaemon } from '../../src/host/daemon.mjs'
-import { loadConfigV2 } from '../../src/services/agentConfig.mjs'
-import { resolveChatUpstream } from '../../src/services/chatUpstream.mjs'
+import { loadConfigV2 } from '../../src/modules/agent-runtime/config.mjs'
+import { resolveChatUpstream } from '../../src/modules/agent-runtime/chatUpstream.mjs'
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
 const base = mkdtempSync(join(tmpdir(), 'openstory-os172-e2e-'))

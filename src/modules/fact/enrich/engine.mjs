@@ -2,7 +2,7 @@
  * 语义增补引擎（FACT-FIRST 数据底座的供给端）。
  *
  * 把上游 devtools/wiki-enrich-run.mjs 的六槽位管线封装成宿主可调用的引擎
- * （出处声明保留在 src/services/enrichEngine.mjs，谱系见 docs/kernel-provenance.md）：
+ * （出处声明随本实现保留，谱系见 docs/kernel-provenance.md）：
  *   ① 章批五合一（小标题/梗概/章节功能/情绪/剧情点/伏笔/高光片段）
  *   ② 因果图（nodes/edges/threads——A1/B1/C1 的共同底座）
  *   ③ 人物卡＋马斯洛需求层级（identity/archetype/goal/needs/arc/keyChoices/mirror）

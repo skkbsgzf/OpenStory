@@ -9,21 +9,6 @@ import { createReadStream, existsSync, statSync } from 'node:fs'
 import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises'
 import { extname, join } from 'node:path'
 import {
-  appendNode,
-  archiveChapter,
-  createDeduceSession,
-  DEDUCE_SESSION_SCHEMA,
-  deleteDeduceSession,
-  importLegacyDeduce,
-  listDeduceSessions,
-  loadDeduceSession,
-  normalizeDeduceSession,
-  readActiveSessionId,
-  safeDeduceBookId,
-  saveDeduceSession,
-  writeActiveSessionId
-} from '../../protocol/deduceSession.mjs'
-import {
   buildRoleplayMemory,
   compressMemory,
   deAiPass,
@@ -74,6 +59,13 @@ async function listDeduceAssets(root, bookId, resolveInsideRoot) {
 }
 
 export function createHandlers({ host, deduce, factStore, factBooks, prose, agentRuntime, textAnalyze }) {
+  // OS-195a：会话容器改从 deduce 能力句柄取（跨模块只经 context.resolve，不 import 对方内部）。
+  const {
+    appendNode, archiveChapter, createDeduceSession, deleteDeduceSession, importLegacyDeduce,
+    listDeduceSessions, loadDeduceSession, normalizeDeduceSession, readActiveSessionId,
+    safeDeduceBookId, saveDeduceSession, writeActiveSessionId
+  } = deduce
+  const DEDUCE_SESSION_SCHEMA = deduce.deduceSessionSchema()
   // OS-195：text.analyze 经 activate(context) 的 context.resolve 句柄注入（不再顶层取实现）。
   const analyze = textAnalyze?.analyzeChapter ?? null
   const { apiErrors, sendError, sendJson, text, authorizeRoot, resolveInsideRoot } = host

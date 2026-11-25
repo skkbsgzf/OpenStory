@@ -31,18 +31,25 @@ import {
   renameSession,
   snapshotsMatch,
   updateCard
-} from '../../protocol/agentStore.mjs'
-import { loadConfigV2, saveConfigV2, configPublicLegacy, configTextBlock } from '../../services/agentConfig.mjs'
-import { resolveChatUpstream } from '../../services/chatUpstream.mjs'
+} from '../../modules/agentbar/agentStore.mjs'
 import { systemPromptFor } from '../../services/systemPrompt.mjs'
 import { probeRuntimeKit, sidecarRunning } from '../../services/runtimes.mjs'
 import { shelfDomainData } from '../../protocol/shelfManifests.mjs'
-import { detectDshAny, detectDshModels, probeDshStack, setupDshStack } from '../../services/dsh-bridge.mjs'
-import { runCliChat } from '../../services/cli-bridge.mjs'
-import { runDshStdio } from '../../services/dsh-cli.mjs'
 import { projectLegacyFrame } from '../../protocol/agentEvents.mjs'
 import { habitLint } from '../../host/moduleHooks.mjs'
-import { resolveFactCapability, resolveProseCapability } from '../../host/capabilityBindings.mjs'
+import {
+  resolveFactCapability, resolveProseCapability, resolveAgentRuntimeCapability
+} from '../../host/capabilityBindings.mjs'
+
+/** OS-195a：配置/上游/CLI/DSH 真源都在 agent.runtime 内核件，经句柄取，不 import 兼容叶。 */
+async function agentRuntimeOrError(res) {
+  const resolved = await resolveAgentRuntimeCapability('')
+  if (!resolved.ok) {
+    sendError(res, API_ERROR_CODES.PLUGIN_DEGRADED, resolved.message, resolved.details)
+    return null
+  }
+  return resolved.capability
+}
 
 /** OS-193 K4：请求入口解析 fact/prose 句柄，往下传给跨内核底座服务。 */
 async function systemPromptHandles(root) {
@@ -59,21 +66,28 @@ import { readAgentPicks, writeAgentPicks } from '../../services/skills.mjs'
 
 export async function agentConfigGet(ctx) {
   const { res, context } = ctx
+  const runtime = await agentRuntimeOrError(res)
+  if (!runtime) return null
   // 旧端点保留（MCP/旧前端还在用）：返回旧形状，值来自 text 块。
-  const { config } = await loadConfigV2(context.agentConfigPath)
-  return sendJson(res, 200, configPublicLegacy(config, context.agentConfigPath))
+  const { config } = await runtime.loadConfigV2(context.agentConfigPath)
+  return sendJson(res, 200, runtime.configPublicLegacy(config, context.agentConfigPath))
 }
 
 export async function agentConfigPut(ctx) {
   const { res, request, context } = ctx
+  const runtime = await agentRuntimeOrError(res)
+  if (!runtime) return null
   // 旧端点保留：请求是旧的扁平字段，写进 text 块，响应回旧形状。
-  const config = await saveConfigV2(context.agentConfigPath, { text: { ...request } })
-  return sendJson(res, 200, configPublicLegacy(config, context.agentConfigPath))
+  const config = await runtime.saveConfigV2(context.agentConfigPath, { text: { ...request } })
+  return sendJson(res, 200, runtime.configPublicLegacy(config, context.agentConfigPath))
 }
 
 /** 运行时货架：Pi 兜底（内置伪条目）＋各 kit（内置/本机）。userDir 供设置页展示。 */
 export async function agentRuntimesGet(ctx) {
   const { res, context } = ctx
+  const runtime = await agentRuntimeOrError(res)
+  if (!runtime) return null
+  const { loadConfigV2, detectDshAny, probeDshStack } = runtime
   const { config } = await loadConfigV2(context.agentConfigPath)
   const textBlock = config.text
   const kits = shelfDomainData({ runtimesDirs: context.runtimesDirs }, 'runtime').items
@@ -148,14 +162,18 @@ export async function agentRuntimePut(ctx) {
       return sendError(res, API_ERROR_CODES.AGENT_RUNTIME_FIXTURE, `夹具套件不能设为激活运行时：${kit.name || id}`, { id })
     }
   }
-  const config = await saveConfigV2(context.agentConfigPath, { text: { runtime: id } })
+  const runtime = await agentRuntimeOrError(res)
+  if (!runtime) return null
+  const config = await runtime.saveConfigV2(context.agentConfigPath, { text: { runtime: id } })
   return sendJson(res, 200, { ok: true, active: text(config.text.runtime).trim() })
 }
 
 export async function agentDshModelsGet(ctx) {
   const { res, request, context } = ctx
   const profile = text(request.profile).trim() || text(context.env?.DSH_PROFILE || 'openstory').trim()
-  const probed = await detectDshModels({ env: context.env, profile })
+  const runtime = await agentRuntimeOrError(res)
+  if (!runtime) return null
+  const probed = await runtime.detectDshModels({ env: context.env, profile })
   return sendJson(res, 200, {
     ok: true,
     models: probed.models ?? [],
@@ -172,7 +190,9 @@ export async function agentRuntimeSetup(ctx) {
     return sendError(res, API_ERROR_CODES.INVALID_ENTRY, '只有 DSH 原生支持一键修复（CLI 服务请按货架提示自行安装）')
   }
   const tarball = text(request.runtimeTarball || kit.setup?.runtimeTarball || context.env.DSH_RUNTIME_TARBALL)
-  const fixed = await setupDshStack({ env: context.env, dshCmd: text(context.env.DSH_CLI || 'dsh'), runtimeTarball: tarball })
+  const runtime = await agentRuntimeOrError(res)
+  if (!runtime) return null
+  const fixed = await runtime.setupDshStack({ env: context.env, dshCmd: text(context.env.DSH_CLI || 'dsh'), runtimeTarball: tarball })
   if (!fixed.ok) {
     return sendError(res, API_ERROR_CODES.INVALID_ENTRY, fixed.message, { steps: fixed.steps })
   }
@@ -279,6 +299,9 @@ export async function agentChat(ctx) {
   if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
   const root = authorized.root
   const libraries = loaded.libraries
+  const runtime = await agentRuntimeOrError(res)
+  if (!runtime) return null
+  const { loadConfigV2, resolveChatUpstream, runCliChat, runDshStdio, configTextBlock } = runtime
   const { config } = await loadConfigV2(context.agentConfigPath)
   const upstream = await resolveChatUpstream(config, context)
   if (!upstream.ok) {

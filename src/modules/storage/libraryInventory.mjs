@@ -10,8 +10,8 @@
 import { statSync } from 'node:fs'
 import { readdir } from 'node:fs/promises'
 import { basename, isAbsolute, join, relative, sep } from 'node:path'
-import { API_ERROR_CODES } from './apiErrors.mjs' // OS-142：错误码词表经协议层叶子转出（模块纪律：modules 不直引 api）
-import { canonicalRoot, pathFail, text, METADATA_DIR } from './authorize.mjs' // OS-142：路径授权经协议层叶子转出（模块纪律：modules 不直引 host）
+import { API_ERROR_CODES } from '../../protocol/apiErrors.mjs' // OS-142：错误码词表经协议层叶子转出（模块纪律：modules 不直引 api）
+import { canonicalRoot, pathFail, text, METADATA_DIR } from '../../protocol/authorize.mjs' // OS-142：路径授权经协议层叶子转出（模块纪律：modules 不直引 host）
 
 const ARTIFACT_LIMIT = 1000
 

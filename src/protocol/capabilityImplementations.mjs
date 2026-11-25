@@ -32,6 +32,7 @@ export const KERNEL_CAPABILITIES = Object.freeze({
   proseWrite: proseCapability['prose.write'],
   storageRoots: storageCapability['storage.roots'],
   storageScaffold: storageCapability['storage.scaffold'],
+  storageInventory: storageCapability['storage.inventory'],
   projectMeta,
   textAnalyze: textCapability['text.analyze'],
   agentRuntime: agentRuntimeCapability['agent.runtime'],

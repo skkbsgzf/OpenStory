@@ -1,4 +1,14 @@
-const CONTRIBUTION_KEYS = Object.freeze(['capabilities', 'handlers', 'pages', 'settingsConsumers'])
+const CONTRIBUTION_KEYS = Object.freeze(['capabilities', 'handlers', 'pages', 'settingsConsumers', 'hooks'])
+/**
+ * OS-195a：工作台给宿主（含 Agent 栏）的东西只能经 activate() 贡献钩子。
+ * 钩子名登记在此，未登记的拒收——钩子不是随手挂的全局变量。
+ * 每个钩子值是 { <模块局部名>: fn } 的对象，宿主按贡献表（同一按库快照换表机制）取用。
+ */
+export const CONTRIBUTION_HOOKS = Object.freeze(['beforeWrite', 'promptContext', 'referenceIndex', 'startup'])
+
+export function isRegisteredHook(name) {
+  return CONTRIBUTION_HOOKS.includes(name)
+}
 
 function plainObject(value) {
   return !!value && typeof value === 'object' && !Array.isArray(value)
@@ -12,6 +22,13 @@ export function validateModuleContribution(manifest, contribution) {
   }
   for (const key of CONTRIBUTION_KEYS) {
     if (contribution[key] !== undefined && !plainObject(contribution[key])) errors.push(`${key} 必须是对象`)
+  }
+  for (const name of Object.keys(contribution.hooks ?? {})) {
+    if (!isRegisteredHook(name)) errors.push(`钩子 ${name} 未在底座登记`)
+    const slot = contribution.hooks[name]
+    if (!plainObject(slot) || !Object.values(slot).every((fn) => typeof fn === 'function')) {
+      errors.push(`钩子 ${name} 必须是 { 模块局部名: fn } 的函数表`)
+    }
   }
   const declared = new Set((manifest.capabilities ?? []).map((item) => item.id))
   for (const id of Object.keys(contribution.capabilities ?? {})) {

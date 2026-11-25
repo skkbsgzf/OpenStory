@@ -1,20 +1,28 @@
 /**
- * worldbook 端点 handler（OS-194 从 src/api/handlers/reference.mjs 归位 5 个独占端点；
- * referenceImageGenerate 归 imagegen，syncCheck 是宿主共享端点仍留契约壳）。
- * fact.store / prose.write 句柄经 activate(context) 注入。
+ * worldbook 端点 handler（OS-194 归位 5 个 reference 独占端点；OS-195a 从 imagegen 收回
+ * referenceImageGenerate——它读写世界书条目，走本模块端点分派，不跨模块 import referenceStore）。
+ * syncCheck 是跨故事源/正文/世界书的宿主共享端点，仍留契约壳。
+ * fact.store / prose.write / media.generate / agent.runtime 句柄经 activate(context) 注入。
  */
-import { readFile } from 'node:fs/promises'
+import { mkdir, readFile } from 'node:fs/promises'
+import { dirname } from 'node:path'
+import { atomicWriteFile } from '../../protocol/hostWrite.mjs'
 import {
   absorbLegacyDirs,
   backlinksOf,
   buildReferenceGraph,
+  parseFrontmatter,
   REFERENCE_DIR,
   notesVisibleAt,
-  scanReferences
-} from '../../protocol/referenceStore.mjs'
+  scanReferences,
+  serializeFrontmatter
+} from './referenceStore.mjs'
 
-export function createHandlers({ host, factStore, prose }) {
-  const { apiErrors, sendError, sendJson, text, authorizeRoot, resolveInsideRoot } = host
+export function createHandlers({ host, factStore, prose, mediaGenerate, agentRuntime }) {
+  const {
+    apiErrors, sendError, sendJson, text, authorizeRoot, resolveInsideRoot,
+    defaultPort, submitJob
+  } = host
 
   async function referenceGet(ctx) {
     const { res, request, allowlist } = ctx
@@ -133,5 +141,106 @@ export function createHandlers({ host, factStore, prose }) {
     return sendJson(res, 200, { ok: true, moved, skipped })
   }
 
-  return { referenceGet, referenceGraphGet, referenceNoteGet, referenceAssetGet, referenceAbsorb }
+  /** OS-63/OS-195a：设定图生成——端点归世界书（写的是条目 frontmatter 与 世界书/assets）。 */
+  async function referenceImageGenerate(ctx) {
+    const { res, request, context, allowlist } = ctx
+    // OS-80：生图改异步——先提交到全局任务中心（立刻返回 jobId），任务后台跑。
+    // 作者口径：「切走再回来不应丢状态」，进度要能跨页面看到。
+    // async:true 时走任务中心；不带 async 保留原同步行为（MCP / 兼容用）。
+    if (request.async === true) {
+      const authorized0 = authorizeRoot(allowlist, request.root)
+      if (!authorized0.ok) return sendError(res, authorized0.code, authorized0.message, authorized0.details)
+      const reqPath = text(request.path).trim()
+      const title = reqPath.split('/').pop().replace(/\.md$/u, '')
+      const port = context.port || defaultPort
+      const job = submitJob({
+        kind: 'image',
+        label: `生成设定图：${title}`,
+        root: authorized0.root,
+        run: async ({ update, signal }) => {
+          update('正在生图（ComfyUI 约 2–3 分钟）…')
+          // 同进程回环调用同步端点：逻辑与 MCP/界面点「生成」完全一致，只有一份实现
+          const resp = await fetch(`http://127.0.0.1:${port}/api/reference/image`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ ...request, async: undefined }),
+            signal: signal ?? undefined
+          })
+          const payload = await resp.json().catch(() => null)
+          if (!resp.ok || payload?.ok === false) {
+            throw new Error(payload?.error?.message || `生图失败（HTTP ${resp.status}）`)
+          }
+          update(`已生成：${payload.imagePath}`)
+          return payload
+        }
+      })
+      return sendJson(res, 200, { ok: true, jobId: job.id, async: true })
+    }
+    const authorized = authorizeRoot(allowlist, request.root)
+    if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
+    const requested = text(request.path).trim().replaceAll('\\', '/')
+    if (!requested.startsWith(`${REFERENCE_DIR}/`)) {
+      return sendError(res, apiErrors.INVALID_ENTRY, `只给世界书目录下的条目生图：${requested}`)
+    }
+    const resolved = resolveInsideRoot(authorized.root, requested, { allowMetadata: false })
+    if (!resolved.ok) return sendError(res, resolved.code ?? apiErrors.PATH_ESCAPE, resolved.message)
+
+    const { config } = await agentRuntime.loadConfigV2(context.agentConfigPath)
+    const image = config.image
+    if (!image.enabled) {
+      return sendError(res, apiErrors.AGENT_UPSTREAM_ERROR, '生图没启用——设置 · 模型 · 生图里打开开关')
+    }
+
+    // 读条目原文，拿 title / 正文摘要 作为生图描述（作者可显式传 prompt 覆盖）
+    let noteRaw = ''
+    try { noteRaw = await readFile(resolved.path, 'utf-8') } catch (error) {
+      return sendError(res, apiErrors.NOT_FOUND, `条目读不了：${text(error?.message || error)}`)
+    }
+    const parsed = parseFrontmatter(noteRaw)
+    const noteTitle = text(parsed.data?.title).trim() || text(requested).split('/').pop().replace(/\.md$/u, '')
+    const noteKind = text(request.kind).trim() || text(parsed.data?.kind).trim() || 'character'
+    const bodyExcerpt = text(parsed.body).split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('#')).slice(0, 3).join(' ').slice(0, 200)
+
+    const describe = text(request.prompt).trim()
+      || `${noteKind === 'scene' ? '场景' : noteKind === 'item' ? '道具' : '人物'}设定图：${noteTitle}。${bodyExcerpt || '（按条目名想象）'}`
+    const size = text(request.size).trim() || '1024x1024'
+    const generated = await mediaGenerate.generate({
+      image,
+      root: authorized.root,
+      prompt: describe,
+      stylePrompt: text(request.stylePrompt),
+      size
+    })
+    if (!generated.ok) return sendError(res, apiErrors.AGENT_UPSTREAM_ERROR, generated.error)
+    const b64 = generated.b64
+
+    // 落盘：世界书/<条目目录>/assets/<条目名>.png（安全名）
+    const safeName = noteTitle.replace(/[\\/:*?"<>|]/gu, '_').slice(0, 40) || 'image'
+    const noteDir = requested.split('/').slice(0, -1).join('/')
+    const imageRel = `${noteDir}/assets/${safeName}.png`
+    const imageAbs = resolveInsideRoot(authorized.root, imageRel, { allowMetadata: false })
+    if (!imageAbs.ok) return sendError(res, imageAbs.code ?? apiErrors.PATH_ESCAPE, imageAbs.message)
+    await mkdir(dirname(imageAbs.path), { recursive: true })
+    await atomicWriteFile(imageAbs.path, Buffer.from(b64, 'base64')) // 二进制走 hostWrite 二进制分支
+
+    // 回填 frontmatter：cover 指向新图，images 数组追加（去重，保留最近 6 张）
+    const nextData = { ...parsed.data }
+    const images = Array.isArray(nextData.images) ? nextData.images.map((x) => text(x).trim()).filter(Boolean) : []
+    if (!images.includes(imageRel)) images.unshift(imageRel)
+    nextData.images = images.slice(0, 6)
+    if (!text(nextData.cover).trim()) nextData.cover = imageRel
+    const nextRaw = `${serializeFrontmatter(nextData)}\n${parsed.body}`
+    const written = await prose.writeChapterWithBackup(authorized.root, requested, nextRaw)
+    if (!written.ok) return sendError(res, written.code, written.message, written.details)
+
+    return sendJson(res, 200, {
+      ok: true,
+      path: requested,
+      imagePath: imageRel,
+      frontmatter: nextData,
+      chars: nextRaw.length
+    })
+  }
+
+  return { referenceGet, referenceGraphGet, referenceNoteGet, referenceAssetGet, referenceAbsorb, referenceImageGenerate }
 }

@@ -18,7 +18,7 @@ import { existsSync, statSync } from 'node:fs'
 import { readdir } from 'node:fs/promises'
 import { isAbsolute, resolve } from 'node:path'
 import { upgradeLibrary } from '../protocol/libraryUpgrade.mjs'
-import { projectImport } from '../protocol/libraryImport.mjs'
+import { projectImport } from '../modules/library/index.mjs'
 import { resolveStorageCapability } from './capabilityBindings.mjs'
 import { namingEntry } from '../protocol/naming.mjs'
 

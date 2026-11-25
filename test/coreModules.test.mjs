@@ -66,11 +66,12 @@ test('manifest：四个原核心工作台已去 core，端点归属与错误契�
   ])
   assert.deepEqual([...moduleManifest('script').endpoints], [], '剧本没有独占端点（借 chapters 通道）')
   assert.deepEqual([...moduleManifest('worldbook').endpoints].sort(), [
-    'referenceAbsorb', 'referenceAssetGet', 'referenceGet', 'referenceGraphGet', 'referenceNoteGet'
+    'referenceAbsorb', 'referenceAssetGet', 'referenceGet', 'referenceGraphGet', 'referenceImageGenerate', 'referenceNoteGet'
   ])
   assert.equal(moduleManifest('roleplay').endpoints.includes('deduceImage'), false)
   assert.equal(moduleOfEndpoint('deduceImage'), 'imagegen')
-  assert.equal(moduleOfEndpoint('referenceImageGenerate'), 'imagegen')
+  // OS-195a：写世界书条目的端点归世界书（端点分派），生图模块不再 import referenceStore。
+  assert.equal(moduleOfEndpoint('referenceImageGenerate'), 'worldbook')
   const table = await allHandlers()
   for (const manifest of MODULE_MANIFESTS) {
     for (const endpoint of manifest.endpoints) {
