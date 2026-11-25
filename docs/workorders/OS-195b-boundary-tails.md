@@ -50,3 +50,26 @@
 - 机器门禁全绿；红线测试 `test/factGuard.test.mjs`、`test/decoupleStep2.test.mjs`、`test/decoupleStep3.test.mjs`、`test/deduceDeterminism.test.mjs`、`test/handlerDispatch.test.mjs`、`test/agentRuntimes.test.mjs`、`test/runtimeShelf.test.mjs`、`test/hostApi.test.mjs`（或其接替文件）全绿。
 - 回报里贴：`src/protocol/` 最终清单；登记表引用数与持有者清单（应各自只剩登记表自身）；三条新断言的实测数字与两则反证输出。
 - `git diff --check` 干净；`node tools/number-anchors.mjs` 与 `npm run arch:stats` 跑过。
+## 施工回报（编排器自动归档）
+
+> 模型 hy4flash · 第 1 轮 · 测试 绿（tests 817 · pass 815 · fail 0 · skip 2） · 门禁 绿 · e2e 水浒＋新建（隔离 daemon）绿 · 8807 未动
+
+```text
+CHANGED:
+- 新建：`src/modules/prose/factGuard.mjs`、`src/modules/agent-runtime/runtimeSidecar.mjs`
+- 删除：`src/protocol/factGuard.mjs`、`src/protocol/upstream.mjs`、`src/protocol/index.mjs`、`src/protocol/embeddingBackend.mjs`、`src/protocol/runtimeShelf.mjs`
+- 修改：`src/modules/prose/index.mjs`、`src/modules/prose/module.manifest.json`、`src/modules/chapters/handlers.mjs`、`src/modules/deduce/turnProse.mjs`、`src/modules/deduce/index.mjs`、`src/modules/deduce/module.manifest.json`、`src/modules/deduce/engine/factPort.mjs`、`src/modules/imagegen/imagegenEngine.mjs`、`src/modules/imagegen/index.mjs`、`src/modules/agent-runtime/index.mjs`、`src/modules/agent-runtime/chatUpstream.mjs`、`src/modules/agent-runtime/embedding-server.mjs`、`src/api/handlers/agent.mjs`、`src/host/daemon.mjs`、`src/host/mcp.mjs`、`src/host/authorize.mjs`、`src/protocol/shelfManifests.mjs`、`src/protocol/README.md`、`src/services/runtimes.mjs`
+- 测试：`test/factGuard.test.mjs`、`test/hostApi.test.mjs`、`test/kernelIdentity.test.mjs`、`test/moduleCoverage.test.mjs`、`test/deduceEngine.test.mjs`、`test/deduceDeterminism.test.mjs`、`test/decoupleStep3.test.mjs`、`test/runtimes.test.mjs`、`test/agentRuntimes.test.mjs`、`test/artifacts.test.mjs`、`test/files.test.mjs`、`test/contracts.test.mjs`、`test/historyRetention.test.mjs`
+- 门禁/工具/文档：`tools/acceptance/acceptance.mjs`、`tools/acceptance/capabilityBoundaries.mjs`、`tools/eval/eval-kbw.mjs`、`tools/eval/write-sample.mjs`、`AGENTS.md`、`ARCHITECTURE.md`、`docs/number-anchors.json`
+
+VERIFIED:
+- `npm test`：817 例 / 815 过 / 2 跳 / 0 挂。红线批量复跑 110 例 / 109 过 / 0 挂；`node --test test/factGuard.test.mjs` 8/8；deduce 红线 31/31；runtime 红线 21/21。
+- `node tools/acceptance/acceptance.mjs`：**28 过 / 0 挂 / 0 警**。S2.1 实测：`协议引登记表 0／协议跨层转供 0／登记表持有者 1（src/protocol/capabilityImplementations.mjs）`；协议清单 32 文件（登记 32）越界 0；跨模块 0、底座→工作台 0、实现复制 0。
+- `node tools/number-anchors.mjs --check`：`✓ 数字锚一致：817 例／门禁 28／端点 103／app.js 10108≤10500`；`node tools/arch-stats.mjs --check`：`✓ 生成段一致`；`npm run arch:stats` 与 `node tools/number-anchors.mjs` 已回写。`git diff --check` 干净（仅 CRLF 提示）；`checkModuleActivation.mjs`：21 模块全激活、issues 0。
+- `src/protocol/` 最终清单（32 个 .mjs）：agentEvents, apiErrors, authorize, baseCapabilities, capabilityGraph, capabilityImplementations, capabilityMigration, capabilityResolver, changelog, chapterNumber, contractHelpers, courtyard, deduceRules, dependencyGraph, hostWrite, httpText, kernelErrors, kernelPlumber, libState, libraryUpgrade, moduleActivation, moduleEntry, moduleIdentity, moduleManifest, modules, naming, plugins, rootPath, shelfManifests, slots, versionGate, worldbookContract。
+- 登记表：`KERNEL_CAPABILITIES` 引用数 0（登记表自身除外），持有者仅 `src/protocol/capabilityImplementations.mjs`；`MODULE_IMPLEMENTATIONS` 仅由唯一解析绑定层 `src/host/capabilityBindings.mjs` 消费，不再有模块顶层持有。
+- 反证输出（贴后已还原）：临时加 `_probe-leaf.mjs`（经登记表转出）与 `_probe-forward.mjs`（`export … from ../services/runtimes.mjs`）后 —— `✗ [S2.1] … OS-195b：协议引登记表 1／协议跨层转供 1／登记表持有者 2（…, src/protocol/_probe-leaf.mjs） — 违规：…_probe-leaf.mjs:2 -> capabilityImplementations.mjs：协议层不许经实现登记表取能力；…_probe-forward.mjs:2 -> src/services/runtimes.mjs：src/protocol 不许从 services/modules/public 转供`，`验收门禁：25 过 / 3 挂 / 0 警`；删除两文件后恢复 `28 过 / 0 挂 / 0 警`。
+- 生产调用点（非仅测试）：`src/modules/chapters/handlers.mjs:30`（经 `prose.factHealth` 写前守卫）、`src/modules/prose/index.mjs:40-42`（注入 fact 句柄）、`src/modules/deduce/index.mjs:15-16` 与 `src/modules/deduce/turnProse.mjs:101-103,118-126`（对话通道句柄注入）、`src/modules/imagegen/index.mjs:14-23`（media.* 句柄装配）、`src/api/handlers/agent.mjs:89`（probeRuntimeKit/sidecarRunning 经句柄）、`src/host/daemon.mjs:565-566`（关停经能力解析）、`src/modules/agent-runtime/embedding-server.mjs:42`（直接 import 声明依赖）、`src/host/mcp.mjs:542`（分析经 resolveCapability）。对外端点/MCP 名/错误码/落盘格式未改；既有测试断言未删未放宽，仅增加句柄注入与等价能力面断言。
+
+LIMITATIONS: 无
+```

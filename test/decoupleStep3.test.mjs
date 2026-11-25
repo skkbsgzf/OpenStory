@@ -31,6 +31,14 @@ const enrich = factCapability['fact.enrich']
 import { projectMeta } from '../src/modules/storage/index.mjs'
 import { projectImport } from '../src/modules/library/index.mjs'
 import * as deduceEngine from '../src/modules/deduce/engine/index.mjs'
+import { setFactHandles } from '../src/modules/deduce/engine/factPort.mjs'
+
+// OS-195b：直调引擎端子不经 activate，显式注入上面已 import 的同一份 fact 能力面句柄。
+setFactHandles({
+  store: factCapability['fact.store'],
+  pack: factCapability['fact.pack'],
+  domain: factCapability['fact.domain']
+})
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 

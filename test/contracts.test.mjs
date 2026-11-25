@@ -25,13 +25,15 @@ import {
 import {
   createRootAllowlist,
   defaultPreferencesPath,
-  historyBackupPath,
   loadLibraries,
-  mapWriteErrorCode,
   parseArgs,
   resolveInsideRoot,
   startDaemon
 } from '../src/host/daemon.mjs'
+import { proseCapability } from '../src/modules/prose/index.mjs'
+
+// OS-195b：正文原语从 prose.write 能力面取，宿主不再转供实现登记表。
+const { historyBackupPath, mapWriteErrorCode } = proseCapability['prose.write']
 
 const FACT_ENTRIES = [
   {

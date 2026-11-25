@@ -11,7 +11,8 @@
  */
 import { API_ERROR_CODES } from '../../protocol/apiErrors.mjs'
 import { configTextBlock, configAgentBlock, loadConfigV2, text } from './config.mjs'
-import { loadRuntimeKits, probeRuntimeKit, ensureSidecar } from '../../protocol/runtimeShelf.mjs'
+import { loadRuntimeKitFacts } from '../../protocol/shelfManifests.mjs'
+import { probeRuntimeKit, ensureSidecar } from './runtimeSidecar.mjs'
 import { resolveDshRun } from './dsh-bridge.mjs'
 import { runCliChat } from './cli-bridge.mjs'
 import { runDshStdio } from './dsh-cli.mjs'
@@ -54,7 +55,7 @@ export async function resolveChatUpstream(config, context) {
   const textBlock = configTextBlock(config)
   const activeKitId = text(textBlock.runtime).trim()
   if (!activeKitId) return piUpstream(config)
-  const { kits } = loadRuntimeKits(context.runtimesDirs)
+  const { kits } = loadRuntimeKitFacts(context.runtimesDirs)
   const kit = kits.find((item) => item.id === activeKitId)
   if (!kit) return fallbackToPi(config, `运行时套件 ${activeKitId} 不在货架上了`)
   const headers = kit.apiKey ? { authorization: `Bearer ${kit.apiKey}` } : {}

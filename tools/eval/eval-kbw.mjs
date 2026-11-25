@@ -4,7 +4,7 @@
  * 指标：
  *   主指标 KBWPR ＝ 增强臂达标任务数 / 6（达标 = G 全过 且 F ≥ 0.6 且 S ≥ 0.5），目标 ≥ 5/6
  *   佐证 ΔF ＝ F̄(增强) − F̄(基线)，目标 ≥ +0.25
- * 评分：style-check.runStyleCheck（规则可判、可复算）；守卫 G＝产出对语料 12 字逐字 shingle 查重（≥2 处命中即泄漏）。
+ * 评分：text/lint.runStyleCheck（规则可判、可复算）；守卫 G＝产出对语料 12 字逐字 shingle 查重（≥2 处命中即泄漏）。
  *
  * 用法：
  *   node tools/eval/eval-kbw.mjs                # 全量跑（双臂×6）
@@ -16,7 +16,7 @@ import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { randomUUID } from 'node:crypto'
 import { buildAugmentedPrompt, routeQuery, resolveCollections } from '../../src/modules/knowledge/knowledgeRouter.mjs'
-import { fingerprintHint, runStyleCheck } from '../../src/services/style-check.mjs'
+import { fingerprintHint, runStyleCheck } from '../../src/modules/text/lint.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const ROOT = join(HERE, '..', '..')

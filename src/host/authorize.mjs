@@ -12,15 +12,12 @@
 import { API_ERROR_CODES, normalizeLibraries } from '../api/contracts.mjs'
 import { namingEntry } from '../protocol/naming.mjs'
 import { text, METADATA_DIR, canonicalRoot, resolveInsideRoot } from '../protocol/rootPath.mjs'
-import { createCapabilityResolver } from '../protocol/capabilityResolver.mjs'
 import { CAPABILITY_SNAPSHOT } from '../protocol/modules.mjs'
-import { MODULE_IMPLEMENTATIONS } from '../protocol/capabilityImplementations.mjs'
+import { capabilityResolver } from './capabilityBindings.mjs'
 
 function libraryListCapability() {
-  return createCapabilityResolver({
-    snapshot: CAPABILITY_SNAPSHOT,
-    implementations: { storage: MODULE_IMPLEMENTATIONS.storage }
-  }).resolve('library.list')
+  // OS-195b：宿主只经能力解析取句柄，不在模块顶层持有实现登记表。
+  return capabilityResolver(CAPABILITY_SNAPSHOT).resolve('library.list')
 }
 
 export { text, METADATA_DIR, canonicalRoot, resolveInsideRoot }

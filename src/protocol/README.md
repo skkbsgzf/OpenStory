@@ -19,7 +19,6 @@
 
 | 文件 | 一句话 |
 |---|---|
-| `index.mjs` | `host-api@2` 七命名空间的唯一对外入口，冻结形状与错误信封的对外门面。 |
 | `contractHelpers.mjs` | 契约表共用的请求/响应形状与校验纯函数，所有端点说同一种语言。 |
 | `apiErrors.mjs` | `API_ERROR_CODES` 错误码词表，前端与 MCP 靠它稳定识别 404/409/503。 |
 | `httpText.mjs` | HTTP 文本/JSON 响应的纯编码约定，契约壳与各域共用。 |
@@ -55,13 +54,10 @@
 | `dependencyGraph.mjs` | 套件依赖闭包，装载前解析依赖而不在执行时猜。 |
 | `plugins.mjs` | 插件/货架只读聚合与来源投影，插件系统自身不能被插件管理。 |
 | `versionGate.mjs` | 宿主版本闸，跨版本兼容性由底座统一判定。 |
-| `shelfManifests.mjs` | 五类货架投影成同一份 `module@2` 清单，能力图里一等公民。 |
-| `runtimeShelf.mjs` | 运行时套件的受控命令描述解析，命令执行只在 agent.runtime 内。 |
+| `shelfManifests.mjs` | 五类货架投影成同一份 `module@2` 清单；`loadRuntimeKitFacts` 是 runtime kit 清单的底座只读口，sidecar 生命周期不在本层。 |
 | `slots.mjs` | slot 注册表，页面嵌入点只有一处声明。 |
 | `naming.mjs` | 命名单一真源取表口（`public/views/registry.mjs` 只读 re-export），四层同名。 |
 | `libraryUpgrade.mjs` | 旧库一次性升级（I/O 例外：备份/迁移/退役留档/回滚），旧名只允许在这里出现。 |
-| `embeddingBackend.mjs` | embedding 后端配置的只读解析，知识库与运行时共用。 |
-| `upstream.mjs` | 上游模型通道的底座约定（经能力句柄转出，不落盘、不复制实现），跨运行时共用同一份解析口径。 |
 
 ### 与工作台无关的格式/路径纯函数（OS-195 由模块下沉，OS-195a 保留在底座的两件）
 
@@ -70,7 +66,6 @@
 | `worldbookContract.mjs` | 世界书条目 md 文件格式（worldbook-file@2）的纯解析/序列化，导入与世界书共用同一判定。 |
 | `deduceRules.mjs` | 确定性推演规则包的只读装载与校验（只读读盘），规则是数据而非工作台内部。 |
 | `chapterNumber.mjs` | 章节号解析纯函数（OS-157 从 textUtil 上移），全仓唯一口径。 |
-| `factGuard.mjs` | FACT-FIRST 上下文只读装配与直读审计（只读），默认拒绝、点名放行。 |
 
 ## 登记在册的 I/O 例外
 
@@ -91,14 +86,21 @@
 | `shelfManifests.mjs` | 只读 | 货架资源清单只读投影 |
 | `versionGate.mjs` | 只读 | 宿主版本标记只读判定 |
 | `deduceRules.mjs` | 只读 | 推演规则包只读装载 |
-| `factGuard.mjs` | 只读 | FACT-FIRST 只读审计 |
 
 > 任何协议文件都不许调用 `fetch`／`spawn`，也不许 import `node:child_process`／`node:http`／
 > `node:net`；本目录当前零命中。网络与子进程只许留在 `agent-runtime`／`knowledge` 模块实现里。
 
 ## 边界纪律
 
-- 插件只准经契约入口消费底座；模块只准 `node:`／`src/protocol/**`／本模块目录／已声明套件资源。
+- 插件只准经契约入口消费底座；模块只准 `node:` 内置／`package.json` 的 `dependencies` 声明的包／
+  `src/protocol/**`／本模块目录／已声明套件资源。门禁显式读 `package.json`，不写包名白名单；
+  `@xenova/transformers` 由 `agent-runtime/embedding-server.mjs` 直接 import，不再经协议叶子绕行。
+- OS-195b 三条新断言（S2.1 实测）：`src/protocol/**` 里 import 实现登记表＝0；`src/protocol/**`
+  从 `src/services/**`／`src/modules/**`／`public/**` 的 `export … from`＝0；生产源码
+  `src/**` 里模块顶层持有 `KERNEL_CAPABILITIES` 的只许登记表自身。
+- FACT-FIRST 写前守卫归 `src/modules/prose/factGuard.mjs`（`prose.write` 的一部分），读事实经
+  `fact.store`／`fact.pack` 句柄；运行时 kit 的 sidecar 生命周期与探活归 `src/modules/agent-runtime/`，
+  底座服务 `src/services/runtimes.mjs` 只留清单装载；`host-api@2` 第二套入口已退役，身份常量只在 `src/kernel/`。
 - `src/api`、`src/host`、`src/services` 不得静态 import 工作台内部实现；唯一放行的跨目录 import
   是「宿主 → 宿主组合面」（`src/modules/agentbar/`、`src/modules/library/` 两个目录）。
 - 宿主要用工作台能力（习惯 lint、提示词片段、世界书索引、KB 探活）只经 `activate()` 贡献的钩子，

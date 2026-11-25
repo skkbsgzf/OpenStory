@@ -6,7 +6,6 @@
  * 宿主工具经 context.host 注入；本文件只 import node:/protocol。
  */
 import { listDrafts, loadDraft } from '../../protocol/libState.mjs'
-import { factHealth } from '../../protocol/factGuard.mjs'
 
 export function createHandlers({ host, prose }) {
   const { apiErrors, sendError, sendJson, text, authorizeRoot, suiteValue } = host
@@ -28,7 +27,7 @@ export function createHandlers({ host, prose }) {
     if (!written.ok) return sendError(res, written.code, written.message, written.details)
     // FACT-FIRST 规则 5：正文写入**不**隐式触发事实链重建（重建要跑模型、要花钱），
     // 但必须如实告诉调用方「这本书的事实链已落后于正文」，由 UI 决定提示还是自动重跑。
-    const health = await factHealth(authorized.root).catch(() => null)
+    const health = await prose.factHealth(authorized.root).catch(() => null)
     return sendJson(res, 200, {
       ok: true,
       chars: written.chars,

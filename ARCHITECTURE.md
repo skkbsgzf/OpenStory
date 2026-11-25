@@ -53,14 +53,14 @@
 <!-- arch-stats:start -->
 | 分工 | 范围 | 文件数 | 行数 |
 |---|---|---:|---:|
-| 底座 | `src/host/`＋`src/kernel/` | 22 | 2,916 |
-| 契约 | `src/api/` | 17 | 3,685 |
-| 协议 | `src/protocol/` | 37 | 5,976 |
-| 内核件（class: kernel，7） | `src/modules/agent-runtime/`＋`src/modules/deduce/`＋`src/modules/fact/`＋`src/modules/media/`＋`src/modules/prose/`＋`src/modules/storage/`＋`src/modules/text/` | 57 | 10,736 |
-| 工作台（class: workbench，12） | `src/modules/analysis/`＋`src/modules/artifacts/`＋`src/modules/chapters/`＋`src/modules/exchange/`＋`src/modules/habits/`＋`src/modules/imagegen/`＋`src/modules/knowledge/`＋`src/modules/log/`＋`src/modules/roleplay/`＋`src/modules/script/`＋`src/modules/storysource/`＋`src/modules/worldbook/` | 30 | 3,536 |
+| 底座 | `src/host/`＋`src/kernel/` | 22 | 2,920 |
+| 契约 | `src/api/` | 17 | 3,684 |
+| 协议 | `src/protocol/` | 32 | 5,446 |
+| 内核件（class: kernel，7） | `src/modules/agent-runtime/`＋`src/modules/deduce/`＋`src/modules/fact/`＋`src/modules/media/`＋`src/modules/prose/`＋`src/modules/storage/`＋`src/modules/text/` | 59 | 11,205 |
+| 工作台（class: workbench，12） | `src/modules/analysis/`＋`src/modules/artifacts/`＋`src/modules/chapters/`＋`src/modules/exchange/`＋`src/modules/habits/`＋`src/modules/imagegen/`＋`src/modules/knowledge/`＋`src/modules/log/`＋`src/modules/roleplay/`＋`src/modules/script/`＋`src/modules/storysource/`＋`src/modules/worldbook/` | 30 | 3,556 |
 | 宿主组合面（恒启） | `src/modules/agentbar/`＋`src/modules/library/` | 5 | 1,172 |
 | 套件模块（class: suite） | `src/modules/` | 0 | 0 |
-| 服务 | `src/services/` | 7 | 1,868 |
+| 服务 | `src/services/` | 7 | 1,737 |
 | 套件资源 | `suites/`＋`styles/`＋`runtimes/`＋`genres/`＋`skills/` | 58 | 2,785 |
 | 设计令牌 | `design-system/` | 3 | 133 |
 | 前端 | `public/` | 30 | 20,825 |
@@ -170,14 +170,14 @@ kernel 能力声明：agent.runtime@1 / deduce.engine@1 / fact.store@3 / fact.pa
 
 协议层是宿主与模块之间的稳定消费面，不是业务实现的复制区。
 
-- `index.mjs` 保持 `host-api@2` 的 fact/prose/changelog/jobs/events/plugins/guard 七命名空间；
-  删成员、改签名或改语义才升主版本，并同步 `test/hostApi.test.mjs` 与 `src/protocol/README.md`。
+- `capabilityImplementations.mjs` 是唯一静态实现登记表；`host-api@2` 第二套命名空间入口已在
+  OS-195b 退役，键清单与「转出不换实现」断言迁到 `test/hostApi.test.mjs` 的能力面快照。
 - 文件协议包括 chapters/chapterWrite/changelog/libState/hostWrite/libraryManifest/libraryUpgrade。
 - 治理协议包括 modules/capabilityGraph/capabilityResolver/capabilityImplementations/moduleActivation/
   capabilityBindings/dependencyGraph/versionGate/plugins/naming。
-- 兼容转供叶包括 factStore/factDomain/chapters/chapterWrite/text/media/agentRuntime/
-  worldbookContract/capabilityImplementations，以及 host/courtyard、host/capabilityBindings。
-  这些叶子只允许 re-export 或显式绑定；S2.1 会比较实现体，拒绝复制。
+- OS-195b 后协议层零转供叶：FACT-FIRST 守卫归 `src/modules/prose/`，运行时 sidecar 归
+  `src/modules/agent-runtime/`，裸包名依赖由 `package.json` 声明并在模块内直接 import；
+  `shelfManifests.mjs` 只提供货架清单的底座只读口。S2.1 比较实现体，拒绝复制。
 - `naming.mjs` 当前仍从 `public/views/registry.mjs` re-export。它是迁移态，不构成第二真源；
   词表最终归属由 ADR 0002 的 D 批裁定，当前不提前宣称已完成迁移。
 

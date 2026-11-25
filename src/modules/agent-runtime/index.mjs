@@ -4,6 +4,7 @@ import * as cli from './cli-bridge.mjs'
 import * as bridge from './dsh-bridge.mjs'
 import * as upstream from './chatUpstream.mjs'
 import * as embedding from './embeddingPaths.mjs'
+import * as sidecar from './runtimeSidecar.mjs'
 import { maskApiKey } from './credentials.mjs'
 
 export const agentRuntimeCapability = Object.freeze({
@@ -45,6 +46,13 @@ export const agentRuntimeCapability = Object.freeze({
     resolveChatUpstream: upstream.resolveChatUpstream,
     chatCompleteViaUpstream: upstream.chatCompleteViaUpstream,
     resolveUpstreamSafe: upstream.resolveUpstreamSafe,
+    // OS-195b：运行时 kit 的 sidecar 生命周期与探活归位内核件，handler 经句柄取。
+    ensureSidecar: sidecar.ensureSidecar,
+    sidecarState: sidecar.sidecarState,
+    sidecarRunning: sidecar.sidecarRunning,
+    stopAllSidecars: sidecar.stopAllSidecars,
+    probeRuntimeKit: sidecar.probeRuntimeKit,
+    resetProbeCache: sidecar.resetProbeCache,
     resolveEmbeddingPaths: embedding.resolveEmbeddingPaths,
     resolveRepoRoot: embedding.resolveRepoRoot
   })

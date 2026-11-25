@@ -21,7 +21,10 @@ import { TAB_REGISTRY } from '../public/views/registry.mjs'
 import { HOST_HANDLERS } from '../src/api/registry.mjs'
 import { allHandlers } from '../src/host/handlerTable.mjs'
 import { MODULE_MANIFESTS, moduleOfEndpoint, validateModuleManifest } from '../src/protocol/modules.mjs'
-import { auditCapabilityRoutes, auditTransferDuplication } from '../tools/acceptance/capabilityBoundaries.mjs'
+import {
+  auditCapabilityRoutes, auditTransferDuplication,
+  auditProtocolRegistryImports, auditProtocolForwards, auditRegistryHolders
+} from '../tools/acceptance/capabilityBoundaries.mjs'
 
 const REPO = join(dirname(fileURLToPath(import.meta.url)), '..')
 const appJs = readFileSync(join(REPO, 'public/app.js'), 'utf-8')
@@ -63,7 +66,10 @@ test('C6 能力归属：kernel 零端点/UI，workbench 有 requires/slots，能
   }
 
   const routeFixtures = [
-    { rel: 'src/modules/prose/index.mjs', src: "import 'node:fs'\nimport '../../protocol/index.mjs'\nimport './write.mjs'" },
+    { rel: 'src/modules/prose/index.mjs', src: "import 'node:fs'\nimport '../../protocol/authorize.mjs'\nimport './write.mjs'" },
+    // OS-195b：package.json dependencies 声明的包放行，未声明的裸包名仍报红（不写白名单）。
+    { rel: 'src/modules/prose/declared.mjs', src: "import '@xenova/transformers'" },
+    { rel: 'src/modules/prose/undeclared.mjs', src: "import 'left-pad'" },
     { rel: 'src/modules/prose/bad.mjs', src: "import '../fact/index.mjs'" },
     { rel: 'src/api/handlers/bad.mjs', src: "import '../../modules/prose/index.mjs'" },
     // OS-195：协议转供叶不再放行——新口径直接数静态 import，这条必须报红。
@@ -72,7 +78,8 @@ test('C6 能力归属：kernel 零端点/UI，workbench 有 requires/slots，能
   assert.deepEqual(auditCapabilityRoutes(routeFixtures).map((item) => `${item.from} -> ${item.to}`), [
     'src/modules/prose/bad.mjs -> src/modules/fact/index.mjs',
     'src/api/handlers/bad.mjs -> src/modules/prose/index.mjs',
-    'src/protocol/worldbookContract.mjs -> src/modules/worldbook/worldbookFileContract.mjs'
+    'src/protocol/worldbookContract.mjs -> src/modules/worldbook/worldbookFileContract.mjs',
+    'src/modules/prose/undeclared.mjs -> left-pad'
   ], '本模块/协议放行，跨模块、API 直连与协议转供叶必须报错')
 
   const copiedBody = `\n  const values = input.map((value) => value * 2).filter((value) => value > 10)\n  return { values, total: values.reduce((sum, value) => sum + value, 0) }\n`
@@ -158,4 +165,23 @@ test('d) 视图归属：模块页签渲染本体不在 app.js（宿主保留须�
   // 白名单本身不许腐化：登记的渲染名必须在注册表里真实使用
   const used = new Set(TAB_REGISTRY.map((entry) => entry.render))
   for (const name of Object.keys(HOST_KEPT_RENDERERS)) assert.ok(used.has(name), `宿主白名单登记了不存在的渲染名 ${name}`)
+})
+
+test('OS-195b 三条边界断言：协议不引登记表、不跨层转供、登记表持有者唯一', () => {
+  const fixtures = [
+    { rel: 'src/protocol/leaf.mjs', src: "import { KERNEL_CAPABILITIES } from './capabilityImplementations.mjs'\nexport const x = KERNEL_CAPABILITIES.factStore" },
+    { rel: 'src/protocol/forward.mjs', src: "export { loadRuntimeKits } from '../services/runtimes.mjs'" },
+    { rel: 'src/host/holder.mjs', src: "import { KERNEL_CAPABILITIES } from '../protocol/capabilityImplementations.mjs'\nexport const x = KERNEL_CAPABILITIES.factStore" },
+    { rel: 'src/protocol/capabilityImplementations.mjs', src: 'export const KERNEL_CAPABILITIES = Object.freeze({})' }
+  ]
+  assert.equal(auditProtocolRegistryImports(fixtures).count, 1)
+  assert.equal(auditProtocolForwards(fixtures).count, 1)
+  assert.deepEqual(auditRegistryHolders(fixtures).holders, [
+    'src/protocol/leaf.mjs', 'src/host/holder.mjs', 'src/protocol/capabilityImplementations.mjs'
+  ])
+  assert.equal(auditRegistryHolders(fixtures).violations.length, 2)
+  // 正常 import（非 export from）不算转供：shelfManifests 读货架清单仍然合法。
+  assert.equal(auditProtocolForwards([
+    { rel: 'src/protocol/shelfManifests.mjs', src: "import { loadRuntimeKits } from '../services/runtimes.mjs'" }
+  ]).count, 0)
 })

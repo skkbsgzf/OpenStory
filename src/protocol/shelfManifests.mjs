@@ -17,6 +17,14 @@ import { loadGenres } from '../services/genres.mjs'
 import { loadRuntimeKits } from '../services/runtimes.mjs'
 
 const text = (value) => String(value ?? '')
+
+/**
+ * OS-195b：底座货架的原始 runtime kit 清单——agent.runtime 内核经本底座契约取清单，
+ * 不直引 services。只做只读转发，sidecar 生命周期与探活已归 agent.runtime 自己。
+ */
+export function loadRuntimeKitFacts(dirs = []) {
+  return loadRuntimeKits(dirs)
+}
 /** frontmatter/JSON 里允许写 1 或 1.2；投影成 module@2 时补成三段，不丢弃货架条目。 */
 function version3(value, fallback = '0.1.0') {
   const raw = text(value).trim()

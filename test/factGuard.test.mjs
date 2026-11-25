@@ -6,6 +6,7 @@
  *   ② 事实链为空时必须降级读正文，且 degraded=true（不许假装有 fact）；
  *   ③ 想绕过闸门直接读正文，必须给 reason（否则拒绝）。
  *
+ * OS-195b：断言走 prose.write 能力面，事实只读经 fact.store/fact.pack 句柄注入。
  * 跑法：node --test test/factGuard.test.mjs
  */
 import assert from 'node:assert/strict'
@@ -13,7 +14,16 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { CONTEXT_SOURCE, allowProseDirectRead, factHealth, loadFactContext, loadFactDerived, resetProseAudit } from '../src/protocol/factGuard.mjs'
+import { factCapability } from '../src/modules/fact/index.mjs'
+import { proseCapability } from '../src/modules/prose/index.mjs'
+
+// OS-195b：守卫归 prose.write；事实只读经 fact.store/fact.pack 句柄注入，断言等价迁到能力面。
+const guard = proseCapability['prose.write']
+guard.setFactGuardHandles({
+  store: factCapability['fact.store'],
+  pack: factCapability['fact.pack']
+})
+const { CONTEXT_SOURCE, allowProseDirectRead, factHealth, loadFactContext, loadFactDerived, resetProseAudit, buildFactPackView } = guard
 
 /** 造一个最小库：正文两章 + 可选的事实链。 */
 function makeLibrary({ withFact = false } = {}) {
@@ -153,4 +163,10 @@ test('派生层缺失时返回 ok=false 并说明原因', async () => {
   } finally {
     rmSync(root, { recursive: true, force: true })
   }
+})
+
+test('守卫的 fact.pack 口走同一实现（转出不换实现）', () => {
+  const entries = [{ id: 'e1', layer: 'plot', name: '事件', validity: { from: 1, to: 1 }, events: [] }]
+  const query = { span: { from: 1, to: 1 } }
+  assert.deepEqual(buildFactPackView(entries, query), factCapability['fact.pack'].buildFactPack(entries, query))
 })

@@ -1,5 +1,5 @@
 /**
- * 事实链优先守卫（FACT-FIRST.md 规则 1/2/3 的代码级兑现）。
+ * 事实链优先守卫（FACT-FIRST.md 规则 1/2/3 的代码级兑现）——OS-195b 归位 prose.write。
  *
  * 声明在文档里只是约定，这里是「谁能读正文喂模型」的唯一闸门：
  *   ① 想拿上下文 → 先问 loadFactContext：事实链有就给事实，没有才降级读正文，并如实标注。
@@ -8,18 +8,35 @@
  * 设计取舍：不做「硬失败」。作者急着写作时，事实链没建好也得能写——但降级必须留痕，
  * 否则「事实链是一级公民」就成了一句空话。所以这里一律返回 { source, degraded, notes }。
  *
- * 依赖：只依赖内核 fact 存储协议（`src/kernel/index.mjs` 的 factStore 出口，OS-157 起
- * 内核公开面直取，与 /api/entries 同源）＋ Node fs。
+ * 依赖（OS-195b）：事实只读一律经 `fact.store`／`fact.pack` 句柄，句柄由
+ * `prose.activate(context)` 装载期注入；本文件不静态 import 任何 fact 实现，也不直接读
+ * 事实文件。目录名从命名真源表取（storysource.dir），正文文件读取仍归 prose 自己。
+ * 句柄没注入时明确报错——不许回落到第二套静态入口。
  */
 import { existsSync, readdirSync, statSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { KERNEL_CAPABILITIES as K } from './capabilityImplementations.mjs' // OS-193 K1：唯一静态入口
-import { namingEntry } from './naming.mjs'
+import { namingEntry } from '../../protocol/naming.mjs'
 
-const factStore = K.factStore
+let handles = null
+
+/** 装载期注入：fact.store / fact.pack 句柄（只经能力句柄，不静态 import 实现）。 */
+export function setFactGuardHandles({ store, pack } = {}) {
+  handles = Object.freeze({ store, pack })
+}
+
+function factStore() {
+  if (!handles?.store) throw new Error('factGuard 未注入 fact.store 句柄（prose.activate 必须先执行）')
+  return handles.store
+}
+
+function factPack() {
+  if (!handles?.pack) throw new Error('factGuard 未注入 fact.pack 句柄（prose.activate 必须先执行）')
+  return handles.pack
+}
 
 const METADATA_DIR = namingEntry('libraryStorage').metadataDir
+const FACT_DIR = namingEntry('storysource').dir
 
 /** 一次读取的结果来源标记——调用方据此决定要不要提示作者「正在用降级数据」。 */
 export const CONTEXT_SOURCE = Object.freeze({
@@ -70,7 +87,7 @@ export async function factHealth(root) {
   let entries = []
   let revision = null
   try {
-    const store = factStore.createFactFileStore({ root })
+    const store = factStore().createFactFileStore({ root })
     const listed = await store.list({})
     entries = listed.entries ?? []
     revision = Number.isSafeInteger(listed.revision) ? listed.revision : null
@@ -99,7 +116,7 @@ export async function factHealth(root) {
         return mtime > newest ? mtime : newest
       } catch { return newest }
     }, 0)
-    for (const candidate of [factStore.FACT_DIR_NAME, `${METADATA_DIR}/extractions`, `${METADATA_DIR}/deduce`]) {
+    for (const candidate of [FACT_DIR, `${METADATA_DIR}/extractions`, `${METADATA_DIR}/deduce`]) {
       const dir = join(root, candidate)
       if (!existsSync(dir)) continue
       const newestFact = readdirSync(dir).reduce((newest, name) => {
@@ -143,7 +160,7 @@ export async function loadFactContext({ root, chapterNo = null, limit = 400 } = 
   const notes = []
   let entries = []
   try {
-    const store = factStore.createFactFileStore({ root })
+    const store = factStore().createFactFileStore({ root })
     const listed = await store.list({})
     entries = listed.entries ?? []
     for (const warning of listed.warnings ?? []) notes.push(text(warning))
@@ -224,9 +241,9 @@ export async function loadFactDerived({ root, bookId } = {}) {
   const notes = []
   try {
     // 派生层走 readFactWiki 单口：它自己找兄弟 `<id>.wiki.json`，缺了回落信封内嵌。
-    // 不在这里拼路径——目录名归 factFileStore 的 FACT_DIR_NAME 管（当前是「故事源」），
+    // 不在这里拼路径——目录名归命名真源的 storysource.dir 管（当前是「故事源」），
     // 早先硬编码的历史提取目录是错的，在真库上必然 ENOENT。
-    const { wiki } = factStore.readFactWiki({ root, id: bookId })
+    const { wiki } = factStore().readFactWiki({ root, id: bookId })
     if (!wiki || !Object.keys(wiki).length) {
       return { ok: false, wiki: null, notes: ['派生层为空（先跑 enrich）'] }
     }
@@ -234,6 +251,11 @@ export async function loadFactDerived({ root, bookId } = {}) {
   } catch (error) {
     return { ok: false, wiki: null, notes: [`派生层读取失败：${text(error?.message ?? error)}`] }
   }
+}
+
+/** fact.pack 句柄的只读投影口：守卫消费 fact 包不另起一份实现。 */
+export function buildFactPackView(entries, query = {}, options = {}) {
+  return factPack().buildFactPack(entries, query, options)
 }
 
 /** 最近的直接读正文记录（诊断用）。 */

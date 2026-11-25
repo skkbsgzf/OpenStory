@@ -9,7 +9,9 @@
   "entry": "index.mjs",
   "requires": [
     { "id": "base.write", "min": 1 },
-    { "id": "base.naming", "min": 1 }
+    { "id": "base.naming", "min": 1 },
+    { "id": "fact.store", "min": 3 },
+    { "id": "fact.pack", "min": 1 }
   ],
   "capabilities": [
     { "id": "prose.write", "version": 1, "golden": "chapter-write-v1" }

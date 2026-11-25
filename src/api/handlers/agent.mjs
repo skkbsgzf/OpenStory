@@ -33,7 +33,6 @@ import {
   updateCard
 } from '../../modules/agentbar/agentStore.mjs'
 import { systemPromptFor } from '../../services/systemPrompt.mjs'
-import { probeRuntimeKit, sidecarRunning } from '../../services/runtimes.mjs'
 import { shelfDomainData } from '../../protocol/shelfManifests.mjs'
 import { projectLegacyFrame } from '../../protocol/agentEvents.mjs'
 import { habitLint } from '../../host/moduleHooks.mjs'
@@ -87,7 +86,7 @@ export async function agentRuntimesGet(ctx) {
   const { res, context } = ctx
   const runtime = await agentRuntimeOrError(res)
   if (!runtime) return null
-  const { loadConfigV2, detectDshAny, probeDshStack } = runtime
+  const { loadConfigV2, detectDshAny, probeDshStack, probeRuntimeKit, sidecarRunning } = runtime
   const { config } = await loadConfigV2(context.agentConfigPath)
   const textBlock = config.text
   const kits = shelfDomainData({ runtimesDirs: context.runtimesDirs }, 'runtime').items

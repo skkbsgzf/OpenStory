@@ -31,6 +31,7 @@ import { pathToFileURL } from 'node:url'
 import { resolve } from 'node:path'
 import { isModuleEnabled } from '../protocol/modules.mjs'
 import { namingEntry } from '../protocol/naming.mjs'
+import { resolveCapability } from './capabilityBindings.mjs'
 
 const require = createRequire(import.meta.url)
 const PORT = Number(process.env.OPENSTORY_PORT) || 8807
@@ -537,8 +538,10 @@ const tools = [
       if (moduleRoot && !(await isModuleEnabled(moduleRoot, 'analysis'))) {
         throw Object.assign(new Error('「分析」模块已停用——在设置里重新启用后再调这个工具'), { code: 'MODULE_DISABLED' })
       }
-      const { KERNEL_CAPABILITIES } = await import('../protocol/capabilityImplementations.mjs')
-      const { analyzeChapter } = KERNEL_CAPABILITIES.textAnalyze
+      // OS-195b：宿主经能力解析取句柄，不在模块顶层持有实现登记表。
+      const resolved = await resolveCapability(moduleRoot ?? '', 'text.analyze', { min: 1 })
+      if (!resolved.ok) throw Object.assign(new Error(resolved.message), { code: resolved.code })
+      const { analyzeChapter } = resolved.capability
       const paragraphs = args.text.split(/\n+/u).map((block) => block.trim()).filter(Boolean)
       const result = analyzeChapter(args.text, { paragraphs })
       return { editorial: result.editorial, stats: result.stats, style: result.style, aiSmell: { score: result.aiSmell?.score, factors: result.aiSmell?.factors }, issues: result.issues, emotion: result.emotion, rhythm: result.rhythm }

@@ -44,27 +44,21 @@ import { canonicalRoot, createRootAllowlist, loadLibraries, resolveInsideRoot } 
 // OS-195a：Agent 存储是宿主组合面，宿主可直接 import；宿主钩子由 moduleHooks 统一取。
 import { defaultAgentConfigPath, defaultSessionsDir } from '../modules/agentbar/agentStore.mjs'
 import { builtinStylesDir, defaultUserStylesDir } from '../services/stylePacks.mjs'
-import { builtinRuntimesDir, defaultUserRuntimesDir, stopAllSidecars } from '../services/runtimes.mjs'
+import { builtinRuntimesDir, defaultUserRuntimesDir } from '../services/runtimes.mjs'
 import { builtinSuitesDir, defaultSuiteStatePath, defaultUserSuitesDir } from '../services/suites.mjs'
 import { builtinGenresDir, defaultUserGenresDir } from '../services/genres.mjs'
 import { builtinSkillsDir, defaultUserSkillsDir } from '../services/skills.mjs'
 import { isModuleDisabledFor, moduleDegradationFor, moduleManifest } from '../protocol/modules.mjs'
 import { ensureLibraryUpgraded } from '../protocol/libraryUpgrade.mjs'
+import {
+  resolveAgentRuntimeCapability, resolveFactCapability, resolveProseCapability
+} from './capabilityBindings.mjs'
 
 /* ---------- 测试/工具面的再出口（OS-140 垫片契约）：实现迁走了，符号从原处继续拿 ---------- */
 export { browseMemoryPath, defaultBrowseRoot } from './nativePicker.mjs'
 export { defaultPreferencesPath, loadLibraries, createRootAllowlist, resolveInsideRoot } from './authorize.mjs'
-// OS-195a：库内盘点经唯一静态入口 KERNEL_CAPABILITIES 转供（宿主不直引模块内部实现）。
-import { KERNEL_CAPABILITIES as KERNEL_HANDLES } from '../protocol/capabilityImplementations.mjs'
-export const { listArtifacts, listLibraryFiles } = KERNEL_HANDLES.storageInventory
-export const {
-  historyBackupPath,
-  mapWriteErrorCode,
-  moduleOfPath,
-  HISTORY_KEEP_DEFAULT,
-  pruneHistoryBackups,
-  resolveHistoryKeepPerFile
-} = KERNEL_HANDLES.proseWrite
+// OS-195b：宿主不再持有实现登记表；库内盘点与正文原语由模块能力面直接消费，
+// 宿主自己要用能力时一律经 resolve*Capability(root, …) 取句柄。
 // OS-195a：习惯 lint 由习惯模块贡献钩子，宿主只经 moduleHooks 取，不 import 模块实现。
 export { habitLint as lintHabits } from './moduleHooks.mjs'
 import { startupHooks } from './moduleHooks.mjs'
@@ -73,11 +67,17 @@ import { courtyardPath } from './courtyard.mjs'
 /** 测试钩子（OS-45）：把 systemPromptFor 暴露给单测，验「世界书只给链接不给全文」。
  *  OS-195 K4：句柄由 host 入口注入，systemPrompt 服务本体不持有实现登记表引用。 */
 export const __test = {
-  systemPromptFor: (root, libraries, genresDirs, skillsDirs, options = {}) => systemPromptFor(root, libraries, genresDirs, skillsDirs, {
-    ...options,
-    factStore: options.factStore ?? KERNEL_HANDLES.factStore,
-    prose: options.prose ?? KERNEL_HANDLES.proseWrite
-  })
+  systemPromptFor: async (root, libraries, genresDirs, skillsDirs, options = {}) => {
+    const [fact, prose] = await Promise.all([
+      options.factStore ? null : resolveFactCapability(root, 'fact.store'),
+      options.prose ? null : resolveProseCapability(root)
+    ])
+    return systemPromptFor(root, libraries, genresDirs, skillsDirs, {
+      ...options,
+      factStore: options.factStore ?? (fact?.ok ? fact.capability : undefined),
+      prose: options.prose ?? (prose?.ok ? prose.capability : undefined)
+    })
+  }
 }
 
 /** OS-140 布局归一：本文件从仓根迁到 src/host/——HERE＝本文件目录（src/host），
@@ -558,16 +558,20 @@ export function startDaemon({
         server,
         port: actualPort,
         host: bindHost,
-        close: () => new Promise((done) => {
+        close: async () => {
           if (kbHealthStop) kbHealthStop()
-          stopAllSidecars()
-          server.close(() => done())
+          // OS-195b：sidecar 停止经 agent.runtime 句柄，宿主不直引内核实现。
+          try {
+            const resolved = await resolveAgentRuntimeCapability('')
+            if (resolved.ok) resolved.capability.stopAllSidecars()
+          } catch { /* 关停不被能力解析失败卡住 */ }
           // 关停不等客户端把响应读完：本地 daemon 的「停」就是立刻停。
           // 没读走的大响应（如 350KB 的 app.js）会把 keep-alive 连接留在 busy 态，
-          // 光靠 server.close 会一直等——这里主动收掉空闲与在途连接。
+          // 光靠 server.close 会一直等——先收掉空闲与在途连接再等回调。
           server.closeIdleConnections?.()
           server.closeAllConnections?.()
-        })
+          await new Promise((done) => server.close(() => done()))
+        }
       })
     })
   })

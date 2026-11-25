@@ -16,9 +16,9 @@ import { validateRequest, validateResponse } from '../src/api/contracts.mjs'
 import {
   builtinRuntimesDir,
   loadRuntimeKits,
-  normalizeRuntimeKit,
-  sidecarRunning
+  normalizeRuntimeKit
 } from '../src/services/runtimes.mjs'
+import { sidecarRunning } from '../src/modules/agent-runtime/runtimeSidecar.mjs'
 import { startDaemon } from '../src/host/daemon.mjs'
 
 async function makeFixture() {

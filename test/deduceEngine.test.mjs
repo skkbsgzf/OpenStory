@@ -8,6 +8,15 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { deducePresent, deduceSettle, deduceStatePath, humanizeFateText, loadEntries } from '../src/modules/deduce/deduceEngine.mjs'
+import { setFactHandles } from '../src/modules/deduce/engine/factPort.mjs'
+import { factCapability } from '../src/modules/fact/index.mjs'
+
+// OS-195b：直调引擎端子不经 activate，显式注入同一份 fact 能力面句柄（无登记表兜底）。
+setFactHandles({
+  store: factCapability['fact.store'],
+  pack: factCapability['fact.pack'],
+  domain: factCapability['fact.domain']
+})
 
 const ENTRIES = [
   { schema: 'fact.data/v3', id: 'e1', layer: 'worldview', name: '雾港规则', definition: '雾起时渡口不开船。', status: 'adopted' },

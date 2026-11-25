@@ -29,7 +29,8 @@ import { NAMING_TABLE, TAB_REGISTRY, LOG_MODULES, computeTabDefs, viewScope } fr
 import { scanImportSpecs, auditPublicEdges } from './importScan.mjs'
 import {
   auditCapabilityRoutes, auditBaseBoundary, auditTransferDuplication, auditKernelDirectImports,
-  boundaryInventory, auditModuleShells, auditProtocolContractLayer, auditHostCompositionImports
+  boundaryInventory, auditModuleShells, auditProtocolContractLayer, auditHostCompositionImports,
+  auditProtocolRegistryImports, auditProtocolForwards, auditRegistryHolders
 } from './capabilityBoundaries.mjs'
 // OS-165/G5d：模块覆盖面与 test/moduleCoverage.test.mjs 共用一份口径（端点/页签归属与宿主白名单理由）。
 import { coverageReport } from './moduleCoverage.mjs'
@@ -232,10 +233,16 @@ const transferDuplicates = auditTransferDuplication(srcMjs)
 const moduleShells = auditModuleShells(srcMjs)
 const protocolAudit = auditProtocolContractLayer(srcMjs, readRepo('src/protocol/README.md'))
 const hostCompositionAudit = auditHostCompositionImports(srcMjs)
-const newBoundaryViolations = [...moduleShells, ...protocolAudit.violations, ...hostCompositionAudit.violations]
+// OS-195b 三条新断言（无白名单、不放宽旧断言）：
+//   ① protocol 里 import 登记表＝0 ② protocol 不从 services/modules/public 转供 ③ 登记表持有者只一个
+const protocolRegistryAudit = auditProtocolRegistryImports(srcMjs)
+const protocolForwardsAudit = auditProtocolForwards(srcMjs)
+const registryHoldersAudit = auditRegistryHolders(srcMjs)
+const boundary195b = [...protocolRegistryAudit.violations, ...protocolForwardsAudit.violations, ...registryHoldersAudit.violations]
+const newBoundaryViolations = [...moduleShells, ...protocolAudit.violations, ...hostCompositionAudit.violations, ...boundary195b]
 const routeEvidence = [...routeViolations, ...transferDuplicates, ...newBoundaryViolations]
   .map((item) => `${item.from}:${item.line} -> ${item.to}：${item.reason}`)
-check('S2.1', 'S2', `能力路由边界（${srcMjs.length} 个 src 源文件；外部→模块 ${boundary.counts.outsideModuleImports}（例外：实现登记表＋宿主组合面）；跨模块 ${boundary.counts.crossModuleImports}；底座→工作台 ${boundary.counts.apiHostServicesToWorkbench}；协议复制 ${transferDuplicates.length}；OS-195a 新断言：模块壳 ${moduleShells.length}／协议清单 ${protocolAudit.files} 文件（登记 ${protocolAudit.registered}，I/O 例外 ${protocolAudit.ioExceptions}）越界 ${protocolAudit.violations.length}／宿主组合面放行 ${hostCompositionAudit.allowed} 条越界 ${hostCompositionAudit.violations.length}）`,
+check('S2.1', 'S2', `能力路由边界（${srcMjs.length} 个 src 源文件；外部→模块 ${boundary.counts.outsideModuleImports}（例外：实现登记表＋宿主组合面）；跨模块 ${boundary.counts.crossModuleImports}；底座→工作台 ${boundary.counts.apiHostServicesToWorkbench}；协议复制 ${transferDuplicates.length}；OS-195a：模块壳 ${moduleShells.length}／协议清单 ${protocolAudit.files} 文件（登记 ${protocolAudit.registered}）越界 ${protocolAudit.violations.length}／宿主组合面放行 ${hostCompositionAudit.allowed}；OS-195b：协议引登记表 ${protocolRegistryAudit.count}／协议跨层转供 ${protocolForwardsAudit.count}／登记表持有者 ${registryHoldersAudit.count}（${registryHoldersAudit.holders.join(', ') || '无'}））`,
   routeViolations.length === 0 && transferDuplicates.length === 0 && newBoundaryViolations.length === 0,
   routeEvidence.slice(0, 6),
   routeEvidence.length ? `违规：${routeEvidence.slice(0, 4).join('; ')}` : 'R-a 唯一静态入口＋R-b 工作台内部只触及本模块；三新断言全绿；零转供叶、零实现复制')

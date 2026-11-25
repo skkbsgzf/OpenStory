@@ -10,8 +10,10 @@ import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { validateRequest, validateResponse } from '../src/api/contracts.mjs'
-import { listArtifacts } from '../src/host/daemon.mjs'
+import { storageCapability } from '../src/modules/storage/index.mjs'
 import { startDaemon } from '../src/host/daemon.mjs'
+
+const { listArtifacts } = storageCapability['storage.inventory']
 
 async function makeFixture() {
   const base = await mkdtemp(join(tmpdir(), 'openstory-os11-'))

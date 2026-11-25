@@ -3,14 +3,14 @@
  *
  * 用法：
  *   node tools/eval/write-sample.mjs --pack style-wangbuliao-baiyue --task "…" [--chars 3600] [--out docs/samples/xxx.md]
- * 产出：正文＋指纹逐项命中表＋知识引用清单。评分用 style-check；守卫对语料查重。
+ * 产出：正文＋指纹逐项命中表＋知识引用清单。评分用 text/lint；守卫对语料查重。
  */
 import { readFileSync, writeFileSync, mkdirSync, readdirSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { randomUUID } from 'node:crypto'
 import { buildAugmentedPrompt, routeQuery, resolveCollections } from '../../src/modules/knowledge/knowledgeRouter.mjs'
-import { fingerprintHint, runStyleCheck } from '../../src/services/style-check.mjs'
+import { fingerprintHint, runStyleCheck } from '../../src/modules/text/lint.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const ROOT = join(HERE, '..', '..')

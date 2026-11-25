@@ -10,7 +10,8 @@
   "requires": [
     { "id": "base.naming", "min": 1 },
     { "id": "fact.store", "min": 3 },
-    { "id": "fact.pack", "min": 1 }
+    { "id": "fact.pack", "min": 1 },
+    { "id": "agent.runtime", "min": 1 }
   ],
   "capabilities": [
     {

@@ -1,107 +1,104 @@
 /**
- * OS-142 Host API 入口护栏——src/protocol/index.mjs 的版本字面量、冻结与键清单快照。
+ * OS-142 Host API 入口护栏（OS-195b 接替）——`host-api@2` 第二套入口已退役，
+ * 断言等价迁到**能力面**：唯一静态登记表 `src/protocol/capabilityImplementations.mjs`
+ * 的键清单快照、冻结形状，以及「转出不换实现」的逐键同一性。
  *
  * 跑法：node --test test/hostApi.test.mjs（npm test 全量的一分子）
  *
- * 键清单快照的约定：index.mjs 增删任何命名空间成员，本文件的 SNAPSHOT 必须同步改——
- * 改快照这个动作本身就是「显式确认」；破坏性变更（删成员/改签名）还要升 HOST_API_VERSION
- * （现行 host-api@2，OS-155 因删除 fact.deduce 升版；见 src/protocol/README.md 版本约定）。
- *
- * 装载序说明：本文件先 import index.mjs（index→kernel/** 公开面方向）；
- * 反方向（库管理 fork 点先装）用子进程单独起一趟——node --test 每个文件各起一个进程，
- * 同进程内 ESM 模块表不能倒序重放；adapter 解散后环已断，这条冒烟仍钉死装配顺序
- * （与 test/decoupleStep2/Step3 的双向冒烟同一手法）。
+ * 快照约定：登记表增删任何具名句柄，本文件的 SNAPSHOT 必须同步改——改快照这个动作
+ * 本身就是「显式确认」；句柄改指向另一份实现（转出换实现）则被下面的 identity 断言钉死。
  */
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
+import { existsSync } from 'node:fs'
 import { join, resolve, dirname } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import {
-  HOST_API_VERSION,
-  fact,
-  prose,
-  changelog,
-  jobs,
-  events,
-  plugins,
-  guard
-} from '../src/protocol/index.mjs'
+  KERNEL_CAPABILITIES as K,
+  MODULE_IMPLEMENTATIONS
+} from '../src/protocol/capabilityImplementations.mjs'
+import { factCapability } from '../src/modules/fact/index.mjs'
+import { proseCapability } from '../src/modules/prose/index.mjs'
+import { storageCapability, projectMeta } from '../src/modules/storage/index.mjs'
+import { textCapability } from '../src/modules/text/index.mjs'
+import { agentRuntimeCapability } from '../src/modules/agent-runtime/index.mjs'
+import { mediaCapability } from '../src/modules/media/index.mjs'
+import { deduceCapabilities } from '../src/modules/deduce/deduceCapability.mjs'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 
-test('HOST_API_VERSION 是字面量 host-api@2', () => {
-  assert.equal(HOST_API_VERSION, 'host-api@2')
-  assert.equal(typeof HOST_API_VERSION, 'string')
+test('host-api@2 第二套入口已退役（协议层只留能力面，不再有命名空间门面）', () => {
+  assert.equal(existsSync(join(ROOT, 'src', 'protocol', 'index.mjs')), false)
 })
 
-const NAMESPACES = { fact, prose, changelog, jobs, events, plugins, guard }
+/** 登记表键清单快照（逐字对齐 capabilityImplementations.mjs 的 KERNEL_CAPABILITIES）。 */
+const SNAPSHOT = [
+  'agentRuntime', 'deduceEngine', 'factBooks', 'factDomain', 'factEngine', 'factEnrich',
+  'factPack', 'factStore', 'factWrite', 'mediaDescribe', 'mediaGenerate', 'projectMeta',
+  'proseWrite', 'storageInventory', 'storageRoots', 'storageScaffold', 'textAnalyze'
+]
 
-test('七个能力命名空间全部导出且为冻结对象', () => {
-  assert.deepEqual(Object.keys(NAMESPACES).sort(), ['changelog', 'events', 'fact', 'guard', 'jobs', 'plugins', 'prose'])
-  for (const [name, ns] of Object.entries(NAMESPACES)) {
-    assert.ok(ns && typeof ns === 'object', `${name} 应是对象`)
-    assert.equal(Object.isFrozen(ns), true, `${name} 应冻结（Object.freeze）——插件不许改写宿主能力面`)
+test('登记表键清单快照（增删句柄必须改本快照＝显式确认）', () => {
+  assert.deepEqual(Object.keys(K).sort(), SNAPSHOT)
+  assert.deepEqual(Object.keys(MODULE_IMPLEMENTATIONS).sort(),
+    ['agent-runtime', 'deduce', 'fact', 'media', 'prose', 'storage', 'text'])
+  assert.equal(Object.isFrozen(K), true)
+  assert.equal(Object.isFrozen(MODULE_IMPLEMENTATIONS), true)
+})
+
+/** 转出不换实现：每个具名句柄必须与模块能力面的原始对象引用相等。 */
+const IMPLEMENTATION_BINDINGS = Object.freeze({
+  factStore: factCapability['fact.store'],
+  factPack: factCapability['fact.pack'],
+  factEnrich: factCapability['fact.enrich'],
+  factEngine: factCapability['fact.engine'],
+  factBooks: factCapability['fact.books'],
+  factWrite: factCapability['fact.write'],
+  factDomain: factCapability['fact.domain'],
+  proseWrite: proseCapability['prose.write'],
+  storageRoots: storageCapability['storage.roots'],
+  storageScaffold: storageCapability['storage.scaffold'],
+  storageInventory: storageCapability['storage.inventory'],
+  projectMeta,
+  textAnalyze: textCapability['text.analyze'],
+  agentRuntime: agentRuntimeCapability['agent.runtime'],
+  mediaGenerate: mediaCapability['media.generate'],
+  mediaDescribe: mediaCapability['media.describe'],
+  deduceEngine: deduceCapabilities['deduce.engine']
+})
+
+test('转出不换实现：登记表每项指向模块能力面的同一对象', () => {
+  assert.deepEqual(Object.keys(IMPLEMENTATION_BINDINGS).sort(), SNAPSHOT)
+  for (const [name, implementation] of Object.entries(IMPLEMENTATION_BINDINGS)) {
+    assert.equal(K[name], implementation, `${name} 被换成另一份实现`)
+    assert.equal(Object.isFrozen(implementation), true, `${name} 实现面必须冻结`)
   }
 })
 
-/* 键清单快照（2026-11-23 OS-142 建档，键序为字母序；OS-155 删 fact.deduce、OS-157 删
-   fact.projectImport／fact.projectMeta 后 @2 在此定稿）。增删 index.mjs 的命名空间成员必须同步改这里。 */
-const SNAPSHOT = {
-  fact: ['enrich', 'factStore', 'fail', 'ok', 'writeFileAtomic'],
-  prose: ['HISTORY_KEEP_DEFAULT', 'chapterFileName', 'createChapter', 'deleteChapter', 'historyBackupPath', 'listChapters', 'mapWriteErrorCode', 'moduleOfPath', 'nextChapterNumber', 'parseChapterName', 'pruneHistoryBackups', 'renameChapter', 'resolveHistoryKeepPerFile', 'sanitizeChapterTitle', 'writeChapterWithBackup'],
-  changelog: ['LOG_DIR', 'contentHash', 'findRestoreCandidate', 'hasLog', 'logFilePath', 'logSummary', 'readChange', 'readLatestByFile', 'readLog', 'recordChange', 'safeModuleName', 'unifiedDiff'],
-  jobs: ['activeCount', 'cancelJob', 'clearSettled', 'getJob', 'listJobs', 'submitJob', 'subscribe'],
-  events: ['AGENT_EVENT_AGUI_KINDS', 'AGENT_EVENT_TYPES', 'AGENT_EVENT_TYPES_SSE', 'encodeForAgui', 'projectLegacyFrame'],
-  plugins: ['KIND_LABELS', 'PLUGIN_KINDS', 'listAllPlugins', 'listBlockedPlugins', 'minVersionGate', 'pluginDetail', 'pluginHealth', 'readAppVersion', 'resetAppVersionCache', 'resolveSuiteDependencies', 'satisfiesMinVersion', 'suiteAssetPath'],
-  guard: ['CONTEXT_SOURCE', 'PROSE_DIRECT_READS', 'allowProseDirectRead', 'factHealth', 'loadFactContext', 'loadFactDerived', 'resetProseAudit']
-}
-
-test('命名空间键清单快照（增删导出必须改本快照＝显式确认）', () => {
-  for (const [name, expected] of Object.entries(SNAPSHOT)) {
-    assert.deepEqual(
-      Object.keys(NAMESPACES[name]).sort(),
-      expected.sort(),
-      `${name} 键清单与快照不符——若是有意增删，请同步本快照与 src/protocol/README.md 能力清单；破坏性变更须升 host-api@2`
-    )
-  }
+test('模块实现表按 id 指向七个内核能力面（不再另立第二张表）', () => {
+  assert.equal(MODULE_IMPLEMENTATIONS.fact, factCapability)
+  assert.equal(MODULE_IMPLEMENTATIONS.prose, proseCapability)
+  assert.equal(MODULE_IMPLEMENTATIONS.storage, storageCapability)
+  assert.equal(MODULE_IMPLEMENTATIONS.text, textCapability)
+  assert.equal(MODULE_IMPLEMENTATIONS['agent-runtime'], agentRuntimeCapability)
+  assert.equal(MODULE_IMPLEMENTATIONS.media, mediaCapability)
+  assert.equal(MODULE_IMPLEMENTATIONS.deduce, deduceCapabilities)
 })
 
-test('快照覆盖全部命名空间（快照本身不许漏命名空间）', () => {
-  assert.deepEqual(Object.keys(SNAPSHOT).sort(), Object.keys(NAMESPACES).sort())
+test('冻结是真冻结：改写登记表成员静默失效（严格模式抛错）', () => {
+  assert.throws(() => { K.factStore = null }, TypeError)
+  assert.throws(() => { MODULE_IMPLEMENTATIONS.fact = null }, TypeError)
 })
 
-test('fact 命名空间保留 @2 消费形状，事实实现归 fact 内核件', async () => {
-  const kernel = await import('../src/kernel/index.mjs')
-  const { factCapability } = await import('../src/modules/fact/index.mjs')
-  assert.equal(fact.factStore, factCapability['fact.store'])
-  assert.equal(fact.enrich, factCapability['fact.enrich'])
-  assert.equal(fact.ok, kernel.ok)
-  assert.equal(fact.fail, kernel.fail)
-  assert.equal(fact.writeFileAtomic, kernel.writeFileAtomic)
-  for (const gone of ['factStore', 'enrich']) assert.equal(gone in kernel, false)
-  // OS-155/157：三组已退出 Host API，钥匙逐把钉死
-  for (const gone of ['deduce', 'projectImport', 'projectMeta']) assert.equal(gone in fact, false)
-  assert.equal(kernel.KERNEL_ID, 'openstory-kernel@1')
-})
-
-test('冻结是真冻结：改写命名空间成员静默失效（严格模式抛错）', () => {
-  assert.throws(() => { ' infect' && (fact.factStore = null) }, TypeError)
-  assert.throws(() => { jobs.submitJob = () => {} }, TypeError)
-  assert.throws(() => { prose.HISTORY_KEEP_DEFAULT = 0 }, TypeError)
-})
-
-test('反方向装载序冒烟：library fork 点先于 index 装载（子进程，独立模块表）', () => {
+test('反方向装载序冒烟：library fork 点先于登记表装载（子进程，独立模块表）', () => {
   const loader = `
 import assert from 'node:assert/strict'
 const projectDoc = await import(${JSON.stringify(pathToFileURL(join(ROOT, 'src/modules/storage/projectDoc.mjs')).href)})
-const mod = await import(${JSON.stringify(pathToFileURL(join(ROOT, 'src/protocol/index.mjs')).href)})
-assert.equal(mod.HOST_API_VERSION, 'host-api@2')
-for (const name of ['fact', 'prose', 'changelog', 'jobs', 'events', 'plugins', 'guard']) {
-  assert.equal(Object.isFrozen(mod[name]), true, name)
-}
-assert.equal(mod.fact.factStore.FACT_DIR_NAME, '故事源', 'fact 转出与内核同源（adapter 解散后环已断）')
+const mod = await import(${JSON.stringify(pathToFileURL(join(ROOT, 'src/protocol/capabilityImplementations.mjs')).href)})
+assert.equal(Object.isFrozen(mod.KERNEL_CAPABILITIES), true)
+assert.equal(mod.KERNEL_CAPABILITIES.factStore.FACT_DIR_NAME, '故事源', '登记表与存储实现同源')
 assert.equal(typeof projectDoc.writeProjectDocument, 'function', 'fork 点先装仍可独立工作')
 console.log('reverse-order ok')
 `

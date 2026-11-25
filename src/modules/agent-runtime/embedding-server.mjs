@@ -38,8 +38,8 @@ process.env.TRANSFORMERS_CACHE = process.env.TRANSFORMERS_CACHE || paths.cacheDi
 
 // 强制 WASM 后端（本机装 native onnxruntime-node 失败：预编译二进制下载被墙）
 process.env.ORT_WASM_PATH = `${paths.transformersDist}/`
-const { loadEmbeddingBackend } = await import('../../protocol/embeddingBackend.mjs')
-const { pipeline, env } = await loadEmbeddingBackend()
+// OS-195b：裸包名直接 import——门禁改为认 package.json dependencies，不再把依赖藏进 protocol。
+const { pipeline, env } = await import('@xenova/transformers')
 env.backends.onnx.wasm.wasmPaths = `${paths.transformersDist}/`
 env.backends.onnx.wasm.numThreads = 1
 env.remoteHost = process.env.HF_ENDPOINT || 'https://hf-mirror.com'

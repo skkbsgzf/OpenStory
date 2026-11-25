@@ -19,6 +19,15 @@ import { openDeduceSession, presentTurn } from '../src/modules/deduce/engine/ind
 import { buildWorldbookPatch, reconcilePatches } from '../src/modules/deduce/engine/patchChannel.mjs'
 import { createFront, advanceFront, resolveFront } from '../src/modules/deduce/engine/fronts.mjs'
 import { deducePresent } from '../src/modules/deduce/deduceEngine.mjs'
+import { setFactHandles } from '../src/modules/deduce/engine/factPort.mjs'
+import { factCapability } from '../src/modules/fact/index.mjs'
+
+// OS-195b：直调引擎端子不经 activate，显式注入同一份 fact 能力面句柄（无登记表兜底）。
+setFactHandles({
+  store: factCapability['fact.store'],
+  pack: factCapability['fact.pack'],
+  domain: factCapability['fact.domain']
+})
 
 const ENTRIES = [
   { schema: 'fact.data/v3', id: 'w1', layer: 'worldview', name: '雾港规则', slot: 'rules', status: 'adopted',

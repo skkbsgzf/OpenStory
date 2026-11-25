@@ -14,7 +14,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { buildCliArgs, composeCliPrompt, runCliChat } from '../src/modules/agent-runtime/cli-bridge.mjs'
 import { detectDsh, pickChatBase } from '../src/modules/agent-runtime/dsh-bridge.mjs'
-import { loadRuntimeKits, normalizeRuntimeKit, probeRuntimeKit, resetProbeCache, builtinRuntimesDir } from '../src/services/runtimes.mjs'
+import { loadRuntimeKits, normalizeRuntimeKit, builtinRuntimesDir } from '../src/services/runtimes.mjs'
+import { probeRuntimeKit, resetProbeCache } from '../src/modules/agent-runtime/runtimeSidecar.mjs'
 import { startDaemon } from '../src/host/daemon.mjs'
 
 async function makeFixture() {

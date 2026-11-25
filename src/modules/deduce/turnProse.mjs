@@ -17,8 +17,20 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 import { atomicWriteFile } from '../../protocol/hostWrite.mjs'
 import { deduceStatePath } from './deduceEngine.mjs'
-import { chatCompleteViaUpstream, resolveUpstreamSafe } from '../../protocol/upstream.mjs' // OS-142：上游模型通道经协议层叶子转出（模块纪律：modules 不直引 services）
 import { text } from '../../protocol/authorize.mjs' // OS-142：宿主文本归一经协议层叶子转出（模块纪律：modules 不直引 host）
+
+// OS-195b：上游对话通道由 deduce.activate(context) 经 context.resolve('agent.runtime') 取到后
+// 显式注入；内核→内核只走能力句柄，不再经 protocol 转供叶绕行。
+let agentRuntimeHandle = null
+
+export function setTurnProseAgentRuntime(handle) {
+  agentRuntimeHandle = handle
+}
+
+function upstreamChannel() {
+  if (!agentRuntimeHandle) throw new Error('turnProse 未注入 agent.runtime 句柄（deduce.activate 必须先执行）')
+  return agentRuntimeHandle
+}
 
 /** 读旧引擎推演状态（.openstory/deduce/<bookId>.json）——桥接用，只读。 */
 export function readLegacyDeduceState(root, bookId) {
@@ -86,8 +98,9 @@ function turnProsePrompt(node, previousProse) {
 }
 
 export async function generateTurnProse({ context, root, node, previousProse }) {
-  const upstream = await resolveUpstreamSafe({ context })
-  const out = await chatCompleteViaUpstream({
+  const channel = upstreamChannel()
+  const upstream = await channel.resolveUpstreamSafe({ context })
+  const out = await channel.chatCompleteViaUpstream({
     upstream,
     system: DEDUCE_PROSE_SYSTEM,
     user: turnProsePrompt(node, previousProse),
@@ -102,14 +115,15 @@ export async function generateTurnProse({ context, root, node, previousProse }) 
 /** OS-82：推演戏剧候选的 llmPort——从全局文本模型配置构建；没配模型返回 null
  *  （vendor 的 dramaCandidates 对 null/异常自己兜底：戏剧层缺席不阻塞必然/命运）。 */
 export async function buildDeduceLlmPort({ context }) {
-  const upstream = await resolveUpstreamSafe({ context })
+  const channel = upstreamChannel()
+  const upstream = await channel.resolveUpstreamSafe({ context })
   if (!upstream) return null
   return {
     complete: async ({ system = '', maxTokens = 400 } = {}) => {
       // OS-90/91 游玩口径：vendor 提议器产出第三人称剧情走向，玩家要的是「我这个角色
       // 现在怎么做」的眼前情境分支选项。本 port 只服务戏剧候选，追加游玩指令。
       const playSystem = `${system}\n游玩口径：每条 text 一律写成 POV 角色第一人称的行动选择（「我现在怎么做」），基于眼前的情境给分支——像「前面有一座山，是进山还是绕行」「遇到一个人，是上前搭话还是默默观察」。动作要具体、当下、可执行，以动词开头；每条之间方向明显不同；不要第三人称剧情梗概，不要替世界写结果——世界怎么回应由下一拍决定。`
-      const out = await chatCompleteViaUpstream({ upstream, system: playSystem, maxTokens })
+      const out = await channel.chatCompleteViaUpstream({ upstream, system: playSystem, maxTokens })
       if (out.error) throw new Error(out.error)
       return { text: out.text ?? '' }
     }

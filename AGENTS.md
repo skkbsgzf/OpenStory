@@ -32,7 +32,8 @@ L4 自持层→L2 自有内核 `src/kernel/`→L1 磁盘库；OS-157 起 L2/L3 �
    写协议只经 `factFileStore.writeFactFile`，宿主写通道只经 `src/protocol/hostWrite.mjs`；模块不直引
    内核，只经能力句柄（`activate(context)` 的 `context.resolve`）或底座契约（OS-195 转供叶已清零）。
    推演 8 件（opening/turn/settle/candidates/fronts/patchChannel/sceneContext/sessionState）
-   归 `src/modules/deduce/engine/`——它是产品引擎，不是内核；Host API `host-api@2` 五键定稿。
+   归 `src/modules/deduce/engine/`——它是产品引擎，不是内核；OS-195b 起第二套
+   `host-api@2` 命名空间入口已退役，能力只经 `capabilityImplementations.mjs` 登记表与句柄取用。
 2. **daemon 只监听 127.0.0.1**；凭据只存本机（agent-config.json），响应只回掩码。
 3. **世界书单向性**：正文不反向进世界书上下文；世界书不能全量丢进 Agent 上下文。
 4. **absorb 不开 MCP**：旧目录迁入世界书是显式动稿操作，只走界面按钮。
@@ -255,7 +256,7 @@ L4 自持层→L2 自有内核 `src/kernel/`→L1 磁盘库；OS-157 起 L2/L3 �
 ## 改完必跑（验收线，详见 `docs/ACCEPTANCE.md`）
 
 ```bash
-node .zcode/run-gate.mjs                    # ① 全量单测（816 例）
+node .zcode/run-gate.mjs                    # ① 全量单测（817 例）
 node tools/acceptance/acceptance.mjs        # ② 交付标准 S0–S4 门禁（28 检查，Rea 式证据；S0=布局宪法）
 # ③ .ua/ 知识图谱增量（/understand，skill 在 ~/.zcode/skills/understand*）
 # ④ 前端批次给作者截图讲场景（对照 design-system/DESIGN.md + docs/UX-STRUCTURE.md）
@@ -291,7 +292,7 @@ node tools/acceptance/acceptance.mjs        # ② 交付标准 S0–S4 门禁（
 - `src/modules/deduce/`：`deduceEngine.mjs`（推演核封装，端子走模块内 `engine/index.mjs`）/
   `engine/`（OS-155 自上游平移到本模块的确定性推演链 8 件＋出口 index.mjs）；
   会话容器自 OS-195a 起归 `src/modules/deduce/deduceSession.mjs`（扮演/<bookId>/session.json），经 deduce 能力句柄取用
-- `src/modules/worldbook/referenceStore.mjs`（世界书索引/图谱）· `src/modules/fact/enrich/engine.mjs`（语义富化 6 窗）· `src/protocol/factGuard.mjs`
+- `src/modules/worldbook/referenceStore.mjs`（世界书索引/图谱）· `src/modules/fact/enrich/engine.mjs`（语义富化 6 窗）· `src/modules/prose/factGuard.mjs`（OS-195b 归位）
 - 底座服务（`src/services/`）：货架装载（skills/genres/stylePacks/suites/runtimes）＋ 跨内核底座服务（systemPrompt/
   syncCheck）＋ OS-193 遗留兼容叶；jobCenter/nativePicker/uiPreferences 已迁 `src/host/`
 - `skills/` 创作知识库 31 包＋套件捆绑 2（SKILL.md 制）· `docs/mcp/` 对外分发材料 · `design-system/` 设计令牌包

@@ -15,8 +15,8 @@
   "testFiles": 105,
   "gateCount": 28,
   "tests": {
-    "total": 816,
-    "pass": 814,
+    "total": 817,
+    "pass": 815,
     "fail": 0,
     "skipped": 2,
     "ok": true,

@@ -13,7 +13,11 @@ import { existsSync } from 'node:fs'
 import { mkdtemp, mkdir, readdir, readFile, rm, utimes, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
-import { HISTORY_KEEP_DEFAULT, pruneHistoryBackups, resolveHistoryKeepPerFile, startDaemon } from '../src/host/daemon.mjs'
+import { startDaemon } from '../src/host/daemon.mjs'
+import { proseCapability } from '../src/modules/prose/index.mjs'
+
+// OS-195b：正文原语从 prose.write 能力面取，宿主不再转供实现登记表。
+const { HISTORY_KEEP_DEFAULT, pruneHistoryBackups, resolveHistoryKeepPerFile } = proseCapability['prose.write']
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 

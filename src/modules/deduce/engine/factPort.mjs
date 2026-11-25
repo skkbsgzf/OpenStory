@@ -3,29 +3,34 @@
  *
  * `deduce/activate(context)` 在装载期 `context.resolve('fact.store'|'fact.pack'|'fact.domain')`
  * 取句柄并存进本文件的闭包；引擎函数只从这里拿句柄，不静态 import 任何 fact 实现文件。
- * 独立单测（金样 decoupleStep3 / deduceDeterminism）直接调引擎端子、不经过动态装载，
- * 此时回落到唯一静态入口 KERNEL_CAPABILITIES 的同一份实现——不是第二份实现，
- * 只是没有能力路由上下文时的等价基线。
+ *
+ * OS-195b：删去「回落登记表」兜底——句柄没注入就明确报错，不许有第二套静态入口。
+ * 独立单测若直接调引擎端子，须先经本文件的 setFactHandles 注入同一份能力面句柄。
  */
-import { KERNEL_CAPABILITIES as K } from '../../../protocol/capabilityImplementations.mjs'
-
 let handles = null
 
 export function setFactHandles({ store, pack, domain } = {}) {
   handles = Object.freeze({ store, pack, domain })
 }
 
+function missing(name) {
+  throw new Error(`factPort 未注入 fact.${name} 句柄（deduce.activate 必须先执行）`)
+}
+
 /** 引擎端子用：fact 域原语（sha1Hex/stableEntryId/FACT_SCHEMA 取值/createAliasIndex/buildFactPack…）。 */
 export function getFact() {
-  return handles?.domain ?? K.factDomain
+  if (!handles?.domain) missing('domain')
+  return handles.domain
 }
 
 /** 封装层用：fact 存储协议（createFactFileStore/writeFactFile/readFactWiki）。 */
 export function getFactStore() {
-  return handles?.store ?? K.factStore
+  if (!handles?.store) missing('store')
+  return handles.store
 }
 
 /** 封装层用：fact 包投影。 */
 export function getFactPack() {
-  return handles?.pack ?? K.factPack
+  if (!handles?.pack) missing('pack')
+  return handles.pack
 }

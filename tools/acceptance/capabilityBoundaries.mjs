@@ -10,7 +10,31 @@
  * 规则只依赖源码文本，不执行模块；动态 activate 的真实执行由
  * checkModuleActivation.mjs 在独立进程里验证。
  */
+import { readFileSync } from 'node:fs'
+import { dirname, join, resolve as pathResolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { scanImportSpecs, resolveSpec } from './importScan.mjs'
+
+const REPO = pathResolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
+
+/**
+ * OS-195b：模块只许 node: 内置、package.json 的 dependencies 里声明的包、仓内相对说明符。
+ * 门禁显式读 package.json，不写白名单——依赖增删由 package.json 单一真源决定。
+ */
+function declaredDependencies() {
+  try {
+    const pkg = JSON.parse(readFileSync(join(REPO, 'package.json'), 'utf8'))
+    return new Set(Object.keys(pkg.dependencies ?? {}))
+  } catch {
+    return new Set()
+  }
+}
+
+/** 说明符 → 包名（裸包名只认第一段，@scope 认前两段）。 */
+function packageNameOf(spec) {
+  if (spec.startsWith('@')) return spec.split('/').slice(0, 2).join('/')
+  return spec.split('/')[0]
+}
 
 const RESOURCE_ROOTS = ['suites/', 'styles/', 'runtimes/', 'genres/', 'skills/']
 const KERNEL_IDS = ['agent-runtime', 'deduce', 'fact', 'media', 'prose', 'storage', 'text']
@@ -82,11 +106,13 @@ export function auditCapabilityRoutes(files) {
       violations.push({ ...edge, reason: 'src/modules/** 之外只有实现登记表与宿主→宿主组合面可静态 import（R-a/R-b）' })
     }
   }
+  const dependencies = declaredDependencies()
   for (const { rel, src } of files) {
     if (!rel.startsWith('src/modules/')) continue
     for (const { spec, line } of scanImportSpecs(src)) {
       if (spec.startsWith('node:') || spec.startsWith('./') || spec.startsWith('../')) continue
-      violations.push({ from: rel, to: spec, spec, line, reason: '模块只许 node: 内置与仓内相对说明符' })
+      if (dependencies.has(packageNameOf(spec))) continue
+      violations.push({ from: rel, to: spec, spec, line, reason: '模块只许 node: 内置、package.json dependencies 声明的包与仓内相对说明符' })
     }
   }
   return violations
@@ -277,6 +303,64 @@ export function auditProtocolContractLayer(files, readmeSrc) {
     }
   }
   return { violations, files: protocolFiles.length, registered: registered.size, ioExceptions: PROTOCOL_IO_EXCEPTIONS.size }
+}
+
+/* ================================================================
+ * OS-195b 三条新断言：经 protocol 绕行的小尾巴一次收干净（源码文本上量，无白名单）
+ * ================================================================ */
+
+const isRegistrySpec = (rel, spec) => {
+  const to = spec.startsWith('./') || spec.startsWith('../') ? resolveSpec(rel, spec) : spec
+  return to === IMPLEMENTATION_REGISTRY || /capabilityImplementations\.mjs$/u.test(to)
+}
+
+/** ① src/protocol/** 里 import 实现登记表的文件数＝0（登记表自身除外）。 */
+export function auditProtocolRegistryImports(files) {
+  const violations = []
+  let count = 0
+  for (const { rel, src } of files) {
+    if (!rel.startsWith('src/protocol/') || rel === IMPLEMENTATION_REGISTRY) continue
+    for (const { spec, line } of scanImportSpecs(src)) {
+      if (!isRegistrySpec(rel, spec)) continue
+      count += 1
+      violations.push({ from: rel, to: IMPLEMENTATION_REGISTRY, spec, line, reason: '协议层不许经实现登记表取能力（OS-195b）' })
+    }
+  }
+  return { violations, count }
+}
+
+/** ② src/protocol/** 不许从 services/** / modules/** / public/** 转供（任何 export … from）。 */
+export function auditProtocolForwards(files) {
+  const violations = []
+  for (const { rel, src } of files) {
+    if (!rel.startsWith('src/protocol/')) continue
+    const lines = src.split('\n')
+    for (const { spec, line } of scanImportSpecs(src)) {
+      if (!spec.startsWith('./') && !spec.startsWith('../')) continue
+      const to = resolveSpec(rel, spec)
+      if (!/^src\/(?:services|modules)\//u.test(to) && !to.startsWith('public/')) continue
+      if (!/\bexport\b/u.test(lines[line - 1] ?? '')) continue
+      violations.push({ from: rel, to, spec, line, reason: 'src/protocol 不许从 services/modules/public 转供（OS-195b）' })
+    }
+  }
+  return { violations, count: violations.length }
+}
+
+/** ③ 全仓（生产源码 src/**）模块顶层持有 KERNEL_CAPABILITIES 的只许登记表自身。 */
+export function auditRegistryHolders(files) {
+  const violations = []
+  const holders = []
+  for (const { rel, src } of files) {
+    const defines = /\bexport\s+const\s+KERNEL_CAPABILITIES\b/u.test(src)
+    const imports = scanImportSpecs(src).some(({ spec }) => isRegistrySpec(rel, spec))
+      && /\bKERNEL_CAPABILITIES\b/u.test(src)
+    if (!defines && !imports) continue
+    holders.push(rel)
+    if (rel !== IMPLEMENTATION_REGISTRY) {
+      violations.push({ from: rel, to: IMPLEMENTATION_REGISTRY, line: 1, reason: '模块顶层持有实现登记表的只许登记表自身（OS-195b）' })
+    }
+  }
+  return { violations, holders, count: holders.length }
 }
 
 /** ③ 宿主 → 宿主组合面是唯一放行的跨目录 import；api/host/services 引其余模块内部＝0。 */
