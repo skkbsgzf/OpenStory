@@ -16,7 +16,7 @@
  *
  * 纯函数、零宿主依赖：只 import 协议层 factDomain 转供面（fact 域原语＋factPack），不碰 node 内置 / process / 文件系统。
  */
-import { buildFactPack, createAliasIndex, isActiveAt, normalizeSpan } from '../../../protocol/factDomain.mjs'
+import { getFact } from './factPort.mjs'
 
 export const SCENE_CONTEXT_VERSION = 'scene-context@1'
 
@@ -69,12 +69,12 @@ export function knownNamesOf(pack, { pov, aliasIndex, extraKnown = [] } = {}) {
 export function buildSceneContext({ entries, pov, span, extraKnown = [] } = {}) {
   const list = Array.isArray(entries) ? entries.filter(isPlainObject) : []
   const focus = trimmed(pov)
-  const aliasIndex = createAliasIndex(list)
-  const atSpan = normalizeSpan(span)
+  const aliasIndex = getFact().createAliasIndex(list)
+  const atSpan = getFact().normalizeSpan(span)
   const query = span === undefined || span === null ? {} : { span }
   let pack
   try {
-    pack = buildFactPack(list, query, { aliasIndex })
+    pack = getFact().buildFactPack(list, query, { aliasIndex })
   } catch (error) {
     return {
       version: SCENE_CONTEXT_VERSION,
@@ -144,7 +144,7 @@ export function buildSceneContext({ entries, pov, span, extraKnown = [] } = {}) 
   // 悬置伏笔：plot 条目 hypothesis+open（M1-a settleHypothesis 落的）——有效区间覆盖当前时点的才算。
   const openHypotheses = list
     .filter((entry) => entry.layer === 'plot' && entry.hypothesis === true && entry.open === true)
-    .filter((entry) => (span === undefined || span === null ? true : isActiveAt(entry.validity, atSpan)))
+    .filter((entry) => (span === undefined || span === null ? true : getFact().isActiveAt(entry.validity, atSpan)))
     .map((entry) => ({
       id: str(entry.id),
       name: trimmed(entry.name),

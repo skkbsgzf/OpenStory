@@ -37,7 +37,7 @@ import {
 } from '../../protocol/deduceSession.mjs'
 import { buildRoleplayMemory, compressMemory, deAiPass, roleplayOpening as roleplayOpeningEngine, roleplayTurn as roleplayTurnEngine, shouldSummarize } from '../../protocol/roleplayEngine.mjs'
 import { enrichBook, enrichGraph as enrichGraphEngine } from '../../services/enrichEngine.mjs'
-import { resolveMediaCapability } from '../../protocol/media.mjs'
+import { resolveMediaCapability } from '../../host/capabilityBindings.mjs'
 import { loadDeduceRules } from '../../protocol/deduceRules.mjs'
 import { isModuleEnabled } from '../../protocol/modules.mjs'
 import { loadConfigV2 } from '../../services/agentConfig.mjs'

@@ -65,7 +65,8 @@ test('C6 能力归属：kernel 零端点/UI，workbench 有 requires/slots，能
     { rel: 'src/modules/prose/index.mjs', src: "import 'node:fs'\nimport '../../protocol/index.mjs'\nimport './write.mjs'" },
     { rel: 'src/modules/prose/bad.mjs', src: "import '../fact/index.mjs'" },
     { rel: 'src/api/handlers/bad.mjs', src: "import '../../modules/prose/index.mjs'" },
-    { rel: 'src/protocol/factStore.mjs', src: "export * from '../modules/fact/index.mjs'" }
+    // OS-193：内核转供叶已退役；用仍在工作台层的 worldbookContract 叶验证「协议放行」。
+    { rel: 'src/protocol/worldbookContract.mjs', src: "export * from '../modules/worldbook/worldbookFileContract.mjs'" }
   ]
   assert.deepEqual(auditCapabilityRoutes(routeFixtures).map((item) => `${item.from} -> ${item.to}`), [
     'src/modules/prose/bad.mjs -> src/modules/fact/index.mjs',
@@ -74,13 +75,13 @@ test('C6 能力归属：kernel 零端点/UI，workbench 有 requires/slots，能
 
   const copiedBody = `\n  const values = input.map((value) => value * 2).filter((value) => value > 10)\n  return { values, total: values.reduce((sum, value) => sum + value, 0) }\n`
   const duplicateFixtures = [
-    { rel: 'src/protocol/factStore.mjs', src: `export function original(input) {${copiedBody}}` },
-    { rel: 'src/modules/fact/index.mjs', src: `export const renamed = (input) => {${copiedBody}}` }
+    { rel: 'src/protocol/worldbookContract.mjs', src: `export function original(input) {${copiedBody}}` },
+    { rel: 'src/modules/worldbook/worldbookFileContract.mjs', src: `export const renamed = (input) => {${copiedBody}}` }
   ]
   assert.equal(auditTransferDuplication(duplicateFixtures).length, 1, '转供叶复制函数体，改名/改箭头也拒绝')
   assert.deepEqual(auditTransferDuplication([
     duplicateFixtures[0],
-    { rel: 'src/modules/fact/index.mjs', src: "export { original } from './factFileStore.mjs'" }
+    { rel: 'src/modules/worldbook/worldbookFileContract.mjs', src: "export { original } from './derived.mjs'" }
   ]), [], '纯 re-export 转供叶允许')
 })
 

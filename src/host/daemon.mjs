@@ -56,14 +56,16 @@ import { ensureLibraryUpgraded } from '../protocol/libraryUpgrade.mjs'
 export { browseMemoryPath, defaultBrowseRoot } from '../services/nativePicker.mjs'
 export { defaultPreferencesPath, loadLibraries, createRootAllowlist, resolveInsideRoot } from './authorize.mjs'
 export { listArtifacts, listLibraryFiles } from '../protocol/libraryInventory.mjs'
-export {
+// OS-193：原 protocol/chapterWrite.mjs 转供叶并入唯一静态入口 KERNEL_CAPABILITIES。
+import { KERNEL_CAPABILITIES as KERNEL_HANDLES } from '../protocol/capabilityImplementations.mjs'
+export const {
   historyBackupPath,
   mapWriteErrorCode,
   moduleOfPath,
   HISTORY_KEEP_DEFAULT,
   pruneHistoryBackups,
   resolveHistoryKeepPerFile
-} from '../protocol/chapterWrite.mjs'
+} = KERNEL_HANDLES.proseWrite
 export { lintHabits } from '../protocol/habits.mjs'
 import { systemPromptFor } from '../services/systemPrompt.mjs'
 import { courtyardPath } from './courtyard.mjs'

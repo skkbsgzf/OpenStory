@@ -7,9 +7,12 @@
  *   · 只照 ADR 0001 附录 A 的表落字段——表外字段不臆造；id 不重算（两边同式，实测逐位相同）；
  *   · style 层无归宿：不转换、如实单列；反向投影返回丢失字段清单，不静默丢。
  *
- * 依赖：域校验器经 protocol/factDomain.mjs 转供叶子取（S2.1 模块不许直引 kernel）。
+ * 依赖：域校验器经唯一静态入口 KERNEL_CAPABILITIES 取（OS-193，S2.1 模块不许直引内核实现）。
  */
-import { validateFactEntry, FACT_SCHEMA } from '../../protocol/factDomain.mjs'
+import { KERNEL_CAPABILITIES as K } from '../../protocol/capabilityImplementations.mjs'
+
+const { validateFactEntry } = K.factDomain
+const FACT_SCHEMA = K.factDomain.factSchema()
 
 const PEDIA_SCHEMA = 'pedia/v1'
 const PEDIA_STYLE_LAYER = 'style'

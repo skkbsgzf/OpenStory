@@ -42,7 +42,19 @@ import { runCliChat } from '../../services/cli-bridge.mjs'
 import { runDshStdio } from '../../services/dsh-cli.mjs'
 import { projectLegacyFrame } from '../../protocol/agentEvents.mjs'
 import { habitLint } from '../../host/moduleHooks.mjs'
-import { resolveProseCapability } from '../../host/capabilityBindings.mjs'
+import { resolveFactCapability, resolveProseCapability } from '../../host/capabilityBindings.mjs'
+
+/** OS-193 K4：请求入口解析 fact/prose 句柄，往下传给跨内核底座服务。 */
+async function systemPromptHandles(root) {
+  const [fact, prose] = await Promise.all([
+    resolveFactCapability(root, 'fact.store'),
+    resolveProseCapability(root)
+  ])
+  return {
+    ...(fact.ok ? { factStore: fact.capability } : {}),
+    ...(prose.ok ? { prose: prose.capability } : {})
+  }
+}
 import { readAgentPicks, writeAgentPicks } from '../../services/skills.mjs'
 
 export async function agentConfigGet(ctx) {
@@ -309,7 +321,7 @@ export async function agentChat(ctx) {
     }])
     history = await readSession(sessionsDir, root, sessionId)
   }
-  const promptBundle = await systemPromptFor(root, libraries, context.genresDirs, context.skillsDirs, { suitesDirs: context.suitesDirs, suiteStatePath: context.suiteStatePath, env: context.env })
+  const promptBundle = await systemPromptFor(root, libraries, context.genresDirs, context.skillsDirs, { ...await systemPromptHandles(root), suitesDirs: context.suitesDirs, suiteStatePath: context.suiteStatePath, env: context.env })
   const upstreamMessages = buildUpstreamMessages(promptBundle.prompt, history.items)
   const model = text(request.model || upstream.model).trim()
 
@@ -338,6 +350,7 @@ export async function agentChat(ctx) {
     sseOpen(res)
     // DSH 带完整工具链 + cwd=库根：告诉它「你能读，但改正文要走卡」，别再说假话
     const promptBundle = await systemPromptFor(root, libraries, context.genresDirs, context.skillsDirs, {
+      ...await systemPromptHandles(root),
       canReadFiles: true,
       chineseReasoning: configTextBlock(config).chineseReasoning !== false,
       suitesDirs: context.suitesDirs,

@@ -20,7 +20,7 @@ import {
   readChapter,
   renameChapter,
   sanitizeChapterTitle
-} from '../src/protocol/chapters.mjs'
+} from '../src/modules/prose/chapters.mjs'
 import { startDaemon } from '../src/host/daemon.mjs'
 
 async function makeFixture() {

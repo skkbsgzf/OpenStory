@@ -16,7 +16,9 @@ import { mkdir, readdir, readFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { atomicWriteFile } from '../../protocol/hostWrite.mjs'
 import { courtyardPath } from '../../protocol/courtyard.mjs'
-import { maskApiKey } from '../../protocol/agentRuntime.mjs'
+import { KERNEL_CAPABILITIES as K } from '../../protocol/capabilityImplementations.mjs'
+
+const { maskApiKey } = K.agentRuntime
 
 export { maskApiKey }
 

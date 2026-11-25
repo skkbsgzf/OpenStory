@@ -537,7 +537,8 @@ const tools = [
       if (moduleRoot && !(await isModuleEnabled(moduleRoot, 'analysis'))) {
         throw Object.assign(new Error('「分析」模块已停用——在设置里重新启用后再调这个工具'), { code: 'MODULE_DISABLED' })
       }
-      const { analyzeChapter } = await import('../protocol/text.mjs')
+      const { KERNEL_CAPABILITIES } = await import('../protocol/capabilityImplementations.mjs')
+      const { analyzeChapter } = KERNEL_CAPABILITIES.textAnalyze
       const paragraphs = args.text.split(/\n+/u).map((block) => block.trim()).filter(Boolean)
       const result = analyzeChapter(args.text, { paragraphs })
       return { editorial: result.editorial, stats: result.stats, style: result.style, aiSmell: { score: result.aiSmell?.score, factors: result.aiSmell?.factors }, issues: result.issues, emotion: result.emotion, rhythm: result.rhythm }

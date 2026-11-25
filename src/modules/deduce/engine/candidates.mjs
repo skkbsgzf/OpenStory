@@ -1,7 +1,7 @@
 /** 三层候选生成（M1-a）：必然▮（世界事实确定性推导）／命运⚙（2d6 剧情检定）／戏剧✦（LlmPort 提议）。
  * 每候选带来源徽章；全部过一致性筛（引用未知实体＝与已确认世界矛盾，候选层确定性拒——端点固定路径自由）。
  * P-WIRE：筛子有两档——世界级（实体存在）与视角级（POV 此刻是否知晓，见 sceneContext.js）。 */
-import { createAliasIndex } from '../../../protocol/factDomain.mjs'
+import { getFact } from './factPort.mjs'
 import { spendAi } from './sessionState.mjs'
 import { buildSceneContext, refsWithinKnown, visibleNamesOf } from './sceneContext.mjs'
 import defaultRules from '../../../../suites/deduce-rules/rules.json' with { type: 'json' }
@@ -60,7 +60,7 @@ export function roll2d6(rng, rules = defaultRules) {
 }
 
 function knownNames(entries) {
-  const index = createAliasIndex(Array.isArray(entries) ? entries : [])
+  const index = getFact().createAliasIndex(Array.isArray(entries) ? entries : [])
   const names = new Set()
   for (const entry of Array.isArray(entries) ? entries : []) {
     if (entry && entry.name) names.add(entry.name)
@@ -170,7 +170,7 @@ export async function dramaCandidates({ state, pov, llmPort, seedPrompt, limit =
 export async function generateCandidates({ entries, state, pov, llmPort, seed = 1, seedPrompt, sceneContext = null, rules = defaultRules } = {}) {
   const normalized = normalizeDeduceRules(rules)
   const known = knownNames(entries)
-  const aliasIndex = createAliasIndex(Array.isArray(entries) ? entries : [])
+  const aliasIndex = getFact().createAliasIndex(Array.isArray(entries) ? entries : [])
   const context = sceneContext ?? buildSceneContext({ entries, pov, extraKnown: state?.knownExtra ?? [] })
   const visible = visibleNamesOf(context, entries, aliasIndex)
   const rng = mulberry32(seed)

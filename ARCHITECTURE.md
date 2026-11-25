@@ -53,14 +53,14 @@
 <!-- arch-stats:start -->
 | 分工 | 范围 | 文件数 | 行数 |
 |---|---|---:|---:|
-| 底座 | `src/host/`＋`src/kernel/` | 17 | 2,305 |
-| 契约 | `src/api/` | 18 | 5,063 |
-| 协议 | `src/protocol/` | 51 | 4,977 |
-| 内核件（class: kernel，7） | `src/modules/agent-runtime/`＋`src/modules/deduce/`＋`src/modules/fact/`＋`src/modules/media/`＋`src/modules/prose/`＋`src/modules/storage/`＋`src/modules/text/` | 47 | 8,414 |
-| 工作台（class: workbench，12） | `src/modules/analysis/`＋`src/modules/artifacts/`＋`src/modules/chapters/`＋`src/modules/exchange/`＋`src/modules/habits/`＋`src/modules/imagegen/`＋`src/modules/knowledge/`＋`src/modules/log/`＋`src/modules/roleplay/`＋`src/modules/script/`＋`src/modules/storysource/`＋`src/modules/worldbook/` | 22 | 2,868 |
-| 宿主组合面（恒启） | `src/modules/agentbar/`＋`src/modules/library/` | 6 | 1,359 |
+| 底座 | `src/host/`＋`src/kernel/` | 17 | 2,317 |
+| 契约 | `src/api/` | 18 | 5,075 |
+| 协议 | `src/protocol/` | 48 | 4,966 |
+| 内核件（class: kernel，7） | `src/modules/agent-runtime/`＋`src/modules/deduce/`＋`src/modules/fact/`＋`src/modules/media/`＋`src/modules/prose/`＋`src/modules/storage/`＋`src/modules/text/` | 57 | 10,549 |
+| 工作台（class: workbench，12） | `src/modules/analysis/`＋`src/modules/artifacts/`＋`src/modules/chapters/`＋`src/modules/exchange/`＋`src/modules/habits/`＋`src/modules/imagegen/`＋`src/modules/knowledge/`＋`src/modules/log/`＋`src/modules/roleplay/`＋`src/modules/script/`＋`src/modules/storysource/`＋`src/modules/worldbook/` | 22 | 2,875 |
+| 宿主组合面（恒启） | `src/modules/agentbar/`＋`src/modules/library/` | 6 | 1,361 |
 | 套件模块（class: suite） | `src/modules/` | 0 | 0 |
-| 服务 | `src/services/` | 21 | 4,398 |
+| 服务 | `src/services/` | 20 | 2,455 |
 | 套件资源 | `suites/`＋`styles/`＋`runtimes/`＋`genres/`＋`skills/` | 58 | 2,785 |
 | 设计令牌 | `design-system/` | 3 | 133 |
 | 前端 | `public/` | 30 | 20,825 |
@@ -71,7 +71,7 @@
 | `public/app.js` 行数 | 10,108 |
 | `public/views/*.mjs` 文件数 | 15 |
 | 契约端点数（`ENDPOINTS` 键数） | 103 |
-| 测试文件数（`test/*.test.mjs`） | 103 |
+| 测试文件数（`test/*.test.mjs`） | 104 |
 
 **模块清单（由 `src/modules/*/module.manifest.json` 自动生成）**
 
@@ -100,7 +100,7 @@
 | worldbook | workbench | 5 | worldbook | 0 |
 
 合计 21 份 manifest（7 kernel + 12 workbench + 2 host-composition）；41 个模块独占端点，62 个宿主自有端点，端点覆盖 103/103。
-kernel 能力声明：agent.runtime@1 / deduce.engine@1 / fact.store@3 / fact.pack@1 / fact.enrich@1 / media.generate@1 / media.describe@1 / prose.write@1 / storage.roots@1 / library.list@1 / storage.scaffold@1 / text.analyze@1。
+kernel 能力声明：agent.runtime@1 / deduce.engine@1 / fact.store@3 / fact.pack@1 / fact.enrich@1 / fact.engine@1 / fact.books@1 / fact.write@1 / fact.domain@1 / media.generate@1 / media.describe@1 / prose.write@1 / storage.roots@1 / library.list@1 / storage.scaffold@1 / text.analyze@1。
 `app.js` 当前上限 10,500 行（只降不升），当前实测 10,108 行。
 <!-- arch-stats:end -->
 

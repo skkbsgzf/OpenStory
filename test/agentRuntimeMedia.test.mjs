@@ -7,8 +7,10 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { activate as activateRuntime, agentRuntimeCapability } from '../src/modules/agent-runtime/index.mjs'
 import { activate as activateMedia, mediaCapability } from '../src/modules/media/index.mjs'
-import { runtimeCapability } from '../src/protocol/agentRuntime.mjs'
-import { resolveMediaCapability } from '../src/protocol/media.mjs'
+import { KERNEL_CAPABILITIES as K } from '../src/protocol/capabilityImplementations.mjs'
+import { resolveMediaCapability } from '../src/host/capabilityBindings.mjs'
+
+const runtimeCapability = K.agentRuntime
 import { moduleManifest, validateModuleManifest } from '../src/protocol/modules.mjs'
 import { startDaemon } from '../src/host/daemon.mjs'
 

@@ -10,7 +10,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { activate, analyzeChapter, splitSentences, textCapability } from '../src/modules/text/index.mjs'
-import * as textProtocol from '../src/protocol/text.mjs'
+import * as textProtocol from '../src/modules/text/index.mjs'
 import { createCapabilityResolver } from '../src/protocol/capabilityResolver.mjs'
 import { CAPABILITY_SNAPSHOT, moduleManifest, validateModuleManifest } from '../src/protocol/modules.mjs'
 
@@ -42,7 +42,10 @@ test('activate：只解析 base.naming，返回冻结的 textCapability', async 
   assert.equal(activated.capabilities, textCapability)
   assert.ok(Object.isFrozen(textCapability))
   assert.ok(Object.isFrozen(textCapability['text.analyze']))
-  assert.deepEqual(Object.keys(textCapability['text.analyze']), ['analyzeChapter', 'splitSentences'])
+  // OS-193：文风指纹 lint 归位后并入 text.analyze，原两成员顺序与身份不变。
+  assert.deepEqual(Object.keys(textCapability['text.analyze']), [
+    'analyzeChapter', 'splitSentences', 'measure', 'listFingerprintPacks', 'fingerprintHint', 'runStyleCheck'
+  ])
 })
 
 test('协议转供与内核入口同源，能力薄代理透传两个纯函数', async () => {

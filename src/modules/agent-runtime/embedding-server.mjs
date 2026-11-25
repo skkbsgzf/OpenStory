@@ -30,15 +30,16 @@ function argValue(name, fallback) {
 
 const PORT = Number(argValue('port', process.env.EMBED_PORT || 8808))
 const MODEL = argValue('model', process.env.EMBED_MODEL || 'Xenova/bge-small-zh-v1.5')
-// 仓根＝本文件目录两层上溯（OS-139 去硬编码；OS-140 布局归一后本文件在 src/services/），
+// 仓根＝本文件目录三层上溯（OS-139 去硬编码；OS-193 归位后本文件在 src/modules/agent-runtime/），
 // 路径解析纯函数见同目录 embeddingPaths.mjs
-const paths = resolveEmbeddingPaths(join(dirname(fileURLToPath(import.meta.url)), '..', '..'))
+const paths = resolveEmbeddingPaths(join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..'))
 process.env.HF_ENDPOINT = process.env.HF_ENDPOINT || 'https://hf-mirror.com'
 process.env.TRANSFORMERS_CACHE = process.env.TRANSFORMERS_CACHE || paths.cacheDir
 
 // 强制 WASM 后端（本机装 native onnxruntime-node 失败：预编译二进制下载被墙）
 process.env.ORT_WASM_PATH = `${paths.transformersDist}/`
-const { pipeline, env } = await import('@xenova/transformers')
+const { loadEmbeddingBackend } = await import('../../protocol/embeddingBackend.mjs')
+const { pipeline, env } = await loadEmbeddingBackend()
 env.backends.onnx.wasm.wasmPaths = `${paths.transformersDist}/`
 env.backends.onnx.wasm.numThreads = 1
 env.remoteHost = process.env.HF_ENDPOINT || 'https://hf-mirror.com'

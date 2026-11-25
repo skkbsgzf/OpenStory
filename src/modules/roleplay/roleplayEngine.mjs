@@ -9,7 +9,9 @@
  *
  * 全程不落库——条目/会话/事件由调用方（daemon）按既有协议写。
  */
-import { analyzeChapter } from '../../protocol/text.mjs'
+import { KERNEL_CAPABILITIES as K } from '../../protocol/capabilityImplementations.mjs'
+
+const { analyzeChapter } = K.textAnalyze
 import {
   ROLEPLAY_BASE_SYSTEM,
   hostSystemPrompt,

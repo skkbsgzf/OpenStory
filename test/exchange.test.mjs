@@ -9,7 +9,9 @@ import { mkdtemp, mkdir, readFile, stat, writeFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { startDaemon } from '../src/host/daemon.mjs'
-import { stableEntryId } from '../src/protocol/factDomain.mjs'
+import { KERNEL_CAPABILITIES as K } from '../src/protocol/capabilityImplementations.mjs'
+
+const { stableEntryId } = K.factDomain
 
 const PROV = { book: '水浒传', book_id: 'shuihu', chapters: [1], scenes: [], extractor: 'fixture', quote_hash: 'b'.repeat(40) }
 const FP = { vec: [0.3], metrics: {} }

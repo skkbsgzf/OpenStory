@@ -11,14 +11,8 @@ const KERNEL_IDS = ['agent-runtime', 'deduce', 'fact', 'media', 'prose', 'storag
 
 /** 兼容转供叶：只登记“谁可以转供哪一块实现”，不按整个 modules 目录放行。 */
 export const TRANSFER_LEAVES = Object.freeze({
-  'src/protocol/index.mjs': ['src/modules/fact/'],
-  'src/protocol/factStore.mjs': ['src/modules/fact/'],
-  'src/protocol/factDomain.mjs': ['src/modules/fact/'],
-  'src/protocol/chapters.mjs': ['src/modules/prose/'],
-  'src/protocol/chapterWrite.mjs': ['src/modules/prose/'],
-  'src/protocol/text.mjs': ['src/modules/text/'],
-  'src/protocol/media.mjs': ['src/modules/media/'],
-  'src/protocol/agentRuntime.mjs': ['src/modules/agent-runtime/'],
+  // OS-193：七个内核件转供叶已并入唯一静态入口 capabilityImplementations.mjs
+  // （KERNEL_CAPABILITIES）；这里只留工作台内部与非内核转供叶。
   'src/protocol/worldbookContract.mjs': ['src/modules/worldbook/'],
   // C6 兼容转供叶逐文件点名；叶内只允许 re-export/显式绑定，复制实现由下方审计拒绝。
   'src/protocol/agentStore.mjs': ['src/modules/agentbar/agentStore.mjs'],
@@ -85,6 +79,54 @@ export function auditCapabilityRoutes(files) {
     }
   }
   return violations
+}
+
+/**
+ * OS-193 S2.11「内核直连」：量的是真实静态耦合，不是按转供叶定义出来的零。
+ * ① 七个内核件之间互相静态 import ＝ 0（只许经 activate(context) 的 context.resolve 句柄）；
+ * ② src/services/** 静态 import 内核实现 ＝ 0（归位后只经唯一静态入口/句柄）；
+ * ③ src/protocol/** 不许再出现指向内核模块的 `export ... from '../modules/…'` 转供叶；
+ * ④ api/host 对内核的直连本单只统计入台账（OS-194 清零），不判红。
+ */
+const OS193_LEAVES = Object.freeze(new Set([
+  'src/protocol/factDomain.mjs', 'src/protocol/chapters.mjs', 'src/protocol/chapterWrite.mjs',
+  'src/protocol/text.mjs', 'src/protocol/agentRuntime.mjs', 'src/protocol/media.mjs',
+  'src/protocol/factStore.mjs'
+]))
+
+export function auditKernelDirectImports(files) {
+  const violations = []
+  const counts = { kernelToKernel: 0, servicesToKernel: 0, protocolLeaves: 0, apiToKernel: 0, hostToKernel: 0 }
+  const byRel = new Map(files.map((file) => [file.rel, file.src]))
+  const kernelIdOf = (rel) => {
+    const match = /^src\/modules\/([^/]+)\//u.exec(rel)
+    return match && KERNEL_IDS.includes(match[1]) ? match[1] : null
+  }
+  for (const edge of relativeEdges(files)) {
+    const { from, to, line } = edge
+    const fromKernel = kernelIdOf(from)
+    const toKernel = kernelIdOf(to)
+    if (fromKernel && toKernel && fromKernel !== toKernel) {
+      counts.kernelToKernel += 1
+      violations.push({ ...edge, reason: '内核件之间只许经 context.resolve 句柄（K2）' })
+    }
+    if (from.startsWith('src/services/') && toKernel) {
+      counts.servicesToKernel += 1
+      violations.push({ ...edge, reason: '内核代码已归位；底座服务只经实现登记表/句柄取能力（K3/K4）' })
+    }
+    if (from.startsWith('src/api/') && toKernel) counts.apiToKernel += 1
+    if (from.startsWith('src/host/') && toKernel) counts.hostToKernel += 1
+    // courtyard / deduceSession / worldbookContract 等工作台内部叶是 OS-195 的范围，
+    // 本单只钉 OS-193 点名的七个内核件转供叶，不替下一张单清账。
+    if (OS193_LEAVES.has(from) && toKernel) {
+      const sourceLine = (byRel.get(from) ?? '').split('\n')[line - 1] ?? ''
+      if (/\bexport\b/u.test(sourceLine)) {
+        counts.protocolLeaves += 1
+        violations.push({ ...edge, reason: '内核转供叶已并入实现登记表（K1），不许再开 export-from' })
+      }
+    }
+  }
+  return { violations, counts }
 }
 
 /** S2.4'：内核管道件不得反向依赖协议/模块；宿主不得直取模块实现；core/vendor 不得回潮。 */

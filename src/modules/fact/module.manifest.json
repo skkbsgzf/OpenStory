@@ -14,7 +14,11 @@
   "capabilities": [
     { "id": "fact.store", "version": 3, "golden": "fact-store-v3" },
     { "id": "fact.pack", "version": 1, "golden": "fact-pack-v1" },
-    { "id": "fact.enrich", "version": 1, "golden": "fact-enrich-v1" }
+    { "id": "fact.enrich", "version": 1, "golden": "fact-enrich-v1" },
+    { "id": "fact.engine", "version": 1 },
+    { "id": "fact.books", "version": 1 },
+    { "id": "fact.write", "version": 1 },
+    { "id": "fact.domain", "version": 1 }
   ],
   "endpoints": []
 }

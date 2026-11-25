@@ -18,16 +18,20 @@ import { loadGenres, readBrief, briefPromptSection } from './genres.mjs'
 import { loadSkills, craftSkillsForPrompt, craftInstructionBlock, readAgentPicks, suiteSkillDirs } from './skills.mjs'
 import { precedentPromptSectionForGenre } from '../protocol/knowledgeRouter.mjs'
 import { scanReferences, notesVisibleAt, buildReferenceGraph } from '../protocol/referenceStore.mjs'
-import { factStore } from '../protocol/factStore.mjs'
-import { listChapters } from '../protocol/chapters.mjs'
 import { courtyardPath } from '../protocol/courtyard.mjs'
+import { KERNEL_CAPABILITIES as K } from '../protocol/capabilityImplementations.mjs'
 
 /** 生效技能目录（OS-68）：内置＋本机之外，再叠加启用中套件捆绑的 skills/。 */
 export function effectiveSkillsDirs({ skillsDirs, suitesDirs, suiteStatePath, env }) {
   return [...(skillsDirs || []), ...suiteSkillDirs(suitesDirs || [], suiteStatePath || '', env)]
 }
 
-export async function systemPromptFor(root, libraries, genresDirs, skillsDirs, { canReadFiles = false, chineseReasoning = false, suitesDirs = null, suiteStatePath = '', env = process.env } = {}) {
+/**
+ * OS-193 K4：跨内核底座服务不持有实现——fact/prose 能力由调用方在请求入口
+ * `resolveFactCapability(root, 'fact.store')` / `resolveProseCapability(root)` 取句柄后传入。
+ * 缺省回落只服务不带库上下文的测试钩子（__test.systemPromptFor），生产路径一律显式传句柄。
+ */
+export async function systemPromptFor(root, libraries, genresDirs, skillsDirs, { canReadFiles = false, chineseReasoning = false, suitesDirs = null, suiteStatePath = '', env = process.env, factStore = K.factStore, prose = K.proseWrite } = {}) {
   const key = rootKey(root)
   const record = (Array.isArray(libraries) ? libraries : []).find((library) => rootKey(library.path) === key)
   const name = record?.name || basename(root) || '未命名库'
@@ -111,7 +115,7 @@ export async function systemPromptFor(root, libraries, genresDirs, skillsDirs, {
       // 当前章号从正文清单推（最大章号；没有正文＝0＝全量共识）。
       let currentChapter = 0
       try {
-        const listing = await listChapters(root, '正文')
+        const listing = await prose.listChapters(root, '正文')
         if (listing.ok) currentChapter = (listing.chapters || []).reduce((max, ch) => Math.max(max, Number(ch?.no) || 0), 0)
       } catch { /* 无正文＝0 */ }
       const allNotes = (Array.isArray(index.notes) ? index.notes : []).filter((note) => !note.isTagNote)

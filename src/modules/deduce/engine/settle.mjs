@@ -1,6 +1,6 @@
 /** 结算落库（M1-a）：作者选择 → 事件条目（plot）＋知情增量＋假设轨；导演三动作。
  * 事件带 runId/pov/fate|author provenance（成书渲染与「命运之笔/作者之笔」的数据地基）。 */
-import { FACT_SCHEMA, stableEntryId } from '../../../protocol/factDomain.mjs'
+import { getFact } from './factPort.mjs'
 import { pushLog } from './sessionState.mjs'
 import { advanceFront } from './fronts.mjs'
 
@@ -12,8 +12,8 @@ function trunc(text, n) {
 function beatEntry({ state, domain, candidate, decidedBy, extra = {} }) {
   const name = `第${state.round}拍·${trunc(candidate.text, 18)}`
   return {
-    schema: FACT_SCHEMA,
-    id: stableEntryId({ layer: 'plot', domain, slot: '', name }),
+    schema: getFact().factSchema(),
+    id: getFact().stableEntryId({ layer: 'plot', domain, slot: '', name }),
     layer: 'plot',
     name,
     domain,
@@ -75,8 +75,8 @@ export function settleHypothesis({ state, domain, candidate }) {
   if (!candidate.trace || candidate.trace.success) return null
   const name = `第${state.round}拍·悬而未决`
   const entry = {
-    schema: FACT_SCHEMA,
-    id: stableEntryId({ layer: 'plot', domain, slot: '', name }),
+    schema: getFact().factSchema(),
+    id: getFact().stableEntryId({ layer: 'plot', domain, slot: '', name }),
     layer: 'plot', name, domain,
     status: 'adopted',
     definition: candidate.text,

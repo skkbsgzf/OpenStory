@@ -12,14 +12,15 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { mkdir } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
-import { fact } from '../../protocol/index.mjs' // OS-142：内核能力经 Host API fact 命名空间转出（模块纪律：modules 不直引内核实现）
+import { getFactStore } from './engine/factPort.mjs' // OS-193 K2：fact 能力只经 activate 注入的句柄取用
 import { openDeduceSession, presentTurn, applyDirectorAction, settleChoice } from './engine/index.mjs'
 import { normalizeDeduceRules } from './engine/candidates.mjs'
 import { buildNarrativeContext, firstPersonify, readWikiSafe } from './deduceNarrative.mjs'
 import { atomicWriteFile } from '../../protocol/hostWrite.mjs'
 import { namingEntry } from '../../protocol/naming.mjs'
 
-const { factStore } = fact // OS-125 出口组的 fact 存储协议（经协议层转出）；推演端子 OS-155 起归本模块 engine/
+// OS-125 出口组的 fact 存储协议（经句柄转出）；推演端子 OS-155 起归本模块 engine/。
+const factStore = { createFactFileStore: (...args) => getFactStore().createFactFileStore(...args) }
 
 function text(value) {
   return String(value ?? '')

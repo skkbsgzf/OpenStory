@@ -27,7 +27,7 @@ import { NAMING_TABLE, TAB_REGISTRY, LOG_MODULES, computeTabDefs, viewScope } fr
 // OS-150b：S2.1/S2.2 共用同一份说明符扫描器（静态 from／动态 import()／副作用 import／单双引号）。
 // 两份正则必分叉——分叉面就是漏检面（analysisModules.mjs 的惰性 import 曾被整段放过）。
 import { scanImportSpecs, auditPublicEdges } from './importScan.mjs'
-import { auditCapabilityRoutes, auditBaseBoundary, auditTransferDuplication } from './capabilityBoundaries.mjs'
+import { auditCapabilityRoutes, auditBaseBoundary, auditTransferDuplication, auditKernelDirectImports } from './capabilityBoundaries.mjs'
 // OS-165/G5d：模块覆盖面与 test/moduleCoverage.test.mjs 共用一份口径（端点/页签归属与宿主白名单理由）。
 import { coverageReport } from './moduleCoverage.mjs'
 import { auditLineageNames, auditNamingConsistency } from '../verify/verify-os172-naming.mjs'
@@ -406,6 +406,16 @@ const lineageAudit = auditLineageNames()
 check('S2.10', 'S2', `OS-172/189 产品谱系名与作者身份（扫描 ${lineageAudit.scanned} 文件）`,
   lineageAudit.ok, lineageAudit.violations.slice(0, 6),
   lineageAudit.ok ? '一次性升级单独放行＋逐行出处白名单，整文件豁免已取消' : `${lineageAudit.violations.length} 处陈旧谱系名或身份声明`)
+
+// S2.11 OS-193「内核直连」：量真实静态耦合（含 export-from / 动态 import / 副作用 import）。
+// api/host 的直连本单只登记台账（OS-194 清零），不判红；其余三类必须为 0。
+const kernelDirect = auditKernelDirectImports(srcMjs)
+check('S2.11', 'S2', `内核直连为零（内核↔内核 ${kernelDirect.counts.kernelToKernel}；services→内核 ${kernelDirect.counts.servicesToKernel}；protocol 转供叶 ${kernelDirect.counts.protocolLeaves}；台账 api→内核 ${kernelDirect.counts.apiToKernel}／host→内核 ${kernelDirect.counts.hostToKernel}）`,
+  kernelDirect.violations.length === 0,
+  kernelDirect.violations.slice(0, 6).map((item) => `${item.from}:${item.line} -> ${item.to}：${item.reason}`),
+  kernelDirect.violations.length
+    ? `直连未清：${kernelDirect.violations.slice(0, 4).map((item) => `${item.from}→${item.to}`).join('; ')}`
+    : 'K1 唯一静态入口＋K2 句柄＋K3 归位＋K4 传句柄全部落地；api/host 直连留 OS-194 台账')
 
 console.log('\n── S3 前端一致性 ──')
 

@@ -28,7 +28,7 @@ import { readLatestByFile } from '../../protocol/changelog.mjs'
 import { atomicWriteFile } from '../../protocol/hostWrite.mjs'
 import { resolveFactCapability, resolveProseCapability } from '../../host/capabilityBindings.mjs'
 import { loadConfigV2 } from '../../services/agentConfig.mjs'
-import { resolveMediaCapability } from '../../protocol/media.mjs'
+import { resolveMediaCapability } from '../../host/capabilityBindings.mjs'
 import { submitJob } from '../../services/jobCenter.mjs'
 import { namingEntry } from '../../protocol/naming.mjs'
 

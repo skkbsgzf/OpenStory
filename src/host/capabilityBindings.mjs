@@ -28,3 +28,12 @@ export async function resolveFactCapability(root, id, range) {
 export async function resolveProseCapability(root) {
   return resolveCapability(root, 'prose.write', { min: 1 })
 }
+
+/** OS-193：原 protocol/{agentRuntime,media}.mjs 的薄 resolver 并入宿主能力绑定单一入口。 */
+export async function resolveAgentRuntimeCapability(root, id = 'agent.runtime', range = { min: 1 }) {
+  return resolveCapability(root, id, range)
+}
+
+export async function resolveMediaCapability(root, id, range = { min: 1 }) {
+  return resolveCapability(root, id, range)
+}

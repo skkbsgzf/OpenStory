@@ -38,8 +38,8 @@ test('真实仓：resolveRepoRoot 指向仓根，路径按仓根推导（不依�
 })
 
 test('守卫：embedding-server.mjs 不再含硬编码仓根字面量（D:/OpenStory）', () => {
-  // OS-140 布局归一：embedding-server 实现迁到 src/services/（断言字面量随事实更新）
-  const source = readFileSync(join(resolveRepoRoot(), 'src', 'services', 'embedding-server.mjs'), 'utf-8')
+  // OS-193 内核归位：embedding-server 实现迁到 src/modules/agent-runtime/（断言字面量随事实更新）
+  const source = readFileSync(join(resolveRepoRoot(), 'src', 'modules', 'agent-runtime', 'embedding-server.mjs'), 'utf-8')
   assert.equal(source.includes('D:/OpenStory'), false, 'embedding-server.mjs 仍含硬编码 D:/OpenStory')
   assert.equal(source.includes('resolveEmbeddingPaths'), true, 'embedding-server.mjs 应改用 embeddingPaths 的解析')
 })

@@ -3,7 +3,7 @@
  * P-M4：开局从世界书 rules 槽位预埋 fronts 模板立起威胁前线（有没有模板决定这一局有无累积压力）。
  * P-M5：换视角重演（同期重演）时，先跑视角的已确认拍作为固定端点进状态——端点固定、路径自由。
  * 禁宿主依赖：仅 import 协议层 factDomain 转供面与同目录引擎件。 */
-import { sha1Hex } from '../../../protocol/factDomain.mjs'
+import { getFact } from './factPort.mjs'
 import { createSessionState } from './sessionState.mjs'
 import { frontsFromRules } from './fronts.mjs'
 import { replayBackdrop } from './patchChannel.mjs'
@@ -34,9 +34,9 @@ export function openDeduceSession({ entries, pov, runId, priorEvents = [], linea
     throw error
   }
   const frozen = worldview.map((e) => clone(e))
-  const worldHash = sha1Hex(JSON.stringify(frozen.map((e) => [e.id, e.status]).sort()))
+  const worldHash = getFact().sha1Hex(JSON.stringify(frozen.map((e) => [e.id, e.status]).sort()))
   const session = {
-    runId: runId || sha1Hex(`deduce|${pov}|${worldHash}`).slice(0, 12),
+    runId: runId || getFact().sha1Hex(`deduce|${pov}|${worldHash}`).slice(0, 12),
     pov,
     worldHash,
     openedAt: new Date().toISOString()

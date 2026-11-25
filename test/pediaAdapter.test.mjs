@@ -5,11 +5,13 @@
  */
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { stableEntryId } from '../src/protocol/factDomain.mjs'
+import { KERNEL_CAPABILITIES as K } from '../src/protocol/capabilityImplementations.mjs'
+
+const { stableEntryId } = K.factDomain
 import {
   pediaToFactEntry, factEntryToPedia, PEDIA_LOSS_FIELDS
 } from '../src/modules/exchange/pediaAdapter.mjs'
-import { FACT_SCHEMA } from '../src/protocol/factDomain.mjs'
+const FACT_SCHEMA = K.factDomain.factSchema()
 
 const PROV = { book: '水浒传', book_id: 'shuihu', chapters: [1], scenes: [], extractor: 'pedia-fixture', quote_hash: 'a'.repeat(40) }
 const FP = { vec: [0.1, 0.2], metrics: {} }

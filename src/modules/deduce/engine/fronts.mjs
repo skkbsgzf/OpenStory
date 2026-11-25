@@ -18,7 +18,7 @@
  *
  * 纯函数、零宿主依赖：只 import 协议层 factDomain 转供面（fact 域原语），不碰 node 内置 / process / 文件系统。
  */
-import { sha1Hex } from '../../../protocol/factDomain.mjs'
+import { getFact } from './factPort.mjs'
 
 export const FRONTS_VERSION = 'fronts-clock@1'
 
@@ -67,7 +67,7 @@ export function createFront(input = {}) {
   const max = clampInt(source.max, 1, 12, DEFAULT_CLOCK_MAX)
   return {
     version: FRONTS_VERSION,
-    id: trimmed(source.id) || `front-${sha1Hex(`front|${name}`).slice(0, 8)}`,
+    id: trimmed(source.id) || `front-${getFact().sha1Hex(`front|${name}`).slice(0, 8)}`,
     name,
     threat: trimmed(source.threat),
     danger,
@@ -97,7 +97,7 @@ export function frontsFromRules(entries = [], { atRound = 0 } = {}) {
     const template = isPlainObject(entry.fronts) ? entry.fronts : null
     if (!template) continue
     const front = createFront({
-      id: trimmed(template.id) || `front-${sha1Hex(`rule|${str(entry.id)}`).slice(0, 8)}`,
+      id: trimmed(template.id) || `front-${getFact().sha1Hex(`rule|${str(entry.id)}`).slice(0, 8)}`,
       name: trimmed(template.name) || entry.name,
       threat: trimmed(template.threat) || trimmed(entry.definition),
       danger: template.danger,
@@ -262,7 +262,7 @@ export function braidFronts(fronts = [], hypotheses = [], { round = 0, max = 6, 
     if (!hypothesisId || used.has(hypothesisId)) continue
     const name = trimmed(hypothesis.name) || '未命名伏笔'
     const front = createFront({
-      id: `front-hyp-${sha1Hex(`hypothesis|${hypothesisId}`).slice(0, 8)}`,
+      id: `front-hyp-${getFact().sha1Hex(`hypothesis|${hypothesisId}`).slice(0, 8)}`,
       name,
       threat: trimmed(hypothesis.definition) || name,
       danger: 'medium',

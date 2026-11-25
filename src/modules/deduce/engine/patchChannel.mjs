@@ -19,7 +19,7 @@
  *
  * 纯函数、零宿主依赖：只 import 协议层 factDomain 转供面（fact 域原语）。
  */
-import { FACT_SCHEMA, stableEntryId } from '../../../protocol/factDomain.mjs'
+import { getFact } from './factPort.mjs'
 
 export const PATCH_CHANNEL_VERSION = 'fact-patch@1'
 
@@ -75,13 +75,13 @@ export function buildWorldbookPatch({ events = [], domain = '', bookId = '', ext
     // 名字要可辨且稳定：带拍序与视角，文件名/条目名一眼看出是哪一局的哪一拍。
     const round = Number.isInteger(event.round) ? event.round : null
     const name = `推演补丁·${pov || '未知视角'}·第${round ?? '?'}拍·${text.slice(0, 14)}${text.length > 14 ? '…' : ''}`
-    const id = stableEntryId({ layer: 'plot', domain, slot: '', name })
+    const id = getFact().stableEntryId({ layer: 'plot', domain, slot: '', name })
     if (existing.has(id) || patches.some((patch) => patch.id === id)) {
       duplicate += 1
       continue
     }
     patches.push({
-      schema: FACT_SCHEMA,
+      schema: getFact().factSchema(),
       id,
       layer: 'plot',
       domain,

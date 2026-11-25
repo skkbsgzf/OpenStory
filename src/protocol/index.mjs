@@ -36,9 +36,7 @@
 export const HOST_API_VERSION = 'host-api@2'
 
 import * as kernel from '../kernel/index.mjs'
-import { factCapability } from '../modules/fact/index.mjs'
-import * as chaptersProtocol from './chapters.mjs'
-import * as chapterWriteProtocol from './chapterWrite.mjs'
+import { KERNEL_CAPABILITIES as K } from './capabilityImplementations.mjs'
 import * as changelogProtocol from './changelog.mjs'
 import * as jobCenter from '../services/jobCenter.mjs'
 import * as agentEventsProtocol from './agentEvents.mjs'
@@ -70,9 +68,12 @@ export const KERNEL_ID = kernel.KERNEL_ID
  * 已退出 `@2` 的三组：`deduce`（推演端子归 src/modules/deduce/engine/）、`projectMeta`／
  * `projectImport`（库管理模块内组合，见 src/modules/library/index.mjs）。
  */
+const chaptersProtocol = K.proseWrite
+const chapterWriteProtocol = K.proseWrite
+
 export const fact = Object.freeze({
-  enrich: factCapability['fact.enrich'],
-  factStore: factCapability['fact.store'],
+  enrich: K.factEnrich,
+  factStore: K.factStore,
   fail: kernel.fail,
   ok: kernel.ok,
   writeFileAtomic: kernel.writeFileAtomic

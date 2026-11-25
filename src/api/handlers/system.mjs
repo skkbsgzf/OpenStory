@@ -40,8 +40,7 @@ import {
   normalizeConfigBlock,
   probeTextConfig
 } from '../../services/agentConfig.mjs'
-import { resolveMediaCapability } from '../../protocol/media.mjs'
-import { resolveAgentRuntimeCapability } from '../../protocol/agentRuntime.mjs'
+import { resolveAgentRuntimeCapability, resolveMediaCapability } from '../../host/capabilityBindings.mjs'
 import { listArtifacts, listLibraryFiles } from '../../protocol/libraryInventory.mjs'
 import { readUiState, writeUiState } from '../../protocol/libState.mjs'
 import { BASE_GRAPH, MODULE_MANIFESTS, deriveModuleStateChange } from '../../protocol/modules.mjs'

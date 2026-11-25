@@ -14,8 +14,10 @@
 import { existsSync, readdirSync, statSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { factStore } from './factStore.mjs' // OS-157：内核公开面唯一出口（S2.4'），本仓其余模块不许绕过协议层
+import { KERNEL_CAPABILITIES as K } from './capabilityImplementations.mjs' // OS-193 K1：唯一静态入口
 import { namingEntry } from './naming.mjs'
+
+const factStore = K.factStore
 
 const METADATA_DIR = namingEntry('libraryStorage').metadataDir
 
