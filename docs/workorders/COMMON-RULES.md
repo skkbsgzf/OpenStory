@@ -12,6 +12,7 @@ node .zcode/os-batch-runner.mjs --plan <plan.json> --status <status.json> --mode
 
 - `plan.json` 每批一项：`{ id, title, ticket, allow, mustPass }`。
 - **`allow` 是硬约束**（越界＝返工）；迁移类、动门禁的单必须带 `tools/**`；`mustPass` 列红线测试。
+- **`allow` 必须覆盖收尾脚本的写入面**：改了源码行数就要有 `ARCHITECTURE.md` 与 `docs/number-anchors.json`（`arch:stats`／数字锚要回写）；改了页面 id 或命名就要有 `test/**`（引用旧 id 的模块测试会跟着改）。漏了这两处，施工方只能把文档还原、门禁必红——OS-191 与 OS-190a 都因此停过线。
 - 编排器内置的闸：开工前查工作树干净与全量测试基线绿；**e2e 一律走隔离脚本（`tools/verify/verify-os172-e2e.mjs` 自己起临时 daemon），编排器不重启也不连接 8807**；provider 限流或空结果直接停线；只改了工单归档不算实质改动。
 
 ## 2. 通用纪律

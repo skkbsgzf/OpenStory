@@ -96,3 +96,11 @@ LIMITATIONS:
 - 为「显式列出本机覆盖」，`/api/plugins` 新增 `byGroup`/`overrides`、`/api/suites` 新增 `overrides` 三个可选响应字段；原有字段、端点 id、路径未变。
 - 「风格包」「Agent 运行时」的**选择**动作（当前皮肤、当前激活运行时）仍留在「外观」「引擎与存储」——它与启停是不同动作；启停/设置管理已全部合入插件中心六组。若要求连选择入口也搬走，需另立单。
 ```
+
+## 验收记录（监督线，2026-11-25）
+
+- 提交 `2c99b6c`；工作树干净；全量 808／806 过／2 条件跳过／0 挂；门禁 27／0／0；数字锚与架构统计一致；隔离 e2e 全绿；`app.js` 10,338→10,108（净减 230）。
+- 隔离 daemon 探针（临时 `LOCALAPPDATA`＋临时库）实测：`/api/plugins` 的 `capabilityReport` 为 `openstory-capability-graph@1`、`ok:true`、**loaded 69＝21 模块＋48 货架**；48 项逐项 loaded、degraded 0、issues 0；按货架分布＝技能 31／体裁 6／业务套件 3／文风 3／运行时 5（`/api/skills` 33 里的另 2 个是套件捆绑技能，符合既有口径）。`/api/suites` 48 条。
+- 退役面实测：`/api/suite/state-data` 404、`/suite-assets/…` 404；`suites/comicdrama/` 目录已删；`LEGACY_MODULE_SPEC`／`migrateModuleManifest`／`modules:migrate`／stage B 过渡脚手架在 `src`、`public`、`package.json`、`tools` 里零命中（只剩注释说明退役）。
+- 测试变动核对：删掉的 20 个用例全部是 @1 双读、stage B、page 模式 assets/state-data、漫剧 legacy 用例；**每条都有对应的退役守卫**（@1 拒收、stage B 不存在、assets／state-data 不存在、漫剧已删），另新增五类货架投影、依赖闭包、统一启停、本机覆盖报告、`/api/plugins` 统一视图等用例。未放宽断言。
+- 结论：**已验收**。
