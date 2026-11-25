@@ -20,7 +20,9 @@ const auditDoc = read('docs/plan/final-audit.md')
 const routeDoc = read('docs/plan/route-batch2-20261123.md')
 const publishingDoc = read('docs/PUBLISHING.md')
 const systemDoc = read('docs/plan/workorder-system-20261124.md')
-const architecture = read('ARCHITECTURE.md')
+// 换行归一：Windows 上按 autocrlf 检出时文件是 CRLF，而生成段按 LF 产出；
+// 不归一的话「新克隆 + 本机 npm test」会红（2026-11-26 实测）。逐字比对本身不变。
+const architecture = read('ARCHITECTURE.md').replace(/\r\n?/gu, '\n')
 const numberAnchors = JSON.parse(read('docs/number-anchors.json'))
 const fmt = (value) => String(value).replace(/\B(?=(\d{3})+(?!\d))/gu, ',')
 

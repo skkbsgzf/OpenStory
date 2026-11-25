@@ -56,6 +56,7 @@ jobs:
         run: |
           set +e
           cd "${RUNNER_TEMP:-/tmp}/openstory-ci" 2>/dev/null || exit 0
+          # 只发失败项：✗ 行＋紧随其后的明细（· 行）；不要通过项的证据行（否则噪音淹没真因）。
           for log in test-round-1.log test-round-2.log acceptance.log arch-check.log; do
             [ -f "$log" ] || continue
             while IFS= read -r line; do
@@ -63,12 +64,13 @@ jobs:
               safe="${line//'%'/'%25'}"
               safe="${safe//$'\r'/}"
               echo "::error title=${log}::${safe}"
-            done < <(grep -E '^not ok |^✖ |^✗ |^ +· ' "$log" | head -n 40)
+            done < <(grep -E '^✗ |^✖ |^ +· ' -B0 -A0 "$log" | awk '/^✗|^✖/{p=1; print; n=0; next} /^ +· /{if(p && n<5){print; n++}}' | head -n 40)
           done
           {
             echo "### 失败摘要（$GITHUB_SHA）"
             echo '```'
-            grep -hE '^ℹ (tests|pass|fail|skipped)|^not ok |^✖ |^✗ |^ +· |^验收门禁' *.log 2>/dev/null | head -n 50
+            grep -hE '^ℹ (tests|pass|fail|skipped)|^验收门禁' *.log 2>/dev/null | head -n 10
+            grep -hE '^✗ |^ +· |^✖ ' *.log 2>/dev/null | head -n 30
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
           exit 0
