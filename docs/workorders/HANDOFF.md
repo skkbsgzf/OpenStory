@@ -1,5 +1,7 @@
 # 工单交接说明（给 workbuddy / 后续执行者）
 
+> **已推送（2026-11-26）**：`main` → `ad686fd`（39 个提交，`4d8ad95..ad686fd`）。
+> **CI 未触发（待作者在仓库设置里开启）**：工作流 `OpenStory CI` 状态 active，但该提交的 check-suites／check-runs 均为 0，仓库历史上也从未有过任何 run——是 GitHub 侧没触发，不是代码问题。请到仓库 **Settings → Actions → General** 确认选了「Allow all actions and reusable workflows」、且账号没有 Actions 计费限制；开启后推一个提交即可看到首跑。
 > **当前阶段（2026-11-25 晚）：清账批已全部收口**——D 批验收有条件通过，作者裁定「遗留全部做完，不接受妥协」「待定里的 Pinax 业务必须全部退役」。12 张工单在 [`BOARD.md`](BOARD.md)「清账批」段，规划见 [`docs/plan/cleanup-batch-20261125.md`](../plan/cleanup-batch-20261125.md)，验收记录见 [`OS-185-188-batch-d-acceptance.md`](OS-185-188-batch-d-acceptance.md)。
 > **派发方式**：CodeBuddy CLI（`.zcode/os-batch-runner.mjs`，模型 `hy4flash`），每轮由监督线验收后再开下一轮；提交由编排器做，**任何执行者不要自行 push**。
 > **e2e 口径（2026-11-25 起）**：一律走隔离脚本 `tools/verify/verify-os172-e2e.mjs`（临时 daemon＋临时 `LOCALAPPDATA`＋假上游）；编排器不重启也不连接 8807——常驻进程是作者在用的旧 daemon，新版「首次打开即升级真库」，碰它等于替作者升级真库。
