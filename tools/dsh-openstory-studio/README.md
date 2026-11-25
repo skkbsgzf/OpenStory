@@ -25,7 +25,7 @@ node src/host/daemon.mjs --port=8807  →  http://127.0.0.1:8807（只监听回�
    - 右侧栏标签页类型 `openstory`（`sidebarRightTabs` + `sidebar.right.pane.tab`），
      可分栏、可收起；右侧栏自己的「全屏」按钮可把工作台放大到整窗；
      右侧栏 guide 页里也有一张 OpenStory 卡片。
-   - 面板以 `?embed=1` 打开，OpenStory 进入**嵌入模式**：收掉它自带的 Pi-Agent
+   - 面板以 `?embed=1` 打开，OpenStory 进入**嵌入模式**：收掉它自带的 Agent 栏
      左列（`html.os-embed`），因为左侧已经是 DSH 原本的会话——不会出现两条
      Agent 栏，工作台也拿回这部分宽度。独立在浏览器打开时行为不变。
    - 编辑器里的 **「添加到 Agent / 润笔 / 发给 Agent」在嵌入模式下接到 DSH**：

@@ -83,7 +83,7 @@ function startMcp(env = process.env) {
 
 test('模块 manifest：全部工作台过形状校验，core 已退役且端点错误契约完备', () => {
   const ids = MODULE_MANIFESTS.map((manifest) => manifest.id).sort()
-  for (const id of ['analysis', 'comfyui', 'kb', 'habits', 'storysource', 'artifacts', 'exchange', 'chapters', 'script', 'worldbook', 'roleplay']) assert.ok(ids.includes(id), `模块 ${id} 必须在清单`)
+  for (const id of ['analysis', 'imagegen', 'knowledge', 'log', 'habits', 'storysource', 'artifacts', 'exchange', 'chapters', 'script', 'worldbook', 'roleplay']) assert.ok(ids.includes(id), `模块 ${id} 必须在清单`)
   for (const manifest of MODULE_MANIFESTS) {
     const checked = validateModuleManifest(manifest, { dirName: manifest.id })
     assert.equal(checked.ok, true, `${manifest.id} 应过校验：${checked.errors?.join('；')}`)
@@ -102,11 +102,11 @@ test('模块 manifest：全部工作台过形状校验，core 已退役且端点
 })
 
 test('端点归属：只登记独占端点，共用端点没有归属', () => {
-  assert.equal(moduleOfEndpoint('kbStatusGet'), 'kb')
-  assert.equal(moduleOfEndpoint('kbConfigPut'), 'kb')
-  assert.equal(moduleOfEndpoint('deduceImage'), 'comfyui')
-  assert.equal(moduleOfEndpoint('referenceImageGenerate'), 'comfyui')
-  assert.equal(moduleOfEndpoint('visionDescribe'), 'comfyui')
+  assert.equal(moduleOfEndpoint('kbStatusGet'), 'knowledge')
+  assert.equal(moduleOfEndpoint('kbConfigPut'), 'knowledge')
+  assert.equal(moduleOfEndpoint('deduceImage'), 'imagegen')
+  assert.equal(moduleOfEndpoint('referenceImageGenerate'), 'imagegen')
+  assert.equal(moduleOfEndpoint('visionDescribe'), 'imagegen')
   // 共用端点：任何模块停用都不该影响
   assert.equal(moduleOfEndpoint('factCurveGet'), null)
   // chapterGet 归正文工作台独占；停用正文时与其它工作台一样返回 MODULE_DISABLED。
@@ -119,7 +119,7 @@ test('端点归属：只登记独占端点，共用端点没有归属', () => {
     HANDLER_MODULE_SOURCES.map((item) => item.id).sort(),
     MODULE_MANIFESTS.map((item) => item.id).sort()
   )
-  for (const id of ['analysis', 'comfyui', 'kb', 'habits', 'storysource', 'artifacts', 'exchange']) {
+  for (const id of ['analysis', 'imagegen', 'knowledge', 'log', 'habits', 'storysource', 'artifacts', 'exchange']) {
     assert.ok(HANDLER_MODULE_SOURCES.some((item) => item.id === id), `段 C 前已落地模块 ${id} 必须在来源表`)
   }
   for (const endpoint of Object.keys(ENDPOINT_MODULES)) assert.ok(HANDLERS[endpoint], `归属端点缺 handler：${endpoint}`)
@@ -128,20 +128,20 @@ test('端点归属：只登记独占端点，共用端点没有归属', () => {
 test('isModuleEnabled：单一判定入口，缺省启用，嵌套与扁平键都认', async () => {
   const { base, root } = await makeLibrary()
   try {
-    assert.equal(await isModuleEnabled(root, 'kb'), true, '没有 ui-state ＝ 缺省启用')
-    assert.equal(await isModuleEnabled('', 'kb'), true, '没有库根按启用处理')
+    assert.equal(await isModuleEnabled(root, 'knowledge'), true, '没有 ui-state ＝ 缺省启用')
+    assert.equal(await isModuleEnabled('', 'knowledge'), true, '没有库根按启用处理')
 
-    await writeUiState(root, { modules: { enabled: { kb: false } } })
-    assert.equal(await isModuleEnabled(root, 'kb'), false)
-    assert.equal(await isModuleEnabled(root, 'comfyui'), true, '没被点名的模块不受影响')
-    assert.equal(await isModuleDisabledFor('kbStatusGet', root), 'kb')
+    await writeUiState(root, { modules: { enabled: { knowledge: false } } })
+    assert.equal(await isModuleEnabled(root, 'knowledge'), false)
+    assert.equal(await isModuleEnabled(root, 'imagegen'), true, '没被点名的模块不受影响')
+    assert.equal(await isModuleDisabledFor('kbStatusGet', root), 'knowledge')
     assert.equal(await isModuleDisabledFor('factCurveGet', root), null, '共用端点永不因模块停用失效')
 
-    await writeUiState(root, { 'modules.enabled.kb': false })
-    assert.equal(await isModuleEnabled(root, 'kb'), false, '扁平键同样生效')
+    await writeUiState(root, { 'modules.enabled.knowledge': false })
+    assert.equal(await isModuleEnabled(root, 'knowledge'), false, '扁平键同样生效')
 
-    await writeUiState(root, { modules: { enabled: { kb: true } } })
-    assert.equal(await isModuleEnabled(root, 'kb'), true)
+    await writeUiState(root, { modules: { enabled: { knowledge: true } } })
+    assert.equal(await isModuleEnabled(root, 'knowledge'), true)
     assert.equal(await isModuleDisabledFor('kbStatusGet', root), null)
   } finally {
     await rm(base, { recursive: true, force: true })
@@ -179,7 +179,7 @@ test('daemon 宿主组合面：拒绝写成停用插件，存量 false 键也不
 test('daemon：独占端点停用返回 MODULE_DISABLED，共用端点照常，启用恢复且值保留', async () => {
   const { base, root, preferencesPath } = await makeLibrary()
   const env = { LOCALAPPDATA: base, APPDATA: base }
-  await writeUiState(root, { modules: { enabled: { kb: false, comfyui: false } }, theme: 'dark' })
+  await writeUiState(root, { modules: { enabled: { knowledge: false, imagegen: false } }, theme: 'dark' })
   const daemon = await startDaemon({ port: 0, preferencesPath, env, logger: { log() {} } })
   const origin = `http://127.0.0.1:${daemon.port}`
   try {
@@ -226,8 +226,8 @@ test('daemon kb 闸：多库时按请求 root 判定（A 停用 kb、B 启用 �
     await mkdir(join(root, '.openstory'), { recursive: true })
     await mkdir(join(root, '正文'), { recursive: true })
   }
-  await writeUiState(rootA, { modules: { enabled: { kb: false } } })
-  await writeUiState(rootB, { modules: { enabled: { kb: true } } })
+  await writeUiState(rootA, { modules: { enabled: { knowledge: false } } })
+  await writeUiState(rootB, { modules: { enabled: { knowledge: true } } })
   const preferencesPath = join(base, 'libraries.json')
   await writeFile(preferencesPath, JSON.stringify({
     schemaVersion: 1, libraries: [

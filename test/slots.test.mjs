@@ -60,10 +60,10 @@ test('manifest 校验：未注册 slot 拒绝，已注册 slot 必须引用本 m
 
 test('slot 编排：装载序优先、同 slot 稳定排序、停用模块不出现', () => {
   const placements = slotPlacements(MODULE_MANIFESTS)
-  assert.deepEqual(placements.tab.map((item) => item.page), ['artifacts', 'write', 'habits', 'deduce', 'script', 'storySource', 'reference'])
-  assert.deepEqual(placements.right.map((item) => item.page), ['analysis-panel'])
-  assert.deepEqual(placements['host-actions'].map((item) => item.page), ['exchange-actions'])
-  assert.deepEqual(placements.settings.map((item) => item.page).sort(), ['image-settings', 'kb-settings'])
+  assert.deepEqual(placements.tab.map((item) => item.page), ['artifacts', 'chapters', 'habits', 'log', 'roleplay', 'script', 'storysource', 'worldbook'])
+  assert.deepEqual(placements.right.map((item) => item.page), ['analysis'])
+  assert.deepEqual(placements['host-actions'].map((item) => item.page), ['exchange'])
+  assert.deepEqual(placements.settings.map((item) => item.page).sort(), ['imagegen', 'knowledge'])
   assert.ok(Object.isFrozen(placements))
   assert.ok(Object.isFrozen(placements.tab))
 

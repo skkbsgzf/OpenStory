@@ -381,7 +381,7 @@ export async function scanReferences(root, { currentChapter = null } = {}) {
  * 单向原则：边只从「世界书」出发指向产物。正文里的 `[[某世界书]]` 只作为正文的出边，
  * 不会让世界书反向拿到正文内容——这是作者要求的「世界书不污染正文上下文」。
  *
- * 节点 kind：reference / chapter / artifact / entry（只读）/ tag
+ * 节点 kind：worldbook / chapter / artifact / entry（只读）/ tag
  * 边权沿用历史 worldbookFileContract 的口径：link=2、mention=min(n,3)、tag=1。
  */
 export function buildReferenceGraph(index, { entries = [] } = {}) {
@@ -411,7 +411,7 @@ export function buildReferenceGraph(index, { entries = [] } = {}) {
   for (const note of notes) {
     if (note.isTagNote) continue
     ensureNode(note.path, {
-      kind: 'reference',
+      kind: 'worldbook',
       label: note.title,
       tags: note.tags,
       excerpt: note.excerpt,

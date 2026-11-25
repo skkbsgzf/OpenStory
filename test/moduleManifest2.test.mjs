@@ -228,13 +228,13 @@ test('装载器校验内置来源：固定目录中的 manifest 不得声明 bui
 })
 
 test('C6 内置 20 份 manifest 已升 @2；七内核、十一工作台、两个宿主组合面', () => {
-  assert.equal(MODULE_MANIFESTS.length, 20)
+  assert.equal(MODULE_MANIFESTS.length, 21)
   for (const manifest of MODULE_MANIFESTS) {
     assert.equal(manifest.spec, MODULE_SPEC)
     assert.equal(Object.prototype.hasOwnProperty.call(manifest, 'core'), false)
     assert.equal(validateModuleManifest(manifest, { dirName: manifest.id, stage: 'C' }).ok, true)
   }
-  assert.equal(MODULE_MANIFESTS.filter((item) => item.class === 'workbench').length, 11)
+  assert.equal(MODULE_MANIFESTS.filter((item) => item.class === 'workbench').length, 12)
   assert.equal(MODULE_MANIFESTS.filter((item) => item.class === 'kernel').length, 7)
   assert.equal(MODULE_MANIFESTS.filter((item) => !item.class).length, 2)
   assert.ok(MODULE_MANIFEST_NOTICES.some((item) => item.code === 'MODULE_HOST_COMPOSITION' && item.id === 'agentbar'))
@@ -245,7 +245,7 @@ test('C6 内置 20 份 manifest 已升 @2；七内核、十一工作台、两个
 test('C6 内置来源：内核/工作台/宿主面分区，目录与 manifest 哈希可追溯', () => {
   assert.deepEqual(MODULE_SOURCE_GROUPS.kernel, BUILTIN_KERNEL_IDS)
   assert.deepEqual(MODULE_SOURCE_GROUPS['host-composition'], ['agentbar', 'library'])
-  assert.equal(MODULE_SOURCE_GROUPS.workbench.length, 11)
+  assert.equal(MODULE_SOURCE_GROUPS.workbench.length, 12)
   assert.equal(MODULE_SOURCE_GROUPS.suite.length, 0)
   assert.equal(MODULE_SOURCE_GROUPS.unclassified.length, 0)
   assert.equal(MODULE_SOURCES.length, MODULE_MANIFESTS.length)

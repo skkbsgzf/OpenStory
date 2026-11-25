@@ -56,7 +56,7 @@ function renderAgentCurrent() {
 }
 
 function renderKbChain() {
-  const host = document.getElementById('agent-kb-chain')
+  const host = document.getElementById('agent-knowledge-chain')
   if (!host) return
   const genre = state.briefGenre?.name || ''
   const picks = state.agent.picksExplicit && state.agent.picks ? state.agent.picks : null
@@ -65,10 +65,10 @@ function renderKbChain() {
   const methods = picks?.methods || []
   const flash = Date.now() - (state.agent.picksFlashAt || 0) < 1600
   const segs = []
-  if (genre) segs.push(`<span class="kb-chip" title="题材（写进库简报）">${esc(genre)}</span>`)
-  if (styleName) segs.push(`<span class="kb-chip style" title="主导文风（每轮注入）">${esc(styleName.replace(/^style-/, ''))}</span>`)
-  if (methods.length) segs.push(`<span class="kb-chip" title="${esc(methods.join('、'))}">方法论 ×${methods.length}</span>`)
-  host.innerHTML = `<button class="kb-chain${flash ? ' flash' : ''}" data-action="toggle-style-menu" title="点开调整知识链">知识链 ${segs.join('<i class="kb-sep">·</i>')}</button>`
+  if (genre) segs.push(`<span class="knowledge-chip" title="题材（写进库简报）">${esc(genre)}</span>`)
+  if (styleName) segs.push(`<span class="knowledge-chip style" title="主导文风（每轮注入）">${esc(styleName.replace(/^style-/, ''))}</span>`)
+  if (methods.length) segs.push(`<span class="knowledge-chip" title="${esc(methods.join('、'))}">方法论 ×${methods.length}</span>`)
+  host.innerHTML = `<button class="knowledge-chain${flash ? ' flash' : ''}" data-action="toggle-style-menu" title="点开调整知识链">知识链 ${segs.join('<i class="knowledge-sep">·</i>')}</button>`
 }
 
 function processBlockHtml(proc, { live = false } = {}) {

@@ -60,9 +60,9 @@ test('settingsViews：模型/字号/知识库金样；uiKit、runtimeShelf、聚
   fx.setKit({ field: ({ control }) => `<label>${control}</label>`, textInput: ({ id, value }) => `<input id="${esc(id)}" value="${esc(value)}">` })
   fx.state.kbConfig = { baseUrl: 'http://127.0.0.1:8080', collections: { style: 'c1' }, configPath: 'kb.json' }
   const kb = fx.views.settingsKbSectionHtml()
-  assert.match(kb, /id="kb-base-url"/u)
-  assert.match(kb, /data-kb-collection-alias value="style"/u)
-  assert.match(kb, /data-action="kb-test"/u)
+  assert.match(kb, /id="knowledge-base-url"/u)
+  assert.match(kb, /data-knowledge-collection-alias value="style"/u)
+  assert.match(kb, /data-action="knowledge-test"/u)
 
   fx.setAggregation({ moduleSettingsSectionHtml: () => '<div class="step">模块已装载</div>' })
   assert.match(fx.views.settingsModuleSettingsSectionHtml(), /模块已装载/u)
@@ -174,7 +174,7 @@ test('referencePageViews：章节分组、图片槽、图谱与剧本人物金�
   assert.match(views.refImagesSlotHtml({}), /class="ref-img-slot empty"/u)
   assert.match(views.graphModuleHtml(), /世界书图谱/u)
   registry = { namingEntry: () => ({ tab: '世界书', graphLabel: '关系图谱' }) }
-  state.refCol.graph = { nodes: [{ id: 'n1' }], edges: [], stats: { nodes: 1, edges: 0, byKind: { reference: 1 } } }
+  state.refCol.graph = { nodes: [{ id: 'n1' }], edges: [], stats: { nodes: 1, edges: 0, byKind: { worldbook: 1 } } }
   state.refCol.pick = 'n1'
   assert.match(views.graphModuleHtml(), /关系图谱|世界书/u)
   assert.match(views.graphModuleHtml(), /class="node-card"/u)

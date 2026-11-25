@@ -1,6 +1,6 @@
 {
   "spec": "openstory-module@2",
-  "id": "kb",
+  "id": "knowledge",
   "name": "知识库",
   "version": "0.1.0",
   "builtin": true,
@@ -13,7 +13,7 @@
   ],
   "pages": [
     {
-      "id": "kb-settings",
+      "id": "knowledge",
       "label": "知识库"
     }
   ],
@@ -24,7 +24,7 @@
   "slots": [
     {
       "slot": "settings",
-      "page": "kb-settings"
+      "page": "knowledge"
     }
   ],
   "settingsHint": "服务地址、API Key、Space ID 与分库映射都在「设置 · 引擎与存储 · 知识库」里配（真源是本机 kb-config.json，密钥只回掩码）。",

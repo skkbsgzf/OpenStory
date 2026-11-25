@@ -47,7 +47,7 @@ test('referenceEditorHtml：金样——from graph 返回、标签、摘要、�
 })
 
 test('refNodeCardHtml：度数/标签/摘要由入参算，不读 state', () => {
-  const node = { id: 'r1', kind: 'reference', label: '林冲', excerpt: '**摘要**', tags: ['角色'] }
+  const node = { id: 'r1', kind: 'worldbook', label: '林冲', excerpt: '**摘要**', tags: ['角色'] }
   const edges = [{ a: 'r1', b: 't1' }, { a: 't1', b: 'r1' }, { a: 'x', b: 'y' }]
   const html = refNodeCardHtml(node, { edges, esc, text })
   assert.match(html, /2 条关联/u)

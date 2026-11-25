@@ -8,7 +8,7 @@
   "endpoints": [],
   "pages": [
     {
-      "id": "storySource",
+      "id": "storysource",
       "label": "故事源"
     }
   ],
@@ -19,7 +19,7 @@
   "slots": [
     {
       "slot": "tab",
-      "page": "storySource"
+      "page": "storysource"
     }
   ],
   "settingsHint": "故事源没有可调参数：它是故事源条目与 fact 链的可视化读面；条目从扮演与导入产生，分析卡片在正文右栏里勾。"

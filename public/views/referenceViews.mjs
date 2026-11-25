@@ -91,7 +91,7 @@ export function referenceEditorHtml({ ref = {}, note, bodySource = '', body = ''
 export function refNodeCardHtml(node, { edges = [], esc, text, variant = '' } = {}) {
   const html = esc ?? ((value) => String(value ?? ''))
   const asText = text ?? ((value) => String(value ?? ''))
-  const kindLabels = { reference: '世界书', tag: '标签', artifact: '章节/产物', entry: '条目' }
+  const kindLabels = { worldbook: '世界书', tag: '标签', artifact: '章节/产物', entry: '条目' }
   const degree = edges.filter((edge) => edge.a === node.id || edge.b === node.id).length
   const tags = Array.isArray(node.tags) ? node.tags : []
   const tagChips = tags.map((tag) => `<button class="pill tag-pick" data-ref-tag="${html(tag)}">#${html(tag)}</button>`).join('')
@@ -116,7 +116,7 @@ export function referenceGraphHtml({ rc = {}, ref = {}, esc, text, nodeCardHtml 
   const stats = rc.graph.stats || {}
   const byKind = stats.byKind || {}
   const legend = [
-    ['reference', '世界书', 'var(--accent)'],
+    ['worldbook', '世界书', 'var(--accent)'],
     ['tag', '标签', 'var(--warn)'],
     ['artifact', '章节/产物', 'var(--ok)'],
     ['entry', '条目（只读）', 'var(--meta)']

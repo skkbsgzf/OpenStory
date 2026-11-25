@@ -47,10 +47,10 @@ const BUILTIN_CLASSES = Object.freeze({
   analysis: 'workbench',
   artifacts: 'workbench',
   chapters: 'workbench',
-  comfyui: 'workbench',
+  imagegen: 'workbench',
   exchange: 'workbench',
   habits: 'workbench',
-  kb: 'workbench',
+  knowledge: 'workbench',
   roleplay: 'workbench',
   script: 'workbench',
   storysource: 'workbench',
@@ -62,8 +62,8 @@ const TRANSITION_NOTICES = new Set(['MODULE_CLASS_INCOMPLETE'])
 const SPLIT_PENDING = Object.freeze({
   analysis: '纯分析引擎后续拆入 text kernel',
   chapters: '写协议后续拆入 prose kernel',
-  comfyui: '执行器后续拆入 media kernel',
-  kb: 'embedding 后续拆入 agent.runtime',
+  imagegen: '执行器后续拆入 media kernel',
+  knowledge: 'embedding 后续拆入 agent.runtime',
   roleplay: '引擎与默认规则后续拆入 deduce/套件'
 })
 

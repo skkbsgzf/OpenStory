@@ -69,8 +69,8 @@ test('manifest：四个原核心工作台已去 core，端点归属与错误契�
     'referenceAbsorb', 'referenceAssetGet', 'referenceGet', 'referenceGraphGet', 'referenceNoteGet'
   ])
   assert.equal(moduleManifest('roleplay').endpoints.includes('deduceImage'), false)
-  assert.equal(moduleOfEndpoint('deduceImage'), 'comfyui')
-  assert.equal(moduleOfEndpoint('referenceImageGenerate'), 'comfyui')
+  assert.equal(moduleOfEndpoint('deduceImage'), 'imagegen')
+  assert.equal(moduleOfEndpoint('referenceImageGenerate'), 'imagegen')
   for (const manifest of MODULE_MANIFESTS) {
     for (const endpoint of manifest.endpoints) {
       assert.ok(HANDLERS[endpoint], `${endpoint} 必须有 handler`)

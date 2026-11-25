@@ -67,9 +67,9 @@ test('数值锚点：PUBLISHING／工单体系与 ARCHITECTURE 生成段同源',
 
 test('C6 架构规模：取消 L2，按 manifest class 分组且生成段逐字一致', () => {
   const stats = architectureStats()
-  assert.equal(stats.manifests.length, 20)
+  assert.equal(stats.manifests.length, 21)
   assert.deepEqual(stats.groups.kernel.map((item) => item.id), ['agent-runtime', 'deduce', 'fact', 'media', 'prose', 'storage', 'text'])
-  assert.equal(stats.groups.workbench.length, 11)
+  assert.equal(stats.groups.workbench.length, 12)
   assert.equal(stats.groups['host-composition'].length, 2)
   assert.ok(stats.rows.every((row) => row.files.length > 0 || row.name.includes('class: suite')))
   assert.ok(!stats.rows.some((row) => /^L2\b/u.test(row.name)))

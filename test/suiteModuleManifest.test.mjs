@@ -66,7 +66,7 @@ test('module@2 规整：supplies/entries/appliesTo/settings 进规范形状，ve
     const dir = await shelfDir(builtin)
     const normalized = normalizeSuite(SHELF, { source: '内置', dir })
     assert.equal(normalized.ok, true)
-    assert.equal(normalized.suite.vendor, 'OpenStory')
+    assert.equal(normalized.suite.vendor, 'skkbsgzf')
     assert.equal(normalized.suite.builtin, true)
     assert.deepEqual(normalized.suite.supplies, ['skill'])
     assert.deepEqual(normalized.suite.entries, { skill: 'skills' })

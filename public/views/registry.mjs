@@ -97,11 +97,10 @@ export const NAMING_TABLE = Object.freeze([
   { id: 'libraries', contract: 'library', mcpPrefix: 'openstory_libraries', note: '库管理（顶栏入口，非页签）' },
   { id: 'exchange', dir: '导入导出', dirTab: false, dirLabel: null, logModule: '导入导出', contract: 'exchange', note: '顶栏导入导出入口与导出文件的落盘目录同名' },
   { id: 'libraryUpgrade', logModule: '库升级', note: '旧库一次性升级的结构变更日志' },
-  { id: 'analysis', contract: null, mcpPrefix: 'openstory_analysis_chapter', note: '右栏分析卡片＋MCP 本地计算，不经 daemon 端点' },
+  { id: 'analysis', tab: '分析', contract: null, mcpPrefix: 'openstory_analysis_chapter', note: '右栏分析卡片＋MCP 本地计算，不经 daemon 端点' },
   { id: 'enrich', logModule: '故事源', contract: 'fact', mcpPrefix: 'openstory_enrich_', note: '语义增补写旁挂 wiki，变更记在「故事源」日志' },
-  { id: 'vision', contract: 'system', mcpPrefix: 'openstory_vision_describe', note: '识图：/api/vision/describe' },
-  { id: 'imagegen', contract: 'reference', mcpPrefix: 'openstory_image_generate', note: '生图落条目的 assets/，端点 /api/reference/image' },
-  { id: 'kb', contract: 'system', note: '知识库三件套（/api/kb/*）' },
+  { id: 'imagegen', tab: '生图与识图', contract: 'reference', mcpPrefix: 'openstory_image_generate', note: '生图与识图：生图落条目 assets/（/api/reference/image），识图 /api/vision/describe；vision 概念并入本节' },
+  { id: 'knowledge', tab: '知识库', contract: 'system', note: '知识库三件套（/api/kb/*；端点与 MCP 名不动）' },
   { id: 'shelf', contract: 'plugins', mcpPrefix: 'openstory_skills_', note: '风格/技能/体裁/套件货架' },
   { id: 'agent', contract: 'agent', note: 'Agent 对话与待确认卡；MCP 不开 agent 对话（硬约束 5）' }
 ].map(namingRow))
@@ -232,11 +231,11 @@ export const TAB_REGISTRY = Object.freeze([
   { id: 'reference', kind: 'fixed', core: true, module: 'worldbook', view: 'reference', ...tabNaming('worldbook'), dirScan: true, icon: '世', render: 'referencePageHtml', closable: true, scope: 'library' },
   // OS-75：剧本页 fork 正文页（dir:剧本 视图，剧本版式渲染）。
   { id: 'script', kind: 'fixed', core: true, module: 'script', view: 'dir:剧本', ...tabNaming('script'), dirScan: true, icon: '剧', render: 'dirViewHtml', closable: true, scope: 'library' },
-  { id: 'storySource', kind: 'fixed', core: true, module: 'storysource', view: `dir:${namingEntry('storysource').dir}`, ...tabNaming('storysource'), dirScan: true, icon: '故', render: 'dirViewHtml', closable: true, scope: 'library' },
+  { id: 'storysource', kind: 'fixed', core: true, module: 'storysource', view: `dir:${namingEntry('storysource').dir}`, ...tabNaming('storysource'), dirScan: true, icon: '故', render: 'dirViewHtml', closable: true, scope: 'library' },
   // OS-59：习惯——规则类内容归 habits.json，专页承载。
   { id: 'habits', kind: 'dir', module: 'habits', view: 'habits', ...tabNaming('habits'), dirScan: true, icon: '习', render: 'habitsViewHtml', closable: true, scope: 'library' },
   // OS-89：日志只读页签（模块修改痕迹的自检索载体）。
-  { id: 'log', kind: 'dir', view: 'dir:日志', ...tabNaming('log'), dirScan: true, icon: '日', readonly: true, render: 'dirViewHtml', closable: true, scope: 'library' },
+  { id: 'log', kind: 'dir', module: 'log', view: 'dir:日志', ...tabNaming('log'), dirScan: true, icon: '日', readonly: true, render: 'dirViewHtml', closable: true, scope: 'library' },
   // ── 已退场目录（OS-84/86，作者裁定）：注册表里留档＋无条件过滤，双保险。──
   // OS-86：已退场的旧目录彻底不出现——不管磁盘上还在不在、有多少篇。
   // 作者口径：没被官方认证的标签就是要消失，不做「旧·待迁」降级露出；

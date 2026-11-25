@@ -16,7 +16,7 @@
   ],
   "pages": [
     {
-      "id": "write",
+      "id": "chapters",
       "label": "正文"
     }
   ],
@@ -27,7 +27,7 @@
   "slots": [
     {
       "slot": "tab",
-      "page": "write"
+      "page": "chapters"
     }
   ],
   "settingsHint": "章节在「正文」页签里写，落盘与版本历史走同一条写协议；停用只收起工作面，不改动已有稿件。"

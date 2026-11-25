@@ -243,7 +243,7 @@ test('daemon 端到端：货架→存值→停用→新建空标题被拦→启�
   try {
     const shelves = await (await fetch(`${origin}/api/suites`)).json()
     assert.equal(shelves.ok, true)
-    assert.ok(shelves.suites.some((suite) => suite.id === 'writing' && suite.vendor === 'OpenStory' && suite.source === '内置'))
+    assert.ok(shelves.suites.some((suite) => suite.id === 'writing' && suite.vendor === 'skkbsgzf' && suite.source === '内置'))
 
     // 写作套件：存默认标题 → 新建章不填标题 → 用默认标题
     await put('/api/suite/settings', { id: 'writing', values: { newChapterTitle: '草稿章' } })

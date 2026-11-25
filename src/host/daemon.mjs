@@ -47,9 +47,9 @@ import { builtinRuntimesDir, defaultUserRuntimesDir, stopAllSidecars } from '../
 import { builtinSuitesDir, defaultSuiteStatePath, defaultUserSuitesDir } from '../services/suites.mjs'
 import { builtinGenresDir, defaultUserGenresDir } from '../services/genres.mjs'
 import { builtinSkillsDir, defaultUserSkillsDir } from '../services/skills.mjs'
-import { bootstrapKbHealth } from '../protocol/kbHealth.mjs'
-import { defaultKbConfigPath } from '../protocol/kbAdapter.mjs'
-import { resolveCollections } from '../protocol/kbRouter.mjs'
+import { bootstrapKbHealth } from '../protocol/knowledgeHealth.mjs'
+import { defaultKbConfigPath } from '../protocol/knowledgeAdapter.mjs'
+import { resolveCollections } from '../protocol/knowledgeRouter.mjs'
 import { isModuleDisabledFor, moduleDegradationFor, moduleManifest } from '../protocol/modules.mjs'
 import { ensureLibraryUpgraded } from '../protocol/libraryUpgrade.mjs'
 

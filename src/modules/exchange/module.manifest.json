@@ -11,7 +11,7 @@
   ],
   "pages": [
     {
-      "id": "exchange-actions",
+      "id": "exchange",
       "label": "导入导出"
     }
   ],
@@ -22,7 +22,7 @@
   "slots": [
     {
       "slot": "host-actions",
-      "page": "exchange-actions"
+      "page": "exchange"
     }
   ],
   "settingsHint": "导入导出没有可调参数：入口在顶栏库面板的「导入 / 导出」，格式固定 pedia/v1 与 JSONL；字段映射按 ADR 0001 附录 A，不在此处另配。"

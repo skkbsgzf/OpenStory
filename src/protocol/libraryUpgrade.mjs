@@ -94,11 +94,19 @@ function mapProjectDocument(document, now) {
   }
 }
 
+/**
+ * OS-190：旧页面的 id → 新页面 id（＝正名 slug）。旧库里既可能存旧「视图键」
+ * （dir:参考 / dir:推演 / dir:拆解），也可能存旧 manifest 页 id
+ * （reference / deduce / storySource / write），两者都直接映射到新 id，
+ * 不再经过中间词（OS-190 任务 3）。
+ */
+const VIEW_ID_RENAMES = Object.freeze({
+  'dir:参考': 'worldbook', 'dir:推演': 'roleplay', 'dir:拆解': 'storysource',
+  reference: 'worldbook', deduce: 'roleplay', storySource: 'storysource', write: 'chapters',
+  worldbook: 'worldbook', roleplay: 'roleplay', storysource: 'storysource', chapters: 'chapters'
+})
 function mapRoute(value) {
-  if (value === 'dir:拆解') return 'dir:故事源'
-  if (value === 'dir:推演') return 'deduce'
-  if (value === 'dir:参考') return 'reference'
-  return value
+  return VIEW_ID_RENAMES[value] ?? value
 }
 
 /**
@@ -133,9 +141,37 @@ function mapStoredPath(value) {
   return changed ? parts.join(sep) : raw
 }
 
+/**
+ * OS-190：旧模块 slug → 新 slug（仅启停/设置键，端点与 MCP 名不在 ui-state 里）。
+ * 扁平键 `modules.enabled.kb` 与嵌套 `modules: { enabled: { kb: … } }` 都认。
+ */
+const MODULE_ID_RENAMES = Object.freeze({ comfyui: 'imagegen', kb: 'knowledge' })
+const MODULE_STATE_PREFIX = /^modules\.(enabled|settings)\./u
+
+function mapModuleStateKey(key, path) {
+  const flat = MODULE_STATE_PREFIX.exec(key)
+  if (flat) {
+    const newId = MODULE_ID_RENAMES[flat[1] === 'enabled' ? key.slice(flat[0].length) : null]
+    if (flat[1] === 'enabled' && newId) return `modules.enabled.${newId}`
+    if (flat[1] === 'settings') {
+      const rest = key.slice(flat[0].length)
+      const dot = rest.indexOf('.')
+      const head = dot === -1 ? rest : rest.slice(0, dot)
+      const newId = MODULE_ID_RENAMES[head]
+      if (newId) return `modules.settings.${newId}${dot === -1 ? '' : rest.slice(dot)}`
+    }
+    return key
+  }
+  // 嵌套：path 是父键路径；只有父是 modules.enabled / modules.settings 时才改模块 id 段
+  if (path === 'modules.enabled' || path === 'modules.settings') return MODULE_ID_RENAMES[key] ?? key
+  return key
+}
+
 /** 旧关系扩展键抬升到新键名（只动对象键，不动值）。 */
-function mapStoredKey(key) {
-  return key === 'pinaxRelationExtensions' ? 'relationExtensions' : mapStoredPath(key)
+function mapStoredKey(key, path = '') {
+  if (key === 'pinaxRelationExtensions') return 'relationExtensions'
+  const moduleKey = mapModuleStateKey(key, path)
+  return moduleKey === key ? mapStoredPath(key) : moduleKey
 }
 
 /** JSON.parse 报错行号：优先用 Node 自带的 `(line N column M)`，否则按 position 折算。 */
@@ -147,14 +183,14 @@ function jsonErrorLine(message, source) {
   return source.slice(0, Number(position[1])).split('\n').length
 }
 
-function transformStoredJson(value, key = '') {
+function transformStoredJson(value, key = '', path = '') {
   if (Array.isArray(value)) {
-    const next = value.map((item) => transformStoredJson(item, key))
+    const next = value.map((item) => transformStoredJson(item, key, path))
     return JSON.stringify(next) === JSON.stringify(value) ? value : next
   }
   if (!value || typeof value !== 'object') {
     if (key === 'module' && MODULE_RENAMES[value]) return MODULE_RENAMES[value]
-    if (key === 'view' || key === 'tabHidden' || key === 'hiddenTabs' || key === 'visibleTabs') return mapRoute(value)
+    if (key === 'view' || key === 'tabHidden' || key === 'hiddenTabs' || key === 'visibleTabs' || key === 'selectedTab') return mapRoute(value)
     if (key === 'schema' && value === LEGACY_WIKI_SCHEMA) return WIKI_DERIVED_SCHEMA
     if (['path', 'file', 'archivePath', 'exportPath', 'sessionPath', 'assetPath'].includes(key) && typeof value === 'string') {
       return mapStoredPath(value)
@@ -164,8 +200,9 @@ function transformStoredJson(value, key = '') {
   let changed = false
   const next = {}
   for (const [childKey, child] of Object.entries(value)) {
-    const mappedKey = mapStoredKey(childKey)
-    const mappedValue = transformStoredJson(child, childKey)
+    const mappedKey = mapStoredKey(childKey, path)
+    const childPath = path ? `${path}.${childKey}` : childKey
+    const mappedValue = transformStoredJson(child, childKey, childPath)
     if (Object.hasOwn(next, mappedKey)) {
       if (JSON.stringify(next[mappedKey]) !== JSON.stringify(mappedValue)) {
         throw new Error(`升级路径冲突：${childKey} 与现有键都映射到 ${mappedKey}`)

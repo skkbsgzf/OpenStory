@@ -15,7 +15,7 @@
  */
 
 /* OS-113 嵌入模式：DSH 右侧栏的 iframe 里，宿主左侧已经有真正的 DSH 会话。
-   这里收掉 OpenStory 自带的 Pi-Agent 左列（index.html 的 html.os-embed 规则），
+   这里收掉 OpenStory 自带的 Agent 栏左列（index.html 的 html.os-embed 规则），
    工作台拿回全部宽度；独立打开时行为不变。纯渲染分支，不写库内/浏览器状态。 */
 const embeddedView = (() => {
   try {
@@ -92,7 +92,7 @@ function reportDshBridge(result) {
 function openStorySourceNote(kind = 'chapter') {
   const root = text(state.current?.path)
   const name = text(state.current?.name)
-  if (kind === 'reference') {
+  if (kind === 'worldbook') {
     const title = text(state.reference?.note?.title)
     return `〔来源：OpenStory 世界书${title ? `《${title}》` : ''}${root ? ` · root=${root}` : ''} · 可用 openstory_* 工具读写〕 `
   }
@@ -169,7 +169,7 @@ const deduceViewsReady = import('./views/deduceViews.mjs').then((mod) => { deduc
   .catch((error) => { console.error('[views] 扮演视图模块加载失败', error); return null })
 /* OS-161：前端模块 id 清单（与各模块目录的 module.manifest.json 对齐；后端 manifest 装载结果在此镜像，
    页签可见性只按这张表 × moduleOn(id) 判定，新增模块须同步这里一行）。 */
-const MODULE_IDS = ['analysis', 'comfyui', 'kb', 'habits', 'storysource', 'artifacts', 'exchange', 'chapters', 'script', 'worldbook', 'roleplay']
+const MODULE_IDS = ['analysis', 'imagegen', 'knowledge', 'log', 'habits', 'storysource', 'artifacts', 'exchange', 'chapters', 'script', 'worldbook', 'roleplay']
 
 /* OS-149：运行时货架过滤（views/runtimeShelf.mjs）——fixture 套件不进作者可见列表；纯函数在 views/，这里只接线 */
 let runtimeShelf = null
@@ -2082,19 +2082,19 @@ function genreMenuHtml() {
   let kbCard = ''
   if (cur) {
     const pol = cur.agentPolicy || {}
-    const kbRow = (k, v) => v ? `<div class="kb-row"><span class="kb-k">${esc(k)}</span><span class="kb-v">${esc(v)}</span></div>` : ''
+    const kbRow = (k, v) => v ? `<div class="knowledge-row"><span class="knowledge-k">${esc(k)}</span><span class="knowledge-v">${esc(v)}</span></div>` : ''
     const unit = cur.length?.unit === 'episodes' ? '集' : cur.length?.unit === 'minutes' ? '分钟' : '字'
     const div = cur.length?.divideBy === 'chapter' ? '章' : cur.length?.divideBy === 'episode' ? '集' : cur.length?.divideBy === 'scene' ? '场' : ''
     const lenParts = []
     if (cur.length?.total?.target) lenParts.push(`总约 ${cur.length.total.target} ${unit}（${cur.length.total.min ?? '–'}–${cur.length.total.max ?? '–'}）`)
     if (div && cur.length?.perUnit?.target) lenParts.push(`每${div}约 ${cur.length.perUnit.target} ${unit}`)
-    kbCard = `<div class="kb-card"><div class="kb-head">知识库 · ${esc(cur.name)}<span class="kb-sub">以下标注每轮注入 Agent</span></div>
+    kbCard = `<div class="knowledge-card"><div class="knowledge-head">知识库 · ${esc(cur.name)}<span class="knowledge-sub">以下标注每轮注入 Agent</span></div>
       ${kbRow('节奏', pol.pacing)}
       ${kbRow('开篇', pol.openHook)}
       ${kbRow('审阅重点', (pol.reviewFocus || []).join('；'))}
       ${kbRow('禁忌', (pol.forbidden || []).join('；'))}
       ${kbRow('篇幅', lenParts.join('；'))}
-      ${(cur.knowledgePacks || []).length ? `<div class="kb-row"><span class="kb-k">知识包</span><span class="kb-v">${cur.knowledgePacks.map((t) => `<span class="kb-tag">${esc(t)}</span>`).join('')}</span></div>` : ''}
+      ${(cur.knowledgePacks || []).length ? `<div class="knowledge-row"><span class="knowledge-k">知识包</span><span class="knowledge-v">${cur.knowledgePacks.map((t) => `<span class="knowledge-tag">${esc(t)}</span>`).join('')}</span></div>` : ''}
     </div>`
   }
 
@@ -2952,8 +2952,8 @@ const WORKBENCH_MODULES = Object.freeze([
   { id: 'chapters', label: '章节树', slot: '左栏', suite: 'writing', hint: '卷/章两级，写小说时随手切章' },
   // OS-164/G8b：叫法统一取命名表（与页签「世界书」一致）；模块清单在 registry 异步装载前定义，
   // 所以用 getter 动态取表，fallback 与表内值同字，装载前后都不出现「世界书图谱/世界书摘要」旧叫法。
-  { id: 'graph', get label() { return registryModule?.namingEntry?.('reference')?.graphLabel || '世界书图谱' }, slot: '左栏', suite: 'writing', hint: '世界书与章节/条目的关系图' },
-  { id: 'summary', get label() { return registryModule?.namingEntry?.('reference')?.summaryLabel || '世界书摘要' }, slot: '左栏', suite: 'writing', hint: 'AI 基于图谱总结本章要点' },
+  { id: 'graph', get label() { return registryModule?.namingEntry?.('worldbook')?.graphLabel || '世界书图谱' }, slot: '左栏', suite: 'writing', hint: '世界书与章节/条目的关系图' },
+  { id: 'summary', get label() { return registryModule?.namingEntry?.('worldbook')?.summaryLabel || '世界书摘要' }, slot: '左栏', suite: 'writing', hint: 'AI 基于图谱总结本章要点' },
   { id: 'plotCurve', label: '剧情曲线', slot: '右栏', suite: 'writing', hint: '情绪曲线 / 事件密度（需故事源 fact）' },
   { id: 'style', label: '文风分析', slot: '右栏', suite: 'writing', hint: '句长/段长变异系数 + 套话与连接词' },
   { id: 'rhythm', label: '节奏', slot: '右栏', suite: 'writing', hint: '逐段字数起伏' },
@@ -4488,7 +4488,7 @@ function graphFocusView(focusId = state.reference.focus, tagFilter = state.refer
 
 /** 图谱节点跳详情（OS-51：跳转只走信息卡按钮；来路是图谱，详情页给返回键，返回时聚焦保留）。 */
 function navigateFromGraphNode(node) {
-  if (node.kind === 'reference') {
+  if (node.kind === 'worldbook') {
     state.reference.view = 'note'
     // 正文页小图也走这里（OS-52）：不在世界书页时先切页签
     if (state.view !== 'reference') go('reference')
@@ -7671,7 +7671,7 @@ function deduceEngineHtml() {
         <button class="fl-btn${engine.bgmOn ? ' on' : ''}" data-action="deduce-bgm-toggle"${bgmAsset ? '' : ' disabled'}
           title="${bgmAsset ? `播放：${esc(bgmAsset.name)}（循环）` : '未配置 BGM——放 扮演/…/素材/bgm/<场景或情绪>.mp3 即可启用'}">♪ BGM</button>
         <i class="fl-bar-div"></i>
-        <button class="fl-btn" data-action="deduce-image" title="按本拍局面生成一张场景立绘（需在设置里配生图端点）"${engine.turnBusy ? ' disabled' : ''}${moduleOn('comfyui') ? '' : ' hidden'}>生图</button>
+        <button class="fl-btn" data-action="deduce-image" title="按本拍局面生成一张场景立绘（需在设置里配生图端点）"${engine.turnBusy ? ' disabled' : ''}${moduleOn('imagegen') ? '' : ' hidden'}>生图</button>
         <button class="fl-btn" data-action="deduce-archive"${engine.turnBusy || !bufferCount ? ' disabled' : ''} title="把本章缓冲的拍整理成 markdown 归档（不写正文文件）">归档</button>
         <button class="fl-btn" data-action="deduce-export"${engine.turnBusy ? ' disabled' : ''} title="整个会话导出成 markdown（每拍的决定＋正文），落 扮演/&lt;bookId&gt;/导出/">导出</button>
       ` : ''}
@@ -9079,13 +9079,13 @@ document.addEventListener('click', (event) => {
         ${item.blocked ? `<span class="plug-info-bad">${esc(item.blockedReason || '被拦下')}</span>` : ''}
       </div>
       <div class="ops"><button class="btn-ghost" data-action="modal-close">知道了</button></div>`)
-  } else if (action === 'kb-save') {
+  } else if (action === 'knowledge-save') {
     saveKbConfig()
-  } else if (action === 'kb-test') {
+  } else if (action === 'knowledge-test') {
     testKbConnection()
-  } else if (action === 'kb-collection-add') {
+  } else if (action === 'knowledge-collection-add') {
     addKbCollectionRow()
-  } else if (action === 'kb-collection-remove') {
+  } else if (action === 'knowledge-collection-remove') {
     removeKbCollectionRow(target)
   } else if (action === 'chip-toggle-edit') {
     // OS-92：进入/退出删除态——所有标签显 ×（作者原话：点删按钮，下面的标签都出现 x 号）
@@ -9798,22 +9798,22 @@ async function loadKbStatus() {
 
 /** OS-97：读知识库表单当前值（UI → 配置对象）。 */
 function readKbForm() {
-  const root = document.getElementById('kb-collections')
+  const root = document.getElementById('knowledge-collections')
   const collections = {}
   if (root) {
-    const rows = root.querySelectorAll('.kb-collection-row')
+    const rows = root.querySelectorAll('.knowledge-collection-row')
     for (const row of rows) {
-      const alias = row.querySelector('[data-kb-collection-alias]')?.value?.trim()
-      const id = row.querySelector('[data-kb-collection-id]')?.value?.trim()
+      const alias = row.querySelector('[data-knowledge-collection-alias]')?.value?.trim()
+      const id = row.querySelector('[data-knowledge-collection-id]')?.value?.trim()
       if (alias && id) collections[alias] = id
     }
   }
-  const key = document.getElementById('kb-api-key')?.value?.trim() || ''
+  const key = document.getElementById('knowledge-api-key')?.value?.trim() || ''
   return {
-    baseUrl: document.getElementById('kb-base-url')?.value?.trim() || '',
+    baseUrl: document.getElementById('knowledge-base-url')?.value?.trim() || '',
     // 留空＝保留原密钥（协议约定 __KEEP__）
     apiKey: key || '__KEEP__',
-    spaceId: document.getElementById('kb-space-id')?.value?.trim() || '',
+    spaceId: document.getElementById('knowledge-space-id')?.value?.trim() || '',
     collections
   }
 }
@@ -9857,21 +9857,21 @@ async function testKbConnection() {
 
 /** OS-97：分库行增删（前端本地操作，保存时才落盘）。 */
 function addKbCollectionRow() {
-  const root = document.getElementById('kb-collections')
+  const root = document.getElementById('knowledge-collections')
   if (!root) return
   const empty = root.querySelector('p.sub')
   if (empty) empty.remove()
   const row = document.createElement('div')
-  row.className = 'kb-collection-row'
-  row.innerHTML = '<input class="uikit-input" data-kb-collection-alias placeholder="别名" aria-label="分库别名">'
-    + '<input class="uikit-input" data-kb-collection-id placeholder="collection id" aria-label="分库 id">'
-    + '<button type="button" class="btn-ghost" data-action="kb-collection-remove" title="删除这一行">×</button>'
+  row.className = 'knowledge-collection-row'
+  row.innerHTML = '<input class="uikit-input" data-knowledge-collection-alias placeholder="别名" aria-label="分库别名">'
+    + '<input class="uikit-input" data-knowledge-collection-id placeholder="collection id" aria-label="分库 id">'
+    + '<button type="button" class="btn-ghost" data-action="knowledge-collection-remove" title="删除这一行">×</button>'
   root.appendChild(row)
-  row.querySelector('[data-kb-collection-alias]')?.focus()
+  row.querySelector('[data-knowledge-collection-alias]')?.focus()
 }
 
 function removeKbCollectionRow(button) {
-  button.closest('.kb-collection-row')?.remove()
+  button.closest('.knowledge-collection-row')?.remove()
 }
 
 async function bootStyles() {

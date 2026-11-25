@@ -93,8 +93,8 @@ test('OS-172 成功迁移：新目录、新谱系、备份、退役、冲突后�
     const wiki = JSON.parse(await readFile(join(root, '故事源/book.wiki.json'), 'utf-8'))
     assert.equal(wiki.derivedFrom.schema, WIKI_DERIVED_SCHEMA)
     const ui = JSON.parse(await readFile(join(root, '.openstory/ui-state.json'), 'utf-8'))
-    assert.equal(ui.view, 'dir:故事源')
-    assert.deepEqual(ui.tabHidden, ['dir:故事源'])
+    assert.equal(ui.view, 'storysource')
+    assert.deepEqual(ui.tabHidden, ['storysource'])
     const syncState = JSON.parse(await readFile(join(root, '.openstory/sync-state.json'), 'utf-8'))
     assert.equal(syncState.files['故事源/a.json'].hash, 'x')
     assert.equal(syncState.files['拆解/a.json'], undefined)
@@ -122,7 +122,8 @@ test('OS-172 成功迁移：新目录、新谱系、备份、退役、冲突后�
     assert.equal(await readFile(join(root, marker.backup, '.openstory/existing.json'), 'utf-8'), '{"path":"拆解/a.json"}\n')
     assert.equal(JSON.parse(await readFile(join(root, '.openstory/existing.json'), 'utf-8')).path, '故事源/a.json')
   })
-  // OS-188a 断言：等价加强既有测试，不新增 test() 计数（全仓数字锚不动）。
+  // 断言等价加强既有测试，不新增 test() 计数（全仓数字锚不动）。
+  await checkOs190IdMapping()
   await checkOs188aPathAnchoring()
   await checkOs188aRelationKey()
   await checkOs188aResidue()
@@ -282,6 +283,62 @@ test('OS-172 读侧兼容旧 spec 列表，daemon 入口串行且缓存成功结
   clearLibraryUpgradeCache()
 })
 
+/** OS-190：旧 id 直接映射到新 id（扁平/嵌套键都认，重复打开幂等）。并入既有测试计数。 */
+async function checkOs190IdMapping() {
+  const root = await mkdtemp(join(tmpdir(), 'openstory-upgrade-os190-'))
+  try {
+    await minimalLegacy(root)
+    await put(root, '.pinax/ui-state.json', JSON.stringify({
+      view: 'write',
+      tabHidden: ['reference', 'dir:推演', 'storySource'],
+      selectedTab: 'deduce',
+      'modules.enabled.comfyui': false,
+      'modules.enabled.kb': false,
+      'modules.settings.comfyui.image.backend': 'comfyui',
+      'modules.settings.kb.kb.baseUrl': 'http://127.0.0.1:8080'
+    }))
+    await put(root, '.pinax/plugins.json', JSON.stringify({
+      modules: {
+        enabled: { comfyui: false, kb: true },
+        settings: { comfyui: { 'image.backend': 'comfyui' }, kb: { 'kb.baseUrl': 'http://127.0.0.1:8080' } }
+      }
+    }))
+    const result = await upgradeLibrary(root, { now: NOW })
+    assert.equal(result.ok, true, JSON.stringify(result))
+
+    const ui = JSON.parse(await readFile(join(root, '.openstory/ui-state.json'), 'utf-8'))
+    // 视图键直接映射到新页面 id
+    assert.equal(ui.view, 'chapters')
+    assert.deepEqual(ui.tabHidden, ['worldbook', 'roleplay', 'storysource'])
+    assert.equal(ui.selectedTab, 'roleplay')
+    // 扁平启停/设置键
+    assert.equal(ui['modules.enabled.imagegen'], false)
+    assert.equal(ui['modules.enabled.knowledge'], false)
+    assert.equal(ui['modules.settings.imagegen.image.backend'], 'comfyui')
+    assert.equal(ui['modules.settings.knowledge.kb.baseUrl'], 'http://127.0.0.1:8080')
+    assert.equal(ui['modules.enabled.comfyui'], undefined)
+    assert.equal(ui['modules.enabled.kb'], undefined)
+    assert.equal(ui['modules.settings.comfyui.image.backend'], undefined)
+    assert.equal(ui['modules.settings.kb.kb.baseUrl'], undefined)
+    // 嵌套启停/设置键
+    const plugins = JSON.parse(await readFile(join(root, '.openstory/plugins.json'), 'utf-8'))
+    assert.equal(plugins.modules.enabled.imagegen, false)
+    assert.equal(plugins.modules.enabled.knowledge, true)
+    assert.equal(plugins.modules.settings.imagegen['image.backend'], 'comfyui')
+    assert.equal(plugins.modules.settings.knowledge['kb.baseUrl'], 'http://127.0.0.1:8080')
+    assert.equal(plugins.modules.enabled.comfyui, undefined)
+    assert.equal(plugins.modules.settings.kb, undefined)
+
+    const before = await snapshot(root)
+    const again = await upgradeLibrary(root, { now: new Date('2026-11-26T00:00:00.000Z') })
+    assert.equal(again.ok, true)
+    assert.equal(again.upgraded, false)
+    assert.equal(await snapshot(root), before, '重复打开幂等')
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+}
+
 /* ---------- OS-188a：路径锚定、旧键抬升、残留归档与解析失败报告 ---------- */
 
 /** 最小旧库夹具：只放升级判定所需的 project.json，其余用例各自写。 */
@@ -315,9 +372,9 @@ async function checkOs188aPathAnchoring() {
     const result = await upgradeLibrary(root, { now: NOW })
     assert.equal(result.ok, true, JSON.stringify(result))
 
-    // 值：首段改，中间同名段不动。
+    // 值：首段改，中间同名段不动；视图键直接映射到新页面 id（OS-190）。
     const ui = JSON.parse(await readFile(join(root, '.openstory/ui-state.json'), 'utf-8'))
-    assert.equal(ui.view, 'reference')
+    assert.equal(ui.view, 'worldbook')
     assert.equal(ui.file, '扮演/素材/a.png')
     assert.equal(ui.nested.file, '世界书/参考/人物/a.md')
     assert.equal(ui.nested.path, '扮演/推演/素材/b.png')

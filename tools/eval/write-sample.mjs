@@ -9,7 +9,7 @@ import { readFileSync, writeFileSync, mkdirSync, readdirSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { randomUUID } from 'node:crypto'
-import { buildAugmentedPrompt, routeQuery, resolveCollections } from '../../src/modules/kb/kbRouter.mjs'
+import { buildAugmentedPrompt, routeQuery, resolveCollections } from '../../src/modules/knowledge/knowledgeRouter.mjs'
 import { fingerprintHint, runStyleCheck } from '../../src/services/style-check.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))

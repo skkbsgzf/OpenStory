@@ -217,7 +217,7 @@ function normalizeModuleSuite(raw, { source, dir, appVersion }) {
       id: manifest.id,
       name: manifest.name,
       version: manifest.version,
-      vendor: source === '内置' ? 'OpenStory' : '本机',
+      vendor: source === '内置' ? 'skkbsgzf' : '本机',
       description: manifest.description,
       domains: [],
       ...(manifest.deps.length ? { requires: manifest.deps } : {}),

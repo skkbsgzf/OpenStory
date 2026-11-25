@@ -8,7 +8,7 @@ function refImagesSlotHtml(note) {
   const urlOf = (rel) => /^https?:\/\//u.test(rel)
     ? rel
     : `/api/reference/asset?root=${encodeURIComponent(root)}&path=${encodeURIComponent(rel)}`
-  const genBtn = `<button class="ref-slot-gen" data-action="ref-gen-image" title="按这个条目生成设定图（后台任务，进度看右下角任务中心）"${moduleOn('comfyui') ? '' : ' hidden'}>✦ 生成设定图</button>`
+  const genBtn = `<button class="ref-slot-gen" data-action="ref-gen-image" title="按这个条目生成设定图（后台任务，进度看右下角任务中心）"${moduleOn('imagegen') ? '' : ' hidden'}>✦ 生成设定图</button>`
   if (!images.length) {
     return `<div class="ref-img-slot empty">
       <div class="ref-slot-head">参考图</div>
@@ -60,10 +60,10 @@ function graphModuleHtml() {
   if (rc.graphError) return `<div class="error-box">${esc(rc.graphError)}</div>`
   if (rc.graphLoading) return '<div class="loading">正在构图…</div>'
   const graph = rc.graph
-  if (!graph) return `<div class="empty">点「重新构图」生成${registryModule()?.namingEntry?.('reference')?.graphLabel || '世界书图谱'}。</div>`
+  if (!graph) return `<div class="empty">点「重新构图」生成${registryModule()?.namingEntry?.('worldbook')?.graphLabel || '世界书图谱'}。</div>`
   const byKind = graph.stats?.byKind || {}
   const legend = [
-    ['reference', registryModule().namingEntry('worldbook').tab, 'var(--accent)'],
+    ['worldbook', registryModule().namingEntry('worldbook').tab, 'var(--accent)'],
     ['tag', '标签', 'var(--warn)'],
     ['artifact', '章节/产物', 'var(--ok)'],
     ['entry', '条目（只读）', 'var(--meta)']

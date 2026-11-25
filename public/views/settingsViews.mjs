@@ -218,7 +218,7 @@ function settingsModelsSectionHtml() {
       <div class="err" id="mcfg-text-err"></div>
     </div>
 
-    <div class="cfg-card" data-cfg-card="image"${moduleOn('comfyui') ? '' : ' hidden'}>
+    <div class="cfg-card" data-cfg-card="image"${moduleOn('imagegen') ? '' : ' hidden'}>
       <div class="cfg-head"><h3>生图</h3>${cfgBadgeHtml('image')}</div>
       <div class="field">
         <label class="cfg-switch">
@@ -267,7 +267,7 @@ function settingsModelsSectionHtml() {
       <div class="err" id="mcfg-image-err"></div>
     </div>
 
-    <div class="cfg-card" data-cfg-card="vision"${moduleOn('comfyui') ? '' : ' hidden'}>
+    <div class="cfg-card" data-cfg-card="vision"${moduleOn('imagegen') ? '' : ' hidden'}>
       <div class="cfg-head"><h3>识图</h3>${cfgBadgeHtml('vision')}</div>
       <div class="field">
         <label class="cfg-switch">
@@ -464,8 +464,8 @@ function settingsKbSectionHtml() {
   const s = state.kbStatus
   const cfg = state.kbConfig
   const lamp = (up) => up
-    ? '<span class="kb-lamp is-up">●</span>在线'
-    : '<span class="kb-lamp is-down">●</span>离线'
+    ? '<span class="knowledge-lamp is-up">●</span>在线'
+    : '<span class="knowledge-lamp is-down">●</span>离线'
 
   if (!cfg) {
     return '<div class="step"><h3>知识库</h3><div class="loading">正在读取配置…</div></div>'
@@ -473,10 +473,10 @@ function settingsKbSectionHtml() {
 
   const collections = cfg.collections && typeof cfg.collections === 'object' ? cfg.collections : {}
   const collectionRows = Object.entries(collections).map(([alias, id]) => `
-    <div class="kb-collection-row">
-      <input class="uikit-input" data-kb-collection-alias value="${esc(alias)}" placeholder="别名" aria-label="分库别名">
-      <input class="uikit-input" data-kb-collection-id value="${esc(id)}" placeholder="collection id" aria-label="分库 id">
-      <button type="button" class="btn-ghost" data-action="kb-collection-remove" title="删除这一行">×</button>
+    <div class="knowledge-collection-row">
+      <input class="uikit-input" data-knowledge-collection-alias value="${esc(alias)}" placeholder="别名" aria-label="分库别名">
+      <input class="uikit-input" data-knowledge-collection-id value="${esc(id)}" placeholder="collection id" aria-label="分库 id">
+      <button type="button" class="btn-ghost" data-action="knowledge-collection-remove" title="删除这一行">×</button>
     </div>`).join('')
 
   const live = s || {}
@@ -502,27 +502,27 @@ function settingsKbSectionHtml() {
       ${uiKit().field({
         label: '服务地址',
         hint: 'WeKnora 的 HTTP 入口，不带 /api 后缀',
-        control: uiKit().textInput({ id: 'kb-base-url', value: cfg.baseUrl || 'http://127.0.0.1:8080', placeholder: 'http://127.0.0.1:8080' })
+        control: uiKit().textInput({ id: 'knowledge-base-url', value: cfg.baseUrl || 'http://127.0.0.1:8080', placeholder: 'http://127.0.0.1:8080' })
       })}
       ${uiKit().field({
         label: 'API Key',
         hint: cfg.apiKeyMasked ? '当前：' + cfg.apiKeyMasked + '（留空＝不改）' : '必填，WeKnora 的 X-API-Key',
-        control: uiKit().textInput({ id: 'kb-api-key', value: '', placeholder: cfg.apiKeyMasked ? '留空则保留现有密钥' : 'sk-…' })
+        control: uiKit().textInput({ id: 'knowledge-api-key', value: '', placeholder: cfg.apiKeyMasked ? '留空则保留现有密钥' : 'sk-…' })
       })}
       ${uiKit().field({
         label: 'Space ID',
         hint: '可选；多空间部署时填',
-        control: uiKit().textInput({ id: 'kb-space-id', value: cfg.spaceId || '', placeholder: '留空＝默认空间' })
+        control: uiKit().textInput({ id: 'knowledge-space-id', value: cfg.spaceId || '', placeholder: '留空＝默认空间' })
       })}
     </div>
 
     <div class="step">
       <h3>分库映射<span class="sub">别名 → WeKnora collection id（六个库各管一类知识）</span></h3>
-      <div class="kb-collections" id="kb-collections">
+      <div class="knowledge-collections" id="knowledge-collections">
         ${collectionRows || '<p class="sub">还没有分库——点下面「＋ 添加分库」</p>'}
       </div>
       <div class="ops">
-        <button class="btn-ghost" data-action="kb-collection-add">＋ 添加分库</button>
+        <button class="btn-ghost" data-action="knowledge-collection-add">＋ 添加分库</button>
         <span class="count">别名决定检索时怎么选库</span>
       </div>
     </div>
@@ -533,10 +533,10 @@ function settingsKbSectionHtml() {
       <div class="kv-line"><span class="k">配置文件</span><span class="v">${esc(cfg.configPath || '—')}</span></div>
     </div>
 
-    <div class="ops kb-ops">
-      <button class="btn-primary" data-action="kb-save">保存配置</button>
-      <button class="btn-ghost" data-action="kb-test">测试连接</button>
-      <span class="count" id="kb-msg">${esc(state.kbMsg || '')}</span>
+    <div class="ops knowledge-ops">
+      <button class="btn-primary" data-action="knowledge-save">保存配置</button>
+      <button class="btn-ghost" data-action="knowledge-test">测试连接</button>
+      <span class="count" id="knowledge-msg">${esc(state.kbMsg || '')}</span>
     </div>`
 }
 
@@ -566,7 +566,7 @@ function settingsCombinedEnginesHtml() {
   // 这里的顺序＝「接什么 → 查什么 → 存哪」。
   return [
     section('对话模型与运行时', 'Agent 走哪条通道、用哪个模型', strip(settingsModelsSectionHtml())),
-    ...(moduleOn('kb') ? [section('知识库', 'WeKnora 连接、分库与测试', strip(settingsKbSectionHtml()))] : []),
+    ...(moduleOn('knowledge') ? [section('知识库', 'WeKnora 连接、分库与测试', strip(settingsKbSectionHtml()))] : []),
     section('本机路径与导入', '货架位置、库清单、导入稿件', strip(settingsCombinedDataSectionHtml()))
   ].join('')
 }

@@ -1,0 +1,26 @@
+{
+  "spec": "openstory-module@2",
+  "id": "log",
+  "name": "日志",
+  "version": "0.1.0",
+  "builtin": true,
+  "description": "日志工作台：只读呈现库内 .openstory/log/<模块>/ 的 diff 与操作痕迹，供各模块加载时自检索本模块的修改记录。/api/log* 是共用端点，不登记为独占端点——各模块的「本模块修改」卡都读它；停用它只收起日志页签，日志数据保留不动。",
+  "endpoints": [],
+  "pages": [
+    {
+      "id": "log",
+      "label": "日志"
+    }
+  ],
+  "settings": [],
+  "class": "workbench",
+  "entry": "index.mjs",
+  "requires": [{ "id": "prose.write", "min": 1 }],
+  "slots": [
+    {
+      "slot": "tab",
+      "page": "log"
+    }
+  ],
+  "settingsHint": "日志由各写操作经 changelog 落库内 .openstory/log/；本工作台只读呈现，没有可调参数。停用只收起日志页签，日志数据不动。"
+}

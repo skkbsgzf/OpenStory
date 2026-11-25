@@ -63,6 +63,8 @@ try {
   if (!enabled.ok) fail('设套件启停失败：' + enabled.message)
 
   rmSync(join(tempRoot, '.history'), { recursive: true, force: true })
+  // OS-190：样例库不留 ui-state 的历史备份（生成器旧布局曾留下 .bak-*）。
+  rmSync(join(tempRoot, '.openstory', '.history'), { recursive: true, force: true })
   rmSync(join(tempRoot, '.openstory', 'upgrade.json'), { force: true })
   rmSync(join(tempRoot, '.openstory', 'log', '库升级'), { recursive: true, force: true })
   for (const name of readdirSync(tempRoot)) {

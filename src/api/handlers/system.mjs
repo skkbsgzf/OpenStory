@@ -22,9 +22,9 @@ import { loadGenres, readBrief, writeBrief } from '../../services/genres.mjs'
 import { readAgentPicks, writeAgentPicks } from '../../services/skills.mjs'
 import { getSuiteStateData, saveSuiteStateData } from '../../services/suites.mjs'
 import { loadStylePacks } from '../../services/stylePacks.mjs'
-import { defaultKbConfigPath } from '../../protocol/kbAdapter.mjs'
-import { collectKbStatus, kbServiceState, probeServices } from '../../protocol/kbHealth.mjs'
-import { resolveCollections } from '../../protocol/kbRouter.mjs'
+import { defaultKbConfigPath } from '../../protocol/knowledgeAdapter.mjs'
+import { collectKbStatus, kbServiceState, probeServices } from '../../protocol/knowledgeHealth.mjs'
+import { resolveCollections } from '../../protocol/knowledgeRouter.mjs'
 import { listJobs, cancelJob, clearSettled, activeCount } from '../../services/jobCenter.mjs'
 import {
   pickFile,

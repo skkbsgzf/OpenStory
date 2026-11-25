@@ -55,15 +55,15 @@
 |---|---|---:|---:|
 | 底座 | `src/host/`＋`src/kernel/` | 17 | 2,310 |
 | 契约 | `src/api/` | 18 | 5,080 |
-| 协议 | `src/protocol/` | 49 | 4,506 |
+| 协议 | `src/protocol/` | 49 | 4,543 |
 | 内核件（class: kernel，7） | `src/modules/agent-runtime/`＋`src/modules/deduce/`＋`src/modules/fact/`＋`src/modules/media/`＋`src/modules/prose/`＋`src/modules/storage/`＋`src/modules/text/` | 47 | 8,414 |
-| 工作台（class: workbench，11） | `src/modules/analysis/`＋`src/modules/artifacts/`＋`src/modules/chapters/`＋`src/modules/comfyui/`＋`src/modules/exchange/`＋`src/modules/habits/`＋`src/modules/kb/`＋`src/modules/roleplay/`＋`src/modules/script/`＋`src/modules/storysource/`＋`src/modules/worldbook/` | 21 | 2,862 |
+| 工作台（class: workbench，12） | `src/modules/analysis/`＋`src/modules/artifacts/`＋`src/modules/chapters/`＋`src/modules/exchange/`＋`src/modules/habits/`＋`src/modules/imagegen/`＋`src/modules/knowledge/`＋`src/modules/log/`＋`src/modules/roleplay/`＋`src/modules/script/`＋`src/modules/storysource/`＋`src/modules/worldbook/` | 22 | 2,868 |
 | 宿主组合面（恒启） | `src/modules/agentbar/`＋`src/modules/library/` | 6 | 1,359 |
 | 套件模块（class: suite） | `src/modules/` | 0 | 0 |
 | 服务 | `src/services/` | 22 | 4,720 |
 | 套件资源 | `suites/`＋`styles/`＋`runtimes/`＋`genres/`＋`skills/` | 60 | 3,050 |
 | 设计令牌 | `design-system/` | 3 | 133 |
-| 前端 | `public/` | 29 | 20,889 |
+| 前端 | `public/` | 29 | 20,888 |
 | 磁盘库 | 库＝文件夹（无代码） | — | — |
 
 | 附加指标 | 实测 |
@@ -79,26 +79,27 @@
 |---|---|---:|---|---:|
 | agent-runtime | kernel | 0 | — | 0 |
 | agentbar | host-composition | 0 | — | 0 |
-| analysis | workbench | 0 | analysis-panel | 0 |
+| analysis | workbench | 0 | analysis | 0 |
 | artifacts | workbench | 1 | artifacts | 0 |
-| chapters | workbench | 7 | write | 0 |
-| comfyui | workbench | 3 | image-settings | 0 |
+| chapters | workbench | 7 | chapters | 0 |
 | deduce | kernel | 0 | — | 0 |
-| exchange | workbench | 2 | exchange-actions | 0 |
+| exchange | workbench | 2 | exchange | 0 |
 | fact | kernel | 0 | — | 0 |
 | habits | workbench | 2 | habits | 0 |
-| kb | workbench | 4 | kb-settings | 0 |
+| imagegen | workbench | 3 | imagegen | 0 |
+| knowledge | workbench | 4 | knowledge | 0 |
 | library | host-composition | 0 | — | 0 |
+| log | workbench | 0 | log | 0 |
 | media | kernel | 0 | — | 0 |
 | prose | kernel | 0 | — | 0 |
-| roleplay | workbench | 17 | deduce | 0 |
+| roleplay | workbench | 17 | roleplay | 0 |
 | script | workbench | 0 | script | 0 |
 | storage | kernel | 0 | — | 0 |
-| storysource | workbench | 0 | storySource | 0 |
+| storysource | workbench | 0 | storysource | 0 |
 | text | kernel | 0 | — | 0 |
-| worldbook | workbench | 5 | reference | 0 |
+| worldbook | workbench | 5 | worldbook | 0 |
 
-合计 20 份 manifest（7 kernel + 11 workbench + 2 host-composition）；41 个模块独占端点，64 个宿主自有端点，端点覆盖 105/105。
+合计 21 份 manifest（7 kernel + 12 workbench + 2 host-composition）；41 个模块独占端点，64 个宿主自有端点，端点覆盖 105/105。
 kernel 能力声明：agent.runtime@1 / deduce.engine@1 / fact.store@3 / fact.pack@1 / fact.enrich@1 / media.generate@1 / media.describe@1 / prose.write@1 / storage.roots@1 / library.list@1 / storage.scaffold@1 / text.analyze@1。
 `app.js` 当前上限 10,500 行（只降不升），当前实测 10,338 行。
 <!-- arch-stats:end -->

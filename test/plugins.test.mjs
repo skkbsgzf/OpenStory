@@ -166,7 +166,7 @@ describe('三套聚合', () => {
       assert.equal(analysis.spec, 'openstory-module@2')
       assert.equal(analysis.class, 'workbench')
       assert.equal(analysis.builtin, true)
-      assert.deepEqual(analysis.slots, [{ slot: 'right', page: 'analysis-panel' }])
+      assert.deepEqual(analysis.slots, [{ slot: 'right', page: 'analysis' }])
       assert.equal(payload.modules.find((item) => item.id === 'deduce')?.class, 'kernel')
       assert.ok(payload.moduleManifestNotices.some((item) => item.code === 'MODULE_HOST_COMPOSITION' && item.id === 'agentbar'))
       assert.equal(analysis.role, 'workbench')

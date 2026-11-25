@@ -16,7 +16,7 @@
 
 /** 画布 fillStyle 不认 var(--*)，这里从 :root 令牌现读（令牌缺失时回退最后值）。 */
 const KIND_TOKENS = {
-  reference: ['--accent', '#ff385c'],
+  worldbook: ['--accent', '#ff385c'],
   tag: ['--warn', '#c48a00'],
   artifact: ['--ok', '#008a05'],
   entry: ['--meta', '#9a9a9a']
@@ -33,13 +33,13 @@ function kindColor(kind) {
   return v
 }
 function fallbackHex(kind) {
-  return { reference: '#ff385c', tag: '#c48a00', artifact: '#008a05', entry: '#9a9a9a' }[kind] || '#9a9a9a'
+  return { worldbook: '#ff385c', tag: '#c48a00', artifact: '#008a05', entry: '#9a9a9a' }[kind] || '#9a9a9a'
 }
 const KIND_COLOR = new Proxy({}, { get: (_t, kind) => kindColor(kind) })
 
 /** 初始环半径比例（相对画布短边）：越「核心」的 kind 越靠内。 */
 const KIND_RING = {
-  reference: 0.34,
+  worldbook: 0.34,
   artifact: 0.62,
   tag: 0.92,
   entry: 0.92
@@ -91,7 +91,7 @@ export function mountGraph({ canvas, graph, onPick, onBlank, mode = 'jump', focu
   // 节点初始化：按 kind 分环铺开（比单一圆环好看，也符合「枢纽在内、外围装饰」的阅读顺序）
   const byKind = new Map()
   for (const node of rawNodes) {
-    const kind = node.kind || 'reference'
+    const kind = node.kind || 'worldbook'
     if (!byKind.has(kind)) byKind.set(kind, [])
     byKind.get(kind).push(node)
   }
@@ -130,7 +130,7 @@ export function mountGraph({ canvas, graph, onPick, onBlank, mode = 'jump', focu
   const labelWidthCache = new Map()
   function labelWidth(node, label) {
     if (!labelWidthCache.has(label)) {
-      ctx.font = node.kind === 'reference' ? LABEL_FONT_WIDE : LABEL_FONT
+      ctx.font = node.kind === 'worldbook' ? LABEL_FONT_WIDE : LABEL_FONT
       labelWidthCache.set(label, ctx.measureText(label).width)
     }
     return labelWidthCache.get(label)
@@ -147,7 +147,7 @@ export function mountGraph({ canvas, graph, onPick, onBlank, mode = 'jump', focu
       // 窄画布里长标题会横贯整张图并互相压住：按可用宽度动态截断（最少 6 字）
       const raw = String(node.label || node.id)
       const maxW = width - 8
-      ctx.font = node.kind === 'reference' ? LABEL_FONT_WIDE : LABEL_FONT
+      ctx.font = node.kind === 'worldbook' ? LABEL_FONT_WIDE : LABEL_FONT
       let label = raw.slice(0, 24)
       if (ctx.measureText(label).width > maxW) {
         let cut = label
@@ -395,7 +395,7 @@ export function mountGraph({ canvas, graph, onPick, onBlank, mode = 'jump', focu
       if (!pos) continue
       const lx = node.x + pos.dx
       const ly = node.y + pos.dy
-      ctx.font = node.kind === 'reference' ? LABEL_FONT_WIDE : LABEL_FONT
+      ctx.font = node.kind === 'worldbook' ? LABEL_FONT_WIDE : LABEL_FONT
       ctx.textAlign = pos.anchor === 'center' ? 'center' : pos.anchor === 'left' ? 'left' : 'right'
       ctx.textBaseline = 'middle'
       ctx.strokeStyle = 'rgba(255,255,255,0.9)'

@@ -98,7 +98,7 @@ test('生产能力图：20 个内置入口全部真实激活，七内核贡献�
   assert.deepEqual(CAPABILITY_SNAPSHOT.issues, [])
   const result = await activateModules({ snapshot: CAPABILITY_SNAPSHOT, manifests: MODULE_MANIFESTS })
   assert.deepEqual(result.activated.map((item) => item.id), MODULE_MANIFESTS.map((item) => item.id))
-  assert.equal(result.activated.length, 20)
+  assert.equal(result.activated.length, 21)
   assert.deepEqual(
     result.activated.filter((item) => MODULE_MANIFESTS.find((manifest) => manifest.id === item.id)?.class === 'kernel')
       .flatMap((item) => Object.keys(item.contribution.capabilities)).sort(),

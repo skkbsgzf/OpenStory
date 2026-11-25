@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { NAMING_TABLE } from '../public/views/registry.mjs'
-import { auditLineageNames, auditNamingConsistency } from '../tools/verify/verify-os172-naming.mjs'
+import { auditAgentName, auditLineageNames, auditNamingConsistency } from '../tools/verify/verify-os172-naming.mjs'
 
 const TOOL_SKILLS = [
   'fact-consistency', 'fact-extract', 'outline-restructure', 'scene-expand',
@@ -31,6 +31,12 @@ function lineageFixture() {
 test('OS-172 当前命名表、页签与模块显示名四向一致', () => {
   const result = auditNamingConsistency()
   assert.equal(result.ok, true, result.violations.join('; '))
+  // OS-190 分类补齐：页面 id＝slug、12 工作台齐备、manifest name＝正名、Agent 栏三名一致
+  const agent = auditAgentName()
+  assert.equal(agent.ok, true, agent.violations.join('; '))
+  const ids = NAMING_TABLE.map((row) => row.id)
+  assert.ok(ids.includes('imagegen') && ids.includes('knowledge'))
+  assert.ok(!ids.includes('vision') && !ids.includes('kb'), '散布的旧概念 id 已删')
 })
 
 test('OS-172 目录名退回旧名时四名一致门禁必须报红', () => {

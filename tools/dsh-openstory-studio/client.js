@@ -6,7 +6,7 @@
 //   2) 右侧栏标签页类型（sidebarRightTabs + sidebar.right.pane.tab）——可停靠、
 //      可分栏、可用右侧栏自己的「全屏」按钮放大；右侧栏 guide 页里也有一张卡片。
 //
-// 面板以 ?embed=1 打开：OpenStory 进入嵌入模式，收掉它自带的 Pi-Agent 左列——
+// 面板以 ?embed=1 打开：OpenStory 进入嵌入模式，收掉它自带的 Agent 栏左列——
 // 左侧的交给我 DSH 原本的会话，右侧只留工作台内容区。
 //
 // 宿主侧（index.mjs）负责把 http://127.0.0.1:8807 这个 daemon 拉起来并看护；
@@ -22,7 +22,7 @@ window.__ModuleLoader__.load({
 		const ID = 'dsh-openstory-studio';
 		const KIND = 'openstory';
 		// ?embed=1 让 OpenStory 进入嵌入模式：宿主左侧已有真正的 DSH 会话，
-		// 工作台收掉自带的 Pi-Agent 左列，只留内容区（见 public/index.html 的 html.os-embed）。
+		// 工作台收掉自带的 Agent 栏左列，只留内容区（见 public/index.html 的 html.os-embed）。
 		const STUDIO_URL = 'http://127.0.0.1:8807/?embed=1';
 		const STUDIO_ORIGIN = 'http://127.0.0.1:8807';
 		const PROBE_TIMEOUT_MS = 10000;

@@ -35,9 +35,9 @@ test('a) 模块清单：src/modules/ 下每个目录都有合法 @2 manifest，c
   }
   assert.deepEqual(report.coreFieldOwners, [])
   // C6 实测 20 个已登记模块：11 workbench + 7 kernel + 2 host-composition。
-  assert.equal(report.manifestIds.length, 20)
+  assert.equal(report.manifestIds.length, 21)
   assert.equal(report.manifestIds.length, report.moduleDirs.length)
-  assert.equal(report.sourceGroups.workbench.length, 11)
+  assert.equal(report.sourceGroups.workbench.length, 12)
   assert.deepEqual(report.sourceGroups.kernel, ['agent-runtime', 'deduce', 'fact', 'media', 'prose', 'storage', 'text'])
   assert.deepEqual(report.sourceGroups['host-composition'], ['agentbar', 'library'])
   assert.deepEqual(report.sourceIssues, [])

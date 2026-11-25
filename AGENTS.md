@@ -39,7 +39,7 @@ L4 自持层→L2 自有内核 `src/kernel/`→L1 磁盘库；OS-157 起 L2/L3 �
 5. **MCP 不开 agent 对话**（不套娃）；写操作一律有 .history 备份。
 6. **模块不耦合**：功能模块间禁止直接 import——只经协议层（`src/api/contracts.mjs`/`src/protocol/chapters.mjs`/
    `src/protocol/changelog.mjs`/`src/protocol/versionGate.mjs`/`src/protocol/plugins.mjs`/`src/kernel/index.mjs`，门禁 S2.1 白名单）；
-   依赖注入解（范例见 `src/modules/kb/kbHealth.mjs` 的 resolveCollections 注入）。
+   依赖注入解（范例见 `src/modules/knowledge/knowledgeHealth.mjs` 的 resolveCollections 注入）。
    建库/导入/章节号解析已**本仓自持**（`src/modules/storage/projectDoc.mjs`/`src/modules/library/importAdapter.mjs`/`textUtil.mjs`，
    OS-123/124 fork 点），不再复用上游内核。
    > **模块插件（OS-144；B1–B5 已升级）**：工作面使用 `src/modules/<id>/module.manifest.json`
@@ -74,7 +74,7 @@ L4 自持层→L2 自有内核 `src/kernel/`→L1 磁盘库；OS-157 起 L2/L3 �
    | `src/api/` | 契约层 `contracts.mjs` ＋ `contracts/` 八域分片（API 形状唯一真源） |
    | `src/protocol/` | 文件与协议层：chapters/chapterNumber/changelog/versionGate/plugins/agentEvents/factGuard/dependencyGraph/hostWrite/libState/courtyard（本机院子唯一解析）/libraryManifest（OpenStory 自持库清单）/libraryUpgrade（旧库一次性升级与回滚）/naming（命名表转供）/modules（manifest@2 装载与来源）/capabilityGraph（能力图与状态事务）/capabilityResolver（快照薄代理） |
    | `src/kernel/` | 自有物理内核（`openstory-kernel@1`）：公开面 `index.mjs`＋身份 `identity.mjs`，管道件 `errors.mjs`/`atomicWrite.mjs`/`fsDurability.mjs`；业务 fact/enrich 已降为模块内核，core/、vendor/ 已退役 |
-   | `src/modules/` | 20 份 `module.manifest.json`：11 个 workbench（chapters/script/worldbook/roleplay/analysis/comfyui/kb/habits/storysource/artifacts/exchange）、7 个 kernel（storage/fact/prose/text/deduce/agent-runtime/media）、2 个宿主组合面（agentbar/library，恒启用）；library/ 建库导入、storage/ 库骨架、deduce/ 推演、roleplay/ 扮演、worldbook/ 世界书、agentbar/ Agent 存储 |
+   | `src/modules/` | 21 份 `module.manifest.json`：12 个 workbench（chapters/script/worldbook/storysource/roleplay/analysis/imagegen/knowledge/habits/artifacts/log/exchange）、7 个 kernel（storage/fact/prose/text/deduce/agent-runtime/media）、2 个宿主组合面（agentbar/library，恒启用）；library/ 建库导入、storage/ 库骨架、deduce/ 推演、roleplay/ 扮演、worldbook/ 世界书、agentbar/ Agent 存储 |
    | `src/services/` | 外围服务：embedding-server/embeddingPaths、cli-bridge/dsh-*/runtimes（模型驱动）、stylePacks/style-check/suites/skills/genres（货架）、jobCenter/nativePicker/syncCheck/enrichEngine |
 
    实现文件不得再放仓根；仓根 `.mjs` 计数必须为零。门禁 S0.1 钉死仓根零 `.mjs`。

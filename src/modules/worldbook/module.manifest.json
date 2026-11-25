@@ -14,7 +14,7 @@
   ],
   "pages": [
     {
-      "id": "reference",
+      "id": "worldbook",
       "label": "世界书"
     }
   ],
@@ -25,7 +25,7 @@
   "slots": [
     {
       "slot": "tab",
-      "page": "reference"
+      "page": "worldbook"
     }
   ],
   "settingsHint": "条目写在「世界书/」，旧库目录已在开库时一次性升级；停用只收起工作面，不删除条目。"

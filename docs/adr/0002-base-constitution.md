@@ -61,18 +61,18 @@
 | 正名（显示名＝插件名） | 建议 slug | 库内目录名 | 日志模块名 | 前端位置 | 现状不一致／归一动作 |
 |---|---|---|---|---|---|
 | 正文 | `chapters` | `正文` | `正文` | 页签＋右栏 | 名称已一致；现模块混有写引擎与页面，B/C 批拆为 `prose` 内核件＋本工作台 |
-| 世界书 | `worldbook` | `世界书` | `世界书` | 页签＋「＋」面板 | OS-172 已正名；`public/app.js` 仍有 `namingEntry('reference')` 旧 id 调用，后续改为 `worldbook`，不留 fallback 依赖 |
+| 世界书 | `worldbook` | `世界书` | `世界书` | 页签＋「＋」面板 | OS-190 已把 `namingEntry('reference')` 旧 id 调用改为 `worldbook`；页面 id＝slug `worldbook`，图谱节点类型同步为 `worldbook` |
 | 剧本 | `script` | `剧本` | `剧本` | 页签 | 已一致；与正文共用 chapters 契约不等于共用插件内部实现 |
-| 故事源 | `storysource` | `故事源` | `故事源` | 页签 | OS-172 已正名；空态仍写「世界书/条目」，后续改为现行入口文案；不并入导入导出 |
-| 扮演 | `roleplay` | `扮演` | `扮演` | 页签 | OS-172 已正名；`deduce` 是内核件，不占第二个用户板块 |
+| 故事源 | `storysource` | `故事源` | `故事源` | 页签 | OS-190 页面 id＝slug `storysource`（原 `storySource`）；不并入导入导出 |
+| 扮演 | `roleplay` | `扮演` | `扮演` | 页签 | OS-190 页面 id＝slug `roleplay`（原 `deduce`）；`deduce` 仍是内核件，不占第二个用户板块 |
 | 习惯 | `habits` | `习惯`（现为习惯表文件所在业务名） | `习惯` | 页签 | 已一致；lint 纯引擎归 `text`，本工作台只拥有规则编辑与消费入口 |
 | 产物 | `artifacts` | 不设独立目录 | 不设独立日志模块 | 页签 | 页面标题仍写「产物中心」，后续统一为「产物」；空态「去正文/大纲」一并改现行名 |
-| 日志 | `log` | `日志` | 不设（自身只读） | 页签 | 已一致；现无 manifest，后续登记为工具面工作台，读取 `prose.changelog` |
+| 日志 | `log` | `日志` | 不设（自身只读） | 页签 | OS-190 已立 `class:workbench` manifest（slot tab、page `log:日志`、`requires: prose.write`、零独占端点）；停用仅收起页签，日志数据保留 |
 | 分析 | `analysis` | 不设 | 不设 | 正文/剧本右栏 | 现无独占 daemon 端点但被 MCP、扮演、习惯消费；纯引擎必须拆到 `text`，本工作台只留卡片/图表/定位 |
-| 知识库 | **建议 `knowledge`** | 不设 | 不设 | 设置页模块卡 | 现 slug `kb` 是缩写；建议改 `knowledge`，外部 `/api/kb/*` 不动 |
-| 生图与识图 | **建议 `imagegen`** | 不设独立目录；图片仍落条目 assets | 不设 | 设置页模块卡＋世界书生成按钮 | 现模块 `comfyui` 是后端厂商名，命名表另有 `vision`/`imagegen` 两概念；建议工作台统一 `imagegen`，执行器归 `media`，工作流归 suite |
+| 知识库 | `knowledge` | 不设 | 不设 | 设置页模块卡 | OS-190 已改 slug `knowledge`（原 `kb`）；外部 `/api/kb/*`、MCP 名、错误码不动 |
+| 生图与识图 | `imagegen` | 不设独立目录；图片仍落条目 assets | 不设 | 设置页模块卡＋世界书生成按钮 | OS-190 已改 slug `imagegen`（原 `comfyui`），`vision` 概念并入 `imagegen`（识图是其功能之一）；执行器归 `media`，工作流归 suite |
 | 导入导出 | `exchange` | `导入导出` | `导入导出` | 库切换面板 | OS-172 已正名；保持独立工作台，不吸收故事源 |
-| Agent 栏 | `agent` | 不设 | 不设 | 左侧栏 | manifest 名已是「Agent 栏」，`public/index.html` 标题仍为「Pi-Agent」；后续改「Agent 栏」，运行时不叫 Pi |
+| Agent 栏 | `agent` | 不设 | 不设 | 左侧栏 | OS-190 已把 `public/index.html` 头部显示名与头像字母改为「Agent 栏」/`A`，门禁钉死 `.agent-name` 文本＝agentbar manifest `name` |
 | 设置 | `settings` | 不设 | 不设 | 页签／路由 | 宿主面，不登记成可停用工作台 |
 | 库管理 | `libraries` | 不设（库根本身是数据） | 不设 | 顶栏／路由 | 宿主面，不登记成可停用工作台；建库骨架归 storage 能力 |
 
@@ -128,7 +128,7 @@
 |---|---|---|---|---|
 | 1 | skill 包 | `skill` | 提示词与手艺配方是数据；Agent 执行，套件不加载代码 | `skills/`、`src/services/skills.mjs` |
 | 2 | 推演规则包 | `deduce-rule` | 2d6、局面卡、候选模板是可替换规则数据；确定性仍在 `deduce.engine` | 现规则散在 `src/modules/deduce/engine/` 与角色模块，后续析出 |
-| 3 | 生图工作流包 | `media-workflow` | ComfyUI 工作流 JSON、节点映射与参数预设是数据；执行在 `media` | `src/modules/comfyui/` 与用户配置，后续析出 |
+| 3 | 生图工作流包 | `media-workflow` | ComfyUI 工作流 JSON、节点映射与参数预设是数据；执行在 `media` | `src/modules/imagegen/` 与用户配置，后续析出 |
 | 4 | 文风包／体裁包 | `resource`＋`resourceKind=style|genre` | 色板、体裁、篇幅与页签裁剪是声明式资源；storage 只执行模板 | `styles/`、`genres/`、`src/services/{stylePacks,genres}.mjs` |
 | 5 | 运行时套件 | `runtime` | CLI kit 的 endpoint/probe/command 是**受控扩展描述**，不是可导入插件代码；适配器在 `agent.runtime` | `runtimes/`、`src/services/runtimes.mjs` |
 | 6 | 业务套装 | `bundle` | 只捆绑上述供给与依赖闭包，不另造执行器 | `suites/`、`src/services/suites.mjs` |

@@ -48,7 +48,7 @@ npm test           # node --test（零外部依赖）
 在 DSH 的 Plugins → Add plugin 里选该目录安装即可，细节见其
 [README](./tools/dsh-openstory-studio/README.md)。
 
-浏览器打开 `http://127.0.0.1:8807`，右上角库切换器新建/导入库（建库骨架自动补齐）。模型对话在左列 Pi-Agent 设置里配端点（OpenAI 兼容 / DSH 原生 / CLI kit），生图在设置里配 ComfyUI。
+浏览器打开 `http://127.0.0.1:8807`，右上角库切换器新建/导入库（建库骨架自动补齐）。模型对话在左列 Agent 栏设置里配端点（OpenAI 兼容 / DSH 原生 / CLI kit），生图在设置里配 ComfyUI。
 
 > **演示库**：[`samples/水浒传/`](./samples/水浒传/)——公版示例（世界书图谱/双链/事实包/扮演会话/素材），导入即可体验全部功能。库自带 `.openstory/ui-state.json` 与 `.openstory/plugins/suite-state.json`（真实路径生成，见 `tools/samples/generate-sample-config.mjs`），打开即复现一份配置好的工作台，不需要重新点一遍设置。
 
@@ -81,7 +81,7 @@ CI 是合入门禁：推送与合并请求在 Node 24 上跑 `npm test` 两轮�
 | `src/api/` | 契约层 `contracts.mjs` ＋ `contracts/` 八域分片（OS-130 起分域，OS-162 加 `exchange`，纯数据，两端共享） |
 | `src/protocol/` | 文件与协议层：chapters / changelog / versionGate / plugins / agentEvents / factGuard / dependencyGraph / hostWrite / libState / naming（命名表转供） / courtyard（本机院子唯一解析） / libraryManifest（OpenStory 自持库清单） / libraryUpgrade（旧库一次性备份、迁移、退役留档与回滚） |
 | `src/kernel/` | 自有内核（`openstory-kernel@1`：管道件＋fact 链＋enrich，公开面 `index.mjs`；出处与文件对应见 [docs/kernel-provenance.md](./docs/kernel-provenance.md)） |
-| `src/modules/` | 域模块与工作面插件：14 份 `module.manifest.json`（`openstory-module@2`）——11 个 workbench（chapters / worldbook / script / roleplay / analysis / comfyui / kb / habits / storysource / artifacts / exchange）、1 个 kernel（deduce，提供 `deduce.engine@1`）、2 个恒启用宿主组合面（agentbar / library）；模块级 `core` 与 `MODULE_CORE` 已退役，工作台停用回 `MODULE_DISABLED`，能力缺失回 `PLUGIN_DEGRADED`。library/ 建库导入自持（library 声明 0 个宿主域端点，Pinax 清单导入端点已退役；`.openstory/project.json` 使用 `openstory-project@4`）、deduce/ 推演、roleplay/ 扮演调度＋四层提示词、worldbook/ 世界书索引、agentbar/ Agent 存储。端点归属 105/105 有主，见 `ARCHITECTURE.md`「模块插件清单」 |
+| `src/modules/` | 域模块与工作面插件：21 份 `module.manifest.json`（`openstory-module@2`）——12 个 workbench（chapters / worldbook / script / storysource / roleplay / analysis / imagegen / knowledge / habits / artifacts / log / exchange）、7 个 kernel（storage / fact / prose / text / deduce / agent-runtime / media）、2 个恒启用宿主组合面（agentbar / library）；模块级 `core` 与 `MODULE_CORE` 已退役，工作台停用回 `MODULE_DISABLED`，能力缺失回 `PLUGIN_DEGRADED`。library/ 建库导入自持（library 声明 0 个宿主域端点，Pinax 清单导入端点已退役；`.openstory/project.json` 使用 `openstory-project@4`）、deduce/ 推演、roleplay/ 扮演调度＋四层提示词、worldbook/ 世界书索引、agentbar/ Agent 存储。端点归属 105/105 有主，见 `ARCHITECTURE.md`「模块插件清单」 |
 | `src/services/` | 外围服务：kb*（知识库）、embedding-server、cli-bridge/dsh-*/runtimes（模型驱动）、suites/stylePacks/style-check/skills/genres（货架装载）、jobCenter / nativePicker / comfyEngine / syncCheck / enrichEngine |
 | `public/` | 工作台单页（app.js＋reference/graph/md/analysis/charts/ui-kit/storySource 等零依赖模块；echarts 本地 vendor） |
 | `suites/` `styles/` `runtimes/` `genres/` `skills/`（31＋套件捆绑 2） | 插件货架数据目录（内置样例）＋ [PROTOCOL.md](suites/PROTOCOL.md)（套件注册协议） |
@@ -117,6 +117,6 @@ OpenStory 自 [Pinax-next](https://github.com/skkbsgzf/Pinax-StoryHarness) 的 o
   退役留档，不双读；Pinax 清单导入端点退役，互认拆除。作者署名统一为 `skkbsgzf`。
 - **内核转自有收官**（2026-11-24，OS-157）：`core/`、`vendor/` 与 vendor 漂移检测整体退役，`pinaxAdapter` 解散，Host API `@2` 五键定稿，错误码去旧前缀；出处见 [docs/kernel-provenance.md](./docs/kernel-provenance.md)，改名对照见 [docs/error-code-rename.md](./docs/error-code-rename.md)。
 - **解耦收官**（2026-11-23，OS-120→133）：插件治理三件套＋能力白名单；内核解耦四步（server 层/载体注册体系移除→建库导入自持→pinaxAdapter 唯一进口→vendor 漂移检测）；进程治理（单实例锁/stamp/generation/health）；AG-UI 协议出口；契约分域（contracts/ 七域）；@pinax/core tgz 依赖收编移除。架构归档为[七层实测分层](./ARCHITECTURE.md)，遗留与「明确不做」见[遗留台账](./docs/LEGACY-ITEMS.md)。
-- **v0.2.x**（2026-11-21）：角色时间线泳道图、Windows 原生文件夹选择器/资源管理器唤起、Agent 栏可折叠、剧情密度热力图修复；DSH 插件内嵌模式（OS-113：右侧栏打开工作台，内嵌时收起自带的 Pi-Agent 左列，左侧交给 DSH 会话）＋窄面板适配约束（OS-114：纸面可读下限 320px、≤1000px 浮层不再让位、内边距/页签按断点降档）＋内嵌 Agent 桥（OS-115：「添加到 Agent / 润笔 / 发给 Agent」以引用块写进 DSH 当前会话输入框）＋MCP 工具面（OS-116：OpenStory 24 个 MCP 工具挂进 DSH，引用附库/章/段/root 来源，DSH Agent 可读章节、按备份语义写回）。
+- **v0.2.x**（2026-11-21）：角色时间线泳道图、Windows 原生文件夹选择器/资源管理器唤起、Agent 栏可折叠、剧情密度热力图修复；DSH 插件内嵌模式（OS-113：右侧栏打开工作台，内嵌时收起自带的 Agent 栏左列，左侧交给 DSH 会话）＋窄面板适配约束（OS-114：纸面可读下限 320px、≤1000px 浮层不再让位、内边距/页签按断点降档）＋内嵌 Agent 桥（OS-115：「添加到 Agent / 润笔 / 发给 Agent」以引用块写进 DSH 当前会话输入框）＋MCP 工具面（OS-116：OpenStory 24 个 MCP 工具挂进 DSH，引用附库/章/段/root 来源，DSH Agent 可读章节、按备份语义写回）。
 - **v0.2.0**（2026-11-21）：扮演与文游舞台全面成型（多子 agent 同幕/长期记忆/拍转正/多局管理）、世界书纳入拆解词条（当时命名，现为故事源词条；词条图谱槽）、剧本线（原生工作面＋外部导入）、生图识图、任务中心/修改日志/ui-state、设置重构（本体＋插件中心）、MCP 24 工具、95→99 端点契约、299 例测试。
 - **v0.1.0**（2026-11-19）：首个对外版本。路线图见 [docs/plan/](./docs/plan/)。

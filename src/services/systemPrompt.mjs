@@ -16,7 +16,7 @@ import { rootKey, text } from '../host/authorize.mjs'
 import { habitsForPrompt } from '../host/moduleHooks.mjs'
 import { loadGenres, readBrief, briefPromptSection } from './genres.mjs'
 import { loadSkills, craftSkillsForPrompt, craftInstructionBlock, readAgentPicks, suiteSkillDirs } from './skills.mjs'
-import { precedentPromptSectionForGenre } from '../protocol/kbRouter.mjs'
+import { precedentPromptSectionForGenre } from '../protocol/knowledgeRouter.mjs'
 import { scanReferences, notesVisibleAt, buildReferenceGraph } from '../protocol/referenceStore.mjs'
 import { factStore } from '../protocol/factStore.mjs'
 import { listChapters } from '../protocol/chapters.mjs'
@@ -132,7 +132,7 @@ export async function systemPromptFor(root, libraries, genresDirs, skillsDirs, {
           const a = graph.nodes.find((node) => node.id === edge.a)
           const b = graph.nodes.find((node) => node.id === edge.b)
           if (!a || !b) continue
-          const ref = a.kind === 'reference' ? a : (b.kind === 'reference' ? b : null)
+          const ref = a.kind === 'worldbook' ? a : (b.kind === 'worldbook' ? b : null)
           const artifact = a.kind === 'artifact' ? a : (b.kind === 'artifact' ? b : null)
           if (!ref || !artifact) continue
           if (!refsByArtifact.has(artifact.id)) refsByArtifact.set(artifact.id, [])
