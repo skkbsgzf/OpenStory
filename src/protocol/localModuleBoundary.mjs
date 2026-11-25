@@ -85,27 +85,31 @@ function violation(file, line, spec, reason) {
 
 /**
  * @param {Array<{path:string, source:string}>} files 包内文件（入口＋候选依赖，含 JSON 数据）
- * @param {{entry?:string}} options 入口相对路径，缺省 index.mjs
+ * @param {{entry?:string, entries?:string[]}} options 入口相对路径；entries 给定时取代单个 entry
  * @returns {{ok:boolean, violations:Array, visited:Array<{path:string, source:string}>}}
  */
-export function scanModuleImportGraph(files = [], { entry = 'index.mjs' } = {}) {
+export function scanModuleImportGraph(files = [], { entry = 'index.mjs', entries = [] } = {}) {
   const list = (Array.isArray(files) ? files : [])
     .filter((item) => item && typeof item === 'object')
     .map((item) => ({ path: posix(item.path).replace(/^\.\//u, ''), source: text(item.source) }))
   const byPath = new Map(list.map((item) => [item.path, item]))
-  const start = posix(entry).replace(/^\.\//u, '')
-  const entryFile = byPath.get(start)
+  // OS-197a：模块入口与 migrations[].entry 都是会在本进程执行的可执行依赖，
+  // 两者都作为图的根——迁移入口及其传递依赖同样进摘要、同样过边界扫描。
+  const starts = Array.isArray(entries) && entries.length ? entries : [entry]
+  const queue = []
   const violations = []
-  if (!entryFile) {
-    return {
-      ok: false,
-      violations: [violation(start, 1, start, 'ENTRY_NOT_FOUND')],
-      visited: []
+  for (const value of starts) {
+    const key = posix(value).replace(/^\.\//u, '')
+    if (!key || key.split('/').some((part) => !part || part === '.' || part === '..')) {
+      violations.push(violation(key || text(value), 1, text(value), 'ENTRY_NOT_FOUND'))
+    } else if (!byPath.has(key)) {
+      violations.push(violation(key, 1, key, 'ENTRY_NOT_FOUND'))
+    } else if (!queue.includes(key)) {
+      queue.push(key)
     }
   }
   const visited = []
   const seen = new Set()
-  const queue = [start]
   while (queue.length) {
     const path = queue.shift()
     if (seen.has(path)) continue

@@ -11,6 +11,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { startDaemon } from '../src/host/daemon.mjs'
 import { resetLibraryMigrations } from '../src/host/libraryMigrations.mjs'
+import { resolveCapability, resolveStorageCapability } from '../src/host/capabilityBindings.mjs'
 
 const text = (value) => String(value ?? '')
 
@@ -199,5 +200,70 @@ test('OS-197-4 中断的 journal：先按备份恢复原格式，再重试迁移
     assert.ok(listed.payload.moduleMigrations.ran[0].restored.includes('.openstory/probe-data.json'))
     const journal = JSON.parse(await readFile(join(journalDir, '1-to-2.json'), 'utf-8'))
     assert.equal(journal.state, 'done')
+  })
+})
+
+test('OS-197a-1 修好迁移器后刷新＝新层＝重试：数据 v2、路由指向覆盖者、journal done', async () => {
+  await withFixture(async (item) => {
+    const broken = `export default async function migrate() { throw new Error('boom') }`
+    await writeModule(item.moduleRoot, { migrator: broken })
+    const added = await post(item.origin, '/api/module-roots/add', { path: item.moduleRoot, confirm: true })
+    assert.equal(added.status, 200)
+    assert.equal((await diagnose(item.origin, item.root)).status, 500)
+    assert.deepEqual(await readData(item.root), { version: 1 })
+
+    // 只修迁移器：manifest 与模块入口一字不动，刷新必须拿到新代码并重新尝试。
+    await writeFile(join(item.moduleRoot, 'textplus', 'migrate.mjs'), MIGRATOR, 'utf-8')
+    const refreshed = await post(item.origin, '/api/module-roots/refresh', {})
+    assert.equal(refreshed.status, 200)
+    assert.equal((await diagnose(item.origin, item.root)).status, 200)
+    assert.deepEqual(await readData(item.root), { version: 2, marker: 'v2' })
+
+    const listed = await plugins(item.origin, item.root)
+    assert.equal(listed.payload.capabilityReport.routes['text.analyze'].provider, 'textplus')
+    assert.equal(listed.payload.moduleMigrations.ran.length, 1)
+    assert.equal(listed.payload.moduleMigrations.failures.length, 0)
+    const journal = JSON.parse(await readFile(join(item.root, '.openstory', 'migrations', 'text.analyze', '1-to-2.json'), 'utf-8'))
+    assert.equal(journal.state, 'done')
+  })
+})
+
+test('OS-197a-2 回退保护下沉解析层：旧供给者不发句柄，未迁库不受影响，重新启用即恢复', async () => {
+  await withFixture(async (item) => {
+    await addRoot(item)
+    assert.equal((await diagnose(item.origin, item.root)).status, 200)
+    assert.equal((await readData(item.root)).version, 2)
+
+    const removed = await post(item.origin, '/api/module-roots/remove', { path: item.moduleRoot })
+    assert.equal(removed.status, 200)
+
+    // 没迁过的库没有任何数据档位：同一解析路径照常发给内置供给者。
+    const untouched = join(item.base, '未迁库')
+    await mkdir(join(untouched, '.openstory'), { recursive: true })
+    await writeFile(join(untouched, '.openstory', 'ui-state.json'), '{}', 'utf-8')
+    const clean = await resolveCapability(untouched, 'text.analyze', { min: 1 }, item.env)
+    assert.equal(clean.ok, true)
+    assert.equal(clean.capability.provider, 'text')
+
+    // 迁过的库：覆盖者退场后供给者自己在解析层拒绝，不等 HTTP 端点闸兜底。
+    const direct = await resolveCapability(item.root, 'text.analyze', { min: 1 }, item.env)
+    assert.equal(direct.ok, false)
+    assert.equal(direct.code, 'DATA_VERSION_AHEAD')
+    assert.equal(direct.details.dataVersion, 2)
+    assert.equal(direct.details.providerVersion, 1)
+    assert.ok(direct.details.journalPath)
+    assert.match(text(direct.message), /覆盖者|回退迁移/u)
+
+    // 下游 resolve*Capability 与宿主端点、钩子、MCP 直连共用同一入口，同样拿不到旧句柄。
+    const downstream = await resolveStorageCapability(item.root, 'text.analyze', item.env)
+    assert.equal(downstream.ok, false)
+    assert.equal(downstream.code, 'DATA_VERSION_AHEAD')
+
+    const readded = await post(item.origin, '/api/module-roots/add', { path: item.moduleRoot, confirm: true })
+    assert.equal(readded.status, 200)
+    const restored = await resolveCapability(item.root, 'text.analyze', { min: 2 }, item.env)
+    assert.equal(restored.ok, true)
+    assert.equal(restored.capability.provider, 'textplus')
+    assert.equal(restored.capability.version, 2)
   })
 })

@@ -52,3 +52,35 @@
 - 监督线复跑 `probe-197.mjs`（13 项全过）与 `probe-197b.mjs`（解析层拒绝）。
 - 回报里贴：迁移器入口计入摘要的位置（`文件:行`）、解析层拒绝的判定点、新增守护测试清单。
 - `git diff --check` 干净；`node tools/number-anchors.mjs` 与 `npm run arch:stats` 跑过。
+## 施工回报（编排器自动归档）
+
+> 模型 hy4flash · 第 1 轮 · 测试 绿（tests 840 · pass 838 · fail 0 · skip 2） · 门禁 绿 · e2e 水浒＋新建（隔离 daemon）绿 · 8807 未动
+
+```text
+CHANGED:
+- src/protocol/localModuleBoundary.mjs
+- src/host/moduleRoots.mjs
+- src/protocol/capabilityMigration.mjs
+- src/protocol/capabilityResolver.mjs
+- src/host/capabilityBindings.mjs
+- src/host/libraryMigrations.mjs
+- test/capabilityMigrationWiring.test.mjs
+- test/capabilityResolver.test.mjs
+- test/localModules196a.test.mjs
+- README.md
+- AGENTS.md
+- ARCHITECTURE.md
+- docs/number-anchors.json
+
+VERIFIED:
+- 迁移器入口计入摘要：`src/host/moduleRoots.mjs:151-152`（`migrations[].entry` 与模块入口共同作为 import 图根；`src/protocol/localModuleBoundary.mjs:91-110` 多入口扫描）；ESM 缓存失效见 `src/protocol/capabilityMigration.mjs:165`（迁移器 URL 附 `?osv=<内容摘要>`）。
+- 解析层拒绝判定点：`src/protocol/capabilityResolver.mjs:50-63`（`route.version < dataAhead.version` → `DATA_VERSION_AHEAD`）；`src/host/capabilityBindings.mjs:19-30` 把该库 `dataVersions` 交给 resolver，各 `resolve*Capability` 经它统一拒绝；端点闸保留未动。`readDataVersions` 已改用 `METADATA_DIR`（`src/host/libraryMigrations.mjs:27`）。
+- 新增守护测试：`test/capabilityMigrationWiring.test.mjs:206`（修好迁移器→刷新重试→v2/journal done）、`:231`（解析层与下游 resolver 拒绝、未迁库不受影响、重新启用恢复）；`test/capabilityResolver.test.mjs:53`（纯函数数据档位判定）；`test/localModules196a.test.mjs:210`（迁移器入口进摘要、缺失即身份门点名）。
+- `node .zcode/run-gate.mjs`：840 例，838 过／2 跳过／0 挂。
+- `node tools/acceptance/acceptance.mjs`：29 过／0 挂／0 警。
+- 红线四测试 + 新增测试全绿；`node tools/arch-stats.mjs --check`、`node tools/number-anchors.mjs --check`、`git diff --check` 均通过。
+- 监督线复跑：`probe-197.mjs` 13/13 全过（含场景 5）；`probe-197b.mjs` 输出 `{"ok":false,"code":"DATA_VERSION_AHEAD"}`。
+- 无未跟踪文件；改动全部在工单允许范围内；未 add/commit/push，未连接 8807。
+
+LIMITATIONS: 无
+```

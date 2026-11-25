@@ -14,6 +14,7 @@ import { join } from 'node:path'
 import { startDaemon } from '../src/host/daemon.mjs'
 import { hooksFor } from '../src/host/handlerTable.mjs'
 import { scanModuleImportGraph } from '../src/protocol/localModuleBoundary.mjs'
+import { contentDigest } from '../src/protocol/localModuleContract.mjs'
 
 const text = (value) => String(value ?? '')
 
@@ -204,6 +205,25 @@ test('G2-a 改依赖 .mjs 与 JSON 数据：刷新后 activate 看到新值', as
     assert.equal(item.contentChanged, true)
     assert.equal(text(await readFile(log, 'utf-8')).trim().split('\n').join(' → '), 'v1:j1 → v2:j2')
   })
+})
+
+test('G2-a2 迁移器入口计入 import 图与内容摘要，缺失即身份门点名（OS-197a）', () => {
+  const files = [
+    { path: 'index.mjs', source: 'export async function activate() { return { capabilities: {} } }' },
+    { path: 'migrate.mjs', source: "import { helper } from './helper.mjs'\nexport default async function migrate() { return helper() }" },
+    { path: 'helper.mjs', source: 'export const helper = () => []' }
+  ]
+  const scanned = scanModuleImportGraph(files, { entries: ['index.mjs', 'migrate.mjs'] })
+  assert.equal(scanned.ok, true)
+  assert.deepEqual(scanned.visited.map((item) => item.path), ['helper.mjs', 'index.mjs', 'migrate.mjs'])
+  const before = contentDigest(scanned.visited)
+  const edited = files.map((item) => item.path === 'helper.mjs'
+    ? { ...item, source: 'export const helper = () => [1]' } : item)
+  assert.notEqual(contentDigest(scanModuleImportGraph(edited, { entries: ['index.mjs', 'migrate.mjs'] }).visited), before,
+    '改迁移器依赖必须换摘要')
+  const missing = scanModuleImportGraph(files.slice(0, 1), { entries: ['index.mjs', 'migrate.mjs'] })
+  assert.equal(missing.ok, false)
+  assert.equal(missing.violations[0].reason, 'ENTRY_NOT_FOUND')
 })
 
 test('G4-b 自带端点真实请求经请求校验；停用 409、启用恢复', async () => {

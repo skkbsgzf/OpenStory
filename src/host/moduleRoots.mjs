@@ -146,7 +146,10 @@ export function inspectRoot(path, { registeredModules = [] } = {}) {
       continue
     }
     const files = walkCodeFiles(moduleDir)
-    const scanned = scanModuleImportGraph(files, { entry: manifest.entry ?? 'index.mjs' })
+    // OS-197a：migrations[].entry 也是本进程会执行的可执行依赖——与模块入口一起作为
+    // import 图的根，计入内容摘要并过同一套边界扫描；改迁移器即换层，失败缓存不再命中。
+    const entries = [manifest.entry ?? 'index.mjs', ...(manifest.migrations ?? []).map((migration) => migration?.entry).filter(Boolean)]
+    const scanned = scanModuleImportGraph(files, { entries })
     if (!scanned.ok) {
       modules.push({ ...base, status: 'invalid', gate: 'boundary', reason: scanned.violations.map(describeBoundaryViolation).join('；'), visited: scanned.visited })
       continue

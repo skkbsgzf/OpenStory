@@ -53,9 +53,9 @@
 <!-- arch-stats:start -->
 | 分工 | 范围 | 文件数 | 行数 |
 |---|---|---:|---:|
-| 底座 | `src/host/`＋`src/kernel/` | 28 | 4,308 |
+| 底座 | `src/host/`＋`src/kernel/` | 28 | 4,317 |
 | 契约 | `src/api/` | 17 | 3,887 |
-| 协议 | `src/protocol/` | 34 | 5,852 |
+| 协议 | `src/protocol/` | 34 | 5,890 |
 | 内核件（class: kernel，7） | `src/modules/agent-runtime/`＋`src/modules/deduce/`＋`src/modules/fact/`＋`src/modules/media/`＋`src/modules/prose/`＋`src/modules/storage/`＋`src/modules/text/` | 59 | 11,205 |
 | 工作台（class: workbench，12） | `src/modules/analysis/`＋`src/modules/artifacts/`＋`src/modules/chapters/`＋`src/modules/exchange/`＋`src/modules/habits/`＋`src/modules/imagegen/`＋`src/modules/knowledge/`＋`src/modules/log/`＋`src/modules/roleplay/`＋`src/modules/script/`＋`src/modules/storysource/`＋`src/modules/worldbook/` | 30 | 3,556 |
 | 宿主组合面（恒启） | `src/modules/agentbar/`＋`src/modules/library/` | 5 | 1,172 |

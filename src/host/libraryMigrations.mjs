@@ -12,7 +12,7 @@ import { join } from 'node:path'
 import { readModuleEnabled } from '../protocol/capabilityGraph.mjs'
 import { declaredCapabilityMigrations, runCapabilityMigrations } from '../protocol/capabilityMigration.mjs'
 import { readUiState } from '../protocol/libState.mjs'
-import { canonicalRoot } from '../protocol/rootPath.mjs'
+import { METADATA_DIR, canonicalRoot } from '../protocol/rootPath.mjs'
 
 const text = (value) => String(value ?? '')
 const states = new Map()
@@ -24,7 +24,7 @@ function migrationPackageDir(source, id) {
 }
 
 async function readDataVersions(root) {
-  const dir = join(canonicalRoot(root), '.openstory', 'migrations')
+  const dir = join(canonicalRoot(root), METADATA_DIR, 'migrations')
   const out = []
   let capabilities = []
   try {

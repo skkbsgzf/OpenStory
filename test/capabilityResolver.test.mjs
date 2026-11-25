@@ -50,6 +50,27 @@ test('能力薄代理：未注册、版本错位、实现缺席与非法区间�
   assert.equal(unavailable.details.reason, 'CAPABILITY_PROVIDER_UNAVAILABLE')
 })
 
+test('能力薄代理：库数据档位高于路由供给者时解析层直接拒发旧句柄（OS-197a）', () => {
+  const snapshot = buildCapabilitySnapshot({ manifests: [kernel('text', [capability('text.analyze', 1)])] })
+  const resolver = createCapabilityResolver({
+    snapshot,
+    implementations: { text: { analyze() {} } },
+    dataVersions: [{ capability: 'text.analyze', from: 1, to: 2, journalPath: '.openstory/migrations/text.analyze/1-to-2.json' }]
+  })
+  const blocked = resolver.resolve('text.analyze', { min: 1 })
+  assert.equal(blocked.ok, false)
+  assert.equal(blocked.code, 'DATA_VERSION_AHEAD')
+  assert.equal(blocked.details.capability, 'text.analyze')
+  assert.equal(blocked.details.dataVersion, 2)
+  assert.equal(blocked.details.provider, 'text')
+  assert.equal(blocked.details.providerVersion, 1)
+  assert.match(blocked.message, /回退迁移/u)
+  // 没迁过的库（无 dataVersions）不受影响；供给者升到数据档位后恢复。
+  assert.equal(createCapabilityResolver({ snapshot, implementations: { text: { analyze() {} } } }).resolve('text.analyze').ok, true)
+  const upgraded = buildCapabilitySnapshot({ manifests: [kernel('text', [capability('text.analyze', 2)])] })
+  assert.equal(createCapabilityResolver({ snapshot: upgraded, implementations: { text: { analyze() {} } }, dataVersions: [{ capability: 'text.analyze', to: 2 }] }).resolve('text.analyze', { min: 2 }).ok, true)
+})
+
 test('能力薄代理：冲突不伪装成缺失，保留冲突供给者证据', () => {
   const snapshot = buildCapabilitySnapshot({
     manifests: [kernel('fact-a', [capability('fact.store')]), kernel('fact-b', [capability('fact.store')])]

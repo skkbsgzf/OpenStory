@@ -159,7 +159,11 @@ function migrationContext(root, migration, { backupRelative = '' } = {}) {
 }
 
 async function loadMigrator(entryPath) {
-  const module = await import(pathToFileURL(entryPath).href)
+  // OS-197a：迁移入口按内容摘要改写 URL——Node 的 ESM 缓存以 URL 为键，修好 migrate.mjs
+  // 后刷新必须用新 URL 才能真正重新 import；旧实现绝不因路径未变而被复用。
+  const source = await readFile(entryPath)
+  const url = `${pathToFileURL(entryPath).href}?osv=${hashOf(source)}`
+  const module = await import(url)
   const migrate = module.default ?? module.migrate
   if (typeof migrate !== 'function') throw new Error(`迁移入口没有导出 migrate：${entryPath}`)
   return migrate
