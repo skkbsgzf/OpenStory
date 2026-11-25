@@ -64,13 +64,13 @@ jobs:
               safe="${line//'%'/'%25'}"
               safe="${safe//$'\r'/}"
               echo "::error title=${log}::${safe}"
-            done < <(grep -E '^✗ |^✖ |^ +· ' -B0 -A0 "$log" | awk '/^✗|^✖/{p=1; print; n=0; next} /^ +· /{if(p && n<5){print; n++}}' | head -n 40)
+            done < <(grep -E '^✗ |^✖ |^ +· |# SKIP' "$log" | awk '/^✗|^✖/{p=1; print; n=0; next} /^ +· /{if(p && n<5){print; n++}; next} /# SKIP/{print}' | head -n 40)
           done
           {
             echo "### 失败摘要（$GITHUB_SHA）"
             echo '```'
             grep -hE '^ℹ (tests|pass|fail|skipped)|^验收门禁' *.log 2>/dev/null | head -n 10
-            grep -hE '^✗ |^ +· |^✖ ' *.log 2>/dev/null | head -n 30
+            grep -hE '^✗ |^ +· |^✖ |# SKIP' *.log 2>/dev/null | head -n 30
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
           exit 0
