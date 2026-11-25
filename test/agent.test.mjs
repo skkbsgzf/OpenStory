@@ -219,11 +219,16 @@ test('会话：建→列→读→追加→改名→删，全程一个目录一�
   }
 })
 
-test('会话目录：同库（大小写不同）落同一目录，异库分开', { skip: process.platform !== 'win32' }, () => {
-  const left = sessionDirFor('C:/s', 'D:\\写作\\长夜')
-  const right = sessionDirFor('C:/s', 'd:/写作/长夜')
-  assert.equal(left, right)
-  assert.notEqual(left, sessionDirFor('C:/s', 'D:\\写作\\别的'))
+// 2026-11-26：原先只在 win32 跑（skip），导致 ubuntu CI 的「跳过数」比本机多 1，数字锚对不上。
+// 改成两个平台都跑、按平台断言：Windows 文件系统大小写不敏感→同一目录；POSIX 敏感→不同目录。
+// 断言没有放宽，反而多钉了一条「同路径必同目录」。
+test('会话目录：同路径落同一目录、异库分开；大小写按平台语义', () => {
+  const same = sessionDirFor('C:/s', 'D:\\写作\\长夜')
+  assert.equal(same, sessionDirFor('C:/s', 'D:/写作/长夜'), '同一库路径必须落同一目录')
+  assert.notEqual(same, sessionDirFor('C:/s', 'D:\\写作\\别的'), '不同库必须分开')
+  const caseVariant = sessionDirFor('C:/s', 'd:/写作/长夜')
+  if (process.platform === 'win32') assert.equal(same, caseVariant, 'Windows 大小写不敏感：同一库')
+  else assert.notEqual(same, caseVariant, 'POSIX 大小写敏感：视为不同库')
 })
 
 /* ---------- 快照闸 ---------- */
