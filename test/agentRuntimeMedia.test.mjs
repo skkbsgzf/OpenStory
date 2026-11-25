@@ -13,6 +13,7 @@ import { resolveMediaCapability } from '../src/host/capabilityBindings.mjs'
 const runtimeCapability = K.agentRuntime
 import { moduleManifest, validateModuleManifest } from '../src/protocol/modules.mjs'
 import { startDaemon } from '../src/host/daemon.mjs'
+import { writeNodeShim } from './fixtures/platformShim.mjs'
 
 async function listen(server) {
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
@@ -205,7 +206,7 @@ test('外部端点：生图与识图路径、响应形状和本机配置掩码�
   const preferencesPath = join(base, 'libraries.json')
   await writeFile(preferencesPath, JSON.stringify({ schemaVersion: 1, libraries: [{ path: root, name: '夹具库', source: 'imported', addedAt: '2026-01-01T00:00:00.000Z' }] }), 'utf8')
   const fakeDsh = join(base, 'fake-dsh.mjs')
-  const dshShim = join(base, 'dsh.cmd')
+  const dshShim = await writeNodeShim(base, 'dsh', join(base, 'fake-dsh.mjs'))
   await writeFile(fakeDsh, `
 import { createInterface } from 'node:readline'
 const out = (frame) => process.stdout.write(JSON.stringify(frame) + '\\n')
@@ -218,7 +219,7 @@ createInterface({ input: process.stdin, crlfDelay: Infinity }).on('line', (line)
   process.exit(0)
 })
 `, 'utf8')
-  await writeFile(dshShim, `@echo off\r\n"${process.execPath}" "%~dp0fake-dsh.mjs" %*\r\n`, 'utf8')
+
   const upstream = createServer((req, res) => {
     let raw = ''
     req.on('data', (chunk) => { raw += chunk })

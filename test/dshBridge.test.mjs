@@ -10,6 +10,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
+import { writeNodeShim } from './fixtures/platformShim.mjs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { dshFrameText, parseDshFrame, runDshStdio } from '../src/modules/agent-runtime/dsh-cli.mjs'
@@ -47,8 +48,7 @@ rl.on('line', (line) => {
   process.exit(0)
 })
 `, 'utf-8')
-  const fakeShim = join(base, 'dsh.cmd')
-  await writeFile(fakeShim, `@echo off\r\nnode "%~dp0fake-dsh.mjs" %*\r\n`, 'utf-8')
+  const fakeShim = await writeNodeShim(base, 'dsh', join(base, 'fake-dsh.mjs'))
   return { base, fakeDsh, fakeShim }
 }
 
@@ -211,7 +211,7 @@ test('runDshStdio：thinking/tool/usage 各自回调，thinking 不混进正文'
 
 test('runDshStdio：取消会先发 cancel 帧，不直接杀进程', async () => {
   const { base } = await makeFakeDsh()
-  const slowShim = join(base, 'slow-dsh.cmd')
+  const slowShim = await writeNodeShim(base, 'slow-dsh', join(base, 'slow-dsh.mjs'))
   // 慢速假 dsh：收到 execute 后一直不 result，等 cancel 帧再优雅退出
   await writeFile(join(base, 'slow-dsh.mjs'), `
 import { createInterface } from 'node:readline'
@@ -234,7 +234,7 @@ rl.on('line', (line) => {
   }
 })
 `, 'utf-8')
-  await writeFile(slowShim, `@echo off\r\nnode "%~dp0slow-dsh.mjs" %*\r\n`, 'utf-8')
+
   try {
     const controller = new AbortController()
     const texts = []
@@ -264,7 +264,7 @@ rl.on('line', (line) => {
 
 test('runDshStdio：max-tokens 截断如实标 truncated', async () => {
   const { base } = await makeFakeDsh()
-  const truncShim = join(base, 'trunc-dsh.cmd')
+  const truncShim = await writeNodeShim(base, 'trunc-dsh', join(base, 'trunc-dsh.mjs'))
   await writeFile(join(base, 'trunc-dsh.mjs'), `
 import { createInterface } from 'node:readline'
 const out = (frame) => process.stdout.write(JSON.stringify(frame) + '\\n')
@@ -281,7 +281,7 @@ rl.on('line', (line) => {
   process.exit(0)
 })
 `, 'utf-8')
-  await writeFile(truncShim, `@echo off\r\nnode "%~dp0trunc-dsh.mjs" %*\r\n`, 'utf-8')
+
   try {
     const result = await runDshStdio({
       dshCmd: truncShim,
@@ -445,8 +445,7 @@ test('probeDshStack：no-cli / no-profile / no-runtime / ready 四态各自带�
     assert.ok(noCli.commands[0].includes('npm i -g @deepseek-ai/dsh'))
 
     // no-profile：CLI 在（用 node 假 shim 语义务实）——直接造 dsh.cmd
-    const shim = join(base, 'dsh.cmd')
-    await writeFile(shim, '@echo off\r\nnode "%~dp0fake-dsh.mjs" %*\r\n', 'utf-8')
+    const shim = await writeNodeShim(base, 'dsh', join(base, 'fake-dsh.mjs'))
     const noProfile = await probeDshStack({ env: { DSH_HOME: dshHome, DSH_PROFILE: 'openstory' }, dshCmd: shim })
     assert.equal(noProfile.state, 'no-profile')
     assert.match(noProfile.message, /profile/)
@@ -475,8 +474,7 @@ test('setupDshStack：no-cli 拒绝并给命令；缺 tgz 如实报；ok 路径�
     assert.equal(noCli.ok, false)
     assert.match(noCli.message, /npm i -g/)
 
-    const shim = join(base, 'dsh.cmd')
-    await writeFile(shim, '@echo off\r\nnode "%~dp0fake-dsh.mjs" %*\r\n', 'utf-8')
+    const shim = await writeNodeShim(base, 'dsh', join(base, 'fake-dsh.mjs'))
     const noTgz = await setupDshStack({ env: { DSH_HOME: dshHome, DSH_PROFILE: 'openstory' }, dshCmd: shim })
     assert.equal(noTgz.ok, false)
     assert.match(noTgz.message, /DSH_RUNTIME_TARBALL|找不到 runtime 组件/)

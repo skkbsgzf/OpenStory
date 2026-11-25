@@ -200,9 +200,10 @@ test('CLI 全链：双开友好退出 0＋「已在运行」；杀掉后锁陈�
     assert.ok(String(second.stdout).includes(`pid ${first.pid}`), `输出应带在跑实例的 pid：${second.stdout}`)
     assert.equal(readLock(lockPath).pid, first.pid, 'busy 分支不得改写锁')
 
-    // 杀第一个。Windows 下 child.kill() 是硬杀（TerminateProcess，实测处理器不跑），
-    // 清锁处理器不会执行——锁留死 pid，正是「陈旧抢占」要接手的形态。
-    first.kill()
+    // 杀第一个：要的是「硬杀＝清锁处理器不跑」这一形态。
+    // Windows 的 child.kill() 本就是硬杀（TerminateProcess）；POSIX 上 SIGTERM 会跑清理处理器，
+    // 必须用 SIGKILL 才是同一个语义（2026-11-26 ubuntu CI 首跑就栽在这条假言上）。
+    first.kill(process.platform === 'win32' ? undefined : 'SIGKILL')
     await new Promise((r) => first.once('exit', r))
     for (let i = 0; i < 50 && pidAlive(first.pid); i += 1) await wait(100)
     assert.ok(!pidAlive(first.pid), '第一个 daemon 应已退出')
