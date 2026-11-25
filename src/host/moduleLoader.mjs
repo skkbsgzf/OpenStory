@@ -2,6 +2,8 @@ import { isAbsolute, relative, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { MODULE_MANIFESTS, MODULES_DIR } from '../protocol/modules.mjs'
 import { createModuleActivationContext, validateModuleContribution } from '../protocol/moduleActivation.mjs'
+import { ensureModuleBoundaryHooks } from './moduleBoundaryHooks.mjs'
+import { validateModuleContracts } from './moduleContracts.mjs'
 import { capabilityResolver } from './capabilityBindings.mjs'
 import { baseCapabilities } from './baseCapabilities.mjs'
 import { HOST_TOOLS } from './hostTools.mjs'
@@ -100,6 +102,8 @@ export async function activateLocalModule({
   root, manifest, snapshot, resolver, host = HOST_TOOLS, contentSha256 = ''
 } = {}) {
   if (!root || !manifest?.id || !manifest.entry) throw new Error('本机模块激活缺 root/manifest/entry')
+  // G3 运行期门：先装解析钩子，再执行模块代码；不支持的 Node 如实降级（报告另写）。
+  ensureModuleBoundaryHooks()
   const suffix = contentSha256 ? `?v=${encodeURIComponent(contentSha256)}` : ''
   const module = await loadEntry(root, manifest, suffix)
   const context = contextFor(manifest, resolver, host, LOCAL_BASE_HANDLES)
@@ -109,6 +113,14 @@ export async function activateLocalModule({
     const error = new Error(`模块 ${manifest.id} 激活贡献非法：${checked.errors.join('；')}`)
     error.code = 'CONTRIBUTION_REJECTED'
     error.details = { module: manifest.id, errors: checked.errors }
+    throw error
+  }
+  // OS-196a：自带端点契约也要过同一套形状/路径校验，拒收即激活失败（同门点名）。
+  const contractCheck = validateModuleContracts(manifest, contribution.contracts)
+  if (!contractCheck.ok) {
+    const error = new Error(`模块 ${manifest.id} 自带契约非法：${contractCheck.errors.join('；')}`)
+    error.code = 'CONTRIBUTION_REJECTED'
+    error.details = { module: manifest.id, errors: contractCheck.errors }
     throw error
   }
   return Object.freeze({

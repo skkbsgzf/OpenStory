@@ -17,7 +17,7 @@
   "author": "skkbsgzf <59155174+skkbsgzf@users.noreply.github.com>",
   "license": "SEE LICENSE IN LICENSE",
   "engines": {
-    "node": ">=18"
+    "node": ">=22.15.0"
   },
   "repository": {
     "type": "git",

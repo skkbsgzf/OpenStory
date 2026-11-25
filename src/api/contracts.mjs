@@ -171,17 +171,24 @@ function validateShape(shape, input, errors, options = {}) {
 /**
  * 请求校验：query 端点允许全是字符串（HTTP query 本来就是字符串），会把 integer 规整成数字；
  * body 端点按 JSON 原类型校验。返回 `{ ok, errors, value }`，value 是规整后的副本。
+ *
+ * `validateRequestShape` 是形状层的唯一校验口——静态契约与本机模块运行期自带契约
+ * 都走它，保证分派/校验/错误信封与内置端点是同一套。
  */
-export function validateRequest(endpointId, input = {}) {
-  const endpoint = ENDPOINTS[endpointId]
-  if (!endpoint) return { ok: false, errors: [{ field: 'endpoint', message: `未知端点 ${endpointId}` }], value: {} }
+export function validateRequestShape(endpoint, input = {}) {
   const errors = []
-  if (endpoint.request.query) {
+  if (endpoint?.request?.query) {
     const value = validateShape(endpoint.request.query, input, errors, { coerce: true })
     return { ok: errors.length === 0, errors, value }
   }
-  const value = validateShape(endpoint.request.body, input, errors)
+  const value = validateShape(endpoint?.request?.body ?? {}, input, errors)
   return { ok: errors.length === 0, errors, value }
+}
+
+export function validateRequest(endpointId, input = {}) {
+  const endpoint = ENDPOINTS[endpointId]
+  if (!endpoint) return { ok: false, errors: [{ field: 'endpoint', message: `未知端点 ${endpointId}` }], value: {} }
+  return validateRequestShape(endpoint, input)
 }
 
 /** 响应校验：daemon 发出去之前、测试断言形状时共用。 */

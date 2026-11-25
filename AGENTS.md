@@ -103,9 +103,11 @@ L4 自持层→L2 自有内核 `src/kernel/`→L1 磁盘库；OS-157 起 L2/L3 �
    样式令牌区外禁止裸色值。侧栏=绝对定位浮层，正文恒居中（OS-48 宪法）。
    组件约定见 `docs/UX-STRUCTURE.md`。
 
-## 本机模块（OS-196 立；可执行代码的四道门）
+## 本机模块（OS-196 立，OS-196a 返工；可执行代码的四道门）
 
 **信任模型：可执行模块与 daemon 同进程、同权限。登记一个模块根，等于信任这个根目录下所有模块的代码。**
+**边界门不是沙箱**：它只挡住「import/require 解析越出包目录」与误用，挡不住同进程代码直接摸
+`process`、`node:fs` 或生成新代码——`eval`/`Function` 做的事在进程内无法可靠禁止。预览的风险说明照原样显示。
 登记入口必须有清单预览与明确确认（`confirm:true`），不提供「扫描任意目录」的捷径。
 内置 `src/modules/` 永远是内置层；本机层同 id 覆盖内置层，`/api/plugins` 显式列出来源与摘要。
 套件照旧只许数据，本机模块根里发现的 `class:suite` 一律跳过。
@@ -113,10 +115,16 @@ L4 自持层→L2 自有内核 `src/kernel/`→L1 磁盘库；OS-157 起 L2/L3 �
 | 门 | 守护点 | 判定 |
 |---|---|---|
 | **G1 信任门** | `src/host/moduleRoots.mjs` 读写机器级信任表；设置页「本机模块」区先预览后确认 | 只枚举显式登记的根；未登记的根不扫描、不装载、不出现在报告里 |
-| **G2 身份门** | `manifestSha256`＋入口与包内传递依赖的 `contentSha256` 进快照 id 与激活缓存键 | 同版本改代码＝新快照，旧激活结果不复用；与登记摘要不符标「内容已变」 |
-| **G3 边界门** | `src/protocol/localModuleBoundary.mjs` 静态扫 import 图；`activate(context)` 只给 `manifest/resolve/base` | 只许 `node:` 内置与包内相对路径；裸包名、越出包目录、非字面量动态 `import()`、`createRequire`/`eval`/`new Function` 一律拒装；能力/端点/页面/slot 必须来自 manifest 声明 |
-| **G4 切换门** | `src/host/moduleRuntime.mjs`：候选快照 → 三检查（端点唯一／底座能力路由不动／内置路由不丢）→ 一次同步赋值 | 新请求用新层；在途请求持旧句柄到底；端点与 slot 归属随层回收 |
-| **失败门** | 任一门失败＝当前快照不动、坏模块跳过、warning 进报告 | `/api/plugins` 与 `/api/module-roots` 如实报出是哪一门（`gate`）与原因；同包其它模块照常装载 |
+| **G2 身份门** | `manifestSha256`＋入口与包内传递依赖（含 JSON 数据）的 `contentSha256` 进快照 id 与激活缓存键；`src/host/moduleBoundaryHooks.mjs` 给包内每个 import 追加逐文件摘要 | 同版本改入口／依赖／JSON＝新代码真的生效；与登记摘要不符标「内容已变」；Node 无解析钩子时如实报「需重启 daemon」，不冒充新代码 |
+| **G3 边界门** | **运行期强制**：`src/host/moduleBoundaryHooks.mjs` 用 `module.registerHooks({ resolve })`，包内发出的 import/require 只许解析到 `node:` 内置或同包 realpath 路径；`src/protocol/localModuleBoundary.mjs` 静态扫描降级为预览提示（点名注释吞 import、改名 createRequire、转义 eval、间接 eval、裸 Function/AsyncFunction、getBuiltinModule、计算属性取 createRequire） | 越界在加载那一刻抛错并标 `gate:boundary`；静态提示不是唯一依据；`engines` 抬到 `>=22.15.0`（`registerHooks` 最低版本），不支持时如实降级而非假绿 |
+| **G4 切换门** | `src/host/moduleRuntime.mjs`：先 manifests 层做端点归属＋三检查 → 淘汰违规模块（不跑 `activate`）→ 只激活合格者 → 校验贡献 → 重做检查 → 一次同步赋值 | 新请求用新层；在途请求持旧句柄到底；**淘汰按模块算**，同根其它模块照常；端点与 slot 归属随层回收 |
+| **失败门** | 任一门失败＝当前快照不动、坏模块跳过、warning 进报告 | `/api/plugins` 与 `/api/module-roots` 如实报出是哪一门（`gate`）与原因；报告 `rejections` 逐模块点名 |
+
+**端点归属规则（OS-196a）**：本机模块只能 (a) 注册自己的新端点，或 (b) 按 id 覆盖某个内置模块时接管
+该模块的端点；宿主自有端点（如 `uiStatePut`）与别的模块的端点谁都不能认领。`activate()` 贡献可带
+`contracts: { <端点>: { method, path, request, response, errors } }`，路径必须在 `/api/modules/<id>/…` 下，
+登记进当前层后与内置端点共用 `endpointFor`／`validateRequest`／错误信封（静态数字锚不统计运行期端点）。
+本机贡献的钩子与 handler 同表：`handlerTable.hooksFor()` 合并本机层，按库快照停用即消失。
 
 五件底座能力经 `context.base` 以只读句柄给本机模块：`process / contract / write / naming / loader`
 （loader 只给 snapshot/manifests/sources，不提供 `activate`）。内置模块仍按 OS-193～195 口径。
@@ -275,7 +283,7 @@ L4 自持层→L2 自有内核 `src/kernel/`→L1 磁盘库；OS-157 起 L2/L3 �
 ## 改完必跑（验收线，详见 `docs/ACCEPTANCE.md`）
 
 ```bash
-node .zcode/run-gate.mjs                    # ① 全量单测（824 例）
+node .zcode/run-gate.mjs                    # ① 全量单测（832 例）
 node tools/acceptance/acceptance.mjs        # ② 交付标准 S0–S4 门禁（28 检查，Rea 式证据；S0=布局宪法）
 # ③ .ua/ 知识图谱增量（/understand，skill 在 ~/.zcode/skills/understand*）
 # ④ 前端批次给作者截图讲场景（对照 design-system/DESIGN.md + docs/UX-STRUCTURE.md）

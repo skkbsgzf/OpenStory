@@ -6,6 +6,7 @@
  *
  * 本机模块根只来自机器级信任表（src/host/moduleRoots.mjs）；未登记的根不被枚举。
  */
+import { ENDPOINTS } from '../api/contracts.mjs'
 import { BASE_GRAPH } from '../protocol/baseCapabilities.mjs'
 import {
   buildCapabilitySnapshot, moduleDegradation, readModuleEnabled
@@ -22,11 +23,15 @@ import { readShelfSuiteState } from '../protocol/shelfManifests.mjs'
 import { slotPlacements } from '../protocol/slots.mjs'
 import { baseCapabilities } from './baseCapabilities.mjs'
 import { HOST_TOOLS } from './hostTools.mjs'
+import { MODULE_BOUNDARY_VIOLATION, boundaryHooksStatus, syncModuleBoundaryRoots } from './moduleBoundaryHooks.mjs'
 import { activateLocalModule } from './moduleLoader.mjs'
 import { readRootsTable, inspectRoot } from './moduleRoots.mjs'
 
 const layers = new Map()
 const text = (value) => String(value ?? '')
+
+/** 宿主自有端点＝静态契约表减去内置模块独占端点；本机模块谁都不许认领。 */
+const HOST_ENDPOINT_IDS = new Set(Object.keys(ENDPOINTS).filter((id) => !MODULE_ENDPOINT_OWNERS[id]))
 
 function envKey(env) {
   return courtyardRoot(env || process.env) || '(no-courtyard)'
@@ -41,6 +46,7 @@ function builtinLayer(key) {
     sources: MODULE_SOURCES,
     endpointOwners: MODULE_ENDPOINT_OWNERS,
     contributions: Object.freeze({}),
+    runtimeContracts: Object.freeze({}),
     implementations: Object.freeze({}),
     discovered: Object.freeze([]),
     warnings: MODULE_MANIFEST_WARNINGS,
@@ -109,24 +115,56 @@ function mergeManifests(locals) {
 }
 
 /**
- * G4 三检查（在候选快照建好后、切换前）：
- *  ① 端点归属唯一（本机同 id 覆盖内置允许；两个不同模块抢同一端点拒绝）；
- *  ② 底座能力路由不动（base.* 的 provider/version 必须与内置快照一致）；
- *  ③ 内置能力路由不丢（除非本机模块显式声明了同名 override）。
+ * OS-196a 端点归属判定点：本机模块只能
+ *   (a) 注册自己的新端点（静态契约表与内置模块都没声明过），或
+ *   (b) 按 id 覆盖某个内置模块时接管那个模块的端点。
+ * 宿主自有端点（uiStatePut 等）谁都不能认领；别人的端点也不能抢；两个本机模块
+ * 抢同一个新端点＝两个都淘汰。全部在 manifest 层判，不跑任何 activate。
  */
-function checkCandidate(candidate, localManifests) {
+export function checkEndpointOwnership(manifests = []) {
   const owners = new Map(Object.entries(MODULE_ENDPOINT_OWNERS))
-  for (const manifest of localManifests) {
-    for (const endpoint of manifest.endpoints ?? []) {
-      const owner = owners.get(endpoint)
-      if (owner && owner !== manifest.id) {
-        return { ok: false, gate: 'switch', reason: `端点 ${endpoint} 同时属于 ${owner} 与 ${manifest.id}` }
-      }
-      owners.set(endpoint, manifest.id)
+  const claims = new Map()
+  for (const manifest of manifests) {
+    for (const endpoint of manifest?.endpoints ?? []) {
+      if (!claims.has(endpoint)) claims.set(endpoint, [])
+      claims.get(endpoint).push(manifest.id)
     }
   }
+  const rejected = new Map()
+  const reject = (id, reason) => {
+    const previous = rejected.get(id)
+    rejected.set(id, previous ? `${previous}；${reason}` : reason)
+  }
+  for (const [endpoint, ids] of claims) {
+    const builtinOwner = MODULE_ENDPOINT_OWNERS[endpoint]
+    if (HOST_ENDPOINT_IDS.has(endpoint)) {
+      for (const id of ids) reject(id, `端点 ${endpoint} 是宿主自有端点，${id} 不得接管`)
+      owners.delete(endpoint)
+      continue
+    }
+    if (builtinOwner) {
+      for (const id of ids) {
+        if (id !== builtinOwner) {
+          reject(id, `端点 ${endpoint} 归内置模块 ${builtinOwner}，${id} 只能按 id 覆盖 ${builtinOwner} 才能接管`)
+        }
+      }
+      owners.set(endpoint, builtinOwner)
+      continue
+    }
+    if (ids.length > 1) {
+      for (const id of ids) reject(id, `端点 ${endpoint} 被 ${ids.join(' 与 ')} 同时声明，冲突双方都不装载`)
+      owners.delete(endpoint)
+      continue
+    }
+    owners.set(endpoint, ids[0])
+  }
+  return { rejected, owners }
+}
+
+/** 三检查的另两项：底座能力路由不动、内置能力路由不丢（manifest 层即可判）。 */
+function checkCapabilityRoutes(candidate, localManifests = []) {
   for (const [id, route] of Object.entries(CAPABILITY_SNAPSHOT.routes ?? {})) {
-    const next = candidate.routes[id]
+    const next = candidate?.routes?.[id]
     if (!next) {
       const overridden = localManifests.some((manifest) => (manifest.overrides ?? [])
         .some((item) => item.type === 'capability' && item.target === id))
@@ -134,10 +172,13 @@ function checkCandidate(candidate, localManifests) {
       continue
     }
     if (route.provider === 'base' && (next.provider !== 'base' || next.version !== route.version)) {
-      return { ok: false, gate: 'switch', reason: `底座能力路由 ${id} 被改动` }
+      const offenders = localManifests
+        .filter((manifest) => (manifest.capabilities ?? []).some((capability) => capability.id === id))
+        .map((manifest) => manifest.id)
+      return { ok: false, gate: 'switch', reason: `底座能力路由 ${id} 被改动`, offenders }
     }
   }
-  return { ok: true, owners: Object.fromEntries(owners) }
+  return { ok: true }
 }
 
 function makeResolver(snapshot, implementations) {
@@ -168,6 +209,8 @@ function isReady(item, providers, implementations) {
 
 async function buildLayer(env, key) {
   const { table, discovered, warnings } = discover(env)
+  // G3 运行期钩子认的根＝当前信任表；拆根后同步收回，不走第二套登记。
+  syncModuleBoundaryRoots(table.roots.map((root) => root.path))
   const candidates = discovered.filter((item) => item.status === 'ok')
   // 本机模块不许自称内置：否则会借 builtin 标记绕过覆盖裁决。
   for (const item of candidates.slice()) {
@@ -177,31 +220,77 @@ async function buildLayer(env, key) {
       if (target) Object.assign(target, { status: 'invalid', gate: 'identity', reason: '本机模块不得声明 builtin:true' })
     }
   }
-  const localManifests = candidates.map((item) => Object.freeze({ ...item.manifest, builtin: false }))
-  const merged = mergeManifests(candidates.map((item, index) => ({ ...item, manifest: localManifests[index] })))
-  const providers = dependencyProviderMap(localManifests)
+  const manifestOf = new Map(candidates.map((item) => [item.id, Object.freeze({ ...item.manifest, builtin: false })]))
+  const localOf = (items) => items.map((item) => manifestOf.get(item.id))
   const layerWarnings = [...MODULE_MANIFEST_WARNINGS, ...warnings]
   const builtinSuiteState = readShelfSuiteState({})
-  const preliminary = buildCapabilitySnapshot({
-    manifests: merged.manifests, sources: merged.sources, base: BASE_GRAPH,
-    suiteState: builtinSuiteState, warnings: layerWarnings
-  })
+  const drop = (item, gate, reason) => Object.assign(item, { status: 'invalid', gate, reason })
+  const snapshotForItems = (items) => {
+    const merged = mergeManifests(items.map((item) => ({ ...item, manifest: manifestOf.get(item.id) })))
+    return {
+      merged,
+      snapshot: buildCapabilitySnapshot({
+        manifests: merged.manifests, sources: merged.sources, base: BASE_GRAPH,
+        suiteState: builtinSuiteState, warnings: layerWarnings
+      })
+    }
+  }
+
+  // ① 端点归属：manifest 层先判，违规模块直接淘汰——activate() 一行都不会跑。
+  let owners = new Map(Object.entries(MODULE_ENDPOINT_OWNERS))
+  let waiting = candidates.slice()
+  const applyOwnership = () => {
+    const checked = checkEndpointOwnership(localOf(waiting))
+    for (const [id, reason] of checked.rejected) {
+      const item = waiting.find((entry) => entry.id === id)
+      if (!item) continue
+      drop(item, 'switch', reason)
+      waiting.splice(waiting.indexOf(item), 1)
+    }
+    owners = checked.owners
+    return checked
+  }
+  applyOwnership()
+
+  // ② 三检查另两项（底座路由不动／内置路由不丢）也在激活前判。
+  let probe = snapshotForItems(waiting)
+  const route = checkCapabilityRoutes(probe.snapshot, localOf(waiting))
+  let blocked = null
+  if (!route.ok) {
+    const offenders = (route.offenders ?? []).filter((id) => waiting.some((item) => item.id === id))
+    if (!offenders.length) {
+      // 归因不到具体模块：整层不动，绝不带着坏候选切换。
+      blocked = { gate: route.gate, reason: route.reason }
+    } else {
+      for (const id of offenders) {
+        const item = waiting.find((entry) => entry.id === id)
+        if (!item) continue
+        drop(item, 'switch', route.reason)
+        waiting.splice(waiting.indexOf(item), 1)
+      }
+      applyOwnership()
+      probe = snapshotForItems(waiting)
+    }
+  }
+
+  // ③ 只激活过了检查的模块；依赖未就绪的按图推进，贡献失败按模块淘汰。
   const implementations = {}
   const activated = []
-  const waiting = candidates.slice()
-  while (waiting.length) {
+  const pending = blocked ? [] : waiting.slice()
+  const providers = dependencyProviderMap(localOf(pending))
+  while (pending.length) {
     let progressed = false
-    for (let index = 0; index < waiting.length; index += 1) {
-      const item = waiting[index]
+    for (let index = 0; index < pending.length; index += 1) {
+      const item = pending[index]
       if (!isReady(item, providers, implementations)) continue
-      waiting.splice(index, 1)
+      pending.splice(index, 1)
       index -= 1
       try {
         const result = await activateLocalModule({
           root: item.rootPath,
-          manifest: localManifests[candidates.indexOf(item)],
-          snapshot: preliminary,
-          resolver: makeResolver(preliminary, implementations),
+          manifest: manifestOf.get(item.id),
+          snapshot: probe.snapshot,
+          resolver: makeResolver(probe.snapshot, implementations),
           contentSha256: item.contentSha256
         })
         activated.push({ item, result })
@@ -209,44 +298,56 @@ async function buildLayer(env, key) {
         Object.assign(item, { status: 'loaded', gate: '', reason: '' })
         progressed = true
       } catch (error) {
-        Object.assign(item, {
-          status: 'invalid',
-          gate: error?.code === 'CONTRIBUTION_REJECTED' ? 'contribution' : 'activation',
-          reason: text(error?.message || error)
-        })
+        drop(item,
+          error?.code === 'CONTRIBUTION_REJECTED' ? 'contribution'
+            : error?.code === MODULE_BOUNDARY_VIOLATION ? 'boundary' : 'activation',
+          text(error?.message || error))
         progressed = true
       }
     }
     if (!progressed) {
-      for (const item of waiting) Object.assign(item, { status: 'invalid', gate: 'capability', reason: '依赖不可达或成环，跳过装载' })
+      for (const item of pending) drop(item, 'capability', '依赖不可达或成环，跳过装载')
       break
     }
   }
 
-  const accepted = activated.map(({ item }) => item)
-  const finalMerged = mergeManifests(accepted.map((item) => ({ ...item, manifest: localManifests[candidates.indexOf(item)] })))
-  const candidate = buildCapabilitySnapshot({
-    manifests: finalMerged.manifests,
-    sources: finalMerged.sources,
-    base: BASE_GRAPH,
-    suiteState: builtinSuiteState,
-    warnings: layerWarnings
-  })
-  const checked = checkCandidate(candidate, accepted.map((item) => localManifests[candidates.indexOf(item)]))
-  let snapshot = candidate
-  let owners = checked.owners ?? MODULE_ENDPOINT_OWNERS
-  let blocked = null
-  if (!checked.ok) {
-    // G5：三检查不过＝当前快照不动；坏的候选只写报告，绝不切进去。
-    blocked = { gate: checked.gate, reason: checked.reason }
-    for (const item of accepted) Object.assign(item, { status: 'invalid', gate: checked.gate, reason: checked.reason })
-    snapshot = CAPABILITY_SNAPSHOT
-    owners = MODULE_ENDPOINT_OWNERS
+  // ④ 激活淘汰了模块＝候选变了：重做归属与三检查，全部通过才原子切换。
+  let active = activated.filter(({ item }) => item.status === 'loaded').map(({ item }) => item)
+  if (active.length !== waiting.length) {
+    for (const [id, reason] of checkEndpointOwnership(localOf(active)).rejected) {
+      const item = active.find((entry) => entry.id === id)
+      if (item) drop(item, 'switch', reason)
+    }
+    active = active.filter((item) => item.status === 'loaded')
   }
+  probe = snapshotForItems(active)
+  const recheck = checkCapabilityRoutes(probe.snapshot, localOf(active))
+  if (!recheck.ok) {
+    blocked = { gate: recheck.gate, reason: recheck.reason }
+    for (const item of active) drop(item, 'switch', recheck.reason)
+    active = []
+  }
+  if (blocked) {
+    owners = new Map(Object.entries(MODULE_ENDPOINT_OWNERS))
+    probe = { merged: { manifests: ALL_CAPABILITY_MANIFESTS, sources: MODULE_SOURCES }, snapshot: CAPABILITY_SNAPSHOT }
+  } else {
+    owners = checkEndpointOwnership(localOf(active)).owners
+  }
+  const snapshot = probe.snapshot
+  const kept = new Set(active.map((item) => item.id))
   const contributions = Object.freeze(Object.fromEntries(activated
-    .filter(({ item }) => accepted.includes(item))
-    .filter(({ item }) => !blocked)
+    .filter(({ item }) => kept.has(item.id))
     .map(({ item, result }) => [item.id, result.contribution])))
+  // 运行期自带契约进当前层；停用随快照回收（handlerFor 已按 snapshot.enabled 判）。
+  const runtimeContracts = Object.freeze(Object.fromEntries(activated
+    .filter(({ item }) => kept.has(item.id))
+    .flatMap(({ result }) => Object.entries(result.contribution.contracts ?? {}))))
+  const boundary = boundaryHooksStatus()
+  const extraWarnings = boundary.available ? [] : [{
+    code: 'MODULE_BOUNDARY_HOOKS_UNAVAILABLE',
+    message: '当前 Node 不支持解析钩子：边界只做静态提示；依赖文件已变时需重启 daemon 才生效'
+  }]
+  const allWarnings = Object.freeze([...warnings, ...extraWarnings])
   const report = Object.freeze({
     roots: Object.freeze(table.roots.map((root) => Object.freeze({
       path: root.path,
@@ -255,21 +356,26 @@ async function buildLayer(env, key) {
       modules: Object.freeze(discovered.filter((item) => item.rootPath === root.path).map(summarizeModule))
     }))),
     localModules: Object.freeze(discovered.map(summarizeModule)),
-    slotPlacements: slotPlacements(finalMerged.manifests, snapshot.enabled),
-    warnings: Object.freeze(warnings),
+    rejections: Object.freeze(discovered
+      .filter((item) => item.status === 'invalid')
+      .map((item) => Object.freeze({ id: item.id, gate: item.gate, reason: item.reason }))),
+    slotPlacements: slotPlacements(probe.merged.manifests, snapshot.enabled),
+    warnings: allWarnings,
+    boundaryHooks: Object.freeze(boundary),
     blocked
   })
   return Object.freeze({
     key,
     id: snapshot.id,
     snapshot,
-    manifests: blocked ? ALL_CAPABILITY_MANIFESTS : finalMerged.manifests,
-    sources: blocked ? MODULE_SOURCES : finalMerged.sources,
-    endpointOwners: Object.freeze(owners),
-    contributions: blocked ? Object.freeze({}) : contributions,
+    manifests: blocked ? ALL_CAPABILITY_MANIFESTS : probe.merged.manifests,
+    sources: blocked ? MODULE_SOURCES : probe.merged.sources,
+    endpointOwners: Object.freeze(Object.fromEntries(owners)),
+    contributions,
+    runtimeContracts,
     implementations: blocked ? Object.freeze({}) : Object.freeze({ ...implementations }),
     discovered: Object.freeze(discovered.map(summarizeModule)),
-    warnings: Object.freeze(warnings),
+    warnings: allWarnings,
     report
   })
 }
@@ -320,6 +426,10 @@ export async function rebuildRuntime(env = process.env) {
   const previous = layers.get(key)
   try {
     const next = await buildLayer(env || process.env, key)
+    // 失败门：全局检查不过＝当前层不动；坏的候选只写报告，绝不切进去。
+    if (next.report?.blocked) {
+      return { ok: false, ...next.report.blocked, report: next.report, previous: previous?.id ?? '' }
+    }
     layers.set(key, next)
     return { ok: true, id: next.id, report: next.report, previous: previous?.id ?? '' }
   } catch (error) {
@@ -384,6 +494,18 @@ export async function localImplementations(env = process.env) {
 export async function localContribution(moduleId, env = process.env) {
   const layer = await ensureRuntime(env)
   return layer.contributions[moduleId] ?? null
+}
+
+/** 当前层的全部本机贡献（钩子合并与运行期契约取数共用一张表）。 */
+export async function localContributions(env = process.env) {
+  const layer = await ensureRuntime(env)
+  return layer.contributions
+}
+
+/** 本机模块自带端点契约（runtimeContracts.mjs 与静态表合并的唯一取数口）。 */
+export async function runtimeContractsFor(env = process.env) {
+  const layer = await ensureRuntime(env)
+  return layer.runtimeContracts ?? Object.freeze({})
 }
 
 /** 模块停用闸（本机 id 也按库内 ui-state 判）。 */

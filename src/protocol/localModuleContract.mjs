@@ -23,12 +23,13 @@ export function sha256Hex(contents) {
 
 /**
  * 内容摘要：按路径稳定排序的「相对路径 \0 源码 \0」序列。
- * files 来自 import 图扫描的 visited（入口＋包内传递依赖），同一份代码必得同一摘要。
+ * files 来自 import 图扫描的 visited（入口＋包内传递依赖，含 JSON 数据依赖），
+ * 同一份代码与数据必得同一摘要（OS-196a：JSON 依赖计入整图摘要）。
  */
 export function contentDigest(files = []) {
   const hash = createHash('sha256')
   const ordered = (Array.isArray(files) ? files : [])
-    .filter((item) => plainObject(item) && /(?:\.mjs|\.js)$/u.test(text(item.path)))
+    .filter((item) => plainObject(item) && text(item.path))
     .slice()
     .sort((left, right) => text(left.path).localeCompare(text(right.path)))
   for (const file of ordered) {

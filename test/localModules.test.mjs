@@ -70,18 +70,33 @@ const HANDLER_BODY = {
   genresGet: `{ ok: true, genres: [{ name: '__MARKER__' }], warnings: [] }`,
   artifactsGet: `{ ok: true, groups: [{ name: '__MARKER__' }], totals: { files: 1, bytes: 1, histories: 0 } }`
 }
+/** 本机模块自带端点只能用 /api/modules/<id>/… 路径（OS-196a 归属规则）。 */
+const selfContract = (id, endpoint, suffix = 'styles', extra = {}) => ({
+  [endpoint]: {
+    method: 'GET',
+    path: `/api/modules/${id}/${suffix}`,
+    request: { query: {} },
+    response: { ok: 'true', ...extra },
+    errors: []
+  }
+})
+const bodyFor = (id, marker) => (id.toLowerCase().includes('genres')
+  ? HANDLER_BODY.genresGet
+  : id.toLowerCase().includes('artifact') ? HANDLER_BODY.artifactsGet : HANDLER_BODY.stylesGet)
+  .replaceAll('__MARKER__', marker)
 
 /** 只贡献 manifest 声明过的 handler（OS-194 双向校验）。 */
-function handlerEntry(marker, { awaitGate = false, pageId = `${marker}-page`, endpoints = ['stylesGet'] } = {}) {
+function handlerEntry(marker, { awaitGate = false, pageId = `${marker}-page`, endpoints = ['stylesGet'], contracts } = {}) {
   const handlers = endpoints.map((id) => `${id}: async ({ res }) => {
         ${awaitGate ? 'await globalThis.__os196Gate' : ''}
         res.writeHead(200, { 'content-type': 'application/json' })
-        res.end(JSON.stringify(${HANDLER_BODY[id].replaceAll('__MARKER__', marker)}))
+        res.end(JSON.stringify(${bodyFor(id, marker)}))
       }`).join(',\n      ')
   return `export async function activate(context) {
   context.resolve('base.write', { min: 1 })
   return {
     pages: { '${pageId}': { id: '${pageId}', label: '${marker}' } },
+    ${contracts ? `contracts: ${JSON.stringify(contracts)},` : ''}
     handlers: {
       ${handlers}
     }
@@ -116,12 +131,15 @@ test('G1-1 未登记的根里有模块：不扫描、不装载、报告里不出
 test('G1-2 登记＋确认：端点与 slot 在真实请求上生效；无确认不生效', async () => {
   await withDaemon(false, async ({ base, origin }) => {
     const rootDir = join(base, 'root-2')
-    await makeModule(rootDir, 'local-workbench', workbenchManifest('local-workbench', ['stylesGet']), handlerEntry('LOCAL-V1', { pageId: 'local-workbench-page', endpoints: ['stylesGet'] }))
+    await makeModule(rootDir, 'local-workbench', workbenchManifest('local-workbench', ['localWorkbenchStyles']), handlerEntry('LOCAL-V1', {
+      pageId: 'local-workbench-page', endpoints: ['localWorkbenchStyles'],
+      contracts: selfContract('local-workbench', 'localWorkbenchStyles', 'styles', { styles: 'array' })
+    }))
 
     const denied = await call(origin, '/api/module-roots/add', { path: rootDir, confirm: false })
     assert.equal(denied.status, 400)
     assert.equal(denied.payload.error.code, 'INVALID_ENTRY')
-    const before = await call(origin, '/api/styles')
+    const before = await call(origin, '/api/modules/local-workbench/styles')
     assert.ok(!JSON.stringify(before.payload).includes('LOCAL-V1'))
 
     const preview = await call(origin, '/api/module-roots/preview', { path: rootDir })
@@ -135,7 +153,7 @@ test('G1-2 登记＋确认：端点与 slot 在真实请求上生效；无确认
     assert.equal(added.payload.localModules[0].status, 'loaded')
     assert.equal(added.payload.localModules[0].gate, '')
 
-    const styles = await call(origin, '/api/styles')
+    const styles = await call(origin, '/api/modules/local-workbench/styles')
     assert.equal(styles.status, 200)
     assert.equal(styles.payload.styles[0].name, 'LOCAL-V1', '本机 handler 必须真的拦到请求')
     const placement = added.payload.slotPlacements.tab?.find((item) => item.module === 'local-workbench')
@@ -149,17 +167,22 @@ test('G1-2 登记＋确认：端点与 slot 在真实请求上生效；无确认
 test('G2-3 同版本改代码：摘要变、快照变、新代码生效（旧激活结果不复用）', async () => {
   await withDaemon(false, async ({ base, origin }) => {
     const rootDir = join(base, 'root-3')
-    const manifest = workbenchManifest('code-change', ['stylesGet'])
-    await makeModule(rootDir, 'code-change', manifest, handlerEntry('CODE-V1', { pageId: 'code-change-page', endpoints: ['stylesGet'] }))
+    const endpoint = 'codeChangeStyles'
+    const manifest = workbenchManifest('code-change', [endpoint])
+    const entry = (marker) => handlerEntry(marker, {
+      pageId: 'code-change-page', endpoints: [endpoint],
+      contracts: selfContract('code-change', endpoint, 'styles', { styles: 'array' })
+    })
+    await makeModule(rootDir, 'code-change', manifest, entry('CODE-V1'))
     const added = await call(origin, '/api/module-roots/add', { path: rootDir, confirm: true })
     assert.equal(added.status, 200)
-    const first = await call(origin, '/api/styles')
+    const first = await call(origin, '/api/modules/code-change/styles')
     assert.equal(first.payload.styles[0].name, 'CODE-V1')
     const firstDigest = added.payload.localModules[0].contentSha256
     const firstSnapshot = (await call(origin, '/api/plugins')).payload.capabilityReport.snapshot
 
-    await writeFile(join(rootDir, 'code-change', 'index.mjs'), handlerEntry('CODE-V2', { pageId: 'code-change-page', endpoints: ['stylesGet'] }), 'utf-8')
-    const beforeRefresh = await call(origin, '/api/styles')
+    await writeFile(join(rootDir, 'code-change', 'index.mjs'), entry('CODE-V2'), 'utf-8')
+    const beforeRefresh = await call(origin, '/api/modules/code-change/styles')
     assert.equal(beforeRefresh.payload.styles[0].name, 'CODE-V1', '未刷新前仍持旧句柄')
     const refreshed = await call(origin, '/api/module-roots/refresh', {})
     assert.equal(refreshed.status, 200)
@@ -169,7 +192,7 @@ test('G2-3 同版本改代码：摘要变、快照变、新代码生效（旧激
     assert.equal(changed.contentChanged, true)
     const secondSnapshot = (await call(origin, '/api/plugins')).payload.capabilityReport.snapshot
     assert.notEqual(secondSnapshot, firstSnapshot, '快照 id 必须变')
-    const after = await call(origin, '/api/styles')
+    const after = await call(origin, '/api/modules/code-change/styles')
     assert.equal(after.payload.styles[0].name, 'CODE-V2', '新代码必须真的生效')
   })
 })
@@ -212,7 +235,10 @@ test('G5-5 坏 manifest／声明却没供给的能力：跳过并报告，其余
       spec: 'openstory-module@2', id: 'no-supply', name: 'no-supply', version: '0.1.0',
       class: 'kernel', entry: 'index.mjs', capabilities: [{ id: 'no.supply', version: 1 }]
     }, `export async function activate() { return { capabilities: {} } }`)
-    await makeModule(rootDir, 'good-module', workbenchManifest('good-module', ['genresGet']), handlerEntry('GOOD-ONE', { pageId: 'good-module-page', endpoints: ['genresGet'] }))
+    await makeModule(rootDir, 'good-module', workbenchManifest('good-module', ['goodModuleGenres']), handlerEntry('GOOD-ONE', {
+      pageId: 'good-module-page', endpoints: ['goodModuleGenres'],
+      contracts: selfContract('good-module', 'goodModuleGenres', 'genres', { genres: 'array' })
+    }))
 
     const added = await call(origin, '/api/module-roots/add', { path: rootDir, confirm: true })
     assert.equal(added.status, 200)
@@ -220,7 +246,7 @@ test('G5-5 坏 manifest／声明却没供给的能力：跳过并报告，其余
     assert.equal(byId['bad-manifest'].gate, 'identity')
     assert.equal(byId['no-supply'].gate, 'contribution')
     assert.equal(byId['good-module'].status, 'loaded')
-    const genres = await call(origin, '/api/genres')
+    const genres = await call(origin, '/api/modules/good-module/genres')
     assert.equal(genres.payload.genres[0].name, 'GOOD-ONE', '坏的跳过不能拖垮同包其它模块')
   })
 })
@@ -228,14 +254,18 @@ test('G5-5 坏 manifest／声明却没供给的能力：跳过并报告，其余
 test('G4-6 移除模块根：回到内置层，在途请求持旧句柄到底', async () => {
   await withDaemon(false, async ({ base, origin }) => {
     const rootDir = join(base, 'root-6')
-    await makeModule(rootDir, 'inflight', workbenchManifest('inflight', ['stylesGet']), handlerEntry('INFLIGHT-V1', { awaitGate: true, pageId: 'inflight-page', endpoints: ['stylesGet'] }))
+    const endpoint = 'inflightStyles'
+    await makeModule(rootDir, 'inflight', workbenchManifest('inflight', [endpoint]), handlerEntry('INFLIGHT-V1', {
+      awaitGate: true, pageId: 'inflight-page', endpoints: [endpoint],
+      contracts: selfContract('inflight', endpoint, 'styles', { styles: 'array' })
+    }))
     const added = await call(origin, '/api/module-roots/add', { path: rootDir, confirm: true })
     assert.equal(added.status, 200)
 
     globalThis.__os196Gate = new Promise((done) => { globalThis.__os196Release = done })
     let release
     try {
-      const pending = call(origin, '/api/styles')
+      const pending = call(origin, '/api/modules/inflight/styles')
       const removed = await call(origin, '/api/module-roots/remove', { path: rootDir })
       assert.equal(removed.status, 200)
       assert.deepEqual(removed.payload.roots, [])
@@ -244,9 +274,10 @@ test('G4-6 移除模块根：回到内置层，在途请求持旧句柄到底', 
       const inFlight = await pending
       assert.equal(inFlight.status, 200)
       assert.equal(inFlight.payload.styles[0].name, 'INFLIGHT-V1', '在途请求必须持旧句柄到底')
-      const fresh = await call(origin, '/api/styles')
+      const fresh = await call(origin, '/api/modules/inflight/styles')
+      assert.equal(fresh.status, 404, '移除根后新请求不再有该本机端点')
+      assert.equal(fresh.payload.error.code, 'NOT_FOUND')
       assert.ok(!JSON.stringify(fresh.payload).includes('INFLIGHT-V1'), '新请求回内置层')
-      assert.ok(fresh.payload.ok)
     } finally {
       if (release) release()
       delete globalThis.__os196Gate

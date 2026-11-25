@@ -79,10 +79,11 @@ function walkCodeFiles(dir, relative = '', out = []) {
     if (entry.name.startsWith('.') || entry.name === 'node_modules') continue
     const rel = relative ? `${relative}/${entry.name}` : entry.name
     if (entry.isDirectory()) walkCodeFiles(dir, rel, out)
-    else if (/\.(?:mjs|js)$/u.test(entry.name)) {
+    // JSON 数据依赖也进内容摘要（OS-196a）：改 data.json 必须让整图摘要变。
+    else if (/\.(?:mjs|js|cjs|json|css|txt)$/u.test(entry.name)) {
       try {
         out.push({ path: rel.replaceAll('\\', '/'), source: readFileSync(join(dir, relative, entry.name), 'utf-8') })
-      } catch { /* 读不了的源码按缺失处理，由 import 图扫描点名 */ }
+      } catch { /* 读不了的文件按缺失处理，由 import 图扫描点名 */ }
     }
   }
   return out

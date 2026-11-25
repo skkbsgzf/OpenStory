@@ -1,4 +1,4 @@
-const CONTRIBUTION_KEYS = Object.freeze(['capabilities', 'handlers', 'pages', 'slots', 'settingsConsumers', 'hooks'])
+const CONTRIBUTION_KEYS = Object.freeze(['capabilities', 'handlers', 'contracts', 'pages', 'slots', 'settingsConsumers', 'hooks'])
 /**
  * OS-195a：工作台给宿主（含 Agent 栏）的东西只能经 activate() 贡献钩子。
  * 钩子名登记在此，未登记的拒收——钩子不是随手挂的全局变量。

@@ -87,3 +87,29 @@
 - 监督线复跑自己的探针，四个场景必须翻转：注释吞 import 的模块装载失败且标记文件没被写；抢端点的两个模块标记文件都不存在；改依赖文件后拿到 `v2`；声明 `uiStatePut` 的模块被拒且宿主端点行为不变；`probe-boundary.mjs` 九例里八例「拒绝或装载失败」（合规那例放行）。
 - 回报里贴：解析钩子的生产调用点（`文件:行`）、三检查前移后的调用顺序、端点归属规则的判定点、新增守护测试清单。
 - `git diff --check` 干净；`node tools/number-anchors.mjs` 与 `npm run arch:stats` 跑过。
+## 施工回报（编排器自动归档）
+
+> 模型 hy4flash · 第 1 轮 · 测试 绿（tests 832 · pass 830 · fail 0 · skip 2） · 门禁 绿 · e2e 水浒＋新建（隔离 daemon）绿 · 8807 未动
+
+```text
+CHANGED:
+- 新增 `src/host/moduleBoundaryHooks.mjs`（运行期解析钩子）、`src/host/moduleContracts.mjs`（自带契约校验）、`src/host/runtimeContracts.mjs`（静态＋运行期契约合并）、`test/localModules196a.test.mjs`（8 个守护测试）
+- 改 `src/host/moduleRuntime.mjs`、`src/host/moduleLoader.mjs`、`src/host/moduleRoots.mjs`、`src/host/handlerTable.mjs`、`src/host/daemon.mjs`、`src/api/contracts.mjs`、`src/protocol/localModuleBoundary.mjs`、`src/protocol/localModuleContract.mjs`、`src/protocol/moduleActivation.mjs`
+- 改 `test/localModules.test.mjs`：4 个用例按新端点归属规则改用 `/api/modules/<id>/…` 自带端点（守卫意图不变）
+- 改 `AGENTS.md`、`docs/adr/0003-dynamic-loading.md`、`docs/protocol/module-manifest-2.md`、`ARCHITECTURE.md`、`docs/number-anchors.json`、`package.json`（engines `>=18` → `>=22.15.0`）
+
+VERIFIED:
+- 钩子生产调用点：`src/host/moduleBoundaryHooks.mjs:99`（`registerHooks`）、`src/host/moduleLoader.mjs:106`（激活前安装）；钩子主体 `src/host/moduleBoundaryHooks.mjs:63`；根同步 `src/host/moduleRuntime.mjs:213`
+- 三检查前移顺序：`moduleRuntime.mjs:253` 端点归属（manifest 层，不跑码）→ `:257` 底座/内置路由检查 → `:289` 仅激活合格模块 → `:317` 淘汰后重做归属 → `:324` 重做路由检查 → 原子切换；归属判定点 `src/host/moduleRuntime.mjs:124`（`checkEndpointOwnership`）
+- 新增守护测试（`test/localModules196a.test.mjs`）：`:76` 七绕法静态点名、`:98` 八个绕法端到端、`:134` CJS require 运行期越界、`:157` 抢端点双方不跑 activate、`:183` 依赖+JSON 新值、`:209` 自带端点校验/停用 409、`:237` 拒接管 uiStatePut、`:261` 本机钩子接入与停用消失
+- `npm test` 832 例 / 830 过 / 2 条件跳过 / 0 挂；`node .zcode/run-gate.mjs` 全绿
+- `node tools/acceptance/acceptance.mjs`：28 过 / 0 挂 / 0 警
+- `node tools/number-anchors.mjs --check`、`node tools/arch-stats.mjs --check`、`git diff --check`：通过
+- 监督线探针复跑：`probe-boundary.mjs` 9 个非合规例全拒、合规例放行；`probe-196-e2e.mjs` 标记文件未写／双方 activate 未跑／依赖拿到 v2；`probe-196-e2e-c.mjs` 抢端点双方 invalid/switch、uiStatePut 被拒且宿主行为不变
+- 未执行 git add/commit/push，未连接或重启 8807，未改 `core/pinax/**`
+
+LIMITATIONS:
+- `engines` 抬到 `>=22.15.0`，因为同步 `module.registerHooks()` 最低见于 Node 22.15.0/23.5.0；旧 Node 上钩子不可用，边界退化为静态提示，且如实报告「依赖文件已变，需重启 daemon 才生效」，不会显示成已加载新代码。
+- 边界门按工单要求明确「不是沙箱」：登记的模块与 daemon 同进程同权限，`eval`/`Function` 直接访问 `process`、使用允许的 `node:fs` 等不在 import 解析钩子的管辖内；已写入 AGENTS/ADR/协议文档与预览风险说明。
+- 本机模块按新归属规则不得认领宿主端点或他人端点；既有红线测试中依赖旧行为（新 id 模块声明 `stylesGet`/`genresGet`）的断言已同步改写为自带端点，未弱化原守卫目标。
+```

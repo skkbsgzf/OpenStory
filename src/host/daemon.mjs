@@ -30,15 +30,11 @@ import { createReadStream, existsSync, mkdirSync, readFileSync, realpathSync, st
 import { createServer } from 'node:http'
 import { dirname, extname, join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import {
-  API_ERROR_CODES,
-  ENDPOINTS,
-  endpointFor,
-  isPlainObject,
-  validateRequest
-} from '../api/contracts.mjs'
+import { API_ERROR_CODES, isPlainObject } from '../api/contracts.mjs'
 import { HOST_HANDLERS } from '../api/registry.mjs'
 import { handlerFor } from './handlerTable.mjs'
+// OS-196a：静态契约＋本机模块自带契约同一张合并视图（分派/校验走同一套）。
+import { contractFor, endpointFor, validateRequest } from './runtimeContracts.mjs'
 import { sendError, sendJson, readJson, text, DEFAULT_PORT } from './http.mjs'
 import { canonicalRoot, createRootAllowlist, loadLibraries, resolveInsideRoot } from './authorize.mjs'
 // OS-195a：Agent 存储是宿主组合面，宿主可直接 import；宿主钩子由 moduleHooks 统一取。
@@ -321,14 +317,10 @@ async function serveStatic(req, res, url, publicDir) {
 
 /* ---------- 路由分派（OS-141：契约解析 → 契约校验 → 取 handler → 调用）---------- */
 
-/** 这些端点从 HTTP query 取参（其余读 JSON body）。与契约 request.query 不完全重合
- *  （jobsGet 一类 GET 端点契约写了 query、实现仍读 body——拆分前即如此，原样保留）。 */
-// query 端点从契约自动推导（OS-160）：任何端点声明 request.query 就走 URL query 解析，
-// 不再手抄一份集合——OS-160 给 suitesGet 加 root 时曾漏登记，读不到库级套件状态。
-const ENDPOINT_HAS_QUERY = new Set(Object.entries(ENDPOINTS).filter(([, e]) => e.request && e.request.query).map(([id]) => id))
 
 async function handleApi(req, res, url, context) {
-  const endpointId = endpointFor(req.method, url.pathname)
+  // OS-196a：运行期自带契约也参与路由（本机模块端点路径在 /api/modules/<id>/ 下）。
+  const endpointId = await endpointFor(req.method, url.pathname, context.env)
   if (!endpointId) {
     return sendError(res, API_ERROR_CODES.NOT_FOUND, `没有这个端点：${req.method} ${url.pathname}`)
   }
@@ -347,8 +339,10 @@ async function handleApi(req, res, url, context) {
     return HOST_HANDLERS.libraries({ req, res, url, context, loaded })
   }
 
+  // query 端点从契约自动推导（含本机模块自带契约），不再手抄一份集合。
+  const activeContract = await contractFor(endpointId, context.env)
   let input
-  if (ENDPOINT_HAS_QUERY.has(endpointId)) {
+  if (activeContract?.request?.query) {
     input = Object.fromEntries(url.searchParams.entries())
   } else {
     try {
@@ -358,7 +352,7 @@ async function handleApi(req, res, url, context) {
     }
   }
 
-  const checked = validateRequest(endpointId, input)
+  const checked = await validateRequest(endpointId, input, context.env)
   if (!checked.ok) {
     return sendError(res, API_ERROR_CODES.INVALID_ENTRY, '请求参数不符合契约', { errors: checked.errors })
   }

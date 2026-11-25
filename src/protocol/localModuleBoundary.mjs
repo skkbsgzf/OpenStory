@@ -1,26 +1,68 @@
 /**
- * 本机模块 import 图静态扫描（OS-196 G3）。
+ * 本机模块 import 图静态扫描（OS-196 G3；OS-196a 降级为预览提示）。
  *
  * 纯函数：吃 `{ path, source }`（path 为相对包目录的 posix 路径），不读盘、不执行代码。
- * 规则只有一条主线：本机模块只许 import node: 内置模块与自己包内的相对路径；
- * 越出包目录、裸包名、非字面量动态 import、createRequire/eval/new Function 一律拒装。
+ * 这条扫描**不是边界门的唯一依据**：真正的强制在 src/host/moduleBoundaryHooks.mjs 的
+ * 运行期解析钩子里（realpath 比对，越界在加载那一刻抛错）。本扫描只在预览里点名可疑行，
+ * 并且能识别「字符串藏注释符吃 import」「createRequire 改名」「eval 的 unicode 转义」
+ * 「间接 eval」「裸 Function/AsyncFunction 构造器」「getBuiltinModule 取 node:module」
+ * 「node:module 命名空间取 createRequire」这些静态绕法。
  *
- * 扫描从 entry 开始，沿包内相对路径闭包推进——「入口＋传递依赖」都在面内，
- * 包里没人 import 的坏文件不算越界（信任边界是可执行图，不是目录清单）。
+ * 注意：登记的模块与本进程同权限，这不是沙箱——eval/Function 直接摸 process、
+ * node:fs 等内置模块都是允许的。钩子只管住「import/require 解析到包外」这一件事。
  */
 const IMPORT_RE = /(?:\bfrom\s+|\bimport\s*\(\s*|\bimport\s+)(['"])([^'"\n]+)\1/gu
 const NON_LITERAL_IMPORT_RE = /\bimport\s*\(\s*(?!['"])/gu
-const FORBIDDEN_CALL_RE = /\b(?:createRequire\s*\(|eval\s*\(|new\s+Function\s*\()/gu
-const CODE_EXT_RE = /\.(?:mjs|js)$/u
+const FORBIDDEN_CALL_RE = /\b(?:createRequire|eval|Function|AsyncFunction|getBuiltinModule)\s*\(|\(\s*0\s*,\s*eval\s*\)\s*\(|\.\s*constructor\s*\(|\bgetPrototypeOf\s*\(\s*async\s+function/gu
+const CODE_EXT_RE = /\.(?:mjs|js|cjs)$/u
 const DATA_EXT_RE = /\.(?:json|css|txt)$/u
 
 const text = (value) => String(value ?? '')
 const posix = (value) => text(value).replaceAll('\\', '/')
 
+/**
+ * 剥注释但保留字符串/模板字面量原样——绕法1 就是把 `/*` 放进字符串，让后面的
+ * 越界 import 被朴素的正则剥成注释。这里按词法状态跳过字符串内部。
+ */
 function withoutComments(source) {
-  return text(source)
-    .replace(/\/\*[\s\S]*?\*\//gu, '')
-    .replace(/^\s*\/\/.*$/gmu, '')
+  const src = text(source)
+  let out = ''
+  let index = 0
+  while (index < src.length) {
+    const ch = src[index]
+    if (ch === '/' && src[index + 1] === '*') {
+      index += 2
+      while (index < src.length && !(src[index] === '*' && src[index + 1] === '/')) index += 1
+      index += 2
+      out += ' '
+      continue
+    }
+    if (ch === '/' && src[index + 1] === '/') {
+      while (index < src.length && src[index] !== '\n') index += 1
+      out += '\n'
+      continue
+    }
+    if (ch === '"' || ch === "'" || ch === '`') {
+      const quote = ch
+      out += ch
+      index += 1
+      while (index < src.length) {
+        if (src[index] === '\\') { out += src.slice(index, index + 2); index += 2; continue }
+        out += src[index]
+        index += 1
+        if (src[index - 1] === quote) break
+      }
+      continue
+    }
+    out += ch
+    index += 1
+  }
+  return out
+}
+
+/** 把 `\u0061` 这类标识符转义解码后再匹配——绕法3 的 ev\u0061l 才能点名。 */
+function decodeEscapes(source) {
+  return text(source).replace(/\\u([0-9a-fA-F]{4})/gu, (_, hex) => String.fromCharCode(Number.parseInt(hex, 16)))
 }
 
 /** 相对说明符解析：解析不出的（越出包根）返回 null。 */
@@ -42,7 +84,7 @@ function violation(file, line, spec, reason) {
 }
 
 /**
- * @param {Array<{path:string, source:string}>} files 包内文件（入口＋候选依赖）
+ * @param {Array<{path:string, source:string}>} files 包内文件（入口＋候选依赖，含 JSON 数据）
  * @param {{entry?:string}} options 入口相对路径，缺省 index.mjs
  * @returns {{ok:boolean, violations:Array, visited:Array<{path:string, source:string}>}}
  */
@@ -71,12 +113,17 @@ export function scanModuleImportGraph(files = [], { entry = 'index.mjs' } = {}) 
     const file = byPath.get(path)
     if (!file) continue
     visited.push({ path: file.path, source: file.source })
-    const source = withoutComments(file.source)
+    if (!CODE_EXT_RE.test(path)) continue // JSON/CSS 数据依赖只进摘要，不扫 import
+    const source = decodeEscapes(withoutComments(file.source))
     for (const match of source.matchAll(IMPORT_RE)) {
       const spec = match[2]
       const line = source.slice(0, match.index).split('\n').length
-      if (spec.startsWith('node:')) continue
-      if (spec.includes('\\') || /^[a-zA-Z]:\//u.test(spec)) {
+      if (spec.startsWith('node:')) {
+        // node:module 的 createRequire 是包外 require 的入口，静态点名；运行期钩子也会挡真实的 require。
+        if (spec === 'node:module') violations.push(violation(path, line, spec, 'FORBIDDEN_MODULE_API'))
+        continue
+      }
+      if (spec.includes('\\') || /^[a-zA-Z]:\//u.test(spec) || /^[a-z][a-z\d+.-]*:/iu.test(spec)) {
         violations.push(violation(path, line, spec, 'ABSOLUTE_SPECIFIER'))
         continue
       }
@@ -89,11 +136,11 @@ export function scanModuleImportGraph(files = [], { entry = 'index.mjs' } = {}) 
         violations.push(violation(path, line, spec, 'OUT_OF_PACKAGE_IMPORT'))
         continue
       }
-      if (!byPath.has(target) && !DATA_EXT_RE.test(target)) {
-        violations.push(violation(path, line, spec, 'IMPORT_TARGET_MISSING'))
+      if (!byPath.has(target)) {
+        violations.push(violation(path, line, spec, DATA_EXT_RE.test(target) ? 'DATA_DEPENDENCY_MISSING' : 'IMPORT_TARGET_MISSING'))
         continue
       }
-      if (CODE_EXT_RE.test(target) && !seen.has(target)) queue.push(target)
+      if (!seen.has(target)) queue.push(target)
     }
     for (const match of source.matchAll(NON_LITERAL_IMPORT_RE)) {
       violations.push(violation(path, source.slice(0, match.index).split('\n').length, '', 'DYNAMIC_IMPORT_NOT_LITERAL'))
@@ -106,15 +153,17 @@ export function scanModuleImportGraph(files = [], { entry = 'index.mjs' } = {}) 
   return { ok: violations.length === 0, violations, visited }
 }
 
-/** 一句话报告，供 /api/plugins 的 gate reason 直接显示。 */
+/** 一句话报告，供 /api/plugins 的 gate reason 和预览提示直接显示。 */
 export function describeBoundaryViolation(item) {
   const at = `${item.file}:${item.line}`
   if (item.reason === 'OUT_OF_PACKAGE_IMPORT') return `${at} import 越出包目录：${item.spec}`
   if (item.reason === 'BARE_SPECIFIER') return `${at} 不许裸包名：${item.spec}`
   if (item.reason === 'DYNAMIC_IMPORT_NOT_LITERAL') return `${at} 动态 import 必须是字面量`
-  if (item.reason === 'FORBIDDEN_RUNTIME_EVAL') return `${at} 不许 createRequire/eval/new Function`
+  if (item.reason === 'FORBIDDEN_RUNTIME_EVAL') return `${at} 不许 createRequire/eval/Function/getBuiltinModule 等运行期取道（含转义、间接调用、构造器绕法）`
+  if (item.reason === 'FORBIDDEN_MODULE_API') return `${at} 不许 import node:module 取 createRequire（运行期 require 越界）`
   if (item.reason === 'IMPORT_TARGET_MISSING') return `${at} 包内依赖不存在：${item.spec}`
-  if (item.reason === 'ABSOLUTE_SPECIFIER') return `${at} 不许绝对路径 import：${item.spec}`
+  if (item.reason === 'DATA_DEPENDENCY_MISSING') return `${at} 包内数据依赖不存在：${item.spec}`
+  if (item.reason === 'ABSOLUTE_SPECIFIER') return `${at} 不许绝对路径/URL import：${item.spec}`
   if (item.reason === 'ENTRY_NOT_FOUND') return `${at} 入口文件不存在`
   return `${at} ${item.reason}`
 }

@@ -9,7 +9,7 @@
  */
 import { HOST_HANDLERS } from '../api/registry.mjs'
 import { activateModules } from './moduleLoader.mjs'
-import { endpointOwnerFor, localContribution, snapshotFor } from './moduleRuntime.mjs'
+import { endpointOwnerFor, localContribution, localContributions, snapshotFor } from './moduleRuntime.mjs'
 
 /** snapshot.id → { moduleId → { handlers, hooks } }（冻结，按快照整体替换）。 */
 const contributionCache = new Map()
@@ -91,8 +91,16 @@ export async function allHandlers(root = '', env = process.env) {
  * 返回的 { <模块局部名>: fn } 由调用方按名字取（钩子名已在底座登记，见 moduleActivation）。
  */
 export async function hooksFor(root, hookName, env = process.env) {
-  const table = await snapshotContributions(root, env)
+  // OS-196a：与 handler 用同一张贡献表；本机层也合并进来，按快照 enabled 回收。
+  const [table, locals, snapshot] = await Promise.all([
+    snapshotContributions(root, env), localContributions(env), snapshotFor(root, env)
+  ])
   const slots = Object.values(table).map((entry) => entry.hooks?.[hookName]).filter(Boolean)
+  for (const [moduleId, contribution] of Object.entries(locals)) {
+    if (snapshot.enabled?.[moduleId] === false) continue
+    const hook = contribution?.hooks?.[hookName]
+    if (hook) slots.push(hook)
+  }
   return Object.freeze(Object.assign({}, ...slots))
 }
 

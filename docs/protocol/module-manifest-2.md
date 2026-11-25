@@ -1,6 +1,6 @@
 # module-manifest@2 · 能力、工作台与创作套件协议
 
-**状态：B1–B5、C 批（C1–C6）、D1–D4 与 OS-192 均已实施；七内核统一注册、动态激活、能力路由、slot 注册表、五类货架一等套件与数字锚门禁均已通过。第三方可执行模块装载与全局热切换仍未实施（见 [ADR 0003](../adr/0003-dynamic-loading.md)）。架构裁定见 [ADR 0002](../adr/0002-base-constitution.md)。**
+**状态：B1–B5、C 批（C1–C6）、D1–D4 与 OS-192 均已实施；七内核统一注册、动态激活、能力路由、slot 注册表、五类货架一等套件与数字锚门禁均已通过。本机可执行模块由 OS-196 开放、OS-196a 返工三道门（运行期边界／先检查后激活／整图摘要）与端点归属规则；全局热切换仍未实施（见 [ADR 0003](../adr/0003-dynamic-loading.md)）。架构裁定见 [ADR 0002](../adr/0002-base-constitution.md)。**
 
 当前仓使用 `openstory-module@2`，21 份内置 manifest＝7 kernel＋12 workbench＋2 无 class 宿主组合面；**OS-192 起装载只认一套规则（原 stage C），stage 参数与 @1 双读/迁移脚手架全部删除**。能力图、停用事务、薄代理、模块级 `core`／`MODULE_CORE` 退役、动态 `activate` 与贡献校验均已落地。五类货架（技能/文风/体裁/运行时/业务套装）经 `loadSuiteCapabilityManifests()` 投影成 module@2 套件，与模块共用一张能力图与一份 suite-state；legacy `openstory-suite@1/@2` 页面模式已整体退役。端点 id/path 与 MCP 工具名不变（退役的两个端点除外）。
 
@@ -417,25 +417,43 @@ export async function activate(context) {
 - 不得让 suite 携带 `.mjs/.js/.cjs`、内联脚本 HTML、WASM、shell 片段或迁移器。
 - 不得把浏览器缓存/localStorage/sessionStorage/IndexedDB 当状态存储；未确认内容仍落本地固定位置。
 
-### 8.5 本机模块的 import 边界与 context（OS-196）
+### 8.5 本机模块的 import 边界与 context（OS-196，OS-196a 返工）
 
 内置模块沿 OS-193～195 的口径：`context.resolve` 取内核句柄，另可直接 import `src/protocol/`
 的底座契约与 `src/host/baseCapabilities.mjs`。**本机模块不同**：它来自作者显式登记的本机
 模块根，与 daemon 同进程同权限，因此只有一条交互通道。
 
-- **import 边界**：装载前由 `src/protocol/localModuleBoundary.mjs` 从 `entry` 沿包内相对路径
-  扫传递闭包。只许 `node:` 内置模块与包内相对路径；越出包目录（`../../src/…`）、裸包名、
-  非字面量动态 `import()`、`createRequire`／`eval`／`new Function` 任一条命中即拒装。
+- **import 边界（运行期强制）**：`src/host/moduleBoundaryHooks.mjs` 用
+  `module.registerHooks({ resolve })` 装解析钩子。从已登记根下发出的 import / require 只许解析到
+  `node:` 内置模块或**同一个包目录**内的真实路径（按 realpath 比，符号链接指到包外一样拒），
+  `data:` URL 也拒（会在包外重新起一层 parentURL）。越界在加载那一刻抛错，`gate:boundary`。
+  `src/protocol/localModuleBoundary.mjs` 的静态扫描保留为预览提示，能点名「字符串藏 `/*` 吞掉后续
+  import」「改名 createRequire」「unicode 转义 eval」「间接 eval」「裸 Function/AsyncFunction 构造器」
+  「getBuiltinModule」「计算属性名取 createRequire」七类绕法，但**不是唯一依据**。
+  **边界门不是沙箱**：它挡越界耦合与误用，挡不住同进程代码直接摸 `process`／`node:fs` 或用
+  `eval`/`Function` 生成代码；登记的模块与本进程同权限，风险说明在预览里原样显示。
 - **交互面**：只经 `activate(context)`。`context.manifest` 是当前 manifest；
   `context.resolve(id, range)` 取按快照绑定的能力句柄；`context.base` 是五件底座能力的只读句柄
   （`process / contract / write / naming / loader`，其中 loader 只有 snapshot/manifests/sources，
   不提供 `activate`）。本机模块不许 import 仓库里的任何文件，也不许静态 import 宿主实现。
-- **贡献白名单**：`capabilities / handlers / pages / slots / hooks` 的键都必须能在 manifest 的
-  `capabilities / endpoints / pages / slots` 里找到（端点与能力的双向校验见 §8.2；页面与 slot
-  同口径）；钩子名还须在 `moduleActivation.mjs` 登记。
-- **身份与快照**：`manifestSha256` ＋ 入口和传递依赖的 `contentSha256` 进快照 id 与激活缓存键；
-  同版本改代码＝新快照、新代码，不复用旧激活结果。登记摘要与当前摘要不符时 `/api/plugins`
-  标「内容已变」。
+- **贡献白名单**：`capabilities / handlers / contracts / pages / slots / hooks` 的键都必须能在
+  manifest 的 `capabilities / endpoints / pages / slots` 里找到（端点与能力的双向校验见 §8.2；
+  页面与 slot 同口径）；钩子名还须在 `moduleActivation.mjs` 登记。
+- **自带端点契约**：`activate()` 可贡献 `contracts: { <endpointId>: { method, path, request,
+  response, errors } }`，形状语言沿用本协议的契约表；`path` 必须在 `/api/modules/<模块 id>/…` 之下。
+  校验与分派走 `src/host/moduleContracts.mjs` 与 `src/host/runtimeContracts.mjs`，与内置端点共用
+  `endpointFor`／`validateRequest`／错误信封；停用模块回 `MODULE_DISABLED`（409）。静态数字锚不
+  统计运行期端点。
+- **端点归属**：本机模块只能注册自己的新端点，或按 id 覆盖内置模块时接管该模块的端点；
+  宿主自有端点（如 `uiStatePut`）与别人的端点不得认领。两个本机模块抢同一新端点＝双方都不跑
+  `activate`，报告逐模块点名。
+- **身份与快照**：`manifestSha256` ＋ 入口、包内传递依赖与 **JSON 数据依赖**的 `contentSha256`
+  进快照 id 与激活缓存键；解析钩子给包内每个 import 追加逐文件摘要（Node 模块缓存按 URL 键），
+  同版本改入口／依赖／数据都是新代码。`engines` 最低 `22.15.0`（`registerHooks` 的引入版本）；
+  旧 Node 如实报「依赖文件已变，需重启 daemon 才生效」，不显示成已加载新代码。登记摘要与当前
+  摘要不符时 `/api/plugins` 标「内容已变」。
+- **切换次序**：manifests 层先做端点归属＋三检查 → 淘汰违规模块（不跑 `activate`）→ 只激活合格者
+  → 校验贡献 → 重做检查 → 一次同步赋值；淘汰按模块算，同根其它模块照常。
 - **失败门**：任一门失败＝当前快照不动、坏模块跳过并记 warning，报告点名是哪一门（identity /
   boundary / contribution / capability / switch）与原因；同包其它模块照常装载。
 
