@@ -54,7 +54,7 @@ async function makeFixture() {
   }), 'utf-8')
   const preferencesPath = join(base, 'libraries.json')
   await writeFile(preferencesPath, JSON.stringify({
-    recentProjects: [{ path: root, name: '夹具库', at: '2026-11-14T00:00:00.000Z' }]
+    schemaVersion: 1, libraries: [{ path: root, name: '夹具库', at: '2026-11-14T00:00:00.000Z' }]
   }), 'utf-8')
   return { base, root, preferencesPath, configPath: join(base, 'agent-config.json'), sessionsDir: join(base, 'sessions') }
 }
@@ -487,11 +487,11 @@ test('daemon 端到端：待确认卡——采纳写正文＋备份；改文件�
     assert.equal(thread.items.some((item) => item.kind === 'card' && item.id === card.id), true)
 
     // ② 文件在卡创建后被改 → REVISION_MISMATCH，正文不动
-    await writeFile(join(fixture.root, '正文', 'ch1.md'), '作者刚在 Pinax 里改过。', 'utf-8')
+    await writeFile(join(fixture.root, '正文', 'ch1.md'), '作者刚在别处改过。', 'utf-8')
     const clash = await post('/api/agent/cards/adopt', { root: fixture.root, sessionId, id: card.id })
     assert.equal(clash.status, 409)
     assert.equal((await clash.json()).error.code, 'REVISION_MISMATCH')
-    assert.equal(await readFile(join(fixture.root, '正文', 'ch1.md'), 'utf-8'), '作者刚在 Pinax 里改过。')
+    assert.equal(await readFile(join(fixture.root, '正文', 'ch1.md'), 'utf-8'), '作者刚在别处改过。')
 
     // ③ 复原快照内容后采纳成功：正文真变＋.history 备份
     await writeFile(join(fixture.root, '正文', 'ch1.md'), '第一章正文。', 'utf-8')

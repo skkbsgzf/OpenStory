@@ -233,7 +233,7 @@ test('健康端点（内嵌 startDaemon）：免 root 授权，未授权 root �
   const { startDaemon } = await import('../src/host/daemon.mjs')
   const base = mkdtempSync(join(tmpdir(), 'openstory-os127-health-'))
   const preferencesPath = join(base, 'libraries.json')
-  writeFileSync(preferencesPath, JSON.stringify({ recentProjects: [] }), 'utf-8')
+  writeFileSync(preferencesPath, JSON.stringify({ schemaVersion: 1, libraries: [] }), 'utf-8')
   const daemon = await startDaemon({ port: 0, preferencesPath, logger: { log() {} } })
   try {
     const payload = await (await fetch(`http://127.0.0.1:${daemon.port}/api/health`)).json()

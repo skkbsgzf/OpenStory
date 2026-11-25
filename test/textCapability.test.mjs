@@ -79,7 +79,7 @@ test('daemon 精确托管 text 引擎给浏览器，不开放其余 src 文件',
   try {
     await mkdir(publicDir, { recursive: true })
     await writeFile(join(publicDir, 'analysis.mjs'), await readFile(SHIM_PATH, 'utf8'), 'utf8')
-    await writeFile(preferencesPath, JSON.stringify({ recentProjects: [] }), 'utf8')
+    await writeFile(preferencesPath, JSON.stringify({ schemaVersion: 1, libraries: [] }), 'utf8')
     const { startDaemon } = await import('../src/host/daemon.mjs')
     daemon = await startDaemon({
       port: 0,

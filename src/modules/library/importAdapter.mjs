@@ -8,6 +8,7 @@ import { fail, ok } from '../../protocol/kernelPlumber.mjs' // OS-142：内核 p
 import { parseChapterNumber } from './textUtil.mjs'
 import { parseWorldbookEntryFile } from './textUtil.mjs'
 import { namingEntry } from '../../protocol/naming.mjs'
+import { isLegacyLibraryRoot } from '../../protocol/libraryUpgrade.mjs'
 
 const METADATA_DIR = namingEntry('libraryStorage').metadataDir
 const WORLDBOOK_DIR = namingEntry('worldbook').dir
@@ -15,10 +16,9 @@ const WORLDBOOK_DIR = namingEntry('worldbook').dir
 /**
  * 整目录导入（OS-123 自持 fork 点；工单 E1 · 裁定 A：结构动作与建项目同级，走 shell 通道，不经写族闸）。
  *
- * 历史移植背景：fork 时没有直接复用上游 `pinax_project_import`，原因是那份实现
- * 的分类与落盘全程经 `resolveProject()`（server/mcp/localProjects.js:62-72）——目标必须是
- * `spec=pinax-project@1` 的本地项目；当时 Next 建的项目写 `pinax-project@2`
- * （next/kernel/projectSkeleton.mjs:11），一进门就 `ERR_SPEC_MISMATCH`；且它拒吃
+ * 历史移植背景：fork 时没有直接复用上游整目录导入实现，原因是那份实现的分类与落盘
+ * 全程经 `resolveProject()`（server/mcp/localProjects.js:62-72）——目标必须是旧版本地
+ * 项目规格；当时另一条建库链写的是另一套规格，一进门就 `ERR_SPEC_MISMATCH`；且它拒吃
  * 「源＝项目根」（server/mcp/projectImport.js:364-366）。因此 fork 点改为本仓自持薄导入器。
  *
  * 历史来源对照（本仓自持后不再与上游同步）：类别表、章节形态、目录白名单、跳过理由与大小上限
@@ -303,7 +303,7 @@ function isInside(child, parent) {
   return path.resolve(child).toLowerCase().startsWith(prefix.toLowerCase())
 }
 
-/** 入参校验：源/目标都是绝对目录、互不包含、源不是（曾是）Pinax 项目、目标必须是项目根。
+/** 入参校验：源/目标都是绝对目录、互不包含、源不是库项目、目标必须是项目根。
  *  两种形态：单源（sourcePath，整目录自动识别）与逐类（sources=[{category, path}]，向导「一种或几种」）。
  *  返回统一为 { roots: [{root, category|null}], targetRoot, sourceRoot }——buildPlan 只认 roots。 */
 function resolveInputs({ sourcePath, targetPath, sources } = {}) {
@@ -353,10 +353,8 @@ function resolveInputs({ sourcePath, targetPath, sources } = {}) {
     if (isInside(root, targetRoot)) {
       return fail('INVALID_INPUT', `${label}不能在新项目位置里面：导入只新增目标项目里的文件，绝不往源目录写。`)
     }
-    const legacyMetadata = path.join(root, '.pinax')
-    if (fs.existsSync(legacyMetadata) || fs.existsSync(path.join(root, METADATA_DIR, 'project.json'))) {
-      const kind = fs.existsSync(legacyMetadata) ? '旧版项目（含 .pinax/）' : 'OpenStory 项目'
-      return fail('INVALID_INPUT', `${label}已是${kind}：${root}。导入源必须是作者的原稿目录——请直接在库清单打开项目，或另选一个目录。`, { sourcePath: root })
+    if (isLegacyLibraryRoot(root) || fs.existsSync(path.join(root, METADATA_DIR, 'project.json'))) {
+      return fail('INVALID_INPUT', `${label}这已经是一个库，请直接在库清单里打开：${root}。导入源必须是作者的原稿目录，或另选一个目录。`, { sourcePath: root })
     }
   }
   // 多源之间也要互不包含：两个源互相套着，「只读源」的边界就说不清了。

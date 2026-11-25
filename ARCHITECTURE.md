@@ -53,12 +53,12 @@
 <!-- arch-stats:start -->
 | 分工 | 范围 | 文件数 | 行数 |
 |---|---|---:|---:|
-| 底座 | `src/host/`＋`src/kernel/` | 17 | 2,317 |
+| 底座 | `src/host/`＋`src/kernel/` | 17 | 2,310 |
 | 契约 | `src/api/` | 18 | 5,080 |
-| 协议 | `src/protocol/` | 49 | 4,496 |
-| 内核件（class: kernel，7） | `src/modules/agent-runtime/`＋`src/modules/deduce/`＋`src/modules/fact/`＋`src/modules/media/`＋`src/modules/prose/`＋`src/modules/storage/`＋`src/modules/text/` | 47 | 8,494 |
+| 协议 | `src/protocol/` | 49 | 4,506 |
+| 内核件（class: kernel，7） | `src/modules/agent-runtime/`＋`src/modules/deduce/`＋`src/modules/fact/`＋`src/modules/media/`＋`src/modules/prose/`＋`src/modules/storage/`＋`src/modules/text/` | 47 | 8,414 |
 | 工作台（class: workbench，11） | `src/modules/analysis/`＋`src/modules/artifacts/`＋`src/modules/chapters/`＋`src/modules/comfyui/`＋`src/modules/exchange/`＋`src/modules/habits/`＋`src/modules/kb/`＋`src/modules/roleplay/`＋`src/modules/script/`＋`src/modules/storysource/`＋`src/modules/worldbook/` | 21 | 2,862 |
-| 宿主组合面（恒启） | `src/modules/agentbar/`＋`src/modules/library/` | 6 | 1,361 |
+| 宿主组合面（恒启） | `src/modules/agentbar/`＋`src/modules/library/` | 6 | 1,359 |
 | 套件模块（class: suite） | `src/modules/` | 0 | 0 |
 | 服务 | `src/services/` | 22 | 4,720 |
 | 套件资源 | `suites/`＋`styles/`＋`runtimes/`＋`genres/`＋`skills/` | 60 | 3,050 |
@@ -253,7 +253,6 @@ OS-146 铁律继续有效：界面设置项必须有真实消费者。生图/识
 | `.openstory/upgrade.json` | 升级报告与幂等标记 |
 | `%LOCALAPPDATA%/OpenStory/libraries.json`（不入库） | OpenStory 自持库清单；库身份仍靠库内 project.json |
 | `%LOCALAPPDATA%/OpenStory/openstory/`（不入库） | agent-config.json、daemon.lock、机器级界面偏好与本机货架 |
-| `%LOCALAPPDATA%/PinaxNext/`（不入库，冻结） | 历史旧院；首启只拷贝，不迁移、不改写、不删除 |
 
 旧库升级按“备份 → 运行态 → 目录 → 状态键名 → 项目标记 → 派生 schema → 存量路径 → 升级标记”
 执行；目录映射为 `参考/→世界书/`、`拆解/→故事源/`、`推演/→扮演/`、`导出/→导入导出/`。
@@ -285,8 +284,9 @@ OS-146 铁律继续有效：界面设置项必须有真实消费者。生图/识
 
 逐文件“来源 → 现位置”见 `docs/kernel-provenance.md`。内核最初出自 Pinax-next
 `feat/pinax-electron-next@70a4f44`，世界书文件契约出自 `@pinax/core` 0.16.0；这些只作真实出处。
-OS-172 后 OpenStory 与 Pinax 桌面端没有互认协议、共享运行态或清单导入通道。旧库、旧院与旧格式
-只作一次性迁移源；历史决策文档保留裁定过程，不把其中的旧数字重新解释为当前事实。
+OS-172 后 OpenStory 与 Pinax 桌面端没有互认协议、共享运行态或清单导入通道。旧库与旧格式
+只作一次性迁移源；旧院已完全不参与运行（OS-189）。历史决策文档保留裁定过程，不把其中的
+旧数字重新解释为当前事实。
 
 架构裁定与协议见 [ADR 0002](docs/adr/0002-base-constitution.md)、
 [module-manifest@2](docs/protocol/module-manifest-2.md)；遗留与明确不做事项见

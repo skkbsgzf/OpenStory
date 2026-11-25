@@ -40,16 +40,29 @@ test('OS-172 目录名退回旧名时四名一致门禁必须报红', () => {
   assert.ok(result.violations.includes('worldbook: 目录与页签/入口名不一致'))
 })
 
-test('OS-172 谱系门禁允许迁移兼容文件，其余旧工具名必须报红', () => {
+test('OS-189 谱系门禁：整文件豁免已取消，出处逐行放行、一次性升级单独放行，其余旧名报红', () => {
   const root = lineageFixture()
   try {
     assert.equal(auditLineageNames(root).ok, true)
-    put(root, 'src/protocol/libraryUpgrade.mjs', 'export const legacy = ".pinax"\n')
-    assert.equal(auditLineageNames(root).ok, true)
-    put(root, 'public/bad.mjs', 'pinax_xxx\n')
-    const result = auditLineageNames(root)
+
+    // 反证 (a)：src 里新写 pinax_xxx，门禁必须红。
+    put(root, 'src/bad.mjs', 'pinax_xxx\n')
+    let result = auditLineageNames(root)
     assert.equal(result.ok, false)
-    assert.ok(result.violations.includes('public/bad.mjs:1: pinax_xxx'))
+    assert.ok(result.violations.includes('src/bad.mjs:1: pinax_xxx'))
+    rmSync(join(root, 'src', 'bad.mjs'))
+
+    // 反证 (b)：升级器之外写旧目录名常量，门禁必须红。
+    put(root, 'src/compat.mjs', "export const LEGACY_DIR = '.pinax'\n")
+    result = auditLineageNames(root)
+    assert.equal(result.ok, false)
+    assert.ok(result.violations.some((line) => line.startsWith('src/compat.mjs:1:')))
+    rmSync(join(root, 'src', 'compat.mjs'))
+
+    // 唯一例外：一次性升级器与逐行出处声明。
+    put(root, 'src/protocol/libraryUpgrade.mjs', 'export const legacy = ".pinax"\n')
+    put(root, 'src/kernel/index.mjs', ' * 谱系：由 Pinax-next 转自有\n')
+    assert.equal(auditLineageNames(root).ok, true, auditLineageNames(root).violations.join('; '))
   } finally {
     rmSync(root, { recursive: true, force: true })
   }

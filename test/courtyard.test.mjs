@@ -1,8 +1,8 @@
 /**
- * OS-166 本机院子：唯一路径来源＋首启迁移（node:test）。
+ * OS-166 / OS-189 本机院子：唯一路径来源＋旧院克隆已退役（node:test）。
  *
- * 纪律：所有输入都是临时 LOCALAPPDATA，绝不读、写、删真实院子；
- * 旧院只在夹具里造，且用 courtyard 导出的常量拼路径，不在测试里复制品牌字面量。
+ * 纪律：所有输入都是临时 LOCALAPPDATA，绝不读、写、删真实院子。
+ * 反向守卫：旧院即便在，也只当作无关目录——不读、不写、不删、不留标记。
  */
 import test from 'node:test'
 import assert from 'node:assert/strict'
@@ -11,18 +11,18 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
   COURTYARD_DIR,
-  LEGACY_COURTYARD_DIR,
-  MIGRATION_MARKER,
-  MIGRATION_SPEC,
   courtyardBase,
   courtyardPath,
   courtyardRoot,
-  ensureCourtyard,
-  legacyCourtyardPath
+  ensureCourtyard
 } from '../src/host/courtyard.mjs'
 
+/** 夹具里的历史目录硬编码：产品代码不再认识这个名字，测试专门用它验证「不被读」。 */
+const OLD_COURTYARD = 'PinaxNext'
+const OLD_MARKER = '.migrated-from-pinaxnext.json'
+
 function fixture(tag) {
-  const base = mkdtempSync(join(tmpdir(), `os166-${tag}-`))
+  const base = mkdtempSync(join(tmpdir(), `os189-courtyard-${tag}-`))
   return {
     base,
     env: { LOCALAPPDATA: base, APPDATA: '' },
@@ -42,125 +42,85 @@ function listFiles(root, prefix = '') {
   return out.sort()
 }
 
-function seedLegacy(env, { withResidue = true } = {}) {
-  const legacy = legacyCourtyardPath(env)
-  mkdirSync(join(legacy, 'openstory', 'nested'), { recursive: true })
-  writeFileSync(legacyCourtyardPath(env, 'agent-config.json'), '{"model":"x"}', 'utf-8')
-  writeFileSync(legacyCourtyardPath(env, 'kb-config.json'), '{"collections":[]}', 'utf-8')
-  writeFileSync(legacyCourtyardPath(env, 'openstory', 'suite-state.json'), '{}', 'utf-8')
-  writeFileSync(legacyCourtyardPath(env, 'openstory', 'nested', 'note.md'), '保留', 'utf-8')
-  if (withResidue) {
-    writeFileSync(legacyCourtyardPath(env, 'agent-config.json.tmp-12345'), '半成品', 'utf-8')
-    writeFileSync(legacyCourtyardPath(env, 'openstory', 'daemon.lock'), '{"pid":1}', 'utf-8')
-  }
-  return legacy
+/** 逐文件字节快照：证明历史目录逐字节不变。 */
+function snapshot(root, prefix = '') {
+  const out = new Map()
+  for (const rel of listFiles(root, prefix)) out.set(rel, readFileSync(join(root, rel)))
+  return out
 }
 
-test('空环境首次调用：直接建新院，reason=created，不留半成品', () => {
+function seedOldCourtyard(env) {
+  const old = join(env.LOCALAPPDATA, OLD_COURTYARD)
+  mkdirSync(join(old, 'openstory', 'nested'), { recursive: true })
+  writeFileSync(join(old, 'agent-config.json'), '{"model":"x"}', 'utf-8')
+  writeFileSync(join(old, 'kb-config.json'), '{"collections":[]}', 'utf-8')
+  writeFileSync(join(old, 'openstory', 'suite-state.json'), '{}', 'utf-8')
+  writeFileSync(join(old, 'openstory', 'nested', 'note.md'), '保留', 'utf-8')
+  writeFileSync(join(old, OLD_MARKER), '{"schema":"旧标记"}', 'utf-8')
+  writeFileSync(join(old, 'agent-config.json.tmp-12345'), '半成品', 'utf-8')
+  writeFileSync(join(old, 'openstory', 'daemon.lock'), '{"pid":1}', 'utf-8')
+  return old
+}
+
+test('空环境首次调用：直接建新院，不留标记', () => {
   const f = fixture('empty')
   try {
-    const first = ensureCourtyard(f.base)
-    assert.deepEqual(first, { migrated: false, reason: 'created', entries: 0, skipped: [] })
+    assert.deepEqual(ensureCourtyard(f.base), { created: true, reason: 'created' })
     const root = courtyardRoot(f.env)
     assert.equal(existsSync(root), true)
     assert.equal(statSync(root).isDirectory(), true)
     assert.deepEqual(listFiles(root), [])
-    assert.equal(existsSync(legacyCourtyardPath(f.env)), false)
   } finally { f.cleanup() }
 })
 
-test('旧院有数据：迁移留标记、跳过 *.tmp-* 与 daemon.lock、旧院原样保留', () => {
-  const f = fixture('migrate')
+test('旧院在、新院不在：新院空、旧院逐字节不变、没有标记文件、不输出迁移日志', () => {
+  const f = fixture('old-present')
   const errors = []
   const original = console.error
   console.error = (...args) => errors.push(args.join(' '))
   try {
-    const legacy = seedLegacy(f.env)
-    const before = listFiles(legacy)
-    const result = ensureCourtyard(f.base)
+    const old = seedOldCourtyard(f.env)
+    const before = snapshot(old)
 
-    assert.equal(result.migrated, true)
-    assert.equal(result.reason, 'migrated')
-    assert.equal(result.entries, 4)
-    assert.deepEqual(result.skipped.map((p) => p.replaceAll('\\', '/')).sort(), [
-      legacyCourtyardPath(f.env, 'agent-config.json.tmp-12345').replaceAll('\\', '/'),
-      legacyCourtyardPath(f.env, 'openstory', 'daemon.lock').replaceAll('\\', '/')
-    ].sort())
-
+    assert.deepEqual(ensureCourtyard(f.base), { created: true, reason: 'created' })
     const root = courtyardRoot(f.env)
-    const files = listFiles(root)
-    assert.deepEqual(files, [
-      '.migrated-from-pinaxnext.json',
-      'agent-config.json',
-      'kb-config.json',
-      'openstory/nested/note.md',
-      'openstory/suite-state.json'
-    ])
 
-    const marker = JSON.parse(readFileSync(join(root, MIGRATION_MARKER), 'utf-8'))
-    assert.equal(marker.schema, MIGRATION_SPEC)
-    assert.equal(marker.from.replaceAll('\\', '/'), legacy.replaceAll('\\', '/'))
-    assert.equal(marker.to.replaceAll('\\', '/'), root.replaceAll('\\', '/'))
-    assert.equal(marker.entries, 4)
-    assert.match(marker.at, /^\d{4}-\d{2}-\d{2}T/u)
-    assert.match(marker.note, /旧院保留给 Pinax 桌面端/u)
-
-    assert.deepEqual(listFiles(legacy), before)
-    assert.equal(readFileSync(legacyCourtyardPath(f.env, 'agent-config.json'), 'utf-8'), '{"model":"x"}')
-    assert.equal(existsSync(legacyCourtyardPath(f.env, 'agent-config.json.tmp-12345')), true)
-    assert.equal(existsSync(join(root, 'agent-config.json.tmp-12345')), false)
-    assert.equal(existsSync(join(root, 'openstory', 'daemon.lock')), false)
-    assert.equal(errors.some((line) => line.includes('旧院保留给 Pinax 桌面端')), true)
+    assert.deepEqual(listFiles(root), [], '新院只有空目录，没有从旧院拷来任何文件')
+    assert.deepEqual([...snapshot(old)], [...before], '旧院文件清单不变')
+    for (const [rel, bytes] of before) {
+      assert.deepEqual(readFileSync(join(old, rel)), bytes, `旧院 ${rel} 逐字节不变`)
+    }
+    assert.equal(existsSync(join(old, OLD_MARKER)), true, '旧院里已有的标记文件不删')
+    assert.equal(existsSync(join(root, OLD_MARKER)), false, '新院没有标记文件')
+    assert.deepEqual(errors, [], '没有迁移日志输出')
   } finally {
     console.error = original
     f.cleanup()
   }
 })
 
-test('重复调用幂等：第二次不重拷、不改标记', () => {
-  const f = fixture('idempotent')
-  try {
-    seedLegacy(f.env, { withResidue: false })
-    const first = ensureCourtyard(f.base)
-    const root = courtyardRoot(f.env)
-    const markerBefore = readFileSync(join(root, MIGRATION_MARKER), 'utf-8')
-    const second = ensureCourtyard(f.base)
-    assert.deepEqual(second, { migrated: false, reason: 'handled', entries: 0, skipped: [] })
-    assert.equal(first.migrated, true)
-    assert.equal(readFileSync(join(root, MIGRATION_MARKER), 'utf-8'), markerBefore)
-    assert.deepEqual(listFiles(root), [
-      '.migrated-from-pinaxnext.json',
-      'agent-config.json',
-      'kb-config.json',
-      'openstory/nested/note.md',
-      'openstory/suite-state.json'
-    ])
-  } finally { f.cleanup() }
-})
-
-test('目标院已存在（哪怕没标记）也不重复迁移，旧院不动', () => {
+test('目标院已存在（含已有标记文件）也不删、不改', () => {
   const f = fixture('target-exists')
   try {
-    const legacy = seedLegacy(f.env, { withResidue: false })
-    const before = listFiles(legacy)
+    const old = seedOldCourtyard(f.env)
+    const before = snapshot(old)
     const target = join(f.base, COURTYARD_DIR)
     mkdirSync(target, { recursive: true })
     writeFileSync(join(target, 'keep-me.json'), '{}', 'utf-8')
-    const result = ensureCourtyard(f.base)
-    assert.equal(result.migrated, false)
-    assert.equal(result.reason, 'target-exists')
-    assert.deepEqual(listFiles(target), ['keep-me.json'])
-    assert.equal(existsSync(join(target, MIGRATION_MARKER)), false)
-    assert.deepEqual(listFiles(legacy), before)
+    writeFileSync(join(target, OLD_MARKER), '{"existing":true}', 'utf-8')
+
+    assert.deepEqual(ensureCourtyard(f.base), { created: false, reason: 'target-exists' })
+    assert.deepEqual(listFiles(target), [OLD_MARKER, 'keep-me.json'])
+    assert.equal(readFileSync(join(target, OLD_MARKER), 'utf-8'), '{"existing":true}')
+    for (const [rel, bytes] of before) assert.deepEqual(readFileSync(join(old, rel)), bytes)
   } finally { f.cleanup() }
 })
 
 test('LOCALAPPDATA 缺失：返回空并给出 no-base 原因，绝不静默猜路径', () => {
-  assert.deepEqual(ensureCourtyard(''), { migrated: false, reason: 'no-base', entries: 0, skipped: [] })
+  assert.deepEqual(ensureCourtyard(''), { created: false, reason: 'no-base' })
   assert.equal(courtyardBase({}), '')
   assert.equal(courtyardRoot({}), '')
   assert.equal(courtyardPath({}, 'openstory', 'agent-config.json'), '')
-  assert.equal(legacyCourtyardPath({}, 'next-preferences.json'), '')
 })
 
 test('APPDATA 兜底与路径拼接：所有调用点都从新院根派生', () => {
@@ -173,10 +133,6 @@ test('APPDATA 兜底与路径拼接：所有调用点都从新院根派生', () 
     assert.equal(
       courtyardPath(env, 'openstory', 'agent-config.json').replaceAll('\\', '/'),
       join(root, 'openstory', 'agent-config.json').replaceAll('\\', '/')
-    )
-    assert.equal(
-      legacyCourtyardPath(env, 'next-preferences.json').replaceAll('\\', '/'),
-      join(f.base, LEGACY_COURTYARD_DIR, 'next-preferences.json').replaceAll('\\', '/')
     )
   } finally { f.cleanup() }
 })

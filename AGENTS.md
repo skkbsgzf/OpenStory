@@ -115,8 +115,7 @@ L4 自持层→L2 自有内核 `src/kernel/`→L1 磁盘库；OS-157 起 L2/L3 �
    | 升级后退役目录留档 | `<库>/<旧目录名>.retired-<时间戳>/`（只读留档，不参与运行） |
    | 本机凭据/模型端点 | `%LOCALAPPDATA%/OpenStory/openstory/agent-config.json`（含密钥，不入库） |
    | 机器级界面偏好（皮肤，无库也生效） | `%LOCALAPPDATA%/OpenStory/openstory/ui-preferences.json`（OS-158，不入库；任何端口共用一份） |
-   | 旧院（冻结，仅作历史迁移源） | `%LOCALAPPDATA%/PinaxNext/`（首启一次性**拷贝**到新院并留 `.migrated-from-pinaxnext.json` 标记；绝不迁移、改写或删除旧院） |
-   | 本机库清单（root 白名单来源） | `%LOCALAPPDATA%/OpenStory/libraries.json`（OS-167：`{schemaVersion,libraries:[{path,name,addedAt,source}]}`；`source=openstory\|imported`。产品只读写 OpenStory 自持清单，Pinax 清单导入端点已退役；库身份靠库内 `.openstory/project.json`，不靠本机清单） |
+   | 本机库清单（root 白名单来源） | `%LOCALAPPDATA%/OpenStory/libraries.json`（OS-167/189：只认 `{schemaVersion,libraries:[{path,name,addedAt,source}]}`；`source=openstory\|imported`。非本产品形状只读告警、拒绝覆盖（按内容形状不按文件名）；库身份靠库内 `.openstory/project.json`，不靠本机清单） |
 
    旧库升级只针对请求中显式指定且已授权的 root，由 daemon 在模块闸与业务 handler 前调用
    `ensureLibraryUpgraded()`：先备份到 `.history/upgrade-<时间戳>/`，再迁移 `.pinax/` 运行态、

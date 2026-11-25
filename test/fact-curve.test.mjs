@@ -15,7 +15,7 @@ async function makeLibrary(base, name) {
   const root = join(base, name)
   await mkdir(join(root, '正文'), { recursive: true })
   const preferencesPath = join(base, `${name}-prefs.json`)
-  await writeFile(preferencesPath, JSON.stringify({ recentProjects: [{ path: root, name }] }), 'utf-8')
+  await writeFile(preferencesPath, JSON.stringify({ schemaVersion: 1, libraries: [{ path: root, name }] }), 'utf-8')
   return { root, preferencesPath }
 }
 

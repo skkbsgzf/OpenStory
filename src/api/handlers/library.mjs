@@ -13,7 +13,7 @@ import { sendError, sendJson, text } from '../../host/http.mjs'
 import { authorizeRoot, canonicalRoot, rootKey } from '../../host/authorize.mjs'
 import { createLibrary, diagnoseLibrary, importLibrary, scanLibrary, setPrimaryCarrier } from '../../host/libraryManage.mjs'
 
-/** --root 显式授权的库不在 recentProjects 里时也上屏，作者才能点得到。 */
+/** --root 显式授权的库不在库清单里时也上屏，作者才能点得到。 */
 function mergeLibraryRoots(libraries, extraRoots) {
   const list = [...libraries]
   const seen = new Set(libraries.map((library) => rootKey(library.path)))
@@ -62,8 +62,8 @@ export async function libraryDiagnose(ctx) {
 
 export async function libraryCreate(ctx) {
   const { res, request, loaded } = ctx
-  if (loaded.legacy) {
-    return sendError(res, API_ERROR_CODES.INVALID_ENTRY, '当前库清单是旧格式，只读兼容；不会覆盖或写回，请改用 OpenStory 自持库清单后再建库')
+  if (loaded.warnings?.some((warning) => warning.code === 'PREFERENCES_SHAPE')) {
+    return sendError(res, API_ERROR_CODES.INVALID_ENTRY, '当前库清单不是本产品形状，只读不覆盖；请改用 OpenStory 自持库清单后再建库')
   }
   const created = await createLibrary({ ...request, preferencesPath: loaded.preferencesPath })
   if (!created.ok) {

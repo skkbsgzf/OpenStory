@@ -41,7 +41,7 @@ async function makeLibrary() {
   await writeFile(join(root, '正文', 'ch1.md'), '第一章正文。', 'utf-8')
   const preferencesPath = join(base, 'libraries.json')
   await writeFile(preferencesPath, JSON.stringify({
-    recentProjects: [{ path: root, name: '夹具库', at: '2026-11-24T00:00:00.000Z' }]
+    schemaVersion: 1, libraries: [{ path: root, name: '夹具库', at: '2026-11-24T00:00:00.000Z' }]
   }), 'utf-8')
   return { base, root, preferencesPath }
 }
@@ -230,7 +230,7 @@ test('daemon kb 闸：多库时按请求 root 判定（A 停用 kb、B 启用 �
   await writeUiState(rootB, { modules: { enabled: { kb: true } } })
   const preferencesPath = join(base, 'libraries.json')
   await writeFile(preferencesPath, JSON.stringify({
-    recentProjects: [
+    schemaVersion: 1, libraries: [
       { path: rootA, name: '夹具库A', at: '2026-11-24T00:00:00.000Z' },
       { path: rootB, name: '夹具库B', at: '2026-11-23T00:00:00.000Z' }
     ]

@@ -3,7 +3,7 @@
 > OS-123→133 解耦与治理批次建立本台账（2026-11-23），OS-168 按现状总审（2026-11-24），OS-172 拆除互认并正名（2026-11-25），D 批收口（2026-11-25）。
 > 这份文档是「没做完/不做」事项的**唯一台账**：凡不在四档之内的事，等于「已做完且有测试与门禁护栏」。
 > 新事项先入档再动工；做完就删行。OS-157～168 全部有测试与门禁护栏，不入档。
-> 四档条目数：已裁定 5／作者动作 1／后续可选 11／明确不做 5。
+> 四档条目数：已裁定 6／作者动作 1／后续可选 11／明确不做 5。
 
 ## 【已裁定】——作者裁定固化，细节以 ADR 为准（裁定本身不是待办）
 
@@ -11,9 +11,10 @@
 |---|---|---|
 | **G7 数据源归一：统一成 fact（合并路线）**——fact.data（v3/legacy v2）是唯一事实 schema；pedia/v1（NovelPedia）视为同源同质；OpenStory↔NovelPedia 导入导出一律走 fact.data/v3。 | 【已裁定 2026-11-23：统一成 fact】 | `docs/adr/0001-fact-schema-unification.md`。OS-162 已落地薄适配器＋导入/导出端点（共用 fact 写通道，非第二套写逻辑）；唯一仍开放项＝**拿 NovelPedia 真实数据跑一次导出→导入回环复验**，见【作者动作】 |
 | **模块闸库路径（OS-144 遗留，OS-165 审结）**——曾担心停用时拿不到库根、退回 daemon 默认库或清单第一条。 | 【已审结 2026-11-24：无残留】 | 41 个模块独占端点的契约 `request` **全部带 root**（脚本审计＋`test/moduleCoverage.test.mjs` 钉死），daemon 的模块闸优先取已授权的请求 root；MCP 分析工具不显式给 root 就完全不判定，绝不回落清单；`moduleHooks` 均由调用方传 root。`daemon.moduleGateRoot` 的「默认库＞第一条」只是无库上下文的老调用兜底，对独占端点不可达。无待办，不入档 |
-| **旧院路径冻结（OS-166）**——品牌分家后不再有第二处 `join(base, 'PinaxNext', …)`。 | 【已裁定 2026-11-24：只拷贝不删除】 | `%LOCALAPPDATA%/PinaxNext/` 冻结，只作历史迁移源；`src/protocol/courtyard.mjs`（宿主门面 `src/host/courtyard.mjs`）是唯一解析源，首启一次性拷贝到 `%LOCALAPPDATA%/OpenStory/` 并写迁移标记，跳 `*.tmp-*`/`daemon.lock`，旧院不改写、不删除。旧路径只留在历史文档与迁移常量里，产品代码零直拼（`test/courtyard.test.mjs`＋门禁 S2.1 护栏）。无待办，不入档 |
+| **旧院路径冻结（OS-166；OS-189 收口）**——品牌分家后不再有第二处路径拼接，旧院也不再参与运行。 | 【已裁定 2026-11-24：不删不改；2026-11-25：克隆整体退役】 | 新院 `%LOCALAPPDATA%/OpenStory/` 由 `src/protocol/courtyard.mjs`（宿主门面 `src/host/courtyard.mjs`）唯一解析；`ensureCourtyard` 只负责「新院不存在就建」，旧院与其它本机目录不读、不写、不删，已有标记文件不读不删。反向守卫见 `test/courtyard.test.mjs`。无待办，不入档 |
 | **库清单分家（OS-167；OS-172 收口）**——`next-preferences.json` 不再是 OpenStory 的 root 授权来源。 | 【已裁定 2026-11-24：自持清单；2026-11-25：Pinax 导入退役】 | 新院 `libraries.json` 是自持清单（`{schemaVersion,libraries:[{path,name,addedAt,source}]}`，`source=openstory\|imported`）；`OPENSTORY_PREFERENCES` 是唯一路径环境变量，旧 `PINAX_OS_PREFERENCES` 不回落。Pinax 清单扫描/勾选导入端点已退役，产品不读旧清单、不写回旧清单；库身份靠 `.openstory/project.json`，不靠任何本机清单。无待办，不入档 |
 | **互认已拆除、目录已正名（OS-172）**——运行态与命名归 OpenStory，旧名不再表示当前格式。 | 【作者确认 2026-11-24：一次性迁移，不双读】 | 运行态唯一为 `.openstory/`；`参考/→世界书/`、`拆解/→故事源/`、`推演/→扮演/`、`导出/→导入导出/`，页面名为 `产物`；项目为 `openstory-project@4`、carrier 为 `openstory.carrier.*`、wiki 为 `openstory-wiki-derived@2`、临时前缀为 `.openstory-tmp-`。旧库先备份到 `.history/upgrade-<时间戳>/`，成功后旧目录改名 `.retired-<时间戳>` 留档并写升级标记，失败回滚。明确推翻 OS-48／OS-50 的目录名冻结与第二批 G8b 的 `参考/` 冻结；不保留 `.pinax/` 与 `.openstory/` 长期双读，也不再用 Pinax 桌面端打开验证。无待办，不入档 |
+| **与 Pinax 的运行时关联已全部退役（OS-189）**——产品代码里旧名只剩一次性升级与出处声明两类。 | 【作者裁定 2026-11-25：必须全部退役】 | 本单删除：首启旧院克隆（`LEGACY_COURTYARD_DIR`／`MIGRATION_MARKER`／`MIGRATION_SPEC`／`legacyCourtyardPath` 及拷贝、标记、日志分支）；库清单 `recentProjects` 兼容读、`legacy` 字段、`'imported-pinax'`、`LEGACY_MANIFEST_FILE` 与按文件名写保护特判（改为通用内容形状校验）；导入适配器旧目录名直判（改调 `libraryUpgrade.isLegacyLibraryRoot`，错误提示不露旧名）；运行时旧临时前缀回收（`LEGACY_TMP_PREFIX` 分支，残留归 OS-188a 升级归档）；`LICENSE` 指向已不存在目录的 vendor 表述；`skills/README.md` 与 `public/scriptFact.mjs` 的过时指引；审计脚本的旧 ui-state 路径；谱系门禁的 8 个整文件豁免。反向守卫与两则反证见 `test/courtyard.test.mjs`、`test/libraryManifest.test.mjs`、`test/decoupleStep1.test.mjs`、`test/kernelPlumber.test.mjs`、`test/os172Naming.test.mjs`。无待办，不入档 |
 
 ## 【作者动作】——需要作者在真实环境验证一次
 

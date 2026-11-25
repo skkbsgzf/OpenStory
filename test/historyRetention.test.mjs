@@ -131,7 +131,7 @@ test('集成：临时库连写 60 次（配额 5）——份数有界、最新�
 
   const preferencesPath = join(base, 'libraries.json')
   await writeFile(preferencesPath, JSON.stringify({
-    recentProjects: [{ path: root, name: '夹具库', at: new Date().toISOString() }]
+    schemaVersion: 1, libraries: [{ path: root, name: '夹具库', at: new Date().toISOString() }]
   }), 'utf-8')
 
   const daemon = await startDaemon({ port: 0, preferencesPath, logger: { log() {} } })

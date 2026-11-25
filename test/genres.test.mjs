@@ -33,7 +33,7 @@ async function makeFixture() {
   await writeFile(join(root, '正文', '001-雨停.md'), '雨到傍晚才停。', 'utf-8')
   const preferencesPath = join(base, 'libraries.json')
   await writeFile(preferencesPath, JSON.stringify({
-    recentProjects: [{ path: root, name: '夹具库', at: '2026-11-16T00:00:00.000Z' }]
+    schemaVersion: 1, libraries: [{ path: root, name: '夹具库', at: '2026-11-16T00:00:00.000Z' }]
   }), 'utf-8')
   return { base, root, preferencesPath, userGenres: join(base, 'OpenStory', 'openstory', 'genres') }
 }

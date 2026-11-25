@@ -367,7 +367,7 @@ test('daemon 端到端：dsh kit（假 dsh shim）→ start/delta*/done，会话
   await writeFile(join(root, '正文', 'ch1.md'), '第一章。', 'utf-8')
   const preferencesPath = join(base, 'libraries.json')
   await writeFile(preferencesPath, JSON.stringify({
-    recentProjects: [{ path: root, name: '夹具库', at: '2026-11-16T00:00:00.000Z' }]
+    schemaVersion: 1, libraries: [{ path: root, name: '夹具库', at: '2026-11-16T00:00:00.000Z' }]
   }), 'utf-8')
   const daemon = await startDaemon({
     port: 0,
@@ -411,7 +411,7 @@ test('daemon 端到端：dsh 不可用 → 无 Pi ＝ 502 如实报（不伪造�
   const root = join(base, '库')
   await mkdir(join(root, '正文'), { recursive: true })
   const preferencesPath = join(base, 'libraries.json')
-  await writeFile(preferencesPath, JSON.stringify({ recentProjects: [{ path: root, name: '库' }] }), 'utf-8')
+  await writeFile(preferencesPath, JSON.stringify({ schemaVersion: 1, libraries: [{ path: root, name: '库' }] }), 'utf-8')
   const daemon = await startDaemon({
     port: 0,
     preferencesPath,

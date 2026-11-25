@@ -3,7 +3,7 @@
  * 全程临时目录，不碰作者真库；结束从库清单摘除测试库。
  *
  * 关键认知：daemon 三条硬边界——root 必须命中库清单（libraries.json 的
- * recentProjects）或 --root= 授权。所以「半成品库」也必须先走 libraryCreate 登记，
+ * libraries）或 --root= 授权。所以「半成品库」也必须先走 libraryCreate 登记，
  * 再往里塞不规整文件——这才是真实用户路径（导入稿件 / 新建库都会登记）。
  */
 import { mkdtemp, mkdir, writeFile, rm, readFile, writeFile as wf } from 'node:fs/promises'

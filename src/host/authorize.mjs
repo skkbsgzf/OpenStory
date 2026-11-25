@@ -42,7 +42,7 @@ export function resolvePreferencesEnv(env = process.env) {
 
 /**
  * 读库清单（OS-167：新院 libraries.json 为真源）。坏档/缺档不拦启动：
- * 按空清单回并记 warning；显式传旧形状文件时兼容读，但标 legacy:true 且永不写回。
+ * 按空清单回并记 warning；不是本产品形状的文件只读告警，不写回。
  */
 export function loadLibraries({ preferencesPath, env = process.env } = {}) {
   const resolved = libraryListCapability()
@@ -50,8 +50,7 @@ export function loadLibraries({ preferencesPath, env = process.env } = {}) {
     return {
       libraries: [],
       warnings: [{ code: 'PLUGIN_DEGRADED', message: resolved.message, details: resolved.details }],
-      preferencesPath: '',
-      legacy: false
+      preferencesPath: ''
     }
   }
   const read = resolved.capability.readLibraryManifest({ preferencesPath, env })
@@ -60,8 +59,7 @@ export function loadLibraries({ preferencesPath, env = process.env } = {}) {
   return {
     libraries: normalized.libraries,
     warnings: [...read.warnings, ...normalized.warnings],
-    preferencesPath: read.path,
-    legacy: read.legacy
+    preferencesPath: read.path
   }
 }
 
@@ -111,4 +109,3 @@ export function authorizeRoot(allowlist, requested) {
   }
   return { ok: true, root }
 }
-

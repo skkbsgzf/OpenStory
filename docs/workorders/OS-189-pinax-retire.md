@@ -72,3 +72,122 @@
 - `grep -rni pinax src public genres skills suites package.json` 的全部命中逐行贴进回报，且每一行都属于 (a)(b) 两类。
 - 任务 10 的五条反向守卫测试与任务 12 的两则反证，贴输出。
 - `git diff --check` 干净；`node tools/number-anchors.mjs` 与 `npm run arch:stats` 跑过。
+## 施工回报（编排器自动归档）
+
+> 模型 hy4flash · 第 1 轮 · 测试 绿（tests 812 · pass 810 · fail 0 · skip 2） · 门禁 绿 · e2e 水浒＋新建（隔离 daemon）绿 · 8807 未动
+
+```text
+CHANGED: 以下 57 个文件（均在工单「允许改动」范围内）
+- AGENTS.md
+- ARCHITECTURE.md
+- LICENSE
+- README.md
+- docs/LEGACY-ITEMS.md
+- skills/README.md
+- src/api/contracts.mjs
+- src/api/handlers/library.mjs
+- src/host/authorize.mjs
+- src/host/courtyard.mjs
+- src/host/daemon.mjs
+- src/host/libraryManage.mjs
+- src/kernel/atomicWrite.mjs
+- src/modules/deduce/engine/index.mjs
+- src/modules/library/importAdapter.mjs
+- src/modules/storage/courtyard.mjs
+- src/modules/storage/libraryManifest.mjs
+- src/protocol/README.md
+- src/protocol/libraryUpgrade.mjs
+- test/agent.test.mjs
+- test/agentFixtureGuard.test.mjs
+- test/agentRuntimes.test.mjs
+- test/artifacts.test.mjs
+- test/artifactsModule.test.mjs
+- test/chapters.test.mjs
+- test/config.test.mjs
+- test/contracts.test.mjs
+- test/coreModules.test.mjs
+- test/courtyard.test.mjs
+- test/daemonSingleInstance.test.mjs
+- test/decoupleStep1.test.mjs
+- test/deduceAssets.test.mjs
+- test/deduceTurn.test.mjs
+- test/dshBridge.test.mjs
+- test/exchange.test.mjs
+- test/fact-curve.test.mjs
+- test/fact-entries.test.mjs
+- test/files.test.mjs
+- test/genres.test.mjs
+- test/habitsModule.test.mjs
+- test/historyRetention.test.mjs
+- test/kb-health.test.mjs
+- test/kernelPlumber.test.mjs
+- test/libraryManifest.test.mjs
+- test/modulePlugins.test.mjs
+- test/originGuard.test.mjs
+- test/os172Naming.test.mjs
+- test/runtimes.test.mjs
+- test/skills.test.mjs
+- test/styles.test.mjs
+- test/suites.test.mjs
+- test/textCapability.test.mjs
+- tools/acceptance/acceptance.mjs
+- tools/audit/audit-artifacts.mjs
+- tools/audit/audit-sync.mjs
+- tools/verify/verify-newproj.mjs
+- tools/verify/verify-os172-naming.mjs
+
+VERIFIED:
+- `npm test`：`tests 812 / pass 810 / fail 0 / skipped 2`。
+- `node tools/acceptance/acceptance.mjs`：`验收门禁：27 过 / 0 挂 / 0 警`。
+- 红线 `node --test test/courtyard.test.mjs test/libraryManifest.test.mjs test/contracts.test.mjs test/decoupleStep1.test.mjs test/os172Naming.test.mjs test/kernelPlumber.test.mjs`：`tests 60 / pass 59 / fail 0 / skipped 1`。
+- 任务 10 五条反向守卫（`--test-name-pattern`）逐条输出：
+'''
+✔ 旧院在、新院不在：新院空、旧院逐字节不变、没有标记文件、不输出迁移日志 (6.8921ms)
+✔ planImport：源目录不存在 / 目标不是项目 / 源带旧运行态目录都拒绝且提示不露旧名 (25.2485ms)
+✔ recoverInterruptedWrites 只回收当前前缀；旧前缀残留留给升级归档，绝不误删正文 (6.9054ms)
+✔ 反向守卫：旧形状 {recentProjects:[…]} 回空清单＋PREFERENCES_SHAPE，不写回 (9.2846ms)
+✔ 反向守卫：目标文件存在且不是本产品形状 → 拒绝覆盖，原文不变（不认文件名） (2.211ms)
+ℹ tests 5 / pass 5 / fail 0 / skipped 0
+'''
+- 任务 12 反证（临时探针写在真实 `src/`，跑完即删，已确认无残留）：
+'''
+(a) src/__os189_probe.mjs = export const probe = 'pinax_xxx'
+"lineage": { "ok": false, "violations": ["src/__os189_probe.mjs:1: export const probe = 'pinax_xxx'"], "scanned": 282 }
+GATE_EXIT=1  PROBE_LEFT=no
+
+(b) src/__os189_probe2.mjs = export const LEGACY_DIR = '.pinax'
+"lineage": { "ok": false, "violations": ["src/__os189_probe2.mjs:1: export const LEGACY_DIR = '.pinax'"], "scanned": 282 }
+GATE_EXIT=1  PROBE_LEFT=no
+
+还原后：{ "ok": true, "violations": [], "scanned": 281 }
+'''
+- 新机制生产调用点：`src/protocol/libraryUpgrade.mjs:74` 导出 `isLegacyLibraryRoot`，`src/modules/library/importAdapter.mjs:356` 生产调用；`src/modules/storage/courtyard.mjs:19` 的 `ensureCourtyard` 只建新院；`tools/verify/verify-os172-naming.mjs:12,18,86-87` 为「一次性升级单独放行＋逐行出处白名单」。
+- `grep -rni pinax src public genres skills suites package.json` 全部 30 行命中（逐行贴出，均属 (a)(b)）：
+'''
+src/kernel/index.mjs:11: * 谱系：2026-11-24 由 Pinax-next `feat/pinax-electron-next`@`70a4f44` 逐步转自有
+src/modules/fact/enrich/metrics.mjs:2: * vendor 自 Pinax-next@devtools/lib/causalMetrics.mjs（2026-11-16 逐字拷贝）。
+src/modules/fact/enrich/pseudoChapters.mjs:2: * vendor 自 Pinax-next@devtools/lib/pseudoChapters.mjs（2026-11-16 逐字拷贝）。
+src/modules/fact/fact/domain/vocabulary.js:27:  repository: 'NovelPedia (pedia/v1 vendored) + pinax pedia-v2 ADR',
+src/modules/library/textUtil.mjs:2:// 谱系：函数体逐字拷贝自 Pinax-next `feat/pinax-electron-next`@`70a4f44` 的
+src/modules/library/textUtil.mjs:6:// 原逐字收编自 @pinax/core 0.16.0＝pinax-core e56a0bc）；经协议层叶子转供。
+src/modules/storage/projectDoc.mjs:5: * 逐字拷贝归并自 Pinax-next@70a4f44（分支 feat/pinax-electron-next，拷贝方式＝
+src/modules/worldbook/worldbookFileContract.mjs:4: * 谱系：2026-11-23 由 @pinax/core 0.16.0（pinax-core 仓 `e56a0bc`）的
+src/modules/worldbook/worldbookFileContract.mjs:24: *   解析时再减去 relations[].to 还原 entry.links——对 Pinax 运行时往返无损，
+src/modules/worldbook/worldbookFileContract.mjs:26: * - `relations:` 缩进对象列表 [{to,type,stance,covert,weight,src}, ...] = Pinax 富关系。
+src/modules/worldbook/worldbookFileContract.mjs:61:/** index.json 指针账本的 list 型 section 顺序（kit init dirs + Pinax 扩展 资料） */
+src/protocol/worldbookContract.mjs:6: * 等错误码原样透传）。实现自 OS-157 起为世界书模块自有（此前逐字收编自 @pinax/core
+src/services/enrichEngine.mjs:4: * 把 Pinax-next devtools/wiki-enrich-run.mjs 的六槽位管线封装成宿主可调用的引擎：
+src/services/enrichEngine.mjs:17: * 溯源纪律（TRACE_HEADER）沿用 Pinax 六槽位口径：章号证据 / 三态置信 / 引用≤40字。
+src/protocol/libraryUpgrade.mjs:10:export const LEGACY_PROJECT_SPECS = Object.freeze(['pinax-project@1', 'pinax-project@2', 'pinax-project@3'])
+src/protocol/libraryUpgrade.mjs:11:export const LEGACY_WIKI_SCHEMA = 'pinax-wiki-derived@1'
+src/protocol/libraryUpgrade.mjs:13:export const LEGACY_CARRIER_PREFIX = 'pinax.carrier.'
+src/protocol/libraryUpgrade.mjs:77:  return existsSync(join(resolve(raw), '.pinax'))
+src/protocol/libraryUpgrade.mjs:117:  if (head === '.pinax') {
+src/protocol/libraryUpgrade.mjs:138:  return key === 'pinaxRelationExtensions' ? 'relationExtensions' : mapStoredPath(key)
+src/protocol/libraryUpgrade.mjs:190:    } else if (entry.isFile() && !entry.name.startsWith('.openstory-tmp-') && !entry.name.startsWith('.pinax-tmp-')) {
+src/protocol/libraryUpgrade.mjs:198:  const oldMetadata = join(root, '.pinax')
+src/protocol/libraryUpgrade.mjs:206:        || text(document?.carriers?.primary).startsWith('pinax.carrier.')
+src/protocol/libraryUpgrade.mjs:207:        || (Array.isArray(document?.carriers?.enabled) && document.carriers.enabled.some((id) => text(id).startsWith('pinax.carrier.')))
+src/protocol/libraryUpgrade.mjs:399:    const match = /^pinaxRelationExtensions(\s*:)/u.exec(lines[index])
+src/protocol/libraryUpgrade.mjs:411:/** OS-188a：把库内 `.pina
+```

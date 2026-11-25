@@ -72,7 +72,7 @@ function sameLibraryPath(a, b) {
 
 /**
  * 把新库追加进 OpenStory 自持清单。已登记＝duplicate:true 不重写；
- * 清单不存在＝从 `{schemaVersion,libraries:[]}` 起一份；旧形状/坏档＝拒绝登记（绝不覆盖重写）。
+ * 清单不存在＝从 `{schemaVersion,libraries:[]}` 起一份；非本产品形状/坏档＝拒绝登记（绝不覆盖重写）。
  */
 export async function registerLibrary(preferencesPath, root, name) {
   const storage = await storageCapability('', 'library.list')
@@ -81,9 +81,6 @@ export async function registerLibrary(preferencesPath, root, name) {
   const target = text(preferencesPath).trim()
   if (!target) return { ok: false, code: 'INVALID_ENTRY', message: '没有可写的库清单路径（preferencesPath 为空）' }
   const current = capability.readLibraryManifest({ preferencesPath: target })
-  if (current.legacy) {
-    return { ok: false, code: 'INVALID_ENTRY', message: '旧格式清单只读，不会覆盖；请改用 OpenStory 自持库清单' }
-  }
   if (current.warnings.some((w) => w.code === 'PREFERENCES_CORRUPT' || w.code === 'PREFERENCES_SHAPE' || w.code === 'PREFERENCES_UNREADABLE')) {
     return { ok: false, code: 'INVALID_ENTRY', message: `库清单读不了/不是合法 JSON，拒绝登记（不覆盖重写）：${current.warnings[0].message}` }
   }

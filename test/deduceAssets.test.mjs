@@ -27,7 +27,7 @@ async function makeFixture() {
   }), 'utf-8')
   const preferencesPath = join(base, 'libraries.json')
   await writeFile(preferencesPath, JSON.stringify({
-    recentProjects: [{ path: root, name: '素材夹具库', at: '2026-11-18T00:00:00.000Z' }]
+    schemaVersion: 1, libraries: [{ path: root, name: '素材夹具库', at: '2026-11-18T00:00:00.000Z' }]
   }), 'utf-8')
   return { base, root, preferencesPath }
 }

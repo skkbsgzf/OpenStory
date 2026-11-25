@@ -8,9 +8,9 @@ export { TMP_PREFIX }
 
 /**
  * 原子落盘（继承桌面轨已验证的做法：同目录临时文件 → fsync → rename → 目录 fsync）。
- * 桌面轨实现见 electron/projects/fsDurability.mjs，这里补上 Next 需要的可重入清理。
+ * 桌面轨实现见 electron/projects/fsDurability.mjs，这里补上可重入清理。
+ * 运行时只认 TMP_PREFIX；历史前缀的残留由库升级（OS-188a）归档，不在这里回收。
  */
-export const LEGACY_TMP_PREFIX = '.pinax-tmp-'
 
 export async function writeFileAtomic(absPath, contents, deps = {}) {
   const directory = dirname(absPath)
@@ -35,7 +35,7 @@ export async function writeFileAtomic(absPath, contents, deps = {}) {
   return absPath
 }
 
-/** 崩溃恢复：清掉同目录遗留的 .pinax-tmp-* 半成品，绝不误删正文。 */
+/** 崩溃恢复：清掉同目录遗留的 TMP_PREFIX 半成品，绝不误删正文。 */
 export async function recoverInterruptedWrites(directory, deps = {}) {
   const list = deps.readdir || readdir
   const remove = deps.unlink || unlink
@@ -45,7 +45,7 @@ export async function recoverInterruptedWrites(directory, deps = {}) {
   } catch {
     return { removed: [], skipped: true }
   }
-  const removed = entries.filter((name) => name.startsWith(TMP_PREFIX) || name.startsWith(LEGACY_TMP_PREFIX))
+  const removed = entries.filter((name) => name.startsWith(TMP_PREFIX))
   for (const name of removed) await remove(join(directory, name)).catch(() => {})
   return { removed, skipped: false }
 }

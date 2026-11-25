@@ -185,7 +185,7 @@ test('daemon 端到端：列技能（体裁过滤）→ 取全文 → 未知技�
   const root = join(base, '夹具库')
   await mkdir(join(root, '正文'), { recursive: true })
   const preferencesPath = join(base, 'prefs.json')
-  await writeFile(preferencesPath, JSON.stringify({ recentProjects: [{ path: root, name: '夹具库' }] }), 'utf-8')
+  await writeFile(preferencesPath, JSON.stringify({ schemaVersion: 1, libraries: [{ path: root, name: '夹具库' }] }), 'utf-8')
   const daemon = await startDaemon({ port: 0, preferencesPath, env: { ...process.env, LOCALAPPDATA: base }, logger: { log() {} } })
   const origin = `http://127.0.0.1:${daemon.port}`
   try {

@@ -113,7 +113,7 @@ const artifacts = [
   {
     id: 'uiState',
     name: '界面状态',
-    store: '.pinax/ui-state.json',
+    store: '.openstory/ui-state.json',
     read: contracts.includes('uiStateGet'),
     write: contracts.includes('uiStatePut'),
     judge: '本地化（不用 localStorage）'

@@ -25,15 +25,14 @@
 
 **数据位置（OS-166 起本机院子归 OpenStory）**：库永远在作者自己的目录里；稿件、扮演会话、
 导入导出文件与 `.openstory/` 都在库内。机器级凭据、界面偏好、单实例锁与本机货架落新院
-`%LOCALAPPDATA%/OpenStory/openstory/`。旧院 `%LOCALAPPDATA%/PinaxNext/` 冻结，只作历史迁移源：
-首启只**一次性拷贝**到新院并留 `.migrated-from-pinaxnext.json` 标记（跳 `*.tmp-*` 与 `daemon.lock`），
-不迁移、不删除、不改写。所有路径只从 `src/protocol/courtyard.mjs` 解析，
+`%LOCALAPPDATA%/OpenStory/openstory/`。本机其余目录不读、不写、不删（含历史遗留目录与其中
+可能存在的标记文件）。所有路径只从 `src/protocol/courtyard.mjs` 解析，
 `src/host/courtyard.mjs` 是宿主层唯一门面。
 
 **库清单在哪（OS-167；OS-172 退役 Pinax 导入）**：`%LOCALAPPDATA%/OpenStory/libraries.json`，
 形状 `{ schemaVersion, libraries: [{ path, name, addedAt, source }] }`，`source` 只取 `openstory`／
-`imported`。daemon 的 root 白名单只认这份清单（或启动时的 `--root=` 显式授权）；产品不扫描、
-不勾选导入旧 Pinax 清单，也不写回旧 `next-preferences.json`。
+`imported`。daemon 的 root 白名单只认这份清单（或启动时的 `--root=` 显式授权）；非本产品形状
+只读告警、不写回（写保护按内容形状判定，不按文件名）。
 
 ## 快速开始
 

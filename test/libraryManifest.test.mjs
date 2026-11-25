@@ -1,8 +1,8 @@
 /**
- * OS-167 / OS-172 库清单自持与旧导入通道退役（node:test）。
+ * OS-167 / OS-172 / OS-189 库清单自持与旧形状退役（node:test）。
  *
  * 纪律：临时 LOCALAPPDATA ＋ 临时库目录；不碰真实院子与作者真库。
- * 钉死：新院 libraries.json 读写、坏档不覆盖、旧清单只读兼容、旧环境变量不回落、
+ * 钉死：新院 libraries.json 读写、坏档不覆盖、非本产品形状只读告警、旧环境变量不回落、
  * --root 显式授权不依赖清单，以及旧清单扫描/导入端点与设置入口已彻底退役。
  */
 import test from 'node:test'
@@ -20,19 +20,19 @@ import {
 } from '../src/modules/storage/libraryManifest.mjs'
 
 function fixture(tag) {
-  const base = mkdtempSync(join(tmpdir(), `os172-manifest-${tag}-`))
+  const base = mkdtempSync(join(tmpdir(), `os189-manifest-${tag}-`))
   return {
     base,
     env: { LOCALAPPDATA: base, APPDATA: '' },
     manifest: join(base, 'OpenStory', LIBRARY_MANIFEST_FILE),
-    oldList: join(base, 'PinaxNext', 'next-preferences.json'),
+    otherList: join(base, 'OpenStory', 'other-list.json'),
     cleanup: () => rmSync(base, { recursive: true, force: true })
   }
 }
 
-function seedOldList(f, rows) {
-  mkdirSync(dirname(f.oldList), { recursive: true })
-  writeFileSync(f.oldList, JSON.stringify({ recentProjects: rows }), 'utf-8')
+function seedOtherShape(f, rows) {
+  mkdirSync(dirname(f.otherList), { recursive: true })
+  writeFileSync(f.otherList, JSON.stringify({ recentProjects: rows }), 'utf-8')
 }
 
 function makeLibrary(base, name, withProject = true) {
@@ -45,7 +45,7 @@ function makeLibrary(base, name, withProject = true) {
   return root
 }
 
-test('空环境：默认落新院 libraries.json，空清单＋可观测 warning，不读旧清单', () => {
+test('空环境：默认落新院 libraries.json，空清单＋可观测 warning', () => {
   const f = fixture('empty')
   try {
     assert.equal(defaultLibraryManifestPath(f.env).replaceAll('\\', '/'), f.manifest.replaceAll('\\', '/'))
@@ -73,7 +73,7 @@ test('写读往返：schemaVersion/libraries/source/addedAt 逐字段保真，�
     assert.equal(doc.libraries[0].addedAt, '2026-11-24T00:00:00.000Z')
     const read = readLibraryManifest({ env: f.env })
     assert.equal(read.libraries[0].path.replaceAll('\\', '/'), root.replaceAll('\\', '/'))
-    assert.equal(read.legacy, false)
+    assert.equal(read.legacy, undefined, '旧 legacy 字段已退役')
   } finally { f.cleanup() }
 })
 
@@ -93,20 +93,23 @@ test('坏档：如实 warning，登记拒绝且不覆盖原文', async () => {
   } finally { f.cleanup() }
 })
 
-test('旧清单只读兼容：显式路径可读并归一 source，绝不自动导入或写回', async () => {
-  const f = fixture('legacy-read')
+test('反向守卫：旧形状 {recentProjects:[…]} 回空清单＋PREFERENCES_SHAPE，不写回', async () => {
+  const f = fixture('old-shape')
   const root = makeLibrary(f.base, '旧库')
   try {
-    seedOldList(f, [{ path: root, name: '旧库', at: '2026-11-20T00:00:00.000Z' }])
-    const before = readFileSync(f.oldList, 'utf-8')
-    const read = readLibraryManifest({ preferencesPath: f.oldList })
+    seedOtherShape(f, [{ path: root, name: '旧库', at: '2026-11-20T00:00:00.000Z' }])
+    const before = readFileSync(f.otherList, 'utf-8')
+    const read = readLibraryManifest({ preferencesPath: f.otherList })
     assert.equal(read.ok, true)
-    assert.equal(read.legacy, true)
-    assert.equal(read.libraries.length, 1)
-    assert.equal(read.libraries[0].source, 'imported')
-    assert.ok(read.warnings.some((warning) => warning.code === 'PREFERENCES_LEGACY_READONLY'))
-    assert.equal(readFileSync(f.oldList, 'utf-8'), before)
-    assert.equal(existsSync(f.manifest), false)
+    assert.deepEqual(read.libraries, [])
+    assert.ok(read.warnings.some((warning) => warning.code === 'PREFERENCES_SHAPE'))
+    assert.equal(readFileSync(f.otherList, 'utf-8'), before)
+    assert.equal(existsSync(f.manifest), false, '不自动导入到新清单')
+
+    const { registerLibrary } = await import('../src/host/libraryManage.mjs')
+    const rejected = await registerLibrary(f.otherList, root, '旧库')
+    assert.equal(rejected.ok, false)
+    assert.equal(readFileSync(f.otherList, 'utf-8'), before)
   } finally { f.cleanup() }
 })
 
@@ -123,28 +126,44 @@ test('旧导入通道退役：端点、协议函数、前端状态与设置入�
   assert.doesNotMatch(settings, /pinaxImportSectionHtml|pinax-import-/u)
 })
 
-test('不回落旧环境变量：PINAX_OS_PREFERENCES 指向旧清单也按空清单回', () => {
+test('不回落旧环境变量：PINAX_OS_PREFERENCES 指向旧形状文件也按空清单回', () => {
   const f = fixture('legacy-env')
+  const root = makeLibrary(f.base, '旧库')
   try {
-    const root = makeLibrary(f.base, '旧库')
-    seedOldList(f, [{ path: root, name: '旧库' }])
-    const env = { LOCALAPPDATA: f.base, APPDATA: '', PINAX_OS_PREFERENCES: f.oldList }
+    seedOtherShape(f, [{ path: root, name: '旧库' }])
+    const env = { LOCALAPPDATA: f.base, APPDATA: '', PINAX_OS_PREFERENCES: f.otherList }
     const read = readLibraryManifest({ env })
     assert.equal(read.libraries.length, 0)
     assert.equal(read.path.replaceAll('\\', '/'), f.manifest.replaceAll('\\', '/'))
   } finally { f.cleanup() }
 })
 
-test('--root 显式授权不依赖清单；写通道拒绝 next-preferences.json', async () => {
-  const f = fixture('root')
+test('反向守卫：目标文件存在且不是本产品形状 → 拒绝覆盖，原文不变（不认文件名）', async () => {
+  const f = fixture('write-protect')
   const root = makeLibrary(f.base, '显式库')
   try {
+    mkdirSync(dirname(f.otherList), { recursive: true })
+    writeFileSync(f.otherList, JSON.stringify({ recentProjects: [{ path: root }] }), 'utf-8')
+    const denied = await writeLibraryManifest(f.otherList, [{ path: root, name: '显式库' }])
+    assert.equal(denied.ok, false)
+    assert.match(denied.message, /不是本产品库清单形状/u)
+    assert.equal(readFileSync(f.otherList, 'utf-8'), JSON.stringify({ recentProjects: [{ path: root }] }))
+
     const allowlist = createRootAllowlist([], [root])
     assert.equal(allowlist.isAllowed(root), true)
-    const denied = await writeLibraryManifest(f.oldList, [{ path: root, name: '显式库' }])
-    assert.equal(denied.ok, false)
-    assert.match(denied.message, /不写回/u)
-    assert.equal(existsSync(f.oldList), false)
+  } finally { f.cleanup() }
+})
+
+test('同文件名但内容为本产品形状 → 允许追加，证明写保护只看内容不看文件名', async () => {
+  const f = fixture('shape-based')
+  const root = makeLibrary(f.base, '显式库')
+  try {
+    mkdirSync(dirname(f.otherList), { recursive: true })
+    writeFileSync(f.otherList, JSON.stringify({ schemaVersion: 1, libraries: [] }), 'utf-8')
+    const written = await writeLibraryManifest(f.otherList, [{ path: root, name: '显式库' }])
+    assert.equal(written.ok, true)
+    assert.equal(written.libraries.length, 1)
+    assert.equal(readFileSync(f.otherList, 'utf-8'), `${JSON.stringify(written.document, null, 2)}\n`)
   } finally { f.cleanup() }
 })
 

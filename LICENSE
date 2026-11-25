@@ -6,5 +6,6 @@ Copyright (c) 2026 skkbsgzf
 Unless required by applicable law or agreed to in writing, software
 distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND.
 
-在此之上，core/ 目录下的底座模块逐字 vendor 自 Pinax-next（见 core/VENDORED.md），
-其上游许可与出处以 VENDORED.md 的记载为准，本文件不改变这些文件的许可归属。
+本软件的内核部分最初逐字取自 Pinax-next（分支 feat/pinax-electron-next，提交 70a4f44；其上游按
+PolyForm Noncommercial License 1.0.0 授权），现已全部转为 OpenStory 自持实现；逐文件出处见
+docs/kernel-provenance.md。上述来源代码原有的版权与许可归属，不因本文件而改变。

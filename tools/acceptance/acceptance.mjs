@@ -403,9 +403,9 @@ check('S2.9', 'S2', `OS-172 显示名＝入口名＝磁盘目录名＝日志模�
   fourNameAudit.ok ? '模块清单、页签、命名表与日志模块四向一致' : fourNameAudit.violations.join('; '))
 
 const lineageAudit = auditLineageNames()
-check('S2.10', 'S2', `OS-172 产品谱系名与作者身份（扫描 ${lineageAudit.scanned} 文件）`,
+check('S2.10', 'S2', `OS-172/189 产品谱系名与作者身份（扫描 ${lineageAudit.scanned} 文件）`,
   lineageAudit.ok, lineageAudit.violations.slice(0, 6),
-  lineageAudit.ok ? '仅保留迁移兼容、旧院隔离与核心理出' : `${lineageAudit.violations.length} 处陈旧谱系名或身份声明`)
+  lineageAudit.ok ? '一次性升级单独放行＋逐行出处白名单，整文件豁免已取消' : `${lineageAudit.violations.length} 处陈旧谱系名或身份声明`)
 
 console.log('\n── S3 前端一致性 ──')
 

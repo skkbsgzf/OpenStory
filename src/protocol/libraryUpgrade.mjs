@@ -67,6 +67,16 @@ export function normalizeCarrierId(id) {
     : id
 }
 
+/**
+ * 旧库根判定（OS-189）：历史运行态目录名只在本文件出现，调用方只拿到布尔值。
+ * 用于导入适配器拒绝「拿旧库当原稿目录」；是否升级仍由 ensureLibraryUpgraded 决定。
+ */
+export function isLegacyLibraryRoot(root) {
+  const raw = text(root).trim()
+  if (!raw) return false
+  return existsSync(join(resolve(raw), '.pinax'))
+}
+
 function mapProjectDocument(document, now) {
   const carriers = document.carriers && typeof document.carriers === 'object' && !Array.isArray(document.carriers)
     ? document.carriers

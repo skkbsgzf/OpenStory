@@ -32,7 +32,7 @@ async function makeFixture() {
   await writeFile(join(root, '.history', '不该出现.md'), '秘密', 'utf-8')
   const preferencesPath = join(base, 'libraries.json')
   await writeFile(preferencesPath, JSON.stringify({
-    recentProjects: [{ path: root, name: '夹具库', at: '2026-11-15T00:00:00.000Z' }]
+    schemaVersion: 1, libraries: [{ path: root, name: '夹具库', at: '2026-11-15T00:00:00.000Z' }]
   }), 'utf-8')
   return { base, root, preferencesPath }
 }
@@ -69,11 +69,11 @@ test('filesGet 带目录：递归文本清单（深度内）、非文本与 .his
   }
 })
 
-test('filesGet 安全：路径逃逸/.pinax/多段目录名全部拒收', async () => {
+test('filesGet 安全：路径逃逸/.openstory/多段目录名全部拒收', async () => {
   const { base, root } = await makeFixture()
   try {
     assert.equal((await listLibraryFiles(root, '../secret')).ok, false)
-    assert.equal((await listLibraryFiles(root, '.pinax')).ok, false)
+    assert.equal((await listLibraryFiles(root, '.openstory')).ok, false)
     assert.equal((await listLibraryFiles(root, '大纲/卷一')).ok, false, 'dir 必须单段')
     assert.equal((await listLibraryFiles(root, '大纲\\卷一')).ok, false)
     assert.equal((await listLibraryFiles(root, '.')).ok, false)

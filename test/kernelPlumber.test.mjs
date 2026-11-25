@@ -196,17 +196,19 @@ test('TMP_PREFIX 是 .openstory-tmp-（recoverInterruptedWrites 的回收口径�
   assert.equal(TMP_PREFIX, namingEntry('libraryStorage').tempPrefix)
 })
 
-test('recoverInterruptedWrites 回收新旧临时文件，绝不误删正文；目录缺失＝skipped', async () => {
+test('recoverInterruptedWrites 只回收当前前缀；旧前缀残留留给升级归档，绝不误删正文', async () => {
   const { root, cleanup } = await fixture()
   try {
     await writeFile(join(root, '001-第一章.md'), '正文', 'utf-8')
     await writeFile(join(root, `${TMP_PREFIX}aaaaaa`), '半成品', 'utf-8')
     await writeFile(join(root, `${TMP_PREFIX}bbbbbb`), '半成品', 'utf-8')
-    await writeFile(join(root, '.pinax-tmp-cccccc'), '旧版半成品', 'utf-8')
+    const oldResidue = '.pinax-tmp-cccccc'
+    await writeFile(join(root, oldResidue), '旧版半成品，由一次性升级归档', 'utf-8')
     const recovered = await recoverInterruptedWrites(root)
     assert.equal(recovered.skipped, false)
-    assert.deepEqual(recovered.removed.sort(), [`${TMP_PREFIX}aaaaaa`, `${TMP_PREFIX}bbbbbb`, '.pinax-tmp-cccccc'])
-    assert.deepEqual((await readdir(root)).sort(), ['001-第一章.md'])
+    assert.deepEqual(recovered.removed.sort(), [`${TMP_PREFIX}aaaaaa`, `${TMP_PREFIX}bbbbbb`])
+    assert.deepEqual((await readdir(root)).sort(), [oldResidue, '001-第一章.md'])
+    assert.equal(await readFile(join(root, oldResidue), 'utf-8'), '旧版半成品，由一次性升级归档')
     const missing = await recoverInterruptedWrites(join(root, '不存在'))
     assert.deepEqual(missing, { removed: [], skipped: true })
   } finally { await cleanup() }

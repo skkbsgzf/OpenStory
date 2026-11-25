@@ -8,7 +8,7 @@
 
 | 层 | 名称 | 归属 | 内容 | 存储 |
 |---|---|---|---|---|
-| 项目层 | **世界书**（原「参考」） | 每个库自己的创作型条目管理知识库 | 人物/场景/事件/大纲等条目，Obsidian 式标签双链 | 库内 `参考/` 目录 |
+| 项目层 | **世界书**（原「参考」） | 每个库自己的创作型条目管理知识库 | 人物/场景/事件/大纲等条目，Obsidian 式标签双链 | 库内 `世界书/` 目录 |
 | 项目层 | **习惯** | 每个库自己的写作习惯表 | 文风自述、禁用词、惯用词、禁用句式、禁用修辞、描述公式（正向＋负向词条） | 库内 `习惯/habits.json` |
 | 系统层 | **全局知识库**（本目录＋Qbook） | 行业知识、手法套路、编辑视角、读者视角 | 31 个技能包＋Qbook 效率数据 | `skills/`（仓内，暂不开源）＋ `D:/Qbook/`（仓外） |
 
@@ -20,8 +20,8 @@
 |---|---|---|
 | Agent 对话/润笔/续写 | craft 类技能（按体裁匹配）＋ 习惯表＋世界书链接 | `systemPromptFor` 注入；习惯表在**任何成文产出前**强制注入 |
 | 分析 verdict 层（OS-56/57） | fanqie-pattern-playbook 硬统计、de-ai-writing 清单、shuangwen-chapter-check 十项、reader-needs-ironrules 铁律、**习惯表**（禁用词/句式扫描＋口吻参数） | `analysis.mjs` 的 buildEditorial（每条 verdict 带 `source` 出处） |
-| 推演/富化 | Pinax fact 推演链（core/pinax vendor）＋ TRACE_HEADER 溯源纪律 | `deduceEngine.mjs` / `enrichEngine.mjs` |
-| 条目页签/拆解 | fact 数据契约 | core/pinax factFileStore |
+| 推演/富化 | 本仓自持 fact 推演链（原出处见 `docs/kernel-provenance.md`）＋ TRACE_HEADER 溯源纪律 | `src/modules/deduce/deduceEngine.mjs` / `src/services/enrichEngine.mjs` |
+| 条目页签/拆解 | fact 数据契约 | `src/modules/fact/`（自持实现，出处见 `docs/kernel-provenance.md`） |
 | MCP 分发材料 | 上面所有模块的使用口径 | `mcp/skills/*.md`（这是对外材料，不是知识库本体） |
 
 ## 技能包清单（31 个，按用途）

@@ -45,8 +45,8 @@ OS-172 起磁盘运行态、目录与谱系名归 OpenStory；旧格式只在 `l
 | `naming.mjs` | 命名单一真源（OS-148；OS-172 收口）：`NAMING_TABLE` / `LOG_MODULES` / `namingEntry` / `logModuleForDir`（目录→日志模块名）/ `PAGE_TO_DIR_LOCAL`（页签名→目录名），**从 `public/views/registry.mjs` 原样 re-export**。前端显示名、页签／入口名、目录名与日志模块名同名；当前正名为 `世界书`、`故事源`、`扮演`、`导入导出`，`产物` 只作页面名；`libraryStorage` 另登记 `.openstory` 与 OpenStory 谱系名 | 写通道（chapterWrite 的 moduleOfPath）、各模块写日志取 `LOG_MODULES`、扮演会话目录名、体裁裁剪（genres.excludedDirNames）与库升级 |
 | `chapters.mjs` 等 | 各协议件本体（index.mjs 聚合它们的导出） | 协议层内部与 API/宿主层 |
 | `factDomain.mjs` | fact 域原语＋`buildFactPack` 的**只 re-export** 转供面（实现真源 `src/kernel/fact/domain/index.mjs`／`src/kernel/fact/factPack.mjs`） | 推演引擎（`src/modules/deduce/engine/`）——模块不许直引 `src/kernel/**`（S2.1），这是唯一不开口子的取数路径（OS-155） |
-| `courtyard.mjs` | 本机院子唯一路径来源：`courtyardBase/Root/Path`、`ensureCourtyard`、`legacyCourtyardPath`；首启只一次性拷贝冻结旧院（跳 `*.tmp-*`/`daemon.lock`）并留迁移标记（OS-166），旧院不改写、不删除 | 模块层与 services 层的本机路径解析（agentStore/kbAdapter/genres/nativePicker/runtimes/skills/stylePacks/suites/systemPrompt/uiPreferences）；`src/host/courtyard.mjs` 只做原样转供 |
-| `libraryManifest.mjs` | OpenStory 自持库清单（OS-167）：`libraries.json` 读写；`source=openstory\|imported`，旧 `imported-pinax` 只在兼容输入中归一为 `imported`。不扫描或导入 Pinax 清单，不写回旧 `next-preferences.json` | 宿主 `authorize.mjs` 的 root 白名单源、library 模块登记；OS-172 后 library 零独占端点，库身份靠库内 `.openstory/project.json` |
+| `courtyard.mjs` | 本机院子唯一路径来源：`courtyardBase/Root/Path`、`ensureCourtyard`；只负责「新院不存在就建」（OS-189），其余本机目录不读、不写、不删，已有标记文件也不动 | 模块层与 services 层的本机路径解析（agentStore/kbAdapter/genres/nativePicker/runtimes/skills/stylePacks/suites/systemPrompt/uiPreferences）；`src/host/courtyard.mjs` 只做原样转供 |
+| `libraryManifest.mjs` | OpenStory 自持库清单（OS-167/189）：只读 `{schemaVersion, libraries}`，`source=openstory\|imported`；非本产品形状一律告警不写回，写保护按内容形状而非文件名 | 宿主 `authorize.mjs` 的 root 白名单源、library 模块登记；OS-172 后 library 零独占端点，库身份靠库内 `.openstory/project.json` |
 | `libraryUpgrade.mjs` | 旧库一次性升级（OS-172）：整库备份、运行态/目录/谱系名/存量路径迁移、冲突加后缀、退役目录留档、journal 回滚与 `upgrade.json` 幂等标记；运行态不双读 | daemon 在模块闸与业务 handler 前对显式授权 root 调 `ensureLibraryUpgraded()`；旧库迁移与测试 |
 
 ## 版本约定

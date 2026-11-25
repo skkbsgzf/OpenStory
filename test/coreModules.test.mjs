@@ -39,7 +39,7 @@ async function makeLibrary() {
   await writeFile(join(root, '正文', '001-风雪山神庙.md'), '# 第一章\n林冲推门而入。', 'utf-8')
   await writeFile(join(root, '世界书', '梁山.md'), '# 梁山\n好汉聚义之地。', 'utf-8')
   const preferencesPath = join(base, 'libraries.json')
-  await writeFile(preferencesPath, JSON.stringify({ recentProjects: [{ path: root, name: '夹具库' }] }), 'utf-8')
+  await writeFile(preferencesPath, JSON.stringify({ schemaVersion: 1, libraries: [{ path: root, name: '夹具库' }] }), 'utf-8')
   return { base, root, preferencesPath }
 }
 

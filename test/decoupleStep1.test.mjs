@@ -163,7 +163,7 @@ test('planImport：出计划不落盘，源目录逐字节未动，认不出的�
   }
 })
 
-test('planImport：源目录不存在 / 目标不是项目 / 源含 .pinax 都拒绝', async () => {
+test('planImport：源目录不存在 / 目标不是项目 / 源带旧运行态目录都拒绝且提示不露旧名', async () => {
   const base = await mkdtemp(join(tmpdir(), 'openstory-os123-guard-'))
   try {
     const { source } = await makeSource(base)
@@ -176,11 +176,13 @@ test('planImport：源目录不存在 / 目标不是项目 / 源含 .pinax 都�
     const notProject = planImport({ sourcePath: source, targetPath: base })
     assert.equal(notProject.ok, false, '目标缺 .openstory/project.json 要拒绝')
 
-    const pinned = await mkdir(join(base, '带pinax', '.pinax'), { recursive: true })
+    const legacySource = join(base, '旧库源')
+    const pinned = await mkdir(join(legacySource, '.pinax'), { recursive: true })
     assert.ok(pinned)
-    const withPinax = planImport({ sourcePath: join(base, '带pinax'), targetPath: target })
-    assert.equal(withPinax.ok, false)
-    assert.match(withPinax.error.message, /\.pinax/)
+    const withLegacy = planImport({ sourcePath: legacySource, targetPath: target })
+    assert.equal(withLegacy.ok, false)
+    assert.match(withLegacy.error.message, /这已经是一个库，请直接在库清单里打开/u)
+    assert.doesNotMatch(withLegacy.error.message, /\.pinax/iu, '错误信息不出现旧目录名')
   } finally {
     await rm(base, { recursive: true, force: true })
   }

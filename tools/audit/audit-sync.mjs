@@ -78,7 +78,7 @@ const report = [
   {
     id: 'UI状态',
     upstream: '界面操作',
-    downstream: '.pinax/ui-state.json',
+    downstream: '.openstory/ui-state.json',
     versionField: '无（整份覆盖）',
     checkExists: 'n/a',
     note: '偏好类，不需要版本。'

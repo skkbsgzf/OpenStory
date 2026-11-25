@@ -3,7 +3,6 @@
  *
  * 实现落在 `src/modules/storage/courtyard.mjs`，由 storage.roots 能力持有；
  * 本文件只做宿主兼容转供，不复制路径规则。
- * 新院＝%LOCALAPPDATA%/OpenStory/；旧院＝%LOCALAPPDATA%/PinaxNext/，
- * **原样保留给 Pinax 桌面端，永不删除、永不改写**。
+ * 院子＝%LOCALAPPDATA%/OpenStory/；本机其余目录一律不读、不写、不删。
  */
 export * from '../modules/storage/courtyard.mjs'

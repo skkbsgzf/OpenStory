@@ -200,7 +200,7 @@ export function errorEnvelope(code, message, details) {
   return { ok: false, error }
 }
 
-/** 库记录规整：recentProjects 只保底 path，其余字段缺了就补人话默认值。 */
+/** 库记录规整：只保底 path，其余字段缺了就补人话默认值。 */
 export function normalizeLibraryRecord(value) {
   if (!isPlainObject(value)) return null
   const path = text(value.path).trim()

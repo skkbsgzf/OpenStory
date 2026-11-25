@@ -19,7 +19,7 @@
  *   · 只绑 127.0.0.1（不监外网，对齐 OpenDesign sidecar）；不做 HTTPS/隧道/多用户。
  *     OS-136 来源防护四层闸：Host（全局）／Origin／Sec-Fetch-Site（/api）只认本机回环，
  *     带 body 必须 application/json——作者浏览器里的任意网页都写不进本机 daemon。
- *   · `root` 必须命中库清单（`%LOCALAPPDATA%/OpenStory/libraries.json` 的 recentProjects）
+ *   · `root` 必须命中库清单（`%LOCALAPPDATA%/OpenStory/libraries.json` 的 libraries）
  *     或启动时显式 `--root=` 授权；文件路径 resolve 后必须落在 root 内（照 S2 的路径逃逸拒收写法）。
  *   · 正文写入不做 revision 闸（v1 边界）：OpenStory 与 Electron 同时写同一库时，只有写前
  *     `.history/<file>.bak-<时间戳>` 这层粗保护。真正的冲突保护归后续写协议接入。

@@ -8,16 +8,13 @@ const CONCEPT_MODULES = Object.freeze({
   chapters: 'chapters', worldbook: 'worldbook', script: 'script', storysource: 'storysource',
   roleplay: 'roleplay', habits: 'habits', exchange: 'exchange'
 })
-const COMPATIBILITY_FILES = new Set([
-  'src/protocol/libraryUpgrade.mjs',
-  'src/modules/storage/libraryManifest.mjs',
-  'src/modules/storage/courtyard.mjs',
-  'src/host/courtyard.mjs',
-  'src/kernel/atomicWrite.mjs',
-  'src/modules/library/importAdapter.mjs',
-  'src/modules/library/textUtil.mjs',
-  'src/protocol/README.md'
-])
+/** OS-189：只此一处是一次性升级，必须认得旧名；其余旧名一律逐行白名单。 */
+const UPGRADE_FILE = 'src/protocol/libraryUpgrade.mjs'
+
+/**
+ * 出处声明逐行白名单：键＝相对路径，值＝「该行必须包含的片段」。
+ * 不设整文件豁免——任何新增旧名（含旧目录名常量）都默认报红。
+ */
 const PROVENANCE_LINES = Object.freeze({
   'src/modules/fact/fact/domain/vocabulary.js': ['pinax pedia-v2 ADR'],
   'src/kernel/index.mjs': ['谱系：'],
@@ -27,11 +24,7 @@ const PROVENANCE_LINES = Object.freeze({
   'src/modules/worldbook/worldbookFileContract.mjs': ['谱系：', 'Pinax 运行时', 'Pinax 富关系', 'Pinax 扩展'],
   'src/protocol/worldbookContract.mjs': ['@pinax/core'],
   'src/modules/storage/projectDoc.mjs': ['Pinax-next'],
-  'src/modules/deduce/deduceEngine.mjs': ['Pinax vendor 链'],
-  'src/modules/deduce/deduceSession.mjs': ['Pinax vendor 链'],
-  'src/modules/deduce/engine/index.mjs': ['pinaxAdapter.deduce'],
-  'public/scriptFact.mjs': ['core/pinax'],
-  'skills/README.md': ['Pinax fact 推演链', 'core/pinax']
+  'src/modules/library/textUtil.mjs': ['谱系：函数体逐字拷贝自 Pinax-next', '@pinax/core']
 })
 
 function walk(dir, prefix, out = []) {
@@ -90,7 +83,7 @@ export function auditLineageNames(repo = REPO) {
   for (const root of roots) {
     for (const rel of walk(join(repo, root), root)) {
       scanned += 1
-      if (COMPATIBILITY_FILES.has(rel)) continue
+      if (rel === UPGRADE_FILE) continue
       const allowed = PROVENANCE_LINES[rel] ?? []
       const lines = readFileSync(join(repo, rel), 'utf-8').split('\n')
       lines.forEach((line, index) => {

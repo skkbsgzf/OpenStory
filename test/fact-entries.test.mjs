@@ -54,7 +54,7 @@ async function makeLibrary(base) {
   // 历史汇总档名仍只作兼容输入：没有 entries 时静默跳过，不冒充一本书。
   await writeFile(join(root, '故事源', '拆解汇总.json'), JSON.stringify({ note: '聚合产物' }), 'utf-8')
   const preferencesPath = join(base, 'libraries.json')
-  await writeFile(preferencesPath, JSON.stringify({ recentProjects: [{ path: root, name: '条目库' }] }), 'utf-8')
+  await writeFile(preferencesPath, JSON.stringify({ schemaVersion: 1, libraries: [{ path: root, name: '条目库' }] }), 'utf-8')
   return { root, preferencesPath }
 }
 
@@ -155,7 +155,7 @@ test('fact/entries：库里还没有故事源条目＝FACT_EMPTY（专用空态�
     const root = join(base, '空库')
     await mkdir(join(root, '正文'), { recursive: true })
     const preferencesPath = join(base, 'libraries.json')
-    await writeFile(preferencesPath, JSON.stringify({ recentProjects: [{ path: root, name: '空库' }] }), 'utf-8')
+    await writeFile(preferencesPath, JSON.stringify({ schemaVersion: 1, libraries: [{ path: root, name: '空库' }] }), 'utf-8')
     const daemon = await startDaemon({ port: 0, preferencesPath, env: { ...process.env, LOCALAPPDATA: base }, logger: { log() {} } })
     try {
       const res = await fetch(`http://127.0.0.1:${daemon.port}/api/fact/entries?root=${encodeURIComponent(root)}`)
@@ -184,7 +184,7 @@ test('fact/entries：有档但全部读不出来＝FACT_UNREADABLE（坏档不�
     await writeFile(join(root, '故事源', '碎档.json'), '{ not json', 'utf-8')
     await writeFile(join(root, '故事源', '形状档.json'), JSON.stringify({ book: { id: 'x' }, entries: 'nope' }), 'utf-8')
     const preferencesPath = join(base, 'libraries.json')
-    await writeFile(preferencesPath, JSON.stringify({ recentProjects: [{ path: root, name: '坏档库' }] }), 'utf-8')
+    await writeFile(preferencesPath, JSON.stringify({ schemaVersion: 1, libraries: [{ path: root, name: '坏档库' }] }), 'utf-8')
     const daemon = await startDaemon({ port: 0, preferencesPath, env: { ...process.env, LOCALAPPDATA: base }, logger: { log() {} } })
     try {
       const res = await fetch(`http://127.0.0.1:${daemon.port}/api/fact/entries?root=${encodeURIComponent(root)}`)
