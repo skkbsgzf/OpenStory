@@ -5,7 +5,7 @@
 | 批次 | 清账批（E）·段内修复（上一张号＋字母，接 OS-190） |
 | 对应 | OS-190 任务 2（页面 id＝slug）与任务 6（门禁）——验收发现只落到了 manifest 与升级映射，前端页签没改 |
 | 依赖 | OS-190（`f68331c`） |
-| 允许改动 | `public/**`、`src/protocol/libraryUpgrade.mjs`、`tools/verify/verify-os172-naming.mjs`、`test/tabRegistry.test.mjs`、`test/os172Naming.test.mjs`、`test/libraryUpgrade.test.mjs`、`test/naming.test.mjs`、`ARCHITECTURE.md`、`docs/number-anchors.json` |
+| 允许改动 | `public/**`、`src/protocol/libraryUpgrade.mjs`、`tools/verify/verify-os172-naming.mjs`、`test/**`、`ARCHITECTURE.md`、`docs/number-anchors.json`（首轮 `allow` 漏了四个引用旧页签 id 的模块测试，施工方改它们被范围检查停线；代码本身无缺陷，已由监督线补齐清单并代跑门禁） |
 | 风险 | 中——动前端页签 id 与视图键；对外契约名不变 |
 | 状态 | 待派 |
 
@@ -53,3 +53,12 @@
 - 机器门禁全绿；红线测试 `test/tabRegistry.test.mjs`、`test/os172Naming.test.mjs`、`test/libraryUpgrade.test.mjs`、`test/naming.test.mjs` 全绿。
 - 任务 3 的反证、任务 4 的两条输出贴进回报。
 - `git diff --check` 干净；`node tools/number-anchors.mjs` 与 `npm run arch:stats` 跑过（`ARCHITECTURE.md` 与 `docs/number-anchors.json` 已列入允许改动）。
+
+## 验收记录（监督线，2026-11-25）
+
+- 提交 `cfc550f`。施工首轮因我的 `allow` 漏了 `test/**`（四个模块测试引用旧页签 id）被范围检查停线，未提交；代码本身完整，补齐清单后由监督线代跑门禁并提交。
+- 已验：`TAB_REGISTRY` 三个页面型页签 `id` 与 `view` 均为 `chapters`／`worldbook`／`roleplay`，与 manifest 一致；`go()` 遇未注册视图 `console.error` 并退回首个可见页签；升级映射的每个目标值都是前端认得的视图键（`dir:参考`→`worldbook`、`dir:推演`→`roleplay`、`dir:拆解`→`dir:故事源`、`正文`→`chapters`）。
+- 门禁补齐：`verify-os172-naming` 对 `TAB_REGISTRY` 的 `id` 与 `manifest.id`、非 `dir:` 的 `view` 与 `id` 逐条断言。
+- 反证（监督线亲跑）：把 worldbook 页签 `view` 临时改回 `reference` → 门禁退出码 1、点名 `TAB_REGISTRY:worldbook: view「reference」≠ id`；还原后退出码 0、`violations: []`；`test/tabRegistry.test.mjs` 同时红 4 例、还原后 12/12。
+- 全量 812／810／0／2、门禁 27／0／0、数字锚与架构统计一致、隔离 e2e 全绿。
+- 结论：**已验收**。
