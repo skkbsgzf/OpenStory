@@ -7,7 +7,7 @@
 | 依赖 | OS-197a、OS-198a（同轮连派的最后一单——数字以它们的终态为准） |
 | 允许改动 | `docs/**`、`README.md`、`AGENTS.md`、`ARCHITECTURE.md`、`tools/number-anchors.mjs`、`tools/acceptance/acceptance.mjs`、`test/numberAnchors.test.mjs`、`test/finalAudit.test.mjs`、`docs/number-anchors.json`、`docs/workorders/OS-199a-docs-rework.md` |
 | 风险 | 低——只动文档与数字锚门禁 |
-| 状态 | 待派 |
+| 状态 | 已验收（监督线，2026-11-25）；提交 `18e7bed` |
 
 通用规则见 [`COMMON-RULES.md`](COMMON-RULES.md)。
 
@@ -153,3 +153,10 @@ LIMITATIONS:
 - BOARD 与 OS-197a/198a/199a 工单头仍标「待派」，与本轮实现终态不同步；这些文件不在六处返工范围，仅在规划 §4 注明「看板状态可能滞后，验收以监督线为准」。
 - 未改任何产品代码（`src/**`、`public/**`），未碰 LICENSE、真库、8807，未执行 git 写操作。
 ```
+
+## 验收记录（监督线，2026-11-25）
+
+- 提交 `18e7bed`；门禁与数字锚两轮全绿。
+- 六处逐条核过：`README.md` 仓结构表 4 行（`src/protocol`／`src/kernel`／`src/services`／`workflows/`）与分层示意图已按实现改写；ADR 0002 §2.5／§7.1／§2.3 证据列／§5.1／§九标题与状态已改；ADR 0003 §二改为「开门前基线（逐条附现状）」；协议文档删去 `host-api@2` 现存入口行、把热切换口径与 ADR 对齐；`AGENTS.md` 分层说明已改；规划 §1.3a 两个 slug 与运行时套件归属不再是「待定」。
+- 反证：把 `README.md` 端点数改错一位 → `number-anchors --check` 红（施工方已贴，监督线复核）。
+- 结论：**已验收**。

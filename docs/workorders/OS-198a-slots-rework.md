@@ -7,7 +7,7 @@
 | 依赖 | OS-198、OS-197a（同轮连派，先 197a 后本单） |
 | 允许改动 | `src/**`、`public/**`、`test/**`、`tools/**`、`docs/**`、`ARCHITECTURE.md`、`AGENTS.md`、`README.md`、`docs/UX-STRUCTURE.md`、`docs/workorders/OS-198a-slots-rework.md` |
 | 风险 | 中——动前端的「＋」面板与页面路由；`app.js` 只减不增 |
-| 状态 | 待派 |
+| 状态 | 已验收（监督线，2026-11-25）；提交 `453df91` |
 
 通用规则见 [`COMMON-RULES.md`](COMMON-RULES.md)。
 
@@ -81,3 +81,13 @@ LIMITATIONS:
 - 仓库内不含 `probe-198.mjs`，无法复跑监督线 15 项探针；其覆盖点已用 daemon 级测试（投影顺序、第三方页收放、路径穿越 403、模块页 403/404、引用资源 200）等价覆盖。
 - 环境无浏览器自动化，未做真浏览器逐帧冒烟；「收起→＋面板勾回→刷新仍在」以真实 daemon＋库内 ui-state 落盘读写＋前端纯函数 round-trip 测试验证。
 ```
+
+## 验收记录（监督线，2026-11-25）
+
+- 提交 `453df91`；全量 843／841 过／2 条件跳过／0 挂；门禁全绿；隔离 e2e 全绿；`app.js` 10,110→10,107。
+- 接口探针 `probe-198.mjs` **15 项全过**：未声明的文件与 `module.manifest.json` 现在都是 **403**（返工前是 200）；`secret.txt` 一并被拒。
+- 新增探针 `probe-198c.mjs`：入口引用的 `style.css`／`app.js`／`logo.png` 200；没被引用的 `unused.js` 404、`data.json` 404；`module.manifest.json` 与 `index.mjs` 403——「只服务声明的入口及其引用资源」成立。
+- 门禁反证 (a) 成立（监督线亲跑）：在 `public/app.js` 里放一个页签顺序数组（行数不变）→ S2.12 红并点名 `public/app.js: ['artifacts', 'chapters', …]`；还原后绿。
+- **浏览器复验**（隔离 daemon＋冒烟副本库，截图归档 `D:\Pinax-e2e\os-shots\os198-slots-20261125\`）：进库→页签栏「产物／正文／世界书／故事源／习惯／扮演／外部台」；用 × 收起「外部台」→「＋」面板里出现「外部台」（未勾选）→ 勾回 → 刷新重进仍在 → 点开页面照常调通端点（`FRAME-OK`）。返工前的「收起来回不来」已翻转。
+- `test/tabRegistry.test.mjs` 补了面板含 iframe、死种子、无世界书目录门控三项；死种子 `DEFAULT_HIDDEN_TABS` 的写入已由 `sanitizeHiddenTabs` 过滤。
+- 结论：**已验收**。

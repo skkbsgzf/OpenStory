@@ -7,7 +7,7 @@
 | 依赖 | OS-197 |
 | 允许改动 | `src/**`、`test/**`、`tools/acceptance/**`、`docs/**`、`ARCHITECTURE.md`、`AGENTS.md`、`README.md`、`docs/workorders/OS-197a-migration-rework.md` |
 | 风险 | 中——动的是迁移重试与能力解析两条主干路径；对外契约一个不变 |
-| 状态 | 待派 |
+| 状态 | 已验收（监督线，2026-11-25）；提交 `bb248eb` |
 
 通用规则见 [`COMMON-RULES.md`](COMMON-RULES.md)。
 
@@ -84,3 +84,11 @@ VERIFIED:
 
 LIMITATIONS: 无
 ```
+
+## 验收记录（监督线，2026-11-25）
+
+- 提交 `bb248eb`；全量 840／838 过／2 条件跳过／0 挂（本单落地时）；门禁全绿；隔离 e2e 全绿；`app.js` 未变。
+- 监督线探针（隔离 daemon＋临时院子＋临时模块根）：
+  - `probe-197.mjs` **13 项全过**。此前未过的场景 5 翻转：迁移器抛错 → 修好 → `/api/module-roots/refresh` → 数据 v2、路由指向覆盖者。迁移器入口已计入内容摘要（`moduleRoots.mjs` 多入口扫描），迁移器 URL 附 `?osv=<摘要>` 使 ESM 缓存失效。
+  - `probe-197b.mjs` 翻转：覆盖者移除后直接 `resolveCapability(root, 'text.analyze')` 返回 `{ ok:false, code:'DATA_VERSION_AHEAD' }`——旧供给者句柄不再发放，宿主自有端点、钩子、MCP 同一条路一起拒绝。
+- 结论：**已验收**。
