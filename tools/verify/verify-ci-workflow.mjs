@@ -114,7 +114,7 @@ function parseYamlSubset(text) {
 
 const workflow = parseYamlSubset(source)
 assert.equal(workflow.name, 'OpenStory CI')
-assert.deepEqual(Object.keys(workflow.on).sort(), ['pull_request', 'push'])
+assert.deepEqual(Object.keys(workflow.on).sort(), ['pull_request', 'push', 'workflow_dispatch'])
 assert.equal(workflow.permissions.contents, 'read')
 const job = workflow.jobs.gates
 assert.equal(job['runs-on'], 'ubuntu-latest')
