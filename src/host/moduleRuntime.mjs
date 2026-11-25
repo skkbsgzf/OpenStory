@@ -344,10 +344,20 @@ async function buildLayer(env, key) {
     .filter(({ item }) => kept.has(item.id))
     .flatMap(({ result }) => Object.entries(result.contribution.contracts ?? {}))))
   const boundary = boundaryHooksStatus()
-  const extraWarnings = boundary.available ? [] : [{
-    code: 'MODULE_BOUNDARY_HOOKS_UNAVAILABLE',
-    message: '当前 Node 不支持解析钩子：边界只做静态提示；依赖文件已变时需重启 daemon 才生效'
-  }]
+  // 有登记根才谈得上边界门：空信任表时钩子本就没装（也没有要拦的东西），
+  // 报「当前 Node 不支持」是假警报。只在「有根却没装上」或「Node 不支持」时提示。
+  const boundaryNeeded = table.roots.length > 0
+  const extraWarnings = (boundary.available || !boundaryNeeded)
+    ? []
+    : [boundary.supported
+      ? {
+          code: 'MODULE_BOUNDARY_HOOKS_UNAVAILABLE',
+          message: `解析钩子没装上（${boundary.reason || '未知原因'}）：边界只做静态提示；依赖文件已变时需重启 daemon 才生效`
+        }
+      : {
+          code: 'MODULE_BOUNDARY_HOOKS_UNSUPPORTED',
+          message: `当前 Node（${process.versions.node}）没有 module.registerHooks：边界只做静态提示；需 Node ≥ 22.15`
+        }]
   const allWarnings = Object.freeze([...warnings, ...extraWarnings])
   const report = Object.freeze({
     roots: Object.freeze(table.roots.map((root) => Object.freeze({

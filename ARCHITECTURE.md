@@ -53,7 +53,7 @@
 <!-- arch-stats:start -->
 | 分工 | 范围 | 文件数 | 行数 |
 |---|---|---:|---:|
-| 底座 | `src/host/`＋`src/kernel/` | 28 | 4,365 |
+| 底座 | `src/host/`＋`src/kernel/` | 28 | 4,375 |
 | 契约 | `src/api/` | 17 | 3,887 |
 | 协议 | `src/protocol/` | 34 | 5,890 |
 | 内核件（class: kernel，7） | `src/modules/agent-runtime/`＋`src/modules/deduce/`＋`src/modules/fact/`＋`src/modules/media/`＋`src/modules/prose/`＋`src/modules/storage/`＋`src/modules/text/` | 59 | 11,205 |
@@ -71,7 +71,7 @@
 | `public/app.js` 行数 | 10,107 |
 | `public/views/*.mjs` 文件数 | 16 |
 | 契约端点数（`ENDPOINTS` 键数） | 108 |
-| 测试文件数（`test/*.test.mjs`） | 109 |
+| 测试文件数（`test/*.test.mjs`） | 110 |
 
 **模块清单（由 `src/modules/*/module.manifest.json` 自动生成）**
 
