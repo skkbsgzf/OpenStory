@@ -56,16 +56,7 @@ export function auditNamingConsistency({ repo = REPO, naming = NAMING_TABLE, tab
     if (row.dir !== (row.tab ?? row.dir)) violations.push(`${row.id}: 目录与页签/入口名不一致`)
     if (row.logModule && row.logModule !== row.dir) violations.push(`${row.id}: 日志模块与目录不一致`)
   }
-  for (const entry of tabs.filter((item) => !item.retired && item.label)) {
-    const row = byId.get(entry.concept)
-    if (!row) {
-      violations.push(`${entry.id}: concept ${entry.concept} 未登命名表`)
-      continue
-    }
-    if (row.tab !== entry.label) violations.push(`${entry.id}: 页签名与命名表不一致`)
-    if ((row.dirTab === false ? null : row.dir) !== (entry.dir ?? null)) violations.push(`${entry.id}: 目录与命名表不一致`)
-    if ((row.panelLabel ?? null) !== (entry.panelLabel ?? null)) violations.push(`${entry.id}: 面板名与命名表不一致`)
-  }
+  // OS-198：视图行为表只剩 id/view/渲染行为——不再核对页签名/目录/模块归属（这些只在 manifest）。
   for (const [concept, moduleId] of Object.entries(CONCEPT_MODULES)) {
     const rel = `src/modules/${moduleId}/module.manifest.json`
     let manifest
@@ -104,14 +95,8 @@ export function auditNamingConsistency({ repo = REPO, naming = NAMING_TABLE, tab
       if (slot.page !== manifest.id) violations.push(`${rel}: slot.page「${slot.page}」≠ slug「${manifest.id}」`)
     }
   }
-  // OS-190a 断言④：前端页签 id/视图键与 manifest 页面 id 对齐（目录型 view 保留 dir: 前缀）。
+  // OS-190a 断言④：前端视图键与页面 id 对齐（目录型 view 保留 dir: 前缀）。
   for (const entry of tabs) {
-    if (entry.module) {
-      const rel = `src/modules/${entry.module}/module.manifest.json`
-      let manifest
-      try { manifest = JSON.parse(readFileSync(join(repo, rel), 'utf-8')) } catch { violations.push(`${rel}: 模块 manifest 缺失（页签 ${entry.id}）`); continue }
-      if (manifest.id !== entry.id) violations.push(`TAB_REGISTRY:${entry.id}: id ≠ manifest.id「${manifest.id}」`)
-    }
     if (entry.view && !entry.view.startsWith('dir:') && entry.view !== entry.id) {
       violations.push(`TAB_REGISTRY:${entry.id}: view「${entry.view}」≠ id`)
     }

@@ -8,10 +8,10 @@ import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { startDaemon } from '../src/host/daemon.mjs'
-import { moduleManifest, moduleOfEndpoint, isModuleDisabledFor } from '../src/protocol/modules.mjs'
+import { moduleManifest, moduleOfEndpoint, isModuleDisabledFor, MODULE_MANIFESTS, slotProjection } from '../src/protocol/modules.mjs'
 import { ENDPOINTS } from '../src/api/contracts.mjs'
 import { allHandlers } from '../src/host/handlerTable.mjs'
-import { computeTabDefs } from '../public/views/registry.mjs'
+import { projectedTabDefs, BUILTIN_PAGE_IDS } from '../public/views/registry.mjs'
 import { artifactsHtml } from '../public/views/workbenchViews.mjs'
 
 function esc(value) {
@@ -62,8 +62,9 @@ test('daemon：停用后 /api/artifacts 409 MODULE_DISABLED，启用恢复', asy
 
 test('页签归属：artifacts 停用后产物页签消失', () => {
   const ctx = { current: { path: '/lib' }, libDirs: [], brief: null, briefGenre: null, settingsOpen: false }
-  assert.ok(computeTabDefs(ctx).map((d) => d.view).includes('artifacts'))
-  const disabled = computeTabDefs({ ...ctx, modulesEnabled: { artifacts: false, chapters: true } }).map((d) => d.view)
+  const slots = (enabled) => slotProjection(MODULE_MANIFESTS, enabled, { builtinPages: new Set(BUILTIN_PAGE_IDS) }).slots
+  assert.ok(projectedTabDefs({ slots: slots(), ctx }).some((def) => def.view === 'artifacts'))
+  const disabled = projectedTabDefs({ slots: slots({ artifacts: false }), ctx }).map((def) => def.view)
   assert.ok(!disabled.includes('artifacts'))
   assert.ok(disabled.includes('chapters'), '其他页签不受影响')
 })

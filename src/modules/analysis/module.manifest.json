@@ -19,7 +19,8 @@
   "slots": [
     {
       "slot": "right",
-      "page": "analysis"
+      "page": "analysis",
+      "order": 10
     }
   ],
   "settingsHint": "分析没有独立的可调参数：右栏勾哪几张卡片在右栏里直接勾（ui-state analyzeEnabled），去 AI 味阈值随扮演的改写闸走。"

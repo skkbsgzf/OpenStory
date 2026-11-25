@@ -33,25 +33,74 @@ function deepFreeze(value) {
 }
 
 /**
- * 按 manifest 装载序生成各 slot 的稳定编排：同一 slot 内先按装载序、再按 page id 排；
- * 停用的模块不出现。`enabled` 缺省视为启用（与 readModuleEnabled 的缺省一致）。
+ * 按 manifest 装载序生成各 slot 的稳定编排：同一 slot 内先按声明的 `order`、再按装载序、
+ * 最后按 page id 排；停用的模块不出现。`enabled` 缺省视为启用（与 readModuleEnabled 的缺省一致）。
+ * `orderHints` 是「本机同 id 覆盖内置但没重写 order」时的位置兜底（键＝`slot:page`）。
  */
-export function slotPlacements(manifests = [], enabled = {}) {
+export function slotPlacements(manifests = [], enabled = {}, orderHints = new Map()) {
   const out = {}
-  manifests.forEach((manifest, order) => {
+  manifests.forEach((manifest, loadOrder) => {
     if (manifest?.class !== 'workbench' || enabled?.[manifest.id] === false) return
     for (const placement of manifest.slots ?? []) {
       if (!isRegisteredSlot(placement?.slot) || !String(placement?.page ?? '').trim()) continue
+      const hint = orderHints.get(`${placement.slot}:${placement.page}`)
+      const order = Number.isInteger(placement.order) ? placement.order : (Number.isInteger(hint) ? hint : null)
       ;(out[placement.slot] ??= []).push({
         slot: placement.slot,
         page: placement.page,
         module: manifest.id,
-        order
+        order,
+        loadOrder
       })
     }
   })
   for (const items of Object.values(out)) {
-    items.sort((left, right) => left.order - right.order || left.page.localeCompare(right.page))
+    items.sort((left, right) => {
+      const lo = left.order ?? Number.POSITIVE_INFINITY
+      const ro = right.order ?? Number.POSITIVE_INFINITY
+      return lo - ro || left.loadOrder - right.loadOrder || left.page.localeCompare(right.page)
+    })
   }
   return deepFreeze(out)
+}
+
+/**
+ * OS-198：面向 UI 的 slot 投影。每个位置只带渲染所需字段：
+ *   `{ slot, page, module, label, view }`，iframe 页面另带 `entry`。
+ * `view` 三态：builtin（前端有内置视图）／iframe（本机模块自带页面入口）／none（不可渲染）。
+ * 页面 id → label 从 manifest 的 pages[] 取；不可渲染的位置进 warnings，不静默消失。
+ */
+export function slotProjection(manifests = [], enabled = {}, { builtinPages = new Set(), localIds = new Set(), orderHints = new Map() } = {}) {
+  const placements = slotPlacements(manifests, enabled, orderHints)
+  const byModule = new Map(manifests.map((manifest) => [manifest.id, manifest]))
+  const warnings = []
+  const slots = {}
+  for (const [slot, items] of Object.entries(placements)) {
+    slots[slot] = items.map((item) => {
+      const manifest = byModule.get(item.module)
+      const page = (manifest?.pages ?? []).find((entry) => entry.id === item.page)
+      const label = page?.label || item.page
+      const iframe = page?.kind === 'iframe' && Boolean(page.entry) && localIds.has(item.module)
+      // 内置视图优先：本机模块即使覆盖同 id 页面并声明 iframe，前端仍走内置渲染。
+      const view = builtinPages.has(item.page) ? 'builtin' : (iframe ? 'iframe' : 'none')
+      if (view === 'none') {
+        warnings.push({
+          code: 'MODULE_PAGE_UNRENDERABLE',
+          module: item.module,
+          slot,
+          page: item.page,
+          message: `${item.module}/${item.page} 声明了 ${slot} 位置，但前端没有内置视图、也没有 iframe 入口`
+        })
+      }
+      return {
+        slot,
+        page: item.page,
+        module: item.module,
+        label,
+        view,
+        ...(view === 'iframe' ? { entry: page.entry } : {})
+      }
+    })
+  }
+  return { slots: deepFreeze(slots), warnings: deepFreeze(warnings) }
 }

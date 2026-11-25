@@ -3,7 +3,7 @@
 > **当前阶段（2026-11-25）：清账批**——D 批验收有条件通过，作者裁定「遗留全部做完，不接受妥协」「待定里的 Pinax 业务必须全部退役」。12 张工单在 [`BOARD.md`](BOARD.md)「清账批」段，规划见 [`docs/plan/cleanup-batch-20261125.md`](../plan/cleanup-batch-20261125.md)，验收记录见 [`OS-185-188-batch-d-acceptance.md`](OS-185-188-batch-d-acceptance.md)。
 > **派发方式**：CodeBuddy CLI（`.zcode/os-batch-runner.mjs`，模型 `hy4flash`），每轮由监督线验收后再开下一轮；提交由编排器做，**任何执行者不要自行 push**。
 > **e2e 口径（2026-11-25 起）**：一律走隔离脚本 `tools/verify/verify-os172-e2e.mjs`（临时 daemon＋临时 `LOCALAPPDATA`＋假上游）；编排器不重启也不连接 8807——常驻进程是作者在用的旧 daemon，新版「首次打开即升级真库」，碰它等于替作者升级真库。
-> **当前数字锚**：测试 812 例（810 过 / 0 挂 / 2 条件跳过）、门禁 27 过 / 0 挂 / 0 警、`app.js` 10,338 行（上限 10,500）、端点 105、41 个独占端点、宿主域端点 0、测试文件 102。机器真源见 `docs/number-anchors.json`。
+> **当前数字锚**：测试 836 例（834 过 / 0 挂 / 2 条件跳过）、门禁 29 过 / 0 挂 / 0 警、`app.js` 10,110 行（上限 10,500）、端点 108、41 个独占端点、宿主域端点 0、测试文件 109。机器真源见 `docs/number-anchors.json`。
 > **OS-172 口径**：运行态只有 `.openstory/`；目录为 `世界书/`、`故事源/`、`扮演/`、`导入导出/`；新库为 `openstory-project@4`／`openstory.carrier.*`／`openstory-wiki-derived@2`；旧库首次打开时一次性升级，备份、冲突后缀与 retired 留档齐全，不删旧数据。
 > **作者的库**：真库升级与切换由作者亲自做（先停旧 daemon 再开新版）；测试一律临时夹具库，绝不碰 `D:/Projects/**` 与真实院子。
 >

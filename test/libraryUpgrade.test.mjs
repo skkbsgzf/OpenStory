@@ -286,11 +286,9 @@ test('OS-172 读侧兼容旧 spec 列表，daemon 入口串行且缓存成功结
 
 /** OS-190：旧 id 直接映射到新 id（扁平/嵌套键都认，重复打开幂等）。并入既有测试计数。 */
 async function checkOs190IdMapping() {
-  // OS-190a：升级目标值必须是前端认得的视图键（目录型 dir: 视图也算）。
-  const views = new Set([
-    ...TAB_REGISTRY.map((entry) => entry.view),
-    ...TAB_REGISTRY.filter((entry) => entry.dir).map((entry) => `dir:${entry.dir}`)
-  ])
+  // OS-190a：升级目标值必须是前端认得的视图键。OS-198 起 TAB_REGISTRY 不再存目录，
+  // 目录型视图（dir:剧本/故事源/日志）本身就在 view 列里，直接取即可。
+  const views = new Set(TAB_REGISTRY.map((entry) => entry.view))
   for (const [from, to] of Object.entries(VIEW_ID_RENAMES)) {
     assert.ok(views.has(to), `VIEW_ID_RENAMES[${from}]＝${to} 不在前端视图集合`)
   }

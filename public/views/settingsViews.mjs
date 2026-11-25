@@ -745,10 +745,13 @@ function settingsHtml() {
   // OS-196：本机模块的交互只在这里接线——app.js 不新增动作分支（OS-143 增量冻结）。
   if (typeof document !== 'undefined' && typeof api === 'function' && typeof render === 'function') {
     async function reloadLocalState() {
-      const payload = await api('/api/plugins')
+      const root = state.current?.path || ''
+      const payload = await api(`/api/plugins${root ? `?root=${encodeURIComponent(root)}` : ''}`)
       state.plugins = {
         ...(state.plugins || {}),
         loaded: true,
+        slots: payload.slots && typeof payload.slots === 'object' ? payload.slots : null,
+        slotWarnings: Array.isArray(payload.slotWarnings) ? payload.slotWarnings : [],
         moduleRoots: Array.isArray(payload.moduleRoots) ? payload.moduleRoots : [],
         localModules: Array.isArray(payload.localModules) ? payload.localModules : []
       }

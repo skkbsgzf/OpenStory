@@ -19,7 +19,8 @@
   "slots": [
     {
       "slot": "tab",
-      "page": "script"
+      "page": "script",
+      "order": 40
     }
   ],
   "settingsHint": "剧本是 剧本/ 目录下的 .md，写盘与正文同走 chapter 通道；格式互转在剧本页里做，停用不删除剧本文件。"

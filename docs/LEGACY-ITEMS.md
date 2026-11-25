@@ -3,7 +3,8 @@
 > OS-123→133 解耦与治理批次建立本台账（2026-11-23），OS-168 按现状总审（2026-11-24），OS-172 拆除互认并正名（2026-11-25），D 批收口（2026-11-25）。
 > 这份文档是「没做完/不做」事项的**唯一台账**：凡不在四档之内的事，等于「已做完且有测试与门禁护栏」。
 > 新事项先入档再动工；做完就删行。OS-157～168 全部有测试与门禁护栏，不入档。
-> 四档条目数：已裁定 6／作者动作 1／后续可选 11／明确不做 5。
+> 四档条目数：已裁定 6／作者动作 1／后续可选 10／明确不做 5。
+> 清账批 OS-189～OS-199 已把 D 批遗留全部收口（Pinax 残留退役、迁移器接线、slot 投影、本机模块五门、文档数字锚）；本台账只保留仍成立与明确不做项。
 
 ## 【已裁定】——作者裁定固化，细节以 ADR 为准（裁定本身不是待办）
 
@@ -28,15 +29,14 @@
 |---|---|---|
 | **AG-UI 对接第三方消费者** | AG-UI 协议出口已接入：`agentEvents.mjs` 内部事件模型是 canonical（唯一真源），daemon SSE 帧已是它的投影（OS-128/131）。但至今**没有任何第三方客户端**消费 AG-UI 帧——协议出口在等一个真实消费者，在此之前不扩面。 | `agentEvents.mjs:1-20`（定位注释「未来第三方客户端…」） |
 | **RAG 导出端点（OS-165 新开放）** | ADR 0001 §五已落地 `/api/exchange/export`（pedia/v1 与 JSONL 两个出向格式），但面向 RAG 的专用导出仍标「规划」——它的目标消费者、切块粒度与检索契约都还没定，先不做空壳端点。 | `docs/adr/0001-fact-schema-unification.md` §五；`src/api/contracts/exchange.mjs` |
-| **自动化 UI 测试（OS-165 新开放）** | 当前护栏是 Node 测试（812 例）＋验收门禁（27 项）＋纯视图金样；浏览器侧有人工冒烟与 OS-172 的 675/420 窄屏验收。没有 Playwright 一类的端到端点击测试——引入它要带浏览器依赖与构建链，与「零构建依赖」宪法冲突，等真实回归痛点出现再评估。 | `test/*.test.mjs`；`tools/acceptance/acceptance.mjs`；OS-157 验收记录 |
+| **自动化 UI 测试（OS-165 新开放）** | 当前护栏是 Node 测试（836 例）＋验收门禁（29 项）＋纯视图金样；浏览器侧有人工冒烟与 OS-172 的 675/420 窄屏验收。没有 Playwright 一类的端到端点击测试——引入它要带浏览器依赖与构建链，与「零构建依赖」宪法冲突，等真实回归痛点出现再评估。 | `test/*.test.mjs`；`tools/acceptance/acceptance.mjs`；OS-157 验收记录 |
 | **fs.watch 常驻监听** | 外部编辑（VSCode 改文件）不感知：世界书索引只有本页编辑后 1.6s 防抖重扫。常驻 fs.watch 是候选修法，但会带来监听器生命周期与跨平台噪声问题，未做——现状「手动刷新可用」。 | `docs/AUDIT-SYNC.md` 缺口 3（世界书索引） |
 | **MCP 写工具扩面** | MCP 24 工具读写分级：读自由、写有 .history 备份语义、absorb/agent 对话不开。写面保持最小（正文/世界书回写），更多写操作（如批量回填、条目删除）走界面——外部 agent 的写越少，稿子越安全。扩面前先想清楚备份语义是否覆盖。 | `mcp.mjs:1-25`（读写分级红线）；`docs/ACCEPTANCE.md` |
 | **故事源大纲双向编辑** | 故事源三形态（大纲/表格/图表）是从 fact 条目＋wiki 章纲**只读算出**的投影；「在大纲里改字→写回 fact 条目」未实现，目前只能手动改条目。 | `docs/AUDIT-ARTIFACTS.md` 缺失转换「故事源文本→fact 条目（未实现）」 |
 | **fact 增量 PATCH** | fact 写通道是整文件写（revision 自增＋operationId 幂等＋expectedRevision 乐观并发）。条目数大之后整文件写放大，可选做增量 PATCH——但会动自有内核写协议（S2 writeFactFile），属落盘契约变更，须连同迁移金样一起评估。 | `src/kernel/fact` 已退役为运行位置；当前实现位于 `src/modules/fact/fact/factFileStore.mjs`，由 `fact.store@3` 能力供给；`docs/kernel-provenance.md` |
 | **多轨并行图** | 关系图谱是「世界书笔记＋故事源词条」同图单视图；角色时间线已有泳道图（storySource 事件面积图＋泳道）。「多轨并行」（多条剧情线并行推进的专用视图）未做，等真实创作需求出现再排。 | `public/storySource.mjs`（泳道）；`public/graph.mjs`（单图） |
 | **世界书人物单页档案** | 人物信息分散在：世界书笔记（自由书写）＋故事源词条（fact 条目详情）。「按人物聚合的单页档案」（一处看全某人设定/事件/关系）未做——与「fact 条目→世界书笔记」缺失转换同源，都是 fact↔笔记的单向缺口。 | `docs/AUDIT-ARTIFACTS.md` 缺失转换「fact 条目→世界书笔记（未实现）」 |
-| **第三方可执行模块动态装载（D4 裁定暂缓）** | 三类 manifest 与能力图已就位，suite 已无代码化；kernel/workbench 的可执行代码仍只来自仓内受审源码。开门需同时满足 G1–G5（本机根显式授权、快照与激活缓存含代码摘要、运行期 import 边界、候选快照原子切换、覆盖回退/迁移安全阀联调），当前均未满足。 | `docs/adr/0003-dynamic-loading.md`；`src/protocol/slots.mjs`；`src/services/suites.mjs` |
-| **任务中心扩任务类型** | jobCenter 是通用后台任务容器（kind: image/vision/enrich/import/…），前端悬浮球轮询。加新任务类型＝纯增量（submitJob 带新 kind），无架构障碍——只是没有想做的任务，先空着。 | `jobCenter.mjs:9-10,57` |
+| **任务中心扩任务类型** | jobCenter 是通用后台任务容器（kind: image/vision/enrich/import/…），前端悬浮球轮询。加新任务类型＝纯增量（submitJob 带新 kind），无架构障碍——只是没有想做的任务，先空着。 | `src/host/jobCenter.mjs:9-10,57` |
 
 ## 【明确不做】——有理由的否决，勿再提议；翻案需作者裁定
 

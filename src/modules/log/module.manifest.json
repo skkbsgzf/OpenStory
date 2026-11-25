@@ -19,7 +19,8 @@
   "slots": [
     {
       "slot": "tab",
-      "page": "log"
+      "page": "log",
+      "order": 50
     }
   ],
   "settingsHint": "日志由各写操作经 changelog 落库内 .openstory/log/；本工作台只读呈现，没有可调参数。停用只收起日志页签，日志数据不动。"

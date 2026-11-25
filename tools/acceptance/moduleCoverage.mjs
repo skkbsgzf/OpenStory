@@ -12,7 +12,6 @@ import { readdirSync, existsSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { ENDPOINTS } from '../../src/api/contracts.mjs'
-import { TAB_REGISTRY } from '../../public/views/registry.mjs'
 import {
   MODULE_MANIFESTS, MODULE_SOURCES, MODULE_SOURCE_GROUPS, MODULE_SPEC,
   CAPABILITY_SNAPSHOT, validateModuleManifest
@@ -120,9 +119,17 @@ export function coverageReport() {
   const claimed = new Set(MODULE_MANIFESTS.flatMap((manifest) => manifest.endpoints))
   const uncoveredEndpoints = Object.keys(ENDPOINTS)
     .filter((id) => !claimed.has(id) && !hostEndpoints.has(id))
-  const uncoveredTabs = TAB_REGISTRY.filter((entry) => !entry.retired && entry.label)
-    .filter((entry) => !entry.module && !HOST_OWNED_TABS[entry.id])
-    .map((entry) => entry.id)
+  // OS-198：页签归属只看 manifest 的 slots——每个 tab 位置必须落到本模块声明的 page 上。
+  const uncoveredTabs = MODULE_MANIFESTS
+    .filter((manifest) => manifest.class === 'workbench')
+    .flatMap((manifest) => (manifest.slots ?? [])
+      .filter((placement) => placement.slot === 'tab')
+      .map((placement) => ({ module: manifest.id, page: placement.page })))
+    .filter(({ module, page }) => {
+      const manifest = MODULE_MANIFESTS.find((item) => item.id === module)
+      return !(manifest?.pages ?? []).some((item) => item.id === page)
+    })
+    .map(({ module, page }) => `${module}:${page}`)
   return {
     moduleDirs: dirs,
     manifestIds: MODULE_MANIFESTS.map((manifest) => manifest.id),

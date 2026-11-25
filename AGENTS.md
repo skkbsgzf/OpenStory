@@ -157,6 +157,8 @@ L4 自持层→L2 自有内核 `src/kernel/`→L1 磁盘库；OS-157 起 L2/L3 �
    | 界面状态（页签、模块开关、选中项） | `<库>/.openstory/ui-state.json` |
    | 套件（业务插件）启停与设置值 | `<库>/.openstory/plugins/suite-state.json`（OS-160 起随库走；机器级同名文件降为「没开库时的缺省」，旧库不迁移） |
    | 每一版修改的 diff 与日志 | `<库>/.openstory/log/<模块>/<yyyy-mm>.jsonl` |
+   | 模块能力迁移日志与数据版本 | `<库>/.openstory/migrations/<能力>/<from>-to-<to>.json`（`openstory-capability-migration@1`，成功写 `done`；旧供给者再接到请求回 `DATA_VERSION_AHEAD`） |
+   | 能力迁移前的数据快照 | `<库>/.history/capability-<能力>-<from>-to-<to>-<时间戳>/`（失败按 journal 自动恢复；不自动做降级迁移） |
    | 旧版原文备份（二进制快照） | 同目录 `.history/<file>.bak-<stamp>`（现有机制，保留；OS-137 起滚动保留：每文件配额 50 份＋日锚，绝不删最新，删除留痕 `.openstory/log/history-prune/`） |
    | 旧库一次性升级备份与升级报告 | `<库>/.history/upgrade-<时间戳>/`；`<库>/.openstory/upgrade.json` |
    | 升级后退役目录留档 | `<库>/<旧目录名>.retired-<时间戳>/`（只读留档，不参与运行） |
@@ -242,20 +244,25 @@ L4 自持层→L2 自有内核 `src/kernel/`→L1 磁盘库；OS-157 起 L2/L3 �
     - 交付前必须在 **675px（DSH 右栏停靠宽）** 与 **420px** 两档宽度自查：正文可读、
       页签可横滚、控件不裁切。断点按**宽度**写，不按设备名/面板名写。
 
-20. **app.js 增量冻结（OS-143，作者立宪：活装配壳只减不增）。**
-    `public/app.js` 是消费壳，页签/路由唯一真源在 `public/views/registry.mjs`
-    （TAB_REGISTRY 声明式注册表：新增页签＝给注册表加一条纯数据，app.js 一行不动；
-    行为语义见 `test/tabRegistry.test.mjs` 的旧算法对拍）。自此：
+20. **app.js 增量冻结（OS-143，作者立宪：活装配壳只减不增；OS-198 扩到 slot 编排）。**
+    `public/app.js` 是消费壳。**「哪个工作面出现在哪里、什么顺序」只由 manifest 决定**：
+    底座 `slotPlacements()`／`slotProjection()` 从 21 份 manifest 生成投影，`GET /api/plugins`
+    下发 `slots`（每项 `{slot,page,module,label,view}`，iframe 另带 `entry`），前端照投影渲染。
+    `public/views/registry.mjs` 的 `TAB_REGISTRY` **只是视图行为表**（页面 id → 渲染名/图标/
+    作用域/可关闭/可见条件），不再有页签名、目录归属、模块归属或顺序。自此：
+    - 新增内置页签＝manifest 加 `pages[]` 与 `slots[]` 位置，需要渲染时再在 `TAB_REGISTRY`
+      登记行为；**不要在前端另写页签名单或顺序**。第三方页面用
+      `pages[].kind:'iframe'`＋`entry`，daemon 只对已登记本机模块开 `/module-page/<id>/<entry>`。
     - **app.js 只许减不许增**（修 bug 除外）；视图渲染函数本体**只出不进**——
       迁出（G5 起逐个搬去模块）时在 `VIEW_RENDERERS` 插座改注册名，注册表只存名字、
       绝不 import app.js（依赖方向恒为壳→表，门禁 S2.2 扫描面已含 views/registry.mjs）。
     - **OS-146 补钉**：app.js 只留**接线**（取数 → 转交，必要时一行占位）；
       **视图渲染函数一律在 `public/views/`**，写在 app.js 里算违约（判例：
       `settingsModuleSettingsSectionHtml` 已迁 `views/settingsAggregation.mjs:moduleSettingsSectionHtml`）。
-    - 页签词表/退场表/体裁裁剪/作用域校验不准改回 app.js 内联；
-      词表外目录不出页签（OS-92）、退场目录无条件过滤（OS-84/86）的改动只能发生在注册表。
-    - 判据：改页签行为时 `git diff public/app.js` 必须为零行增长；扩展页签只 diff
-      `public/views/registry.mjs`。
+    - 投影拉不到时如实显示「拿不到工作台清单」，**不退回硬编码名单**；停用工作台后
+      投影消失、页签/卡片/动作位跟着消失，重新启用即回来。
+    - 判据：改页签行为时 `git diff public/app.js` 必须为零行增长；页签顺序只 diff manifest，
+      视图行为只 diff `public/views/registry.mjs`；门禁 S2.12 钉死前端无第二份页签清单。
 
 21. **命名单一真源（OS-148/G8a·G8d；OS-172 收口）：新增或改名一个概念，先改命名表再改代码。**
     - 表＝`public/views/registry.mjs` 的 `NAMING_TABLE`（概念 id ＋ 六列：`dir` 磁盘目录 /
@@ -267,7 +274,7 @@ L4 自持层→L2 自有内核 `src/kernel/`→L1 磁盘库；OS-157 起 L2/L3 �
     - 前端显示名、页签／入口名、库内目录名、日志模块名必须同名，一个概念只保留一个正名 slug。
       当前正名为 `世界书`、`故事源`、`扮演`、`导入导出`；`产物` 是页面名，不另设目录。
       历史别名只在 `libraryUpgrade.mjs` 作一次性迁移输入，不退回当前展示或双读。
-    - 名字只从表里取：页签条目的 `dir`/`label`/`panelLabel` 由 `tabNaming(概念id)` 派生；
+    - 名字只从表里取：页签名在 manifest `pages[].label` 与表 `tab` 列逐字一致（S2.5）；
       写日志用 `LOG_MODULES.<概念>`；按目录推断日志用 `logModuleForDir()`；
       前端「视图→日志模块」用 `logModuleForView()`。`DIR_LABELS`/`DIR_ORDER`/
       `READONLY_DIRS`/`PAGE_TO_DIR_LOCAL` 同样由表逐键派生，不得退回手写字面量。
@@ -283,8 +290,8 @@ L4 自持层→L2 自有内核 `src/kernel/`→L1 磁盘库；OS-157 起 L2/L3 �
 ## 改完必跑（验收线，详见 `docs/ACCEPTANCE.md`）
 
 ```bash
-node .zcode/run-gate.mjs                    # ① 全量单测（832 例）
-node tools/acceptance/acceptance.mjs        # ② 交付标准 S0–S4 门禁（28 检查，Rea 式证据；S0=布局宪法）
+node .zcode/run-gate.mjs                    # ① 全量单测（836 例）
+node tools/acceptance/acceptance.mjs        # ② 交付标准 S0–S4 门禁（29 检查，Rea 式证据；S0=布局宪法）
 # ③ .ua/ 知识图谱增量（/understand，skill 在 ~/.zcode/skills/understand*）
 # ④ 前端批次给作者截图讲场景（对照 design-system/DESIGN.md + docs/UX-STRUCTURE.md）
 ```

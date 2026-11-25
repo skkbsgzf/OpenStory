@@ -14,12 +14,14 @@ import { effectiveSkillsDirs } from '../../services/systemPrompt.mjs'
 import { shelfDomainData } from '../../protocol/shelfManifests.mjs'
 import { listAllPlugins } from '../../protocol/plugins.mjs'
 import {
+  MODULE_MANIFESTS,
   MODULE_MANIFEST_WARNINGS, MODULE_MANIFEST_NOTICES, MODULE_SOURCE_GROUPS,
-  moduleRole, moduleSource
+  moduleRole, moduleSource, slotProjection
 } from '../../protocol/modules.mjs'
+import { BUILTIN_PAGE_IDS } from '../../protocol/naming.mjs'
 import { capabilityStartupReport } from '../../protocol/capabilityGraph.mjs'
 import {
-  moduleRootsReport, manifestsFor, sourcesFor, rebuildRuntime, snapshotFor
+  moduleRootsReport, effectiveManifestsFor, sourcesFor, rebuildRuntime, snapshotFor, migrationStateFor
 } from '../../host/moduleRuntime.mjs'
 import { previewRoot, addRoot, removeRoot, moduleRootsPath } from '../../host/moduleRoots.mjs'
 import {
@@ -77,6 +79,52 @@ export async function genresGet(ctx) {
   return sendJson(res, 200, { ok: true, genres: items, warnings })
 }
 
+/** OS-197：迁移失败点名到本机模块；报告与快照用同一份 excluded。 */
+function annotateLocalModules(localModules, migrations) {
+  const failed = new Map((migrations.failures ?? []).map((item) => [item.plugin, item]))
+  return localModules.map((item) => {
+    const failure = failed.get(item.id)
+    return failure
+      ? { ...item, status: 'invalid', gate: 'migration', reason: failure.message }
+      : item
+  })
+}
+
+function migrationReport(state, snapshot) {
+  const dataAhead = (state.dataVersions ?? []).flatMap((data) => {
+    const route = snapshot.routes?.[data.capability]
+    if (!route || route.version >= data.to) return []
+    return [{
+      capability: data.capability,
+      dataVersion: data.to,
+      provider: route.provider,
+      providerVersion: route.version,
+      journalPath: data.journalPath,
+      message: `库数据已是 ${data.capability}@${data.to}，旧供给者 ${route.provider}@${route.version} 会误读`
+    }]
+  })
+  return {
+    ok: state.ok,
+    ran: state.ran.map((item) => ({ module: item.plugin, capability: item.capability, from: item.from, to: item.to, journalPath: item.journalPath, backupPath: item.backupPath, restored: item.restored })),
+    skipped: state.skipped.map((item) => ({ module: item.plugin, capability: item.capability, from: item.from, to: item.to, journalPath: item.journalPath })),
+    failures: state.failures.map((item) => ({
+      module: item.plugin ?? item.disable?.[0] ?? '',
+      capability: item.capability,
+      from: item.from,
+      to: item.to,
+      reason: item.reason,
+      message: item.message,
+      journalPath: item.journalPath,
+      backupPath: item.backupPath,
+      rolledBack: item.rolledBack,
+      restored: item.restored
+    })),
+    excluded: state.excluded,
+    dataVersions: state.dataVersions,
+    dataAhead
+  }
+}
+
 export async function pluginsGet(ctx) {
   const { res, request, context, allowlist } = ctx
   // OS-160：root 可选——带库（开着库）才授权并写库内；不带＝设置页全局入口，回落机器级缺省。
@@ -93,10 +141,25 @@ export async function pluginsGet(ctx) {
     runtimesDirs: context.runtimesDirs
   })
   // OS-196：模块清单与能力报告取当前层（本机同 id 覆盖内置，摘要如实上报）。
-  const manifests = await manifestsFor(context.env)
+  const manifests = await effectiveManifestsFor(auth.root, context.env)
   const sources = new Map((await sourcesFor(context.env)).map((source) => [source.id, source]))
   const report = await moduleRootsReport(context.env)
+  const migrations = await migrationStateFor(auth.root, context.env)
+  const snapshot = await snapshotFor(auth.root, context.env)
   const sourceOf = (id) => sources.get(id) ?? moduleSource(id) ?? {}
+  // OS-198：当前库的 slot 投影——页签/右栏/设置区/宿主动作只照这份数据渲染。
+  const orderHints = new Map()
+  for (const manifest of MODULE_MANIFESTS) {
+    for (const placement of manifest.slots ?? []) {
+      if (Number.isInteger(placement.order)) orderHints.set(`${placement.slot}:${placement.page}`, placement.order)
+    }
+  }
+  const localIds = new Set(report.localModules.filter((item) => item.status === 'loaded').map((item) => item.id))
+  const projection = slotProjection(manifests, snapshot.enabled ?? {}, {
+    builtinPages: new Set(BUILTIN_PAGE_IDS),
+    localIds,
+    orderHints
+  })
   return sendJson(res, 200, {
     ok: true,
     plugins: listed.plugins,
@@ -110,6 +173,7 @@ export async function pluginsGet(ctx) {
       spec: manifest.spec,
       id: manifest.id,
       name: manifest.name,
+      version: manifest.version,
       class: manifest.class,
       role: moduleRole(manifest),
       builtin: manifest.builtin,
@@ -129,11 +193,15 @@ export async function pluginsGet(ctx) {
     moduleManifestWarnings: MODULE_MANIFEST_WARNINGS,
     moduleManifestNotices: MODULE_MANIFEST_NOTICES,
     moduleSourceGroups: MODULE_SOURCE_GROUPS,
-    capabilityReport: capabilityStartupReport(await snapshotFor(auth.root, context.env)),
+    capabilityReport: capabilityStartupReport(snapshot),
+    // OS-197：能力迁移的执行／失败／已迁数据与回退保护（真实链路报告）。
+    moduleMigrations: migrationReport(migrations, snapshot),
     // OS-196 G1/G2/G5：本机层报告（含每个模块的摘要、状态与失败门原因）。
     moduleRoots: report.roots,
-    localModules: report.localModules,
+    localModules: annotateLocalModules(report.localModules, migrations),
     moduleSlotPlacements: report.slotPlacements,
+    slots: projection.slots,
+    slotWarnings: projection.warnings,
     moduleRootWarnings: report.warnings,
     ...(report.blocked ? { moduleRootBlocked: report.blocked } : {}),
     ...(listed.warnings.length ? { warnings: listed.warnings } : {})

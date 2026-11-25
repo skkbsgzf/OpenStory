@@ -179,9 +179,20 @@ function validatePages(errors, raw) {
     if (!text(page.label).trim()) errors.push(`pages[${index}] 缺 label`)
     if (seen.has(id)) errors.push(`pages 重复：${id}`)
     seen.add(id)
-    const extra = Object.keys(page).filter((key) => !['id', 'label'].includes(key))
-    if (extra.length) errors.push(`pages[${index}] 只允许 id/label，非法字段：${extra.join(',')}`)
-    return { id, label: text(page.label).trim() }
+    const extra = Object.keys(page).filter((key) => !['id', 'label', 'kind', 'entry'].includes(key))
+    if (extra.length) errors.push(`pages[${index}] 只允许 id/label/kind/entry，非法字段：${extra.join(',')}`)
+    const kind = text(page.kind).trim()
+    const entry = text(page.entry).trim()
+    if (kind && kind !== 'iframe') errors.push(`pages[${index}].kind 只允许 iframe`)
+    if (entry && kind !== 'iframe') errors.push(`pages[${index}] 声明 entry 时必须 kind:"iframe"`)
+    if (kind === 'iframe' && !entry) errors.push(`pages[${index}] kind:"iframe" 必须声明 entry（包内 HTML）`)
+    if (entry && (!/^[A-Za-z0-9._/-]+\.html$/u.test(entry) || entry.split('/').some((part) => part === '..' || part === '.'))) {
+      errors.push(`pages[${index}].entry 必须是包内相对 HTML 路径`)
+    }
+    const normalized = { id, label: text(page.label).trim() }
+    if (kind) normalized.kind = kind
+    if (entry) normalized.entry = entry
+    return normalized
   }).filter(Boolean)
 }
 
@@ -199,16 +210,19 @@ function validateSlots(errors, raw, pages) {
       errors.push(`slots[${index}] 必须是对象`)
       return null
     }
-    const extra = Object.keys(item).filter((key) => !['slot', 'page'].includes(key))
+    const extra = Object.keys(item).filter((key) => !['slot', 'page', 'order'].includes(key))
     if (extra.length) errors.push(`slots[${index}] 非法字段：${extra.join(',')}`)
     const slot = text(item.slot).trim()
     const page = text(item.page).trim()
     if (!isRegisteredSlot(slot)) errors.push(`slots[${index}].slot 未注册：${slot}`)
     if (!pageIds.has(page)) errors.push(`slots[${index}].page 不存在：${page}`)
+    if (item.order !== undefined && !(Number.isInteger(item.order) && item.order >= 0)) {
+      errors.push(`slots[${index}].order 必须是非负整数`)
+    }
     const key = `${slot}:${page}`
     if (seen.has(key)) errors.push(`slots 重复：${key}`)
     seen.add(key)
-    return { slot, page }
+    return { slot, page, ...(item.order !== undefined ? { order: item.order } : {}) }
   }).filter(Boolean)
 }
 

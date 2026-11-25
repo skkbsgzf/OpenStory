@@ -12,9 +12,9 @@ import { join } from 'node:path'
 import { startDaemon } from '../src/host/daemon.mjs'
 import { ENDPOINTS } from '../src/api/contracts.mjs'
 import { allHandlers } from '../src/host/handlerTable.mjs'
-import { moduleManifest, moduleOfEndpoint, isModuleEnabled } from '../src/protocol/modules.mjs'
+import { moduleManifest, moduleOfEndpoint, isModuleEnabled, MODULE_MANIFESTS, slotProjection } from '../src/protocol/modules.mjs'
 import { habitLint, habitsForPrompt } from '../src/host/moduleHooks.mjs'
-import { computeTabDefs, TAB_REGISTRY } from '../public/views/registry.mjs'
+import { projectedTabDefs, BUILTIN_PAGE_IDS } from '../public/views/registry.mjs'
 
 async function makeLibrary() {
   const base = await mkdtemp(join(tmpdir(), 'os161-habits-'))
@@ -69,20 +69,18 @@ test('宿主钩子：启用时 lint 命中、提示词注入；停用后两者�
   }
 })
 
-test('页签可见性：ctx 没给 modulesEnabled 视为全启用；给了且缺 habits 则习惯页签消失', () => {
+test('页签可见性：投影缺 habits 则习惯页签消失，其余页签不受影响', () => {
   const ctx = { current: { path: '/lib' }, libDirs: ['习惯', '正文'], brief: null, briefGenre: null, settingsOpen: false }
-  const all = computeTabDefs(ctx).map((def) => def.view)
-  assert.ok(all.includes('habits'), '缺省全启用：习惯页签在')
-  const tab = TAB_REGISTRY.find((entry) => entry.id === 'habits')
-  assert.equal(tab.module, 'habits', '注册表须声明 module 归属')
+  const slots = (enabled) => slotProjection(MODULE_MANIFESTS, enabled, { builtinPages: new Set(BUILTIN_PAGE_IDS) }).slots
+  const all = projectedTabDefs({ slots: slots(), ctx }).map((def) => def.view)
+  assert.ok(all.includes('habits'), '缺省启用：习惯页签在')
+  const manifest = MODULE_MANIFESTS.find((item) => item.id === 'habits')
+  assert.ok(manifest.slots.some((placement) => placement.slot === 'tab' && placement.page === 'habits'), 'manifest 须声明页签位置')
 
-  const disabled = computeTabDefs({ ...ctx, modulesEnabled: new Set(['analysis', 'chapters']) }).map((def) => def.view)
-  assert.ok(!disabled.includes('habits'), '显式启用集合缺 habits：页签消失')
+  const disabled = projectedTabDefs({ slots: slots({ habits: false }), ctx }).map((def) => def.view)
+  assert.ok(!disabled.includes('habits'), '显式停用：页签消失')
   assert.ok(disabled.includes('chapters'), '其他页签不受影响')
-
-  // 对象/数组两种形态也认（与 isModuleEnabled 的嵌套/扁平兼容同口径）
-  assert.ok(!computeTabDefs({ ...ctx, modulesEnabled: ['analysis'] }).map((d) => d.view).includes('habits'))
-  assert.ok(computeTabDefs({ ...ctx, modulesEnabled: { habits: true } }).map((d) => d.view).includes('habits'))
+  assert.ok(projectedTabDefs({ slots: slots({ habits: true }), ctx }).map((def) => def.view).includes('habits'))
 })
 
 test('daemon：习惯模块停用 → /api/habits 两端点 MODULE_DISABLED，启用后恢复', async () => {

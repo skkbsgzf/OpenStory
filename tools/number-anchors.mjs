@@ -21,11 +21,12 @@ export const APP_JS_MAX_LINES = APP_JS_LINE_CEILINGS.at(-1)
  * 范围内文档（ARCHITECTURE/README/AGENTS）继续逐字对当前实测。
  */
 export const FROZEN_DOC_ANCHORS = Object.freeze({
-  tests: Object.freeze({ total: 812, pass: 810, fail: 0, skipped: 2, ok: true }),
-  endpoints: Object.freeze({ total: 105, moduleOwned: 41, hostOwned: 64, hostDomain: 0 }),
-  appJs: Object.freeze({ lines: 10338 }),
-  testFiles: 102,
-  gateCount: 27
+  tests: Object.freeze({ total: 836, pass: 834, fail: 0, skipped: 2, ok: true }),
+  modules: Object.freeze({ total: 21, workbench: 12, kernel: 7, hostComposition: 2 }),
+  endpoints: Object.freeze({ total: 108, moduleOwned: 41, hostOwned: 67, hostDomain: 0 }),
+  appJs: Object.freeze({ lines: 10110 }),
+  testFiles: 109,
+  gateCount: 29
 })
 
 const FROZEN_DOCS = new Set([
@@ -44,6 +45,12 @@ export function collectStaticAnchors(repo = REPO) {
   const hostDomainEndpointIds = [...new Set(hostDomainManifests.flatMap((manifest) => manifest.endpoints))].sort()
   const appJsLines = countPhysicalLines(readFileSync(join(repo, 'public/app.js'), 'utf-8'))
   const testFiles = readdirSync(join(repo, 'test')).filter((name) => name.endsWith('.test.mjs')).length
+  const modules = {
+    total: MODULE_MANIFESTS.length,
+    workbench: MODULE_MANIFESTS.filter((manifest) => manifest.class === 'workbench').length,
+    kernel: MODULE_MANIFESTS.filter((manifest) => manifest.class === 'kernel').length,
+    hostComposition: MODULE_MANIFESTS.filter((manifest) => !manifest.class).length
+  }
   return {
     schema: NUMBER_ANCHORS_SCHEMA,
     appJs: {
@@ -51,6 +58,7 @@ export function collectStaticAnchors(repo = REPO) {
       maxLines: APP_JS_MAX_LINES,
       convention: 'physical-lines; CRLF/LF normalized; blank and comment lines included; trailing newline not counted'
     },
+    modules,
     endpoints: {
       total: Object.keys(ENDPOINTS).length,
       moduleOwned: coverage.claimedEndpointCount,
@@ -138,6 +146,11 @@ function buildDocChecks(a) {
     { file: 'ARCHITECTURE.md', label: 'app.js 上限', expected: `\`app.js\` 当前上限 ${fmt(APP_JS_MAX_LINES)} 行（只降不升）` },
     { file: 'README.md', label: '端点覆盖', expected: `端点归属 ${endpointTotal}/${endpointTotal} 有主` },
     { file: 'README.md', label: '宿主域端点', expected: `library 声明 ${a.endpoints.hostDomain} 个宿主域端点` },
+    { file: 'README.md', label: 'manifest 数', expected: `${a.modules.total} 份内置 manifest（${a.modules.workbench} workbench＋${a.modules.kernel} kernel＋${a.modules.hostComposition} 宿主组合面）` },
+    { file: 'README.md', label: '端点数', expected: `${endpointTotal} 个契约端点` },
+    { file: 'README.md', label: '测试数', expected: `${tests.total} 例单测（${tests.pass} 过／${tests.skipped} 跳过）` },
+    { file: 'README.md', label: '门禁数', expected: `${a.gateCount} 项验收检查` },
+    { file: 'README.md', label: 'app.js 行数', expected: `\`app.js\` ${fmt(a.appJs.lines)} 行` },
     { file: 'docs/LEGACY-ITEMS.md', label: '模块端点数', expected: `${a.endpoints.moduleOwned} 个模块独占端点` },
     { file: 'docs/LEGACY-ITEMS.md', label: '门禁数', expected: `验收门禁（${a.gateCount} 项）` },
     { file: 'docs/workorders/COMMON-RULES.md', label: '门禁数', expected: `现有 ${a.gateCount} 项` },
@@ -152,6 +165,7 @@ export function documentAnchorChecks(anchors, repo = REPO) {
   const frozen = FROZEN_DOC_ANCHORS
   const frozenAnchors = {
     tests: frozen.tests,
+    modules: frozen.modules,
     endpoints: frozen.endpoints,
     appJs: frozen.appJs,
     testFiles: frozen.testFiles,

@@ -26,7 +26,8 @@
   "slots": [
     {
       "slot": "settings",
-      "page": "imagegen"
+      "page": "imagegen",
+      "order": 10
     }
   ],
   "settingsHint": "端点、模型、key 与开关都在「设置 · 引擎与存储 · 对话模型与运行时」的生图区里配（真源是本机 agent-config.json）；配好并测试可达后，推演里就能直接生成场景图。",

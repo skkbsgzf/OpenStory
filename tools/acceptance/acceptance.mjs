@@ -23,7 +23,12 @@ import { readFileSync, readdirSync, statSync, writeFileSync, mkdirSync } from 'n
 import { execFileSync } from 'node:child_process'
 import { join, dirname, relative, resolve as pathResolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { NAMING_TABLE, TAB_REGISTRY, LOG_MODULES, computeTabDefs, viewScope } from '../../public/views/registry.mjs'
+import {
+  NAMING_TABLE, TAB_REGISTRY, BUILTIN_PAGE_IDS, LOG_MODULES, namingEntry,
+  projectedTabDefs, viewScope
+} from '../../public/views/registry.mjs'
+import { MODULE_MANIFESTS } from '../../src/protocol/modules.mjs'
+import { slotProjection } from '../../src/protocol/slots.mjs'
 // OS-150b：S2.1/S2.2 共用同一份说明符扫描器（静态 from／动态 import()／副作用 import／单双引号）。
 // 两份正则必分叉——分叉面就是漏检面（analysisModules.mjs 的惰性 import 曾被整段放过）。
 import { scanImportSpecs, auditPublicEdges } from './importScan.mjs'
@@ -384,16 +389,18 @@ check('S2.4', 'S2', `S2.4' 底座边界（${scanned.length} 个 src 源文件；
 // ② 代码里实际写日志的模块名（LOG_MODULES 常量＋任何残留的 module: '中文名' 字面量）
 // 全部登在表的 logModule/dirLogModule 列上——漏登或另写一份＝红。
 const namingById = new Map(NAMING_TABLE.map((row) => [row.id, row]))
-const tabNamingMiss = TAB_REGISTRY
-  .filter((entry) => !entry.retired && entry.label)
-  .filter((entry) => {
-    const row = namingById.get(entry.concept)
-    if (!row) return true
-    return row.tab !== entry.label
-      || (row.panelLabel ?? null) !== (entry.panelLabel ?? null)
-      || (row.dirTab === false ? null : row.dir ?? null) !== (entry.dir ?? null)
-  })
-  .map((entry) => `TAB_REGISTRY:${entry.id}`)
+// OS-198：页签名只从 manifest pages[].label ＋ 命名表回查，TAB_REGISTRY 只剩视图行为。
+const tabPlacements = MODULE_MANIFESTS
+  .filter((manifest) => manifest.class === 'workbench')
+  .flatMap((manifest) => (manifest.slots ?? [])
+    .filter((placement) => placement.slot === 'tab')
+    .map((placement) => ({ manifest, placement })))
+const tabNamingMiss = tabPlacements.filter(({ manifest, placement }) => {
+  const page = (manifest.pages ?? []).find((item) => item.id === placement.page)
+  const row = namingById.get(placement.page) ?? namingById.get(manifest.id)
+  if (!page || !row) return true
+  return page.label !== row.tab
+}).map(({ manifest, placement }) => `${manifest.id}:${placement.page}`)
 const namingModules = new Set()
 for (const row of NAMING_TABLE) {
   if (row.logModule) namingModules.add(row.logModule)
@@ -412,12 +419,38 @@ const namingEvidence = [
   lineOf('public/views/registry.mjs', 'NAMING_TABLE = Object.freeze')
 ].filter(Boolean)
 check('S2.5', 'S2',
-  `命名真源表一致（${NAMING_TABLE.length} 概念；页签 ${TAB_REGISTRY.filter((e) => !e.retired && e.label).length} 条回表／日志模块 ${logModuleUse.size} 个登表）`,
+  `命名真源表一致（${NAMING_TABLE.length} 概念；页签 ${tabPlacements.length} 条回表／日志模块 ${logModuleUse.size} 个登表）`,
   tabNamingMiss.length === 0 && logModuleMiss.length === 0,
   namingEvidence,
   tabNamingMiss.length || logModuleMiss.length
     ? `页签层/日志层有名字没走命名表：${[...tabNamingMiss, ...logModuleMiss].join(', ')}`
     : '页签/日志两层都从 NAMING_TABLE 取名（后端经 src/protocol/naming.mjs 只 re-export）')
+
+// S2.12 OS-198：页签不再有前端第二份清单——TAB_REGISTRY 只存视图行为，
+// 顶栏条目与顺序一律来自 `/api/plugins.slots.tab` 投影（manifest slots + enabled）。
+const forbiddenTabFields = TAB_REGISTRY.flatMap((entry) => ['label', 'dir', 'module', 'order', 'panelLabel']
+  .filter((key) => Object.prototype.hasOwnProperty.call(entry, key))
+  .map((key) => `TAB_REGISTRY:${entry.id}.${key}`))
+const tabProjection = slotProjection(MODULE_MANIFESTS, {}, { builtinPages: new Set(BUILTIN_PAGE_IDS) })
+const projectedTabs = tabProjection.slots.tab ?? []
+const unprojectedTabs = projectedTabs.filter((item) => item.view !== 'builtin').map((item) => `${item.module}:${item.page}:${item.view}`)
+const projectionMissing = tabPlacements
+  .filter(({ manifest, placement }) => !projectedTabs.some((item) => item.module === manifest.id && item.page === placement.page))
+  .map(({ manifest, placement }) => `${manifest.id}:${placement.page}`)
+const appProjectionSrc = readRepo('public/app.js')
+const appUsesProjection = /projectedTabDefs\(\{/u.test(appProjectionSrc) && /state\.plugins\?\.slots/u.test(appProjectionSrc)
+check('S2.12', 'S2', `OS-198 页签清单只来自投影（manifest 页签 ${tabPlacements.length} 条；投影 ${projectedTabs.length} 条；前端禁字段 ${forbiddenTabFields.length}）`,
+  forbiddenTabFields.length === 0 && unprojectedTabs.length === 0 && projectionMissing.length === 0 && appUsesProjection,
+  [
+    lineOf('public/views/registry.mjs', 'export const TAB_REGISTRY'),
+    lineOf('src/protocol/slots.mjs', 'export function slotProjection'),
+    lineOf('src/api/handlers/plugins.mjs', 'slotProjection'),
+    lineOf('public/app.js', 'projectedTabDefs({'),
+    ...forbiddenTabFields.slice(0, 3), ...unprojectedTabs.slice(0, 3), ...projectionMissing.slice(0, 3)
+  ].filter(Boolean),
+  forbiddenTabFields.length || unprojectedTabs.length || projectionMissing.length
+    ? `前端仍有第二份页签清单：${[...forbiddenTabFields, ...unprojectedTabs, ...projectionMissing].join(', ')}`
+    : (appUsesProjection ? '页签名与顺序只从 /api/plugins.slots.tab 投影取，内置视图优先于 iframe' : 'app.js 未消费 slot 投影'))
 
 const fourNameAudit = auditNamingConsistency()
 check('S2.9', 'S2', `OS-172 显示名＝入口名＝磁盘目录名＝日志模块名（${fourNameAudit.concepts} 概念）`,
@@ -544,33 +577,34 @@ check('S3.6', 'S3', `样例库洁净（git ls-files samples/ 共 ${sampleFiles.l
 console.log('\n── S4 UX 跳转层级 ──')
 
 const appJs = readRepo('public/app.js')
-// S4.1 顶部页签可达性（OS-149 改强）：注册表 core:true 且未退场的条目必须三项全通——
-//   a) label 真的出现在 computeTabDefs 的推导结果里（注册表即页签名真源，不读源码文本）；
+// S4.1 顶部页签可达性（OS-149 改强，OS-198 改走投影）：core:true 条目必须三项全通——
+//   a) 名字真的出现在 slot 投影的页签结果里（全库目录给足；不读源码文本）；
 //   b) render 注册名在 app.js 的 VIEW_RENDERERS 有键（装配缺口＝views 里有名字、壳里没函数）；
 //   c) viewScope(view) 有作用域（go() 不会把它判成非法视图）。
 // OS-150a：分词前先剥注释——块里写一行 `// writeHtmlGone` 不许冒充已注册。
 const stripJsComments = (src) => src.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/\/\/[^\n]*/g, ' ')
 const coreEntries = TAB_REGISTRY.filter((entry) => entry.core === true && !entry.retired)
-const coreLabels = coreEntries.map((entry) => entry.label)
+const coreLabels = coreEntries.map((entry) => namingEntry(entry.id)?.tab ?? entry.id)
 const tabBarCtx = { current: { path: '验收锚点' }, libDirs: NAMING_TABLE.filter((entry) => entry.dir).map((entry) => entry.dir), brief: null, briefGenre: null, settingsOpen: true }
-const tabBarLabels = new Set(computeTabDefs(tabBarCtx).map((def) => def.label))
+const tabBarLabels = new Set(projectedTabDefs({ slots: tabProjection.slots, ctx: tabBarCtx }).map((def) => def.label))
 // app.js 的 VIEW_RENDERERS 是速记对象（键＝值）；只认块内的裸标识符 token
 const rendererBlock = stripJsComments((appJs.match(/const VIEW_RENDERERS = \{([\s\S]*?)\}/) || [])[1] || '')
 const rendererKeys = new Set(rendererBlock.split(/[,\s]+/).map((token) => token.trim())
   .filter((token) => /^[A-Za-z_$][\w$]*$/u.test(token)))
-const s41Gaps = coreEntries.map((entry) => {
+const s41Gaps = coreEntries.map((entry, index) => {
+  const label = coreLabels[index]
   const miss = []
-  if (!entry.label) miss.push('无label')
-  else if (!tabBarLabels.has(entry.label)) miss.push('不在页签栏')
+  if (!label) miss.push('无label')
+  else if (!tabBarLabels.has(label)) miss.push('不在页签栏')
   if (!rendererKeys.has(entry.render)) miss.push(`render未注册(${entry.render})`)
   if (viewScope(entry.view) === null) miss.push('scope为null')
-  return { label: entry.label ?? entry.id, miss }
+  return { label: label ?? entry.id, miss }
 })
 const s41Bad = s41Gaps.filter((gap) => gap.miss.length > 0)
-check('S4.1', 'S4', `核心模块页签顶栏可达（${coreLabels.join('/')}；注册表 core:true 共 ${coreEntries.length} 条）`,
+check('S4.1', 'S4', `核心模块页签顶栏可达（${coreLabels.join('/')}；core:true 共 ${coreEntries.length} 条；页签来自 slot 投影）`,
   coreEntries.length >= 4 && s41Bad.length === 0,
-  coreEntries.map((entry) => `public/views/registry.mjs「${entry.label}」→ render:${entry.render}${rendererKeys.has(entry.render) ? '' : '（未注册）'}`),
-  s41Bad.length ? `未接通：${s41Bad.map((gap) => `${gap.label}[${gap.miss.join('+')}]`).join(', ')}` : '页签名/渲染注册名/作用域三项均由注册表实测')
+  coreEntries.map((entry, index) => `public/views/registry.mjs「${coreLabels[index]}」→ render:${entry.render}${rendererKeys.has(entry.render) ? '' : '（未注册）'}`),
+  s41Bad.length ? `未接通：${s41Bad.map((gap) => `${gap.label}[${gap.miss.join('+')}]`).join(', ')}` : '页签名/渲染注册名/作用域三项均由 slot 投影与注册表实测')
 
 // S4.2 关闭按钮统一：模块卡关闭走 rm-x；整页关闭 page-close 是合法家族（docs/UX-STRUCTURE.md §三）
 const rmXUses = (appJs.match(/rm-x/g) || []).length

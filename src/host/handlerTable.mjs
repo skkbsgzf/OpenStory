@@ -9,7 +9,7 @@
  */
 import { HOST_HANDLERS } from '../api/registry.mjs'
 import { activateModules } from './moduleLoader.mjs'
-import { endpointOwnerFor, localContribution, localContributions, snapshotFor } from './moduleRuntime.mjs'
+import { endpointOwnerFor, localContribution, localContributions, migrationStateFor, snapshotFor } from './moduleRuntime.mjs'
 
 /** snapshot.id → { moduleId → { handlers, hooks } }（冻结，按快照整体替换）。 */
 const contributionCache = new Map()
@@ -51,8 +51,11 @@ export async function handlerFor(endpointId, root, env = process.env) {
   const owner = await endpointOwnerFor(endpointId, env)
   if (!owner) return HOST_HANDLERS[endpointId] ?? null
   // OS-196：本机模块在候选快照构建时已激活，直接取贡献——不再按声明键复用旧激活结果。
+  // OS-197：迁移失败被剔除的覆盖者，其端点随快照一起下线。
   const local = await localContribution(owner, env)
   if (local) {
+    const excluded = new Set((await migrationStateFor(root, env)).excluded ?? [])
+    if (excluded.has(owner)) return null
     const snapshot = await snapshotFor(root, env)
     if (snapshot.enabled?.[owner] === false) return null
     return local.handlers?.[endpointId] ?? null
@@ -76,9 +79,10 @@ export async function allHandlers(root = '', env = process.env) {
   const table = await contributionTable(root, env)
   const contributed = Object.values(table).flatMap((handlers) => Object.entries(handlers))
   const merged = { ...HOST_HANDLERS, ...Object.fromEntries(contributed) }
+  const excluded = new Set((await migrationStateFor(root, env)).excluded ?? [])
   for (const endpointId of Object.keys(merged)) {
     const owner = await endpointOwnerFor(endpointId, env)
-    if (!owner) continue
+    if (!owner || excluded.has(owner)) continue
     const local = await localContribution(owner, env)
     if (local?.handlers?.[endpointId]) merged[endpointId] = local.handlers[endpointId]
   }
@@ -92,11 +96,13 @@ export async function allHandlers(root = '', env = process.env) {
  */
 export async function hooksFor(root, hookName, env = process.env) {
   // OS-196a：与 handler 用同一张贡献表；本机层也合并进来，按快照 enabled 回收。
-  const [table, locals, snapshot] = await Promise.all([
-    snapshotContributions(root, env), localContributions(env), snapshotFor(root, env)
+  const [table, locals, snapshot, migrations] = await Promise.all([
+    snapshotContributions(root, env), localContributions(env), snapshotFor(root, env), migrationStateFor(root, env)
   ])
+  const excluded = new Set(migrations.excluded ?? [])
   const slots = Object.values(table).map((entry) => entry.hooks?.[hookName]).filter(Boolean)
   for (const [moduleId, contribution] of Object.entries(locals)) {
+    if (excluded.has(moduleId)) continue
     if (snapshot.enabled?.[moduleId] === false) continue
     const hook = contribution?.hooks?.[hookName]
     if (hook) slots.push(hook)

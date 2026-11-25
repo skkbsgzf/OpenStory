@@ -7,7 +7,7 @@
 | 依赖 | OS-188a～OS-198 全部验收 |
 | 允许改动 | `docs/**`、`README.md`、`AGENTS.md`、`ARCHITECTURE.md`、`LICENSE`（仅当 OS-189 的核对结论需要修正事实陈述）、`tools/number-anchors.mjs`、`tools/acceptance/acceptance.mjs`、`test/numberAnchors.test.mjs`、`test/finalAudit.test.mjs`、`docs/number-anchors.json`、`docs/workorders/OS-199-docs-settle.md` |
 | 风险 | 低——只动文档与数字锚门禁 |
-| 状态 | 待派 |
+| 状态 | 部分通过（监督线，2026-11-25；施工由 Qoder 完成，未及提交，由监督线落袋）；六处对不上实现 → [OS-199a](OS-199a-docs-rework.md) |
 
 通用规则见 [`COMMON-RULES.md`](COMMON-RULES.md)。
 
@@ -75,3 +75,16 @@
 - 机器门禁两轮全绿（含扩口径后的数字锚）；发布检查器全绿并贴输出。
 - 回报里贴一张「文档—实现」对照自查表：ADR 0002 两张表、协议文档每一节、README 每个数字，各写「已核，证据」。
 - 任务 5 的反证贴输出；`git diff --check` 干净。
+
+## 验收记录（监督线，2026-11-25）
+
+- 施工由 Qoder 完成、未提交。
+- **已过**：数字锚扩到 `README.md`（21 份 manifest、108 端点、836 例、29 项门禁、`app.js` 行数，`--check` 校验）；ADR 0002 §2.3 七内核件表与 §2.4 工作台表与 21 份 manifest 逐项一致（17 个能力 id 全在、12 个工作台 requires 全对，`probe-199-adr.mjs`）；早先点名的过时项（`text.lint`、`agent.embedding`、`storage.library`、「14 份」、`core/VENDORED.md`）清零；`README.md` 有「本机模块」一节；发布检查器 11 项 10 绿，余 1 项是已推送的 9 条历史提交标题偏长（警示级，只对未来提交生效）。
+- **对不上实现的六处**（转 [OS-199a](OS-199a-docs-rework.md)）：
+  1. `README.md` 仓结构表：`src/protocol/`、`src/kernel/`、`src/services/` 三行是搬家前的内容；`workflows/` 行指向不存在的目录；分层示意图的 `L2 src/kernel/` 说明过时。
+  2. ADR 0002：§2.5 写 `workflows/`；§7.1 仍写「Agent 栏仍写 Pi-Agent」；§2.3 证据列引用已删除的转供叶；§5.1 仍写体裁「尚未升成套件」；§九「待作者裁定」与 D1–D8 的状态没跟上。
+  3. ADR 0003 §二「现状盘点」是开门前的话（「本机目录尚未进入装载源」等）。
+  4. 协议文档：`host-api@2` 仍当现存入口列在版本表里；「全局热切换仍未实施」与 ADR 0003「切换门已成立」说法不对齐。
+  5. `AGENTS.md` :16 分层说明过时。
+  6. 规划 §1.3a 的两个 slug 与运行时套件归属仍写「待作者定」「待定」，§4 状态没跟上。
+- 结论：**部分通过**；六处返工走 OS-199a（清账批最后一张）。

@@ -19,7 +19,8 @@
   "slots": [
     {
       "slot": "tab",
-      "page": "storysource"
+      "page": "storysource",
+      "order": 60
     }
   ],
   "settingsHint": "故事源没有可调参数：它是故事源条目与 fact 链的可视化读面；条目从扮演与导入产生，分析卡片在正文右栏里勾。"

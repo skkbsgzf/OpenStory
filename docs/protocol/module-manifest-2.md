@@ -1,6 +1,6 @@
 # module-manifest@2 · 能力、工作台与创作套件协议
 
-**状态：B1–B5、C 批（C1–C6）、D1–D4 与 OS-192 均已实施；七内核统一注册、动态激活、能力路由、slot 注册表、五类货架一等套件与数字锚门禁均已通过。本机可执行模块由 OS-196 开放、OS-196a 返工三道门（运行期边界／先检查后激活／整图摘要）与端点归属规则；全局热切换仍未实施（见 [ADR 0003](../adr/0003-dynamic-loading.md)）。架构裁定见 [ADR 0002](../adr/0002-base-constitution.md)。**
+**状态：B1–B5、C 批（C1–C6）、D1–D4 与 OS-192 均已实施；七内核统一注册、动态激活、能力路由、slot 注册表、五类货架一等套件与数字锚门禁均已通过。本机可执行模块由 OS-196 开放、OS-196a 返工三道门（运行期边界／先检查后激活／整图摘要）与端点归属规则；OS-198 起 slot 投影（`slots` 字段＋第三方 iframe 页面）已接线；全局热切换仍未实施（见 [ADR 0003](../adr/0003-dynamic-loading.md)）。架构裁定见 [ADR 0002](../adr/0002-base-constitution.md)。**
 
 当前仓使用 `openstory-module@2`，21 份内置 manifest＝7 kernel＋12 workbench＋2 无 class 宿主组合面；**OS-192 起装载只认一套规则（原 stage C），stage 参数与 @1 双读/迁移脚手架全部删除**。能力图、停用事务、薄代理、模块级 `core`／`MODULE_CORE` 退役、动态 `activate` 与贡献校验均已落地。五类货架（技能/文风/体裁/运行时/业务套装）经 `loadSuiteCapabilityManifests()` 投影成 module@2 套件，与模块共用一张能力图与一份 suite-state；legacy `openstory-suite@1/@2` 页面模式已整体退役。端点 id/path 与 MCP 工具名不变（退役的两个端点除外）。
 
@@ -57,14 +57,14 @@
 
 `storage → fact → prose → text → deduce → agent-runtime → media`（顺序是设计依赖序，实际 id 以 manifest 为准）
 
-| id | 能力示例 | 金样义务 |
+| id | 实际能力（manifest） | 金样义务 |
 |---|---|---|
-| `storage` | `storage.roots@1`、`library.list@1`、`storage.scaffold@1` | root/清单/建库骨架落盘金样 |
-| `fact` | `fact.store@3`、`fact.pack@1`、`fact.enrich@1` | `fact.store` 必须带 `golden`；现 `decoupleStep2` 转为内部能力金样 |
+| `storage` | `storage.roots@1`、`library.list@1`、`storage.scaffold@1`、`storage.inventory@1` | root/清单/建库骨架/产物盘点落盘金样 |
+| `fact` | `fact.store@3`、`fact.pack@1`、`fact.enrich@1`、`fact.engine@1`、`fact.books@1`、`fact.write@1`、`fact.domain@1` | `fact.store` 必须带 `golden`；`decoupleStep2` 为内部能力金样 |
 | `prose` | `prose.write@1` | 正文读取/写协议、history 与 changelog 金样；`prose.changelog@1` 仅为早期规划建议，未登记为独立能力 |
-| `text` | `text.analyze@1`、`text.lint@1` | 确定性输出金样；分析引擎不依赖 UI |
+| `text` | `text.analyze@1` | 确定性输出金样；分析引擎不依赖 UI；lint 是 `analysis.mjs`/`lint.mjs` 的实现细节，不单列能力 id |
 | `deduce` | `deduce.engine@1` | 同种子/事实包/规则=同拍的金样 |
-| `agent-runtime` | `agent.runtime@1`、`agent.embedding@1` | 协议帧与存储边界金样；真实上游响应不做逐字节金样 |
+| `agent-runtime` | `agent.runtime@1` | 协议帧与存储边界金样；真实上游响应不做逐字节金样；embedding 是 runtime 内部通道，不单列能力 id |
 | `media` | `media.generate@1`、`media.describe@1` | 请求/输出协议与白描结构金样；图片二进制可用结构/哈希断言 |
 
 ### 3.2 工作台两档与宿主面
@@ -136,7 +136,7 @@
   "optionalRequires": [],
   "endpoints": [],
   "pages": [{ "id": "analysis-panel", "label": "分析" }],
-  "slots": [{ "slot": "right", "page": "analysis-panel" }],
+  "slots": [{ "slot": "right", "page": "analysis-panel", "order": 10 }],
   "settings": []
 }
 ```
@@ -199,13 +199,21 @@
 
 ### 4.4 pages 与 slots
 
-- `pages[]` 只允许 `{id,label}`；`label` 必须与命名表正名一致。
-- `slots[]` 只允许 `{slot,page}`；`page` 必须引用同 manifest 的 page id。
+- `pages[]` 允许 `{id,label}`；可选 `kind:'iframe'`＋`entry`（包内相对 HTML 路径），两者必须成对出现。
+  `label` 必须与命名表正名一致；内置页面 id 由前端 `TAB_REGISTRY` 提供内置视图，本机模块不能覆盖渲染。
+- `slots[]` 允许 `{slot,page,order?}`；`page` 必须引用同 manifest 的 page id。`order` 是可选整数，
+  同 slot 内先按 `order`、再按装载序、最后按 page id 排；没有 `order` 时才落到稳定 id 兜底。
 - 底座初始保留 slot：`tab/right/sidebar/host-actions/settings`。D 批扩展 slot 必须先在底座注册，插件不能自造。
 - 注册表唯一真源是 `src/protocol/slots.mjs` 的 `SLOT_REGISTRY`（`openstory-slots@1`，含 id/label/description/scope），
   校验与 `base.naming` 只读投影都从这里取；扩展 slot＝改表＋同步前端编排＋补 `test/slots.test.mjs`，**无运行时自注册入口**。
-- 同一 page 不得重复嵌入同一 slot；同一 slot 内多个 page 按 manifest 声明序＋稳定 id 排序
-  （装载器可经 `slotPlacements()` 取稳定编排，停用模块不出现）。
+- 同一 page 不得重复嵌入同一 slot；停用模块不出现。
+- **OS-198 投影**：`slotProjection()` 在 `slotPlacements()` 之上产出面向 UI 的
+  `{slot,page,module,label,view}`（iframe 另带 `entry`）。`view` 三态：`builtin`（前端有内置视图）／
+  `iframe`（仅限已登记且已装载的本机模块）／`none`（不可渲染，进 `slotWarnings`，不静默消失）。
+  内置视图优先：本机模块即使覆盖同 id 并声明 iframe，前端仍走内置渲染。`GET /api/plugins` 的
+  `slots` 字段即这份投影，前端页签/右栏/设置区/宿主动作一律照它渲染，不存第二份名单。
+- 第三方页面由 daemon 的 `/module-page/<模块 id>/<entry>` 提供，只对已登记本机模块开放；
+  内置模块与套件不走这条路由。
 - `pages[].slot` 与顶层字符串 `slots` 不再接受。
 
 ### 4.5 settings
@@ -374,6 +382,9 @@
 - 成功后写 `done`；重复启动见 `done` 直接跳过；见 `running/failed/recovered` 先按 journal 恢复——只还原已提交文件（从备份恢复或删除新建文件），未提交的不动，恢复成功后写 `recovered` journal 再决定是否重试，绝不盲跑半迁数据。
 - 失败安全阀：停止提交、删除/隔离临时副本、按 journal 逆序恢复、保留原格式与原数据、禁用覆盖者、返回 `MIGRATION_FAILED`。回滚失败逐条记 `rollbackErrors` 并置 `rolledBack:false`，对外区分「已原样回滚」与「回滚未完成」；不得吞掉错误后宣称原数据已保留。绝不删旧数据文件。
 - 禁止自动 down migration。覆盖者停用不等于数据回滚；回退 provider 必须声明能读当前磁盘主版本，否则保持 degraded。
+- **执行时机（OS-197 真实链路）**：库的候选快照里出现「启用中、已声明、未完成」的覆盖时，在路由对该库生效前执行；触发点＝该库首次授权的请求，以及之后层重建（登记/移除模块根、内容摘要变化）后再次请求。daemon 在模块停用闸与 handler 前调用 `migrationStateFor`，失败结果按「根＋层＋启停」缓存到下一次层/启停变化或重启。
+- **失败安全阀（真实剔除点）**：迁移失败（含恢复失败）的覆盖者从该库的有效 manifest 集合剔除，同 id 自动回落内置件；`/api/plugins` 的 `moduleMigrations.failures` 与 `localModules[].gate='migration'` 点名，首次业务请求返回 `MIGRATION_FAILED`（HTTP 500，带 journal 路径、回滚清单、`excluded`）。查看/修复端点（`/api/plugins`、模块根、`/api/ui-state`、套件）仍放行。
+- **回退保护（OS-197）**：迁移 journal 为 `done` 后数据已是新主版本；覆盖者被停用或模块根移除、路由回落到旧供给者时，旧供给者及其下游消费者不得静默误读。`dataVersionAheadFor` 在该端点 owner 的 `routes/provider` 或 `requires` 命中「路由版本 < journal.to」时返回 `DATA_VERSION_AHEAD`（HTTP 409，带 capability、dataVersion、旧 provider/version、journalPath），并提示「重新启用覆盖者，或执行回退迁移」；回退迁移仍不自动执行。
 - OS-172 的旧库一次性升级与 capability migration 是两个不同机制、两套 marker；module@2 上线不得重跑 OS-172。
 
 ### 8.2 入口契约
@@ -569,13 +580,15 @@ B/C/D 批不得只改 manifest 字符串，至少覆盖：
 - [x] 能力闭环、冲突、覆盖合法三检查有正反例；缺 hard 能力不拖死 daemon。
 - [x] `CAPABILITY_IN_USE` 与 `PLUGIN_DEGRADED` 语义分开；`MODULE_DISABLED` 保持 409。
 - [x] 覆盖显式声明、版本对齐、迁移责任、回退链四守卫已有候选图校验。
-- [ ] 全量路由原子热切换；B5 仅验证按库解析与在途句柄持旧快照。
+- [x] 全量路由原子热切换（OS-196a `moduleRuntime.rebuildRuntime`：候选层三检查后一次同步赋值，在途请求持旧句柄）。
 - [ ] 所有落盘能力有金样；换规则包有确定性金样。
-- [x] suite 无可执行代码（D3 扫描）；legacy page 模式尚未被误标为新协议。
+- [x] suite 无可执行代码（D3 扫描）；legacy page 模式已退役。
 - [x] slot 注册表归底座（D4 `openstory-slots@1`）；未注册 slot 校验失败、编排稳定序有测试。
+- [x] OS-198 slot 投影接到前端：`/api/plugins.slots` 按库启用状态出 `{slot,page,module,label,view}`，第三方 iframe 页经 `/module-page/<id>/<entry>` 只对本机已装载模块提供。
+- [x] OS-196／196a 本机模块五门有 daemon 级守护（`test/localModules.test.mjs`）；OS-197 迁移器接在宿主写前检查。
 - [x] 正名/slug/目录/日志模块由命名投影一致；外部 endpoint/MCP 名未漂移。
 - [x] 写管道、history、changelog、OS-172 升级 marker 未被绕过。
 - [x] 测试只用临时夹具与临时 `LOCALAPPDATA`，不碰作者真库/真院子。
 - [x] C6 架构统计、S2.1/S2.4'/S2.7 与数字锚工具已落地；审计指出的 src 边界债不由门禁豁免。
 
-作者已要求按既有批次规划继续实施；B1–B5、C1–C6 与 D1–D4 已落地并通过全量测试、动态激活、能力边界与数字锚门禁；第三方可执行模块装载按 ADR 0003 暂不开放。
+作者已要求按既有批次规划继续实施；B1–B5、C1–C6、D1–D4 与清账批 OS-189～OS-199 已落地并通过全量测试、动态激活、能力边界、slot 投影与数字锚门禁。本机可执行模块按 ADR 0003 的 G1–G5 开放，边界门不是沙箱。

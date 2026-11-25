@@ -24,7 +24,8 @@
   "slots": [
     {
       "slot": "tab",
-      "page": "artifacts"
+      "page": "artifacts",
+      "order": 10
     }
   ],
   "settingsHint": "产物没有可调参数：它只读盘点各工作面的产物与 .history 版本，文件在各页签里写、在这里看与恢复。"

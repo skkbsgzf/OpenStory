@@ -1,6 +1,6 @@
 # OpenStory 验收线（OS-67 起）
 
-> 每个大修改落地前的四步验收。机械门禁 `tools/acceptance/acceptance.mjs`（27 检查，
+> 每个大修改落地前的四步验收。机械门禁 `tools/acceptance/acceptance.mjs`（29 检查，
 > OS-140 起含 S0 布局宪法，OS-169 起含 S1.6 测试环境健壮性，OS-170 起含 S2.8 数字锚，
 > OS-172 起含 S2.9 四名一致与 S2.10 谱系名/作者身份，退出码 0=全绿），配套 `.ua/` 知识图谱、Rea 证据口径、OpenDesign UX 对标。
 
@@ -18,7 +18,7 @@
 ## 落地前四步
 
 ```bash
-# ① 单测门禁（812 例，OS-148 起含 test/naming.test.mjs 命名单一真源，OS-172 起含迁移与四名/谱系门禁）
+# ① 单测门禁（836 例，OS-148 起含 test/naming.test.mjs 命名单一真源，OS-172 起含迁移与四名/谱系门禁）
 node .zcode/run-gate.mjs
 
 # ② 交付标准门禁（S0–S4，Rea 式证据落盘）

@@ -7,9 +7,9 @@ import assert from 'node:assert/strict'
 import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { moduleManifest, moduleOfEndpoint, isModuleDisabledFor, isModuleEnabled } from '../src/protocol/modules.mjs'
+import { moduleManifest, moduleOfEndpoint, isModuleDisabledFor, isModuleEnabled, MODULE_MANIFESTS, slotProjection } from '../src/protocol/modules.mjs'
 import { ENDPOINTS } from '../src/api/contracts.mjs'
-import { computeTabDefs } from '../public/views/registry.mjs'
+import { projectedTabDefs, BUILTIN_PAGE_IDS } from '../public/views/registry.mjs'
 
 async function makeLibrary() {
   const base = await mkdtemp(join(tmpdir(), 'os161-ss-'))
@@ -46,9 +46,10 @@ test('共享端点永远属于宿主：停用故事源后 fact 读端点无归�
 
 test('页签归属：storysource 停用后故事源页签消失，其他页签不受影响', () => {
   const ctx = { current: { path: '/lib' }, libDirs: ['故事源', '正文'], brief: null, briefGenre: null, settingsOpen: false }
-  const enabled = computeTabDefs(ctx).map((def) => def.view)
+  const slots = (enabled) => slotProjection(MODULE_MANIFESTS, enabled, { builtinPages: new Set(BUILTIN_PAGE_IDS) }).slots
+  const enabled = projectedTabDefs({ slots: slots(), ctx }).map((def) => def.view)
   assert.ok(enabled.includes('dir:故事源'), '缺省启用：故事源页签在')
-  const disabled = computeTabDefs({ ...ctx, modulesEnabled: { storysource: false, habits: true, chapters: true } }).map((def) => def.view)
+  const disabled = projectedTabDefs({ slots: slots({ storysource: false }), ctx }).map((def) => def.view)
   assert.ok(!disabled.includes('dir:故事源'), '显式停用：故事源页签消失')
   assert.ok(disabled.includes('chapters'), '正文页签不受影响')
 })

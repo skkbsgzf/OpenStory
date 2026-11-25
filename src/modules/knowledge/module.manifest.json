@@ -24,7 +24,8 @@
   "slots": [
     {
       "slot": "settings",
-      "page": "knowledge"
+      "page": "knowledge",
+      "order": 20
     }
   ],
   "settingsHint": "服务地址、API Key、Space ID 与分库映射都在「设置 · 引擎与存储 · 知识库」里配（真源是本机 kb-config.json，密钥只回掩码）。",

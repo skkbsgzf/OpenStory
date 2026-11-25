@@ -8,15 +8,15 @@
 
 | 命令 | OS-170 当时结果 |
 |---|---|
-| `node --test test/*.test.mjs` | 750 tests / 748 pass / 2 skip / 0 fail |
-| `node tools/acceptance/acceptance.mjs` | 27 过 / 0 挂 / 0 警 |
-| `npm run arch:check` | 通过；生成段：底座 17 文件 2,317 行、契约 18 文件 5,080 行、协议 49 文件 4,387 行、内核件 47 文件 8,494 行、工作台 21 文件 2,862 行、前端 29 文件 20,889 行、`app.js` 10,338 行、端点 105、测试 102 文件 |
+| `node --test test/*.test.mjs` | 836 tests / 834 pass / 2 skip / 0 fail |
+| `node tools/acceptance/acceptance.mjs` | 29 过 / 0 挂 / 0 警 |
+| `npm run arch:check` | 通过；生成段：底座 28 文件 4,308 行、契约 17 文件 3,887 行、协议 34 文件 5,852 行、内核件 59 文件 11,205 行、工作台 30 文件 3,556 行、前端 31 文件 20,981 行、`app.js` 10,110 行、端点 108、测试 109 文件 |
 | `node tools/verify/verify-os172-naming.mjs` | 四名一致 21 概念通过；产品目录扫描 205 文件，仅保留真实出处与迁移兼容 |
 | `node tools/verify/verify-os172-e2e.mjs` | 《水浒传》临时库 10/10＋新建/半成品库 13/13；不碰真库与真实院子 |
 
-**C6／D 批当前审计快照**：全量单测 812 例（810 过／0 挂／2 条件跳过，测试全绿；
-`812 tests / 810 pass / 2 skip / 0 fail`）；验收门禁 27 项；
-契约端点 105；`app.js` 10,338 行（上限 10,500）；测试 102 文件。最终结果以本次任务回报与
+**C6／D 批当前审计快照**：全量单测 836 例（834 过／0 挂／2 条件跳过，测试全绿；
+`836 tests / 834 pass / 2 skip / 0 fail`）；验收门禁 29 项；
+契约端点 108；`app.js` 10,110 行（上限 10,500）；测试 109 文件。最终结果以本次任务回报与
 `docs/number-anchors.json` 为准，历史通过记录不得冒充当前通过。
 
 ## 一、推送前必过检查单
@@ -42,6 +42,8 @@ LICENSE 与出处自洽：`README.md` 致谢段记内核谱系（Pinax-next `fea
 ### ⑤ demo 干净
 
 `samples/*/` 只留内容文件；运行残留/备份/会话一律清除；自带 README（怎么导入＋体验入口）；素材确认来源可公开。
+
+> **已知误报（OS-160／OS-199）**：`samples/水浒传/` 按 OS-160 裁定**自带** `.openstory/{project,ui-state}.json` 与 `.openstory/plugins/suite-state.json`（打开即复现配置），这是内容不是残留。通用 `publish-scan.mjs` 的 ⑦ 会把整个 `.openstory/` 目录计为运行残留；以验收门禁 S3.6「样例库洁净」（只拦日志/历史/临时/凭据/本机路径）为准，发布时人工确认该唯一红项即可。
 
 ### ⑥ 命名真源一致（OS-148／OS-172）
 

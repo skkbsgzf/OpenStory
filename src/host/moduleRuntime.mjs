@@ -25,6 +25,7 @@ import { baseCapabilities } from './baseCapabilities.mjs'
 import { HOST_TOOLS } from './hostTools.mjs'
 import { MODULE_BOUNDARY_VIOLATION, boundaryHooksStatus, syncModuleBoundaryRoots } from './moduleBoundaryHooks.mjs'
 import { activateLocalModule } from './moduleLoader.mjs'
+import { prepareLibraryMigrations } from './libraryMigrations.mjs'
 import { readRootsTable, inspectRoot } from './moduleRoots.mjs'
 
 const layers = new Map()
@@ -443,15 +444,39 @@ export async function moduleRootsReport(env = process.env) {
   return layer.report
 }
 
+/** OS-197：迁移失败（或回退保护）的覆盖者从该库的有效清单里剔除；同 id 回落到内置件。 */
+function effectiveManifests(layer, excluded = []) {
+  const drop = new Set(excluded)
+  if (!drop.size) return { manifests: layer.manifests, sources: layer.sources }
+  const manifests = []
+  const sources = []
+  for (const manifest of layer.manifests) {
+    if (!drop.has(manifest.id)) {
+      manifests.push(manifest)
+      const source = layer.sources.find((item) => item.id === manifest.id)
+      if (source) sources.push(source)
+      continue
+    }
+    const builtin = ALL_CAPABILITY_MANIFESTS.find((item) => item.id === manifest.id)
+    if (!builtin) continue
+    manifests.push(builtin)
+    const source = MODULE_SOURCES.find((item) => item.id === manifest.id)
+    if (source) sources.push(source)
+  }
+  return { manifests, sources }
+}
+
 /** 当前层的候选 manifests（已含本机覆盖），按库 ui-state 再建快照。 */
 export async function snapshotFor(root, env = process.env) {
   const layer = await ensureRuntime(env)
   if (!root) return layer.snapshot
   try {
+    const migrations = await prepareLibraryMigrations(root, layer)
+    const effective = effectiveManifests(layer, migrations.excluded)
     const { state } = await readUiState(root)
     return buildCapabilitySnapshot({
-      manifests: layer.manifests,
-      sources: layer.sources,
+      manifests: effective.manifests,
+      sources: effective.sources,
       state,
       suiteState: readShelfSuiteState({ root }),
       base: BASE_GRAPH,
@@ -459,6 +484,62 @@ export async function snapshotFor(root, env = process.env) {
     })
   } catch {
     return layer.snapshot
+  }
+}
+
+/** OS-197：迁移执行状态（真实链路唯一取数口，/api/plugins 与 daemon 闸共用）。 */
+export async function migrationStateFor(root, env = process.env) {
+  if (!root) return { ok: true, ran: [], skipped: [], failures: [], excluded: [], migrations: [], dataVersions: [], fresh: false }
+  const layer = await ensureRuntime(env)
+  return prepareLibraryMigrations(root, layer)
+}
+
+/** 该库当前快照下有效的 manifests（已剔除迁移失败覆盖者，同 id 回落内置）。 */
+export async function effectiveManifestsFor(root, env = process.env) {
+  const layer = await ensureRuntime(env)
+  if (!root) return layer.manifests
+  const migrations = await prepareLibraryMigrations(root, layer)
+  return effectiveManifests(layer, migrations.excluded).manifests
+}
+
+/** OS-197 回退保护：数据已是 N+1 格式、路由却落在旧供给者时，拒绝静默误读。 */
+export async function dataVersionAheadFor(endpointId, root, env = process.env) {
+  if (!root) return null
+  const [owner, snapshot, manifests, state] = await Promise.all([
+    endpointOwnerFor(endpointId, env),
+    snapshotFor(root, env),
+    effectiveManifestsFor(root, env),
+    migrationStateFor(root, env)
+  ])
+  if (!owner || !state?.dataVersions?.length) return null
+  const manifest = manifests.find((item) => item.id === owner)
+  if (!manifest) return null
+  const required = new Set((manifest.requires ?? []).map((item) => item.id))
+  const hits = []
+  for (const data of state.dataVersions) {
+    const route = snapshot.routes?.[data.capability]
+    if (!route || route.version >= data.to) continue
+    if (route.provider !== owner && !required.has(data.capability)) continue
+    hits.push({
+      capability: data.capability,
+      dataVersion: data.to,
+      provider: route.provider,
+      providerVersion: route.version,
+      journalPath: data.journalPath
+    })
+  }
+  if (!hits.length) return null
+  const first = hits[0]
+  return {
+    code: 'DATA_VERSION_AHEAD',
+    module: owner,
+    capability: first.capability,
+    dataVersion: first.dataVersion,
+    provider: first.provider,
+    providerVersion: first.providerVersion,
+    journalPath: first.journalPath,
+    capabilities: hits,
+    message: `库数据已是 ${first.capability}@${first.dataVersion} 格式，当前供给者 ${first.provider}@${first.providerVersion} 会误读：请重新启用覆盖者，或执行回退迁移（不自动执行）`
   }
 }
 

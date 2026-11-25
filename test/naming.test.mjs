@@ -24,6 +24,7 @@ import {
   NAMING_TABLE, TAB_REGISTRY, DIR_LABELS, DIR_ORDER, READONLY_DIRS, PAGE_TO_DIR_LOCAL, LOG_MODULES,
   namingEntry, namingEntryForDir, logModuleForDir, logModuleForView
 } from '../public/views/registry.mjs'
+import { MODULE_MANIFESTS } from '../src/protocol/modules.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
@@ -62,17 +63,24 @@ const LOG_MODULES_IN_USE = Object.freeze([
 
 /* ---------- ① 表覆盖页签 ---------- */
 
-test('表覆盖页签：TAB_REGISTRY 未退场条目的 dir/label/panelLabel 全部来自命名表', () => {
-  const tabEntries = TAB_REGISTRY.filter((entry) => !entry.retired && entry.label)
-  assert.ok(tabEntries.length >= 8, '未退场页签条目数不该变少')
-  for (const entry of tabEntries) {
-    const row = namingEntry(entry.concept)
-    assert.ok(row, `页签 ${entry.id} 缺 concept 指向（命名表里没有这一行）`)
-    assert.equal(row.tab, entry.label, `页签 ${entry.id} 的显示名与命名表 tab 列不一致`)
-    assert.equal(row.dirTab === false ? null : row.dir ?? null, entry.dir ?? null, `页签 ${entry.id} 的目录与命名表 dir 列不一致`)
-    assert.equal(row.panelLabel ?? null, entry.panelLabel ?? null, `页签 ${entry.id} 的面板名与命名表 panelLabel 列不一致`)
-    // 反向：目录能反查到同一行（五层互相可查）
-    if (entry.dir) assert.equal(namingEntryForDir(entry.dir)?.id, row.id, `目录 ${entry.dir} 反查不到 ${row.id}`)
+test('表覆盖页签：manifest 的 tab 显示名全部来自命名表，视图行为表不再存页签名', () => {
+  const tabPlacements = MODULE_MANIFESTS
+    .filter((manifest) => manifest.class === 'workbench')
+    .flatMap((manifest) => (manifest.slots ?? []).filter((placement) => placement.slot === 'tab').map((placement) => ({ manifest, placement })))
+  assert.ok(tabPlacements.length >= 8, '未退场页签条目数不该变少')
+  for (const { manifest, placement } of tabPlacements) {
+    const page = (manifest.pages ?? []).find((item) => item.id === placement.page)
+    const row = namingEntry(placement.page) ?? namingEntry(manifest.id)
+    assert.ok(row, `页签 ${manifest.id}/${placement.page} 缺命名表行`)
+    assert.equal(page.label, row.tab, `页签 ${placement.page} 的显示名与命名表 tab 列不一致`)
+    if (row.dir && row.dirTab !== false) assert.equal(namingEntryForDir(row.dir)?.id, row.id, `目录 ${row.dir} 反查不到 ${row.id}`)
+  }
+  // 宿主设置页仍在命名表里；视图行为表不许再带 label/dir/module/order。
+  assert.equal(namingEntry('settings')?.tab, '设置')
+  for (const entry of TAB_REGISTRY) {
+    for (const key of ['label', 'dir', 'module', 'order', 'panelLabel']) {
+      assert.equal(Object.prototype.hasOwnProperty.call(entry, key), false, `TAB_REGISTRY:${entry.id} 不该有 ${key}`)
+    }
   }
   // 概念 id 唯一、行形状完整
   assert.equal(new Set(NAMING_TABLE.map((row) => row.id)).size, NAMING_TABLE.length, '概念 id 必须唯一')

@@ -16,7 +16,7 @@ export const MODULES_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', '
 const text = (value) => String(value ?? '')
 
 export { HOST_COMPOSITION_IDS, isHostComposition, moduleRole } from './moduleIdentity.mjs'
-export { SLOT_IDS, SLOT_REGISTRY, SLOT_SPEC, isRegisteredSlot, slotEntry, slotPlacements } from './slots.mjs'
+export { SLOT_IDS, SLOT_REGISTRY, SLOT_SPEC, isRegisteredSlot, slotEntry, slotPlacements, slotProjection } from './slots.mjs'
 
 export {
   buildCapabilitySnapshot,

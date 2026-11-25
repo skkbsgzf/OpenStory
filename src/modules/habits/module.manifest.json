@@ -22,7 +22,8 @@
   "slots": [
     {
       "slot": "tab",
-      "page": "habits"
+      "page": "habits",
+      "order": 70
     }
   ],
   "settingsHint": "习惯在库的「习惯」页签里直接编辑（真源是库内 习惯/habits.json）；Agent 成文与右栏分析都读同一份，这里不放第二份输入框。"

@@ -121,20 +121,18 @@ test('b) 端点覆盖：全量 handler 键 100% 有归属或宿主白名单理�
   assert.equal(report.claimedEndpointCount + report.hostEndpointCount, 108)
 })
 
-test('c) 页签覆盖：每个未退场页签归属模块或宿主保留（带理由）', () => {
+test('c) 页签覆盖：每个 manifest 页签位置都落在本模块声明的页面上', () => {
   assert.deepEqual(report.uncoveredTabs, [], `无归属页签：${report.uncoveredTabs.join('、')}`)
   for (const [id, reason] of Object.entries(HOST_OWNED_TABS)) {
     assert.ok(reason.trim().length > 8, `宿主页签 ${id} 必须写理由`)
-    assert.ok(TAB_REGISTRY.some((entry) => entry.id === id && entry.label), `宿主页签 ${id} 不在注册表`)
+    assert.ok(TAB_REGISTRY.some((entry) => entry.id === id), `宿主页签 ${id} 不在视图行为表`)
   }
-  for (const entry of TAB_REGISTRY.filter((item) => !item.retired && item.label && item.module)) {
-    assert.ok(MODULE_MANIFESTS.some((manifest) => manifest.id === entry.module), `页签 ${entry.id} 指向不存在的模块 ${entry.module}`)
-  }
-  // 四个完整工作台都必须有可停用的页签归属，不再使用 moduleCore 特例。
+  // 三个完整工作台都必须有可停用的页签位置（OS-198：归属只在 manifest 的 slots 里）。
   for (const id of ['chapters', 'worldbook', 'script', 'roleplay']) {
-    const tabs = TAB_REGISTRY.filter((entry) => entry.module === id)
+    const manifest = MODULE_MANIFESTS.find((item) => item.id === id)
+    const tabs = manifest.slots.filter((placement) => placement.slot === 'tab')
     assert.ok(tabs.length > 0, `工作台 ${id} 至少有一个页签`)
-    for (const tab of tabs) assert.equal(Object.prototype.hasOwnProperty.call(tab, 'moduleCore'), false)
+    for (const tab of tabs) assert.ok(manifest.pages.some((page) => page.id === tab.page), `${id} 的页签 ${tab.page} 找不到页面`)
   }
 })
 
@@ -152,7 +150,7 @@ function functionBody(name) {
 }
 
 test('d) 视图归属：模块页签渲染本体不在 app.js（宿主保留须显式列理由）', () => {
-  for (const entry of TAB_REGISTRY.filter((item) => !item.retired && item.module && item.render)) {
+  for (const entry of TAB_REGISTRY.filter((item) => item.render && !item.routeOnly && !item.host)) {
     const body = functionBody(entry.render)
     if (body === null) continue // 完全迁出，app.js 连壳都没有
     if (HOST_KEPT_RENDERERS[entry.render]) {
@@ -162,7 +160,7 @@ test('d) 视图归属：模块页签渲染本体不在 app.js（宿主保留须�
     assert.ok(body.length < 2000, `${entry.render} 不是宿主保留项，必须迁出（当前色 ${body.length} 字符）`)
     assert.match(body, /(?:[A-Za-z]+Views|views)\./u, `${entry.render} 的薄壳必须转交 public/views/`)
   }
-  // 白名单本身不许腐化：登记的渲染名必须在注册表里真实使用
+  // 白名单本身不许腐化：登记的渲染名必须在视图行为表里真实使用
   const used = new Set(TAB_REGISTRY.map((entry) => entry.render))
   for (const name of Object.keys(HOST_KEPT_RENDERERS)) assert.ok(used.has(name), `宿主白名单登记了不存在的渲染名 ${name}`)
 })

@@ -33,7 +33,7 @@ node .zcode/os-batch-runner.mjs --plan <plan.json> --status <status.json> --mode
 
 ## 3. 门禁（全绿才算过）
 
-全量测试（`npm test`）· 验收门禁（`node tools/acceptance/acceptance.mjs`，现有 27 项，只增不减）· 数字锚（`node tools/number-anchors.mjs --check`）· 架构统计（`node tools/arch-stats.mjs --check`）· 隔离 e2e（`node tools/verify/verify-os172-e2e.mjs`：水浒 10 项＋新建 13 项）。
+全量测试（`npm test`）· 验收门禁（`node tools/acceptance/acceptance.mjs`，现有 29 项，只增不减）· 数字锚（`node tools/number-anchors.mjs --check`）· 架构统计（`node tools/arch-stats.mjs --check`）· 隔离 e2e（`node tools/verify/verify-os172-e2e.mjs`：水浒 10 项＋新建 13 项）。
 
 ## 4. 交付格式
 

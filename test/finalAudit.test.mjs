@@ -64,8 +64,8 @@ test('数值锚点：PUBLISHING／工单体系与 ARCHITECTURE 生成段同源',
   assert.equal(appLines[0], fmt(numberAnchors.appJs.lines))
   assert.equal(testLines[0], String(numberAnchors.testFiles))
 
-  // OS-192：这三份文档不在工单允许改动范围内，是 C6/D 批历史快照（收口归 OS-199）。
-  // 用冻结锚校验它们仍然自洽，不拿当前实测去要求范围外文件。
+  // OS-199 收口：三份文档已按当前实现改齐，冻结锚也同步到本轮实测，
+  // 但仍只校验锚点存在，不拿逐字生成段要求这些叙述型文档。
   const frozen = FROZEN_DOC_ANCHORS
   for (const text of [publishingDoc, systemDoc, auditDoc]) {
     assert.match(text, new RegExp(String(frozen.tests.total), 'u'), '历史测试总数锚点缺失')
@@ -74,7 +74,7 @@ test('数值锚点：PUBLISHING／工单体系与 ARCHITECTURE 生成段同源',
   }
   // PUBLISHING 是范围外冻结文档，用冻结门禁数校验（与 FROZEN_DOCS 口径一致）。
   assert.match(publishingDoc, new RegExp(`${FROZEN_DOC_ANCHORS.gateCount} 过 / 0 挂 / 0 警`, 'u'))
-  assert.match(systemDoc, /模块 \*\*20\*\*/u)
+  assert.match(systemDoc, /模块 \*\*21\*\*/u)
 })
 
 test('C6 架构规模：取消 L2，按 manifest class 分组且生成段逐字一致', () => {

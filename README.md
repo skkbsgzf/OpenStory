@@ -24,7 +24,9 @@
 3. **插件不常驻**：套件/运行时按声明加载，停用＝规则退回内置默认（值保留）。
 
 **数据位置（OS-166 起本机院子归 OpenStory）**：库永远在作者自己的目录里；稿件、扮演会话、
-导入导出文件与 `.openstory/` 都在库内。机器级凭据、界面偏好、单实例锁与本机货架落新院
+导入导出文件与 `.openstory/` 都在库内。模块能力升级的迁移日志在 `<库>/.openstory/migrations/`，
+迁移前的数据快照在 `<库>/.history/capability-*`（一次性迁移见 `src/protocol/libraryUpgrade.mjs`，
+能力迁移见 `src/host/libraryMigrations.mjs`）。机器级凭据、界面偏好、单实例锁与本机货架落新院
 `%LOCALAPPDATA%/OpenStory/openstory/`。本机其余目录不读、不写、不删（含历史遗留目录与其中
 可能存在的标记文件）。所有路径只从 `src/protocol/courtyard.mjs` 解析，
 `src/host/courtyard.mjs` 是宿主层唯一门面。
@@ -68,6 +70,8 @@ L1  磁盘库                     文件即真相（.openstory 运行态；旧�
 
 仓根零 `.mjs`（OS-159 布局宪法）：入口直跑 `src/host/daemon.mjs` / `src/host/mcp.mjs`，实现都在 `src/` 六目录。
 
+当前实测：21 份内置 manifest（12 workbench＋7 kernel＋2 宿主组合面）、108 个契约端点、836 例单测（834 过／2 跳过）、29 项验收检查、`app.js` 10,110 行。数字由 `ARCHITECTURE.md` 生成段与 `docs/number-anchors.json` 校验，不手写承诺。
+
 CI 是合入门禁：推送与合并请求在 Node 24 上跑 `npm test` 两轮、验收门禁与架构统计核对；本地先跑同样的三条命令。
 
 数据优先级（fact-first）：**事实链 ① ＞ 正文 ② ＞ 派生物 ③**——读数据先问事实链，喂模型先问能不能只喂事实链。详见 [FACT-FIRST.md](docs/FACT-FIRST.md)。
@@ -91,6 +95,8 @@ CI 是合入门禁：推送与合并请求在 Node 24 上跑 `npm test` 两轮�
 | `test/` | 全量 `node --test`（含 daemon 端到端、入口直跑契约、解耦金样与旧库迁移护栏） |
 | `docs/` | 架构与规划（[ARCHITECTURE.md](./ARCHITECTURE.md) 分层与实测、[内核出处](./docs/kernel-provenance.md)、[错误码改名](./docs/error-code-rename.md)、[遗留台账](./docs/LEGACY-ITEMS.md) 等） |
 
+**页面与显示名只来自 manifest（OS-198）**：页签、右栏、侧栏、管理动作等放置位由各模块 `slots[]` 声明（`order` 定先后），daemon 按当前库启用状态投影成 `/api/plugins.slots`；前端 `TAB_REGISTRY` 只登记视图行为（渲染、图标、可关闭），不再持有页签名单与顺序。第三方工作台可用 `pages[].kind:'iframe'` 自带页面，daemon 只对已登记且装载成功的本机模块提供 `/module-page/<id>/<entry>`。
+
 ## 本机模块
 
 作者登记的本机模块根可以提供 kernel 与工作台（套件仍只许数据）。**可执行模块与 daemon 同进程、同权限：登记即信任这个根下的所有代码。** 所以只走「预览清单 → 明确确认 → 生效」，不扫描任意目录。
@@ -110,7 +116,9 @@ OpenStory 自 [Pinax-next](https://github.com/skkbsgzf/Pinax-StoryHarness) 的 o
 `*.wiki.json`＝`openstory-wiki-derived@2`、临时前缀＝`.openstory-tmp-`。目录正名为
 `世界书/`、`故事源/`、`扮演/`、`导入导出/`，页面名为 `产物`。旧库先整库备份，再由
 `src/protocol/libraryUpgrade.mjs` 一次性迁移并退役留档；不保留 `.pinax/` 与 `.openstory/`
-长期双读。建库/导入/章节号解析自 OS-123/124 起即为本仓自持。设计对标 OpenDesign
+长期双读。模块能力的数据版本另记在 `<库>/.openstory/migrations/`：迁移 `from→to` 成功即写
+`done` 日志；此后数据已是新格式，旧供给者再接到请求会得到 `DATA_VERSION_AHEAD`（409），
+只能重新启用新供给者或手工回迁，不会自动降级误读。建库/导入/章节号解析自 OS-123/124 起即为本仓自持。设计对标 OpenDesign
 （dsHarness 生态）的插件接入与用户体验口径。
 
 ## 发布规范

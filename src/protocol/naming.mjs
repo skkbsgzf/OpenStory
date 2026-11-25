@@ -17,6 +17,7 @@
 export {
   NAMING_TABLE,
   LOG_MODULES,
+  BUILTIN_PAGE_IDS,
   namingEntry,
   namingEntryForDir,
   logModuleForDir,

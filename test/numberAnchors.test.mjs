@@ -50,6 +50,7 @@ test('机器锚与静态实测、当前文档互相一致', () => {
   assert.deepEqual({
     schema: persisted.schema,
     appJs: persisted.appJs,
+    modules: persisted.modules,
     endpoints: persisted.endpoints,
     testFiles: persisted.testFiles
   }, actual)

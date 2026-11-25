@@ -18,10 +18,10 @@ import { API_ERROR_CODES, ENDPOINTS } from '../src/api/contracts.mjs'
 import { allHandlers } from '../src/host/handlerTable.mjs'
 import {
   MODULE_MANIFESTS, moduleManifest, moduleOfEndpoint, moduleRole,
-  isModuleEnabled, isModuleDisabledFor
+  isModuleEnabled, isModuleDisabledFor, slotProjection
 } from '../src/protocol/modules.mjs'
 import {
-  TAB_REGISTRY, computeTabDefs, dirTabDefs
+  projectedTabDefs, BUILTIN_PAGE_IDS
 } from '../public/views/registry.mjs'
 import {
   aggregateSettings, renderSettingsModules
@@ -123,20 +123,18 @@ test('证据②可写：daemon uiStatePut 接收四工作台停用键并原样�
   }
 })
 
-test('证据③slot 跟随模块：页签级 core 保留，但停用后四个归属页签消失', () => {
-  for (const [tabId, moduleId] of [['chapters', 'chapters'], ['script', 'script'], ['worldbook', 'worldbook'], ['roleplay', 'roleplay']]) {
-    const tab = TAB_REGISTRY.find((entry) => entry.id === tabId)
-    assert.equal(tab.module, moduleId)
-    assert.equal(tab.core, true, `${tabId} 仍属顶栏可达面`)
-    assert.equal(Object.prototype.hasOwnProperty.call(tab, 'moduleCore'), false)
+test('证据③slot 跟随模块：停用后四个归属页签消失，重新启用恢复', () => {
+  for (const id of FORMER_CORE_IDS) {
+    const manifest = MODULE_MANIFESTS.find((item) => item.id === id)
+    assert.ok(manifest.slots.some((placement) => placement.slot === 'tab' && placement.page === id), `${id} 须声明页签位置`)
+    assert.equal(Object.prototype.hasOwnProperty.call(manifest, 'moduleCore'), false)
   }
   const ctx = { current: { path: '/lib' }, libDirs: ['正文', '剧本', '世界书', '习惯'], brief: null, briefGenre: null, settingsOpen: false }
-  const empty = computeTabDefs({ ...ctx, modulesEnabled: new Set() }).map((def) => def.view)
+  const slots = (enabled) => slotProjection(MODULE_MANIFESTS, enabled, { builtinPages: new Set(BUILTIN_PAGE_IDS) }).slots
+  const empty = projectedTabDefs({ slots: slots(Object.fromEntries([...FORMER_CORE_IDS, 'habits'].map((id) => [id, false]))), ctx }).map((def) => def.view)
   for (const view of ['chapters', 'dir:剧本', 'worldbook', 'roleplay', 'habits']) assert.ok(!empty.includes(view), `${view} 应随模块停用消失`)
-  const enabled = computeTabDefs({ ...ctx, modulesEnabled: new Set([...FORMER_CORE_IDS, 'habits']) }).map((def) => def.view)
+  const enabled = projectedTabDefs({ slots: slots(), ctx }).map((def) => def.view)
   for (const view of ['chapters', 'dir:剧本', 'worldbook', 'roleplay', 'habits']) assert.ok(enabled.includes(view), `${view} 启用后应恢复`)
-  assert.ok(!dirTabDefs({ libDirs: ['正文', '剧本', '习惯'], excluded: new Set(), modulesEnabled: new Set() })
-    .some((def) => def.view === 'dir:剧本'), 'dirScan 分支同样跟随模块状态')
 })
 
 test('证据④端点可恢复：停用回 409，重新启用回 200，稿件字节不变', async () => {

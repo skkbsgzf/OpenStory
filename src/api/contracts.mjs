@@ -54,6 +54,8 @@ export const API_ERROR_CODES = Object.freeze({
   PLUGIN_DEGRADED: 'PLUGIN_DEGRADED',
   // 能力迁移（OS-186 / D2）：迁移器失败＝数据面故障，原格式保留、覆盖者禁用
   MIGRATION_FAILED: 'MIGRATION_FAILED',
+  // 回退保护（OS-197）：数据已是新格式、路由却回落到旧供给者——拒绝静默误读
+  DATA_VERSION_AHEAD: 'DATA_VERSION_AHEAD',
   LIBRARY_UPGRADE_FAILED: 'LIBRARY_UPGRADE_FAILED',
   // 故事源（OS-150a）：库里还没有任何故事源条目——合法空态，不是坏档
   FACT_EMPTY: 'FACT_EMPTY',

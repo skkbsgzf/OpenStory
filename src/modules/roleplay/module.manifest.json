@@ -42,7 +42,8 @@
   "slots": [
     {
       "slot": "tab",
-      "page": "roleplay"
+      "page": "roleplay",
+      "order": 80
     }
   ],
   "settingsHint": "会话状态落库内「扮演/」，模型与运行时在「设置 · 引擎与存储」里配；停用保留全部会话与素材。"

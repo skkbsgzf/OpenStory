@@ -167,9 +167,12 @@ const referenceViewsReady = import('./views/referenceViews.mjs').then((mod) => {
 let deduceViews = null
 const deduceViewsReady = import('./views/deduceViews.mjs').then((mod) => { deduceViews = mod; return mod })
   .catch((error) => { console.error('[views] 扮演视图模块加载失败', error); return null })
-/* OS-161：前端模块 id 清单（与各模块目录的 module.manifest.json 对齐；后端 manifest 装载结果在此镜像，
-   页签可见性只按这张表 × moduleOn(id) 判定，新增模块须同步这里一行）。 */
-const MODULE_IDS = ['analysis', 'imagegen', 'knowledge', 'log', 'habits', 'storysource', 'artifacts', 'exchange', 'chapters', 'script', 'worldbook', 'roleplay']
+/* OS-161：前端模块 id 清单已退役（OS-198）——页签/右栏/设置只照 `/api/plugins.slots` 投影渲染。 */
+
+/* OS-198：本机模块 iframe 页面（views/modulePageViews.mjs）——app.js 只接线。 */
+let modulePageViews = null
+const modulePageViewsReady = import('./views/modulePageViews.mjs').then((mod) => { modulePageViews = mod; return mod })
+  .catch((error) => { console.error('[module-page] 模块页面视图加载失败', error); return null })
 
 /* OS-149：运行时货架过滤（views/runtimeShelf.mjs）——fixture 套件不进作者可见列表；纯函数在 views/，这里只接线 */
 let runtimeShelf = null
@@ -288,7 +291,7 @@ const state = {
   rejectedMsgs: {},
   suites: [],
   // OS-120：三套插件的统一清单（只读聚合）。loaded 用来区分「还没拉」和「拉回来是空」
-  plugins: { loaded: false, list: [], byKind: {}, stats: null, warnings: [], error: '' },
+  plugins: { loaded: false, slots: null, slotWarnings: [], list: [], byKind: {}, stats: null, warnings: [], error: '' },
   agent: {
     configured: false,
     endpoint: '',
@@ -559,7 +562,14 @@ function renderJobBall() {
    本体暂留本文件（G5 逐个迁出），此处是出走的唯一插座：迁出后从模块侧重新 register 即可。 */
 const VIEW_RENDERERS = {
   libraryHtml, createHtml, importHtml, repairHtml, writeHtml, habitsViewHtml,
-  referencePageHtml, deduceHtml, settingsHtml, artifactsHtml, dirViewHtml
+  referencePageHtml, deduceHtml, settingsHtml, artifactsHtml, dirViewHtml,
+  modulePageHtml: (view) => modulePageViews?.modulePageHtml(view, {
+    slots: state.plugins?.slots ?? {},
+    modules: state.plugins?.modules ?? [],
+    localModules: state.plugins?.localModules ?? [],
+    root: state.current?.path ?? '',
+    esc
+  }) ?? '<div class="empty">模块页面视图还在载入…</div>'
 }
 /** 视图 → 渲染函数（注册表给注册名，这里取本体）；未注册＝装配错误，响亮失败。 */
 function viewHtml(view, ...args) {
@@ -584,7 +594,8 @@ function render() {
   viewEl.classList.toggle('content-locked', state.view === 'chapters' || state.view === 'dir:剧本'
     || state.view === 'roleplay')
   if (state.view !== 'roleplay') dedTypewriterStop()
-  if (state.view === 'libraries') viewEl.innerHTML = viewHtml('libraries')
+  if (state.view.startsWith('module:')) viewEl.innerHTML = viewHtml(state.view, state.view)
+  else if (state.view === 'libraries') viewEl.innerHTML = viewHtml('libraries')
   else if (state.view === 'chapters') {
     viewEl.innerHTML = viewHtml('chapters')
     // 版面换了 DOM：批注面板要重挂（否则右栏是空的），标注与吸顶也要重算
@@ -1952,7 +1963,7 @@ function writeHtml() {
         <button class="doc-drawer-btn" data-action="refcol-toggle" title="世界书" aria-label="世界书">
           <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><rect x="2.5" y="2.5" width="11" height="11" rx="1.6" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M2.5 6h11M2.5 10h11" stroke="currentColor" stroke-width="1.4"/></svg>
         </button>
-        <button class="doc-drawer-btn" data-action="analyze-toggle" title="分析本章" aria-label="分析本章"${moduleOn('analysis') ? '' : ' hidden'}><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><circle cx="8" cy="8" r="5.4" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M8 2.6A5.4 5.4 0 0 1 13.4 8H8z" fill="currentColor"/></svg></button>
+        <button class="doc-drawer-btn" data-action="analyze-toggle" title="分析本章" aria-label="分析本章"${slotHas('right', 'analysis') ? '' : ' hidden'}><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><circle cx="8" cy="8" r="5.4" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M8 2.6A5.4 5.4 0 0 1 13.4 8H8z" fill="currentColor"/></svg></button>
         <button class="doc-icon" data-action="doc-more" title="本章（版本历史 / 重命名 / 删除 / 显示设置）" aria-label="本章">
           <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><circle cx="3.4" cy="8" r="1.35" fill="currentColor"/><circle cx="8" cy="8" r="1.35" fill="currentColor"/><circle cx="12.6" cy="8" r="1.35" fill="currentColor"/></svg>
         </button>
@@ -3512,11 +3523,14 @@ async function loadSuites() {
  *
  * 这里只读聚合，失败不阻断设置页（其余两套照常显示）。
  */
-async function loadPlugins() {
+async function loadPlugins(root = state.current?.path || '') {
   try {
-    const payload = await api('/api/plugins')
+    const payload = await api(`/api/plugins${root ? `?root=${encodeURIComponent(root)}` : ''}`)
     state.plugins = {
       loaded: true,
+      // OS-198：当前库的 slot 投影是页签/右栏/设置区/宿主动作的唯一真源；null＝没拿到（不退回硬编码名单）。
+      slots: payload.slots && typeof payload.slots === 'object' ? payload.slots : {},
+      slotWarnings: Array.isArray(payload.slotWarnings) ? payload.slotWarnings : [],
       list: Array.isArray(payload.plugins) ? payload.plugins : [],
       byKind: payload.byKind && typeof payload.byKind === 'object' ? payload.byKind : {},
       stats: payload.stats && typeof payload.stats === 'object' ? payload.stats : null,
@@ -3526,6 +3540,8 @@ async function loadPlugins() {
   } catch (error) {
     state.plugins = {
       loaded: true,
+      slots: null,
+      slotWarnings: [],
       list: [],
       byKind: {},
       stats: null,
@@ -5395,56 +5411,27 @@ function setTabHidden(view, hidden) {
 function openTabAdd() {
   if (!state.current || !registryModule) return
   const hidden = hiddenTabs()
-  const libDirs = state.libDirs
-  // 内置页签（有独立视图，不一定是目录）——OS-143：产物/正文/扮演由注册表 panel 条目给出
-  const builtins = registryModule.builtinPanelTabs()
-  const builtinRows = builtins
-    .filter((item) => (item.need ? libDirs.includes(item.need) : true))
-    .map((item) => {
-      const off = hidden.has(item.view)
-      return `<button class="tab-pick${off ? '' : ' on'}" data-action="tab-toggle-pick" data-tab-view="${esc(item.view)}">
-        <span class="tp-check">${off ? '' : '✓'}</span><b>${esc(item.label)}</b></button>`
-    }).join('')
-  // 目录型页签（已有目录）
-  // 世界书/习惯有专页（见 renderTabs）；面板条目须复用页签的 view 键。
-  // 注册表条目的 view 就是页签栏的键（OS-143）。
-  // OS-86：已退场的旧目录彻底不出现——不管磁盘上还在不在、有多少篇。
-  // 作者口径：没被官方认证的标签就是要消失，不做「旧·待迁」降级露出；
-  // 内容清理走一次性迁移（大纲/构思/资料→世界书，约束→习惯＋世界书存档）。
-  const dirRows = libDirs
-    .filter((dir) => dir !== '正文' && dir !== '世界书' && dir !== '扮演')
-    .filter((dir) => !RETIRED_DIRS.includes(dir))
-    .sort((left, right) => DIR_ORDER.indexOf(left) - DIR_ORDER.indexOf(right))
-    .map((dir) => {
-      const entry = registryModule.dirTabEntry(dir)
-      const view = entry?.view || `dir:${dir}`
-      const off = hidden.has(view)
-      const known = Boolean(entry)
-      const label = entry?.panelLabel || entry?.label || dir
-      return `<button class="tab-pick${off ? '' : ' on'}" data-action="tab-toggle-pick" data-tab-view="${esc(view)}">
-        <span class="tp-check">${off ? '' : '✓'}</span><b>${esc(label)}</b>${known ? '' : '<span class="tp-note">未识别</span>'}</button>`
-    }).join('')
-  // OS-83：已识别但库里还没建的业务目录（剧本/日志…）——清单由注册表 creatableDirNames 给出，
-  // 点一下就建目录并加页签（走同一条 /api/dir 通道）。
-  const creatableRows = registryModule.creatableDirNames(libDirs)
-    .map((item) => `<button class="tab-pick" data-action="tab-make-dir" data-dir-name="${esc(item.dir)}" title="库里还没有 ${esc(item.dir)}/ 目录——点一下建出来并加页签">
-      <span class="tp-check">＋</span><b>${esc(item.label)}</b><span class="tp-note">待建</span></button>`)
-    .join('')
-  // 磁盘上有、但不在 DIR_LABELS 里的目录（作者自建的如「分镜」）也列出来——
-  // 这是「加页签」的主用途之一；标「未识别」如实说明它不是内置载体。
+  const slots = state.plugins?.slots
+  if (!slots) {
+    openModal('<h3>增加页签</h3><p class="sub">拿不到工作台清单（/api/plugins 的 slots 投影）——不能凭硬编码名单猜页签。</p><div class="ops"><button class="btn-ghost" data-action="modal-close">关闭</button></div>')
+    return
+  }
+  // OS-198：可勾选项只来自投影；模块停用／没有页面时它根本不在投影里。
+  const rows = registryModule.projectedPanelTabs(slots, undefined, {
+    current: state.current,
+    brief: state.brief ?? null,
+    briefGenre: state.briefGenre ?? null,
+    libDirs: state.libDirs,
+    settingsOpen: state.settings.open
+  }).map((item) => {
+    const off = hidden.has(item.view)
+    return `<button class="tab-pick${off ? '' : ' on'}" data-action="tab-toggle-pick" data-tab-view="${esc(item.view)}">
+      <span class="tp-check">${off ? '' : '✓'}</span><b>${esc(item.label)}</b></button>`
+  }).join('')
   openModal(`
     <h3>增加页签</h3>
-    <p class="sub">勾上就会出现在顶栏；取消勾选只是收起页签，磁盘上的文件和稿子不受影响。</p>
-    <div class="tab-pick-sec"><h4>常用</h4><div class="tab-pick-grid">${builtinRows}</div></div>
-    <div class="tab-pick-sec"><h4>库里已有目录</h4><div class="tab-pick-grid">${dirRows || '<span class="count">没有其它目录</span>'}</div></div>
-    ${creatableRows ? `<div class="tab-pick-sec"><h4>可以新建的业务模块</h4><div class="tab-pick-grid">${creatableRows}</div></div>` : ''}
-    <div class="tab-pick-sec"><h4>新建目录</h4>
-      <div class="row">
-        <input id="tab-new-dir" placeholder="例如：分镜" style="flex:1">
-        <button class="btn-primary" data-action="tab-create-dir">建目录并加页签</button>
-      </div>
-      <div class="err" id="tab-add-err"></div>
-    </div>
+    <p class="sub">勾上就会出现在顶栏；取消勾选只是收起页签，磁盘上的文件和稿子不受影响。页签名单与顺序由工作台 manifest 决定。</p>
+    <div class="tab-pick-sec"><h4>可显示的页签</h4><div class="tab-pick-grid">${rows || '<span class="count">当前工作台没有可显示的页签</span>'}</div></div>
     <div class="ops"><button class="btn-ghost" data-action="modal-close">关闭</button></div>
   `)
 }
@@ -5498,26 +5485,30 @@ async function createTabDir() {
   }
 }
 
-/* OS-143：页签推导全部由注册表驱动（computeTabDefs 纯函数，语义与旧扫描逐条对齐：
-   产物首格固定 → 正文（体裁裁剪）→ 目录型组（词表×退场过滤×DIR_ORDER 稳定排序）→ 扮演 → 设置。
-   注册表条目里的裁定注解（OS-12/19/44/48/75/84/86/88/92）见 public/views/registry.mjs。 */
+/* OS-198：页签只照 `/api/plugins.slots.tab` 投影渲染——顺序、名称、模块归属都来自 manifest。
+   投影拿不到时如实显示「拿不到工作台清单」，绝不退回硬编码名单。 */
 function renderTabs() {
   const tabsEl = document.getElementById('tabs')
   if (!tabsEl || !registryModule) return
   const hidden = state.current ? hiddenTabs() : new Set()
-  // OS-161：模块停用 → 归属页签消失。用前端单一入口 moduleOn 构造显式启用映射。
-  const modulesEnabled = Object.fromEntries(MODULE_IDS.map((id) => [id, moduleOn(id)]))
-  const defs = registryModule.computeTabDefs({
-    current: state.current,
-    brief: state.brief ?? null,
-    briefGenre: state.briefGenre ?? null,
-    libDirs: state.libDirs,
-    settingsOpen: state.settings.open,
-    modulesEnabled
+  const slots = state.current ? state.plugins?.slots : {}
+  if (state.current && !slots) {
+    tabsEl.innerHTML = `<span class="tab tab-off" title="${esc(state.plugins?.error || '没能取到 /api/plugins 的 slots 投影')}">拿不到工作台清单</span>`
+    return
+  }
+  const defs = registryModule.projectedTabDefs({
+    slots: slots ?? {},
+    ctx: {
+      current: state.current,
+      brief: state.brief ?? null,
+      briefGenre: state.briefGenre ?? null,
+      libDirs: state.libDirs,
+      settingsOpen: state.settings.open
+    }
   })
   const visible = registryModule.visibleTabDefs(defs, hidden)
   const tabHtml = visible.map((def) => `<button class="tab${state.view === def.view ? ' on' : ''}" data-view="${esc(def.view)}"><span class="ic">${esc(def.ic)}</span>${esc(def.label)}${def.readonly ? '<span class="pill">只读</span>' : ''}${def.closable ? `<span class="tab-x" data-action="${def.view === 'settings' ? 'settings-close' : 'tab-hide'}" data-tab-view="${esc(def.view)}" title="收起这个页签（不动磁盘上的东西）">×</span>` : ''}</button>`).join('')
-  // 末尾「＋」：加回被收起的页签，或新建目录
+  // 末尾「＋」：把被收起的页签勾回来（只在投影内勾选，不另造名单）
   const addBtn = state.current ? '<button class="tab tab-add" data-action="tab-add-open" title="增加页签">＋</button>' : ''
   tabsEl.innerHTML = tabHtml + addBtn
 }
@@ -5576,6 +5567,12 @@ ${JSON.stringify(payload.entries, null, 2).slice(0, 4000)}`
   }
 }
 
+/** OS-198：某个页面是否在当前库的某个 slot 投影里（宿主动作/右栏/设置区唯一判定）。 */
+function slotHas(slot, page) {
+  const items = state.plugins?.slots?.[slot]
+  return Array.isArray(items) && items.some((item) => item.page === page)
+}
+
 /* ---------- 顶栏库切换器（OS-12）---------- */
 
 function renderLibSwitchPanel() {
@@ -5594,7 +5591,7 @@ function renderLibSwitchPanel() {
          <button data-go="libraries">管理库</button>
          <button data-action="flow-create">＋新建库</button>
          <button data-action="flow-import">导入稿件</button>
-         ${moduleOn('exchange') ? '<button data-action="exchange-open">导入/导出</button>' : ''}
+         ${slotHas('host-actions', 'exchange') ? '<button data-action="exchange-open">导入/导出</button>' : ''}
        </div>`
     : `<div class="empty">还没有库。<br>从建一个空库或导入一份稿子开始。</div>
        <div class="divider"></div>
@@ -6523,7 +6520,7 @@ function scriptViewHtml() {
     refModulesHtml,
     flowError,
     esc, formatAt, formatBytes,
-    analysisOn: moduleOn('analysis')
+    analysisOn: slotHas('right', 'analysis')
   })
 }
 
@@ -7441,7 +7438,7 @@ function deduceEngineHtml() {
         <button class="fl-btn${engine.bgmOn ? ' on' : ''}" data-action="deduce-bgm-toggle"${bgmAsset ? '' : ' disabled'}
           title="${bgmAsset ? `播放：${esc(bgmAsset.name)}（循环）` : '未配置 BGM——放 扮演/…/素材/bgm/<场景或情绪>.mp3 即可启用'}">♪ BGM</button>
         <i class="fl-bar-div"></i>
-        <button class="fl-btn" data-action="deduce-image" title="按本拍局面生成一张场景立绘（需在设置里配生图端点）"${engine.turnBusy ? ' disabled' : ''}${moduleOn('imagegen') ? '' : ' hidden'}>生图</button>
+        <button class="fl-btn" data-action="deduce-image" title="按本拍局面生成一张场景立绘（需在设置里配生图端点）"${engine.turnBusy ? ' disabled' : ''}${slotHas('settings', 'imagegen') ? '' : ' hidden'}>生图</button>
         <button class="fl-btn" data-action="deduce-archive"${engine.turnBusy || !bufferCount ? ' disabled' : ''} title="把本章缓冲的拍整理成 markdown 归档（不写正文文件）">归档</button>
         <button class="fl-btn" data-action="deduce-export"${engine.turnBusy ? ' disabled' : ''} title="整个会话导出成 markdown（每拍的决定＋正文），落 扮演/&lt;bookId&gt;/导出/">导出</button>
       ` : ''}
@@ -7877,6 +7874,8 @@ async function openLibrary(path) {
     await loadUiState()
     applyTypography()   // OS-91：进库即应用项目级字号档位
     applyAgentCollapse() // OS-103：进库即应用 Agent 栏折叠状态
+    // OS-198：进库拉一次 slot 投影——页签栏第一帧就照 manifest 编排，不再另算名单与顺序。
+    await loadPlugins(path)
     // OS-84：探已退场旧目录还剩多少篇——页签栏第一帧就要据此决定藏/露，不能等进世界书页
     await probeRetiredDirs()
     // OS-19：体裁声明后按 excludedPages 裁剪页签（未声明＝不裁剪，保持 OS-8 行为）
@@ -8132,9 +8131,9 @@ function go(view) {
     openDirWork(view.slice(4))
     return
   }
-  // OS-143/190a：作用域由注册表驱动；未注册视图留日志并退回第一个可见页签，不静默留白。
+  // OS-143/198：作用域由注册表驱动；未注册视图留日志并退回第一个可见投影页签，不静默留白。
   // 不需要先打开库；library 作用域没库就退回库清单（扮演也要 root）。
-  if (registryModule && !registryModule.registryEntry(view)) { console.error(`[go] 未注册视图：${view}`); go(registryModule.visibleTabDefs(registryModule.computeTabDefs({ current: state.current, brief: state.brief, briefGenre: state.briefGenre, libDirs: state.libDirs, settingsOpen: state.settings.open }), hiddenTabs())[0]?.view ?? 'chapters'); return }
+  if (registryModule && !registryModule.viewKnown(view, state.plugins?.slots ?? {})) { console.error(`[go] 未注册视图：${view}`); go(registryModule.visibleTabDefs(registryModule.projectedTabDefs({ slots: state.plugins?.slots ?? {}, ctx: { current: state.current, brief: state.brief, briefGenre: state.briefGenre, libDirs: state.libDirs, settingsOpen: state.settings.open } }), hiddenTabs())[0]?.view ?? 'chapters'); return }
   const scope = registryModule ? registryModule.viewScope(view) : null
   if (scope !== 'global' && scope !== 'flow' && !state.current) {
     state.view = 'libraries'
@@ -9228,10 +9227,13 @@ document.addEventListener('change', (event) => {
     setModuleHidden(target.dataset.moduleId, target.checked !== true)
     return
   }
-  // OS-145：模块插件启停与自报设置——值落库内 ui-state；停用不清值
+  // OS-145：模块插件启停与自报设置——值落库内 ui-state；停用不清值。
+  // OS-198：启停后重拉 slot 投影，页签/右栏/设置区照投影消失或回来。
   if (target.dataset?.action === 'plugin-module-toggle' && target.dataset.moduleId) {
-    uiSet(`modules.enabled.${target.dataset.moduleId}`, target.checked === true, { immediate: true })
-    render()
+    Promise.resolve(uiSet(`modules.enabled.${target.dataset.moduleId}`, target.checked === true, { immediate: true }))
+      .then(() => loadPlugins())
+      .then(() => render())
+      .catch(() => render())
     return
   }
   if (target.dataset?.action === 'plugin-module-setting' && target.dataset.moduleId) {
@@ -9726,7 +9728,7 @@ function uiFlush() {
   const mem = uiMemory(root)
   uiPendingKeys = new Set()
   // 落库失败不回滚内存（界面以内存为准），但要如实报错
-  api('/api/ui-state', {
+  return api('/api/ui-state', {
     method: 'PUT',
     body: JSON.stringify({ root, state: mem.values })
   }).catch((error) => {
@@ -9746,8 +9748,8 @@ function uiSet(key, value, { immediate = false } = {}) {
   else mem.values[key] = value
   uiPendingKeys.add(key)
   if (immediate || !state.current?.path) {
-    if (state.current?.path) uiFlush()
-    return
+    if (state.current?.path) return uiFlush()
+    return undefined
   }
   if (uiFlushTimer) clearTimeout(uiFlushTimer)
   uiFlushTimer = setTimeout(uiFlush, 400)

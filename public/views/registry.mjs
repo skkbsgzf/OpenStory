@@ -1,62 +1,35 @@
 /**
- * 页签/路由声明式注册表（OS-143，G4 前端注册协议）。
+ * 页签/路由注册表（OS-143 立表；OS-198 退为视图行为表）。
  *
- * 页签系统以前散在 app.js 的五张表＋两处分发里（DIR_LABELS/DIR_ORDER/PAGE_TO_DIR_LOCAL/
- * DEFAULT_HIDDEN_TABS/RETIRED_DIRS＋renderTabs 扫描＋go 作用域校验）。本文件把它们收成
- * 一张 TAB_REGISTRY：新增一个页签＝给注册表加一条（纯数据），app.js 一行不用动；
- * app.js 从此增量冻结——视图渲染函数只出不进（G5 逐个迁出），页签/路由只经本表声明。
+ * OS-198 起「哪个工作面出现在哪里、什么顺序」只由 manifest 的 slots 决定：
+ * 后端把当前库的 slot 投影（`/api/plugins.slots`）交给前端，页签栏/右栏/设置区/宿主动作
+ * 一律照投影渲染。本文件只剩**视图行为**——页面 id → 渲染函数注册名、图标、可否关闭、
+ * 作用域与可见条件；不再保存页签名、目录归属、模块归属或声明顺序。
  *
- * 条目形状：
- *   {
- *     id          唯一名（测试与排错用）
- *     concept?    命名表概念 id（OS-148；有它＝dir/label/panelLabel 由 NAMING_TABLE 派生）
- *     kind        'fixed' 固定入口页签 ｜ 'dir' 目录型页签 ｜ 'module' 未来可插拔模块页签
- *     label       页签显示名（无 label ＝ 纯路由条目，只服务 go() 的作用域校验，不进页签栏）
- *     icon?       页签图标字（目录型旧算法取 label 首字，这里显式写死以保真）
- *     dir?        对应库内目录名（chapters 双角色：固定页签＋声明它依赖的目录）
- *     view        go() 用的视图名（'chapters' / 'dir:剧本' / 'worldbook'…；目录型保留 dir: 前缀）
- *     core?       核心载体页签（OS-88 三载体＋世界书/扮演；验收 S4.1 的顶栏可达面）
- *     retired?    已退场条目（OS-84/86）——computeTabDefs 无条件过滤，任何输入下都不出
- *     dirScan?    目录型页签：由「磁盘目录 × 词表」扫描物化；第一个 dirScan 条目的声明位
- *                 ＝动态目录页签组的插入点（固定页签组之后、扮演之前）
- *     render      渲染函数**注册名**（app.js 侧 VIEW_RENDERERS 映射持有函数本体；本表只存
- *                 名字，绝不 import app.js——依赖方向永远是壳→表）
- *     panelLabel? 「＋增加页签」面板里的显示名（默认与页签名一致）
- *     readonly?   只读页签（页签上挂「只读」牌）
- *     panel?      出现在「＋增加页签」面板的「常用」区（产物/正文/扮演）
- *     scope?      go() 的视图作用域：'library' 要先打开库 ｜ 'global' 全局页 ｜ 'flow' 建库流程页
- *     visibleWhen?(ctx) 纯函数可见性判定；ctx＝{ current, brief, briefGenre, libDirs,
- *                 settingsOpen, hasDir(name), excluded(Set), entry }
- *   }
+ * 宿主自己的路由（库管理、建库、导入、修复、设置）仍在本表登记，因为它们不是模块页面。
  *
- * 硬约束（与 analysisModules.mjs 同门风）：
+ * 硬约束：
  *   · 纯数据＋纯函数：零 import、不碰 DOM、不读全局 state、不写任何存储；
- *   · 既有裁定逐项钉在本表里，改行为＝改表＝可测试：
- *       OS-8/36  动态页签＋「＋增加页签」；OS-12 产物首格固定；OS-19 体裁裁剪（excludedPages）；
- *       OS-32    设置是可关闭页签；OS-44/48 起目录正名为世界书、故事源；旧名只作迁移输入；
- *       OS-59    习惯走 habits.json 专页；OS-75 剧本走 dir:剧本 专渲染；
- *       OS-84/86 大纲/构思/资料/约束退场（无条件过滤，注册表里留档）；OS-88 只留三载体；
- *       OS-92    词表外目录不出页签（词表＝本表，没条目就没页签）；
- *   · 行为保真锚：renderTabs/go 的旧算法语义（稳定排序、过滤次序、默认隐藏种子）原样保留。
+ *   · 目录可见性由命名表派生（`namingEntry(...).dir`），不在条目上另存 `dir` 字段；
+ *   · 投影拿不到＝页面如实显示「拿不到工作台清单」，绝不退回硬编码名单。
  *
- * 消费方：public/app.js（renderTabs/go/openTabAdd/hiddenTabs/probeRetiredDirs…）。
+ * 消费方：public/app.js（renderTabs/go/render/「＋」面板）、src/protocol/naming.mjs、
+ * 验收门禁与测试。
  */
 
 /* ---------- OS-148（G8a/G8d）：五层命名单一真源表 ----------
 
    同一个概念在「磁盘目录 / UI 页签 / changelog 模块 / 契约域 / MCP 工具名」五层
    各有一个名字。表就是这五层的对照表——**全仓只有这一份数据**：
-   DIR_LABELS / DIR_ORDER / READONLY_DIRS / PAGE_TO_DIR_LOCAL 与 TAB_REGISTRY 里
-   的 dir/label/panelLabel 全部由它派生；后端经 src/protocol/naming.mjs 取用（只 re-export，
-   不复制一个字面量）。
+   DIR_LABELS / DIR_ORDER / READONLY_DIRS / PAGE_TO_DIR_LOCAL 与视图行为表的可见条件
+   全部由它派生；后端经 src/protocol/naming.mjs 取用（只 re-export，不复制一个字面量）。
 
    为什么表落在本文件而不是独立的 public/naming.mjs：注册表有「零 import」纯度门禁
    （test/tabRegistry.test.mjs 钉死，且 registry 是浏览器侧 leaf 模块），独立成文件就必须
-   import，与门禁冲突；而注册表本来就是目录词表/页签名的唯一真源。表放在这里＝既可被
-   浏览器直接消费，也可被 Node 侧 src/protocol/naming.mjs 转供，仍然只有一份。
+   import，与门禁冲突；而注册表本来就是目录词表/页签名的唯一真源。
 
    列：
-     id            概念 id（跨层稳定标识；页签条目用 concept 字段指向它）
+     id            概念 id（跨层稳定标识；视图行为条目用 id 与模块页面 id 对齐）
      dir           磁盘目录名（null＝没有对应目录）
      dirTab        该目录是否由页签条目的 dir 字段承载（缺省 true；false＝有目录但页签不按目录扫）
      tab           页签显示名（null＝没有页签）
@@ -145,7 +118,8 @@ export function logModuleForView(view) {
     const dir = view.slice(4)
     return namingEntryForDir(dir)?.logModule ?? dir
   }
-  const row = namingEntry(registryEntry(view)?.concept)
+  if (view.startsWith('module:')) return ''
+  const row = namingEntry(view) ?? namingEntry(registryEntry(view)?.id)
   return row?.logModule ?? ''
 }
 
@@ -194,89 +168,77 @@ export const PAGE_TO_DIR_LOCAL = Object.freeze({
 })
 
 /**
- * 默认收起种子（OS-48）：大纲/构思/资料/约束的定位已被「世界书」覆盖，
- * 作者没表过态（键不存在）时默认不出这四个页签。
- * 只作种子不落盘——作者一旦在「＋」里勾回或再收起，以作者的选择为准。
+ * 默认收起种子（OS-48）：大纲/构思/资料/约束的定位已被「世界书」覆盖。
+ * OS-198 起页签只来自投影，退场目录不再有投影页；此表保留为旧库 ui-state 的一次性输入。
  */
 export const DEFAULT_HIDDEN_TABS = Object.freeze(['dir:大纲', 'dir:构思', 'dir:资料', 'dir:约束'])
 
-/**
- * OS-84：已退场的旧目录（作者裁定：定位已被「世界书」「习惯」覆盖，标签不再进「增加页签」面板）。
- *   · 大纲/构思/资料 → 内容迁进「世界书」（referenceStore.ABSORBABLE_DIRS，世界书页有迁入入口）
- *   · 约束 → 规则类内容归「习惯」(habits.json)，OS-59 起不再迁入世界书
- * 退场只影响**入口**：目录空着就彻底不出现；还有文件的只降级为「旧·待迁」露出，
- * 保证老库里的稿子不会因为标签下架变成 UI 里再也打不开的死文件。
- */
+/** OS-84：已退场的旧目录（历史留档；新页签不再由目录扫描产生）。 */
 export const RETIRED_DIRS = Object.freeze(['大纲', '构思', '资料', '约束'])
 
-/* ---------- 注册表本体（声明序＝页签栏序；目录型组插在第一个 dirScan 条目位）---------- */
+/* ---------- 视图行为表（OS-198）---------- */
 
-/** 条目上的 dir/label/panelLabel 一律从命名表取（OS-148），本文件不再抄第二份字面量。 */
-function tabNaming(id) {
-  const row = namingEntry(id)
-  if (!row || !row.tab) throw new Error(`命名表缺页签概念：${id}`)
-  return {
-    concept: id,
-    ...(row.dir && row.dirTab !== false ? { dir: row.dir } : {}),
-    label: row.tab,
-    ...(row.panelLabel ? { panelLabel: row.panelLabel } : {})
-  }
+/** 目录可见性从命名表取，不在条目上另存 `dir` 字段。 */
+function inDir(concept, ctx) {
+  const dir = namingEntry(concept)?.dir
+  if (!dir) return false
+  if (typeof ctx.hasDir !== 'function' || !ctx.hasDir(dir)) return false
+  return !ctx.excluded?.has(dir)
 }
 
+const behavior = (entry) => Object.freeze(entry)
+
+/**
+ * 页面 id → 视图行为。这里没有页签名、目录归属、模块归属与顺序：
+ *   id          模块 manifest 的 pages[].id（宿主路由条目用自身路由 id）
+ *   view        前端路由键（目录型仍是 dir:目录；模块页面用页面 id）
+ *   render      渲染函数注册名（app.js 的 VIEW_RENDERERS 持有本体）
+ *   icon        页签图标字
+ *   closable    作者能否用 × 收起（目录/模块页签，不动磁盘）
+ *   readonly    只读页签（日志）
+ *   scope       go() 作用域：library / global / flow
+ *   panel       「＋」面板的常用区
+ *   host        宿主自有页签（设置）；不来自模块投影
+ *   slotOnly    只为投影三态判定登记的页面（右栏/设置区/宿主动作），不进页签栏
+ *   visibleWhen(ctx) 纯函数可见性（目录存在、体裁裁剪、设置是否打开）
+ */
 export const TAB_REGISTRY = Object.freeze([
-  // OS-12：页签首格固定＝产物（产出物＋多版本＋历史）；「库」上移顶栏。
-  { id: 'artifacts', kind: 'fixed', core: true, module: 'artifacts', view: 'artifacts', ...tabNaming('artifacts'), icon: '产', render: 'artifactsHtml', panel: true, closable: true, scope: 'library' },
-  // OS-19：正文走 libDirs 判断——体裁声明后（如短故事）没有 正文/ 目录就不出。
-  { id: 'chapters', kind: 'fixed', core: true, module: 'chapters', view: 'chapters', ...tabNaming('chapters'), icon: '章', render: 'writeHtml', panel: true, closable: true, scope: 'library',
-    visibleWhen: (ctx) => !ctx.brief || ctx.hasDir(namingEntry('chapters').dir) },
-  // 目录型组插入点：从这里到下一个非 dirScan 条目之间，全部按「磁盘目录 × 词表」扫描物化。
-  { id: 'worldbook', kind: 'fixed', core: true, module: 'worldbook', view: 'worldbook', ...tabNaming('worldbook'), dirScan: true, icon: '世', render: 'referencePageHtml', closable: true, scope: 'library' },
-  // OS-75：剧本页 fork 正文页（dir:剧本 视图，剧本版式渲染）。
-  { id: 'script', kind: 'fixed', core: true, module: 'script', view: 'dir:剧本', ...tabNaming('script'), dirScan: true, icon: '剧', render: 'dirViewHtml', closable: true, scope: 'library' },
-  { id: 'storysource', kind: 'fixed', core: true, module: 'storysource', view: `dir:${namingEntry('storysource').dir}`, ...tabNaming('storysource'), dirScan: true, icon: '故', render: 'dirViewHtml', closable: true, scope: 'library' },
-  // OS-59：习惯——规则类内容归 habits.json，专页承载。
-  { id: 'habits', kind: 'dir', module: 'habits', view: 'habits', ...tabNaming('habits'), dirScan: true, icon: '习', render: 'habitsViewHtml', closable: true, scope: 'library' },
-  // OS-89：日志只读页签（模块修改痕迹的自检索载体）。
-  { id: 'log', kind: 'dir', module: 'log', view: 'dir:日志', ...tabNaming('log'), dirScan: true, icon: '日', readonly: true, render: 'dirViewHtml', closable: true, scope: 'library' },
-  // ── 已退场目录（OS-84/86，作者裁定）：注册表里留档＋无条件过滤，双保险。──
-  // OS-86：已退场的旧目录彻底不出现——不管磁盘上还在不在、有多少篇。
-  // 作者口径：没被官方认证的标签就是要消失，不做「旧·待迁」降级露出；
-  // 内容清理走一次性迁移（大纲/构思/资料→世界书，约束→习惯＋世界书存档）。
-  { id: 'retired-outline', kind: 'dir', view: 'dir:大纲', dir: '大纲', dirScan: true, label: '大纲', retired: true },
-  { id: 'retired-brainstorm', kind: 'dir', view: 'dir:构思', dir: '构思', dirScan: true, label: '构思', retired: true },
-  { id: 'retired-material', kind: 'dir', view: 'dir:资料', dir: '资料', dirScan: true, label: '资料', retired: true },
-  { id: 'retired-constraint', kind: 'dir', view: 'dir:约束', dir: '约束', dirScan: true, label: '约束', retired: true },
-  // OS-86/100：扮演——推演全形态（叙事流/剧情树/Agent）同一壳，页签名「扮演」。
-  { id: 'roleplay', kind: 'fixed', core: true, module: 'roleplay', view: 'roleplay', ...tabNaming('roleplay'), icon: '扮', render: 'deduceHtml', panel: true, closable: true, scope: 'library' },
-  // OS-32：设置是可关闭页签——跟正文/产物同级，打开才出现，× 关掉回到原页。
-  { id: 'settings', kind: 'fixed', view: 'settings', ...tabNaming('settings'), icon: '设', render: 'settingsHtml', closable: true, scope: 'global',
-    visibleWhen: (ctx) => Boolean(ctx.settingsOpen) },
-  // ── 非页签路由（routeOnly）：只服务 go() 的作用域校验与 render() 的渲染分派。──
-  { id: 'libraries', kind: 'fixed', view: 'libraries', concept: 'libraries', render: 'libraryHtml', routeOnly: true, scope: 'global' },
-  { id: 'lib-create', kind: 'fixed', view: 'lib-create', render: 'createHtml', routeOnly: true, scope: 'flow' },
-  { id: 'lib-import', kind: 'fixed', view: 'lib-import', render: 'importHtml', routeOnly: true, scope: 'flow' },
-  { id: 'repair', kind: 'fixed', view: 'repair', render: 'repairHtml', routeOnly: true, scope: 'flow' }
+  behavior({ id: 'artifacts', view: 'artifacts', render: 'artifactsHtml', icon: '产', core: true, closable: true, scope: 'library', panel: true }),
+  behavior({ id: 'chapters', view: 'chapters', render: 'writeHtml', icon: '章', core: true, closable: true, scope: 'library', panel: true,
+    visibleWhen: (ctx) => !ctx.brief || inDir('chapters', ctx) }),
+  behavior({ id: 'worldbook', view: 'worldbook', render: 'referencePageHtml', icon: '世', core: true, closable: true, scope: 'library',
+    visibleWhen: (ctx) => inDir('worldbook', ctx) }),
+  behavior({ id: 'script', view: `dir:${namingEntry('script').dir}`, render: 'dirViewHtml', icon: '剧', core: true, closable: true, scope: 'library',
+    visibleWhen: (ctx) => inDir('script', ctx) }),
+  behavior({ id: 'storysource', view: `dir:${namingEntry('storysource').dir}`, render: 'dirViewHtml', icon: '故', core: true, closable: true, scope: 'library',
+    visibleWhen: (ctx) => inDir('storysource', ctx) }),
+  behavior({ id: 'habits', view: 'habits', render: 'habitsViewHtml', icon: '习', closable: true, scope: 'library',
+    visibleWhen: (ctx) => inDir('habits', ctx) }),
+  behavior({ id: 'log', view: `dir:${namingEntry('log').dir}`, render: 'dirViewHtml', icon: '日', readonly: true, closable: true, scope: 'library',
+    visibleWhen: (ctx) => inDir('log', ctx) }),
+  behavior({ id: 'roleplay', view: 'roleplay', render: 'deduceHtml', icon: '扮', core: true, closable: true, scope: 'library', panel: true }),
+  // 设置是宿主自有可关闭页签；不来自模块投影，固定排在模块页签之后。
+  behavior({ id: 'settings', view: 'settings', render: 'settingsHtml', icon: '设', host: true, closable: true, scope: 'global',
+    visibleWhen: (ctx) => Boolean(ctx.settingsOpen) }),
+  // 只为 slot 投影三态判定登记的页面（不进页签栏）。
+  behavior({ id: 'analysis', view: 'analysis', slotOnly: 'right' }),
+  behavior({ id: 'imagegen', view: 'imagegen', slotOnly: 'settings' }),
+  behavior({ id: 'knowledge', view: 'knowledge', slotOnly: 'settings' }),
+  behavior({ id: 'exchange', view: 'exchange', slotOnly: 'host-actions' }),
+  // 宿主路由（不进页签栏，只服务 go() 的作用域校验与 render() 分派）。
+  behavior({ id: 'libraries', view: 'libraries', render: 'libraryHtml', routeOnly: true, scope: 'global' }),
+  behavior({ id: 'lib-create', view: 'lib-create', render: 'createHtml', routeOnly: true, scope: 'flow' }),
+  behavior({ id: 'lib-import', view: 'lib-import', render: 'importHtml', routeOnly: true, scope: 'flow' }),
+  behavior({ id: 'repair', view: 'repair', render: 'repairHtml', routeOnly: true, scope: 'flow' })
 ])
 
-/* ---------- 纯函数：页签推导（renderTabs 的旧算法语义，原样收敛在这里）---------- */
+/** 前端有内置视图的页面 id 集合（OS-198 投影三态 `builtin` 的唯一真源，后端经 naming 取用）。 */
+export const BUILTIN_PAGE_IDS = Object.freeze(TAB_REGISTRY.map((entry) => entry.id))
+
+/* ---------- 纯函数：投影 → 页签 ---------- */
 
 function listOf(value) {
   return Array.isArray(value) ? value : []
-}
-
-function orderIndexOf(dir) {
-  const index = DIR_ORDER.indexOf(dir)
-  return index === -1 ? 99 : index
-}
-
-/** OS-161：模块可见性。ctx 没给 modulesEnabled（undefined/null）＝全启用——
- *  旧快照与所有不带该字段的调用点一个字不改；给了就只认显式启用的模块（Set / 数组 / 对象）。 */
-function moduleVisible(entry, modulesEnabled) {
-  if (!entry.module) return true
-  if (modulesEnabled === undefined || modulesEnabled === null) return true
-  if (modulesEnabled instanceof Set) return modulesEnabled.has(entry.module)
-  if (Array.isArray(modulesEnabled)) return modulesEnabled.includes(entry.module)
-  return modulesEnabled[entry.module] === true
 }
 
 /** 体裁 excludedPages（页签名）→ 库内目录名集合（OS-19 页签裁剪）。 */
@@ -284,131 +246,141 @@ export function excludedDirSet(briefGenre) {
   return new Set(listOf(briefGenre?.excludedPages).map((page) => PAGE_TO_DIR_LOCAL[page] ?? page))
 }
 
-/**
- * 目录型页签组：磁盘目录 × 注册表词表 → 页签定义。
- * 旧算法语义逐条保留（OS-8/36/84/86/88/92）：
- *   ① 只认注册表里 dirScan 且未退场的条目（词表外目录不出页签——不凭空许诺工作面）；
- *   ② 体裁 excludedPages 裁掉的目录不出；
- *   ③ 按 DIR_ORDER 轨道稳定排序（轨道外一律 99，保持磁盘目录的原相对序）。
- */
-export function dirTabDefs({ libDirs, excluded, registry = TAB_REGISTRY, modulesEnabled } = {}) {
-  const byDir = new Map(listOf(registry)
-    .filter((entry) => entry.dirScan && !entry.retired && entry.dir && moduleVisible(entry, modulesEnabled))
-    .map((entry) => [entry.dir, entry]))
-  return listOf(libDirs)
-    .filter((dir) => !excluded.has(dir) && byDir.has(dir))
-    .sort((left, right) => orderIndexOf(left) - orderIndexOf(right))
-    .map((dir) => {
-      const entry = byDir.get(dir)
-      return {
-        view: entry.view,
-        label: entry.label,
-        ic: entry.icon ?? entry.label.slice(0, 1),
-        readonly: entry.readonly === true,
-        closable: entry.closable !== false
-      }
-    })
+/** 模块页面路由键：`module:<模块 id>/<页面 id>`。 */
+export function moduleView(module, page) {
+  return `module:${String(module ?? '').trim()}/${String(page ?? '').trim()}`
+}
+
+/** 拆模块页面路由键；不是模块页面＝null。 */
+export function parseModuleView(view) {
+  if (typeof view !== 'string' || !view.startsWith('module:')) return null
+  const [module, page, ...rest] = view.slice(7).split('/')
+  if (!module || !page || rest.length) return null
+  return { module, page }
+}
+
+function tabContext(ctx = {}) {
+  const libDirs = listOf(ctx.libDirs)
+  return {
+    ...ctx,
+    libDirs,
+    hasDir: (name) => libDirs.includes(name),
+    excluded: excludedDirSet(ctx.briefGenre)
+  }
 }
 
 /**
- * 页签栏全部候选（隐藏过滤之前）。
- * ctx：{ current, brief, briefGenre, libDirs, settingsOpen }；registry 缺省用 TAB_REGISTRY，
- * 传副本即可做扩展性试验（加一条→页签列表多一项，app.js 不用改）。
+ * OS-198：照 `/api/plugins.slots.tab` 投影生成页签定义。
+ * - 顺序＝投影顺序；内置视图优先于同 id 的 iframe 页面。
+ * - `view:'none'` 且前端没有内置视图＝跳过（后端已记启动告警）。
+ * - 投影为空对象/缺 tab＝只留宿主设置页；调用方负责把「拿不到投影」与「投影真为空」分开显示。
  */
-export function computeTabDefs(ctx = {}, registry = TAB_REGISTRY) {
-  const libDirs = listOf(ctx.libDirs)
-  const excluded = excludedDirSet(ctx.briefGenre)
-  const hasDir = (name) => libDirs.includes(name)
-  // 目录型组：无库时不扫（旧算法整个扫描在 if (state.current) 里）
-  const dirDefs = ctx.current ? dirTabDefs({ libDirs, excluded, registry, modulesEnabled: ctx.modulesEnabled }) : []
+export function projectedTabDefs({ slots = {}, ctx = {}, registry = TAB_REGISTRY } = {}) {
+  const context = tabContext(ctx)
+  const byId = new Map(listOf(registry).map((entry) => [entry.id, entry]))
   const defs = []
-  let dirPlaced = false
-  for (const entry of listOf(registry)) {
-    if (entry.retired) continue // OS-84/86：退场条目无条件过滤——任何输入下都不出页签
-    if (!moduleVisible(entry, ctx.modulesEnabled)) continue // OS-161：所属模块停用＝页签消失
-    if (entry.dirScan) {
-      // 第一个 dirScan 条目的声明位＝目录型组的插入点（固定页签组之后、扮演之前）
-      if (!dirPlaced) { defs.push(...dirDefs); dirPlaced = true }
+  for (const placement of listOf(slots?.tab)) {
+    const entry = byId.get(placement?.page)
+    const iframe = !entry && placement?.view === 'iframe' && placement?.module && placement?.entry
+    if (!entry && !iframe) continue
+    if (!context.current && (entry?.scope === 'library' || iframe)) continue
+    if (entry?.visibleWhen && !entry.visibleWhen(context)) continue
+    if (iframe) {
+      defs.push({
+        view: moduleView(placement.module, placement.page),
+        label: placement.label || placement.page,
+        ic: (placement.label || placement.page).slice(0, 1),
+        closable: true,
+        iframe: { module: placement.module, page: placement.page, entry: placement.entry }
+      })
       continue
     }
-    if (entry.routeOnly || !entry.label) continue // 纯路由条目不进页签栏
-    if (entry.scope === 'library' && !ctx.current) continue // 无库时不出库页签
-    if (entry.visibleWhen && !entry.visibleWhen({ ...ctx, libDirs, hasDir, excluded, entry })) continue
+    if (entry.host || entry.slotOnly || entry.routeOnly) continue
     defs.push({
-      view: entry.view,
-      label: entry.label,
-      ic: entry.icon ?? entry.label.slice(0, 1),
+      view: entry.view ?? entry.id,
+      label: placement.label || entry.id,
+      ic: entry.icon ?? (placement.label || entry.id).slice(0, 1),
       readonly: entry.readonly === true,
       closable: entry.closable !== false
     })
   }
+  const settings = byId.get('settings')
+  if (settings?.visibleWhen?.(context)) {
+    defs.push({ view: settings.view, label: namingEntry('settings')?.tab ?? '设置', ic: settings.icon, closable: settings.closable !== false })
+  }
   return defs
 }
 
-/** 隐藏过滤（OS-36 的 × 只收页签不动磁盘；hidden＝页签名集合）。 */
+/** 隐藏过滤（OS-36 的 × 只收页签不动磁盘；hidden＝视图键集合）。 */
 export function visibleTabDefs(defs, hidden) {
   const hiddenSet = hidden instanceof Set ? hidden : new Set(listOf(hidden))
   return listOf(defs).filter((def) => !hiddenSet.has(def.view))
 }
 
-/* ---------- 纯函数：视图路由（go/render 的注册表驱动面）---------- */
+/** 投影里的模块页面条目（iframe 用），找不到＝null。 */
+export function modulePagePlacement(view, slots = {}) {
+  const wanted = parseModuleView(view)
+  if (!wanted) return null
+  for (const items of Object.values(slots ?? {})) {
+    for (const item of listOf(items)) {
+      if (item.module === wanted.module && item.page === wanted.page && item.view === 'iframe' && item.entry) return item
+    }
+  }
+  return null
+}
+
+/** 视图是否合法：内置行为表命中，或投影里有同名模块页面。 */
+export function viewKnown(view, slots = {}, registry = TAB_REGISTRY) {
+  return Boolean(registryEntry(view, registry) || modulePagePlacement(view, slots))
+}
+
+/* ---------- 纯函数：视图路由 ---------- */
 
 export function registryEntry(view, registry = TAB_REGISTRY) {
   if (typeof view !== 'string') return null
-  return listOf(registry).find((entry) => entry.view === view) ?? null
+  return listOf(registry).find((entry) => entry.view === view || entry.id === view) ?? null
 }
 
 /**
  * 视图作用域：'library'（要先打开库）｜ 'global'（设置/库管理）｜ 'flow'（建库/导入流程）。
- * dir:xxx 视图一律按库页对待；未知视图返回 null（调用方按「需要库」处理——旧算法同语义）。
+ * dir:xxx 与 module:… 一律按库页对待；未知视图返回 null（调用方按「需要库」处理）。
  */
 export function viewScope(view, registry = TAB_REGISTRY) {
-  if (typeof view === 'string' && view.startsWith('dir:')) return 'library'
+  if (typeof view === 'string' && (view.startsWith('dir:') || view.startsWith('module:'))) return 'library'
   return registryEntry(view, registry)?.scope ?? null
 }
 
-/** 视图 → 渲染函数注册名（app.js 侧 VIEW_RENDERERS 持有本体；dir:xxx 统一走 dirViewHtml）。 */
+/** 视图 → 渲染函数注册名（模块页面统一走通用 iframe 视图）。 */
 export function renderNameForView(view, registry = TAB_REGISTRY) {
   if (typeof view === 'string' && view.startsWith('dir:')) return 'dirViewHtml'
+  if (typeof view === 'string' && view.startsWith('module:')) return 'modulePageHtml'
   return registryEntry(view, registry)?.render ?? null
 }
 
-/* ---------- 纯函数：「＋增加页签」面板（OS-36）的注册表面 ---------- */
+/* ---------- 纯函数：「＋增加页签」面板（OS-36/OS-198）---------- */
 
-/** 目录 dir 的活条目（退场条目不算）；无条目＝词表外目录（作者自建的「分镜」等）。 */
-export function dirTabEntry(dir, registry = TAB_REGISTRY) {
-  return listOf(registry).find((entry) => entry.dir === dir && !entry.retired) ?? null
+/** 投影里的可勾选页签（常用区＋目录型），顺序照投影。 */
+export function projectedPanelTabs(slots = {}, registry = TAB_REGISTRY, ctx = {}) {
+  const context = tabContext(ctx)
+  const byId = new Map(listOf(registry).map((entry) => [entry.id, entry]))
+  return listOf(slots?.tab).flatMap((placement) => {
+    const entry = byId.get(placement?.page)
+    if (!entry || entry.host) return []
+    if (!entry.panel && !entry.visibleWhen) return []
+    if (entry.visibleWhen && !entry.visibleWhen(context)) return []
+    return [{ view: entry.view ?? entry.id, label: placement.label || entry.id, panel: entry.panel === true }]
+  })
 }
 
-/** 目录 dir 在注册表里有活条目＝「已识别」（旧 DIR_LABELS＋DIR_TO_VIEW 词表检查的收敛）。 */
-export function isKnownDir(dir, registry = TAB_REGISTRY) {
-  return dirTabEntry(dir, registry) !== null
-}
-
-/** 「＋」面板里目录型页签的显示名（优先取命名表 panelLabel，缺省与页签名一致）。 */
-export function dirPanelLabel(dir, registry = TAB_REGISTRY) {
-  const entry = listOf(registry).find((item) => item.dir === dir && !item.retired)
-  return entry?.panelLabel || entry?.label || dir
-}
-
-/** 面板「常用」区（OS-36）：产物/正文/扮演三个内置页签；need＝勾选要求的库内目录。 */
-export function builtinPanelTabs(registry = TAB_REGISTRY) {
-  return listOf(registry)
-    .filter((entry) => entry.panel && !entry.retired)
-    .map((entry) => ({ view: entry.view, label: entry.label, need: entry.dir ?? null }))
-}
-
-/**
- * OS-83：「可以新建的业务模块」清单——已识别（词表内）、DIR_ORDER 轨道上、磁盘还没有、未退场。
- * 以前面板只列磁盘已有的目录，「剧本」这种模块在小说库里整块消失——作者以为功能不存在。
- */
+/** 已识别但库里还没有的业务目录（OS-83）——清单只由命名表与 DIR_ORDER 给。 */
 export function creatableDirNames(libDirs, registry = TAB_REGISTRY) {
   const onDisk = new Set(listOf(libDirs))
+  const pages = new Set(listOf(registry).map((entry) => entry.id))
   return DIR_ORDER
     .filter((dir) => Boolean(DIR_LABELS[dir]))
     .filter((dir) => !onDisk.has(dir))
     .filter((dir) => !RETIRED_DIRS.includes(dir))
     .filter((dir) => !['chapters', 'worldbook', 'storysource'].includes(namingEntryForDir(dir)?.id))
-    .filter((dir) => dir !== '人物' && dir !== '场景')
+    .filter((dir) => pages.has(namingEntryForDir(dir)?.id))
     .map((dir) => ({ dir, label: DIR_LABELS[dir] }))
 }

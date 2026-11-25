@@ -7,7 +7,7 @@
 | 依赖 | OS-196（有了本机模块根，覆盖与迁移才有真实的来路） |
 | 允许改动 | `src/**`、`public/**`、`test/**`、`tools/acceptance/**`、`docs/number-anchors.json`、`ARCHITECTURE.md`、`README.md`、`docs/protocol/module-manifest-2.md`、`docs/workorders/OS-197-migration-wiring.md` |
 | 风险 | **中高**——迁移改的是库里的落盘数据；失败路径必须先于成功路径被测试 |
-| 状态 | 待派 |
+| 状态 | 主体已验收（监督线，2026-11-25；施工由 Qoder 完成，未及提交，由监督线落袋）；两处返工 → [OS-197a](OS-197a-migration-rework.md) |
 
 通用规则见 [`COMMON-RULES.md`](COMMON-RULES.md)。
 
@@ -60,3 +60,17 @@
 - 生产调用点与失败安全阀的剔除点贴出来（`文件:行`）。
 - `docs/protocol/module-manifest-2.md` 的迁移一节补齐「执行时机、失败处理、回退保护」；`README.md` 的数据格式段同步。
 - `git diff --check` 干净；`node tools/number-anchors.mjs` 与 `npm run arch:stats` 跑过。
+
+## 验收记录（监督线，2026-11-25）
+
+- 施工由 Qoder 完成、未提交（工作树 65 个路径，监督线先打快照 `a234e19` 再落袋）。全量 836／834 过／2 条件跳过／0 挂；门禁 29／0／0；隔离 e2e 全绿。
+- 监督线独立探针（隔离 daemon＋临时院子＋临时模块根，`D:\Pinax-e2e\.zcode\tmp\probe-197.mjs`）13 项 12 过：
+  - 迁移按库触发：库 A 打开后数据升到 v2、路由指向覆盖者、重开幂等；没打开过的库 B 数据原样。
+  - 迁移器抛错：本次请求 500 `MIGRATION_FAILED`；数据逐字节原样；覆盖者被剔除、路由回落内置 v1；报告里该模块标 `invalid/migration`。
+  - 迁移器写库外路径（`../../escaped.json`）：被拒，库外没有文件。
+  - 没有对应覆盖的迁移声明：在身份门就被拒，数据不动、库不被锁。
+  - 覆盖者移除后，依赖该能力的模块端点明确拒绝（409 `DATA_VERSION_AHEAD`）；没迁过的库不受影响。
+- **要返工的两处**（转 [OS-197a](OS-197a-migration-rework.md)）：
+  1. 迁移器修好之后调刷新不重试（数据仍 v1、路由仍内置）——迁移器入口不在内容摘要里，层没变，命中的是失败缓存。
+  2. 回退保护只挡「模块自己的端点」：覆盖者移除后直接 `resolveCapability(root, 'text.analyze')` 仍返回 `ok:true` 的旧供给者句柄（`probe-197b.mjs`）；宿主自有端点、钩子、MCP 分析拿到的就是它。
+- 结论：**主体已验收**；两处返工走 OS-197a。

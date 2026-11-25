@@ -42,6 +42,8 @@ const STATUS_BY_CODE = Object.freeze({
   OVERRIDE_REJECTED: 400,
   PLUGIN_DEGRADED: 503,
   MIGRATION_FAILED: 500,
+  // 回退保护（OS-197）：数据已是新格式，旧供给者/消费者不可静默读——冲突而非坏请求
+  DATA_VERSION_AHEAD: 409,
   // 故事源空库（OS-150a）：还没有故事源条目＝可预期的空态（不是坏档），404 让调用方走空态分支
   FACT_EMPTY: 404,
   // 故事源坏档（OS-150b）：有档但全部读不出来＝数据面故障，不是客户端的错

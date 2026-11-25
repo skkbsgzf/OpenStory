@@ -290,42 +290,44 @@ storage × genres 边界（倾向：骨架模板属体裁包，storage 件只提
 | [OS-172](../workorders/OS-172-interop-retire.md) | A1 | 去 Pinax 化：库的一次性升级（`.pinax/`→`.openstory/` 单态收敛＋目录正名 `参考/`→`世界书/`、`拆解/`→`故事源/`、`推演/`→`扮演/`）＋落盘谱系名、用户文案、货架内容里的 Pinax 提法清扫＋pinax 导入端点退役 |
 | [OS-173](../workorders/OS-173-base-constitution.md) | A2 | 底座宪法 ADR 0002 定稿＋协议定稿（设计单，闭掉 §3 全部评审意见） |
 
-### 批次 B · 能力批（约 5–8 人日，依赖 A2；**工作包，工单待立**）
+**实施状态（2026-11-25，OS-199 核对）**：B、C、D 三批工作包均已实施；原预写的 OS-174～OS-188 工单已撤回，实际落点以 C 批与清账批真实工单为准（下表「落点」列）。本表保留工作包口径，不再表示待立工单。
 
-| 工单 | 工作包 | 内容 |
+### 批次 B · 能力批（已实施，依赖 A2）
+
+| 工作包 | 内容 | 落点 |
 |---|---|---|
-| OS-174（工单待立） | B1 | manifest@2 落地：schema＋校验器＋@1→@2 迁移工具，14 份 manifest 升版 |
-| OS-175（工单待立） | B2 | 能力图检查器：闭环／冲突／覆盖合法三检查，「有依赖不可停」由推导产生 |
-| OS-176（工单待立） | B3 | core 派生化：`core:true` 四件退役，`MODULE_CORE` 语义消失 |
-| OS-177（工单待立） | B4 | 宿主域正名：agentbar／deduce／library 归位（`builtin` 字段或清单分区） |
-| OS-178（工单待立） | B5 | deduce 垂直切片：handlers→引擎直连改能力路由；写作台 `requires: deduce.engine` 跑通 |
+| B1 | manifest@2 落地：schema＋校验器，内置 manifest 升版 | `src/protocol/moduleManifest.mjs`；`test/modulePlugins.test.mjs` |
+| B2 | 能力图检查器：闭环／冲突／覆盖合法三检查 | `src/protocol/capabilityGraph.mjs` |
+| B3 | core 派生化：`core:true` 四件退役，`MODULE_CORE` 语义消失 | OS-176（`test/coreModules.test.mjs`） |
+| B4 | 宿主域正名：agentbar／deduce／library 归位 | OS-193／195；`src/host/moduleRuntime.mjs` |
+| B5 | deduce 垂直切片：handlers→引擎经能力路由 | OS-155／193；`src/modules/deduce/` |
 
-### 批次 C · 降级批（约 8–12 人日，依赖 B1–B2；**工作包，工单待立**）
+### 批次 C · 降级批（已实施，依赖 B1–B2）
 
-| 工单 | 工作包 | 内容 |
+| 工作包 | 内容 | 落点 |
 |---|---|---|
-| OS-179（工单待立） | C1 | fact 插件化：fact 链出底座，金样随 `fact.store` 走 |
-| OS-180（工单待立） | C2 | prose 插件化：chapters 拆两半（写协议下沉／页面上浮） |
-| OS-181（工单待立） | C3 | storage 插件化：courtyard／libraryManifest／建库骨架降级 |
-| OS-182（工单待立） | C4 | agent.runtime 件：services 收编，三消费方走同一能力 |
-| OS-183（工单待立） | C5 | deduce 三拆：引擎件＋推演规则包＋扮演台门面 |
-| OS-183a（工单待立） | C5b（新增，视 A2） | 分析引擎拆分：纯引擎→内核件能力；分析台→工作台 |
-| OS-184（工单待立） | C6 | 门禁改写：`arch-stats` 分层表、S2.1→能力路由、S2.4'→底座边界、S2.7→能力归属 |
+| C1 | fact 插件化：fact 链出底座，金样随 `fact.store` 走 | OS-153～156／193；`src/modules/fact/` |
+| C2 | prose 插件化：chapters 拆两半（写协议下沉／页面上浮） | OS-163／193；`src/modules/prose/` |
+| C3 | storage 插件化：courtyard／libraryManifest／建库骨架降级 | OS-123／167／193；`src/modules/storage/` |
+| C4 | agent.runtime 件：services 收编，三消费方走同一能力 | OS-193；`src/modules/agent-runtime/` |
+| C5 | deduce 三拆：引擎件＋推演规则包＋扮演台门面 | OS-155；`src/modules/deduce/`、`suites/deduce-rules/` |
+| C5b | 分析引擎拆分：纯引擎→`text` 内核件；分析台→工作台 | OS-193；`src/modules/text/` |
+| C6 | 门禁改写：`arch-stats` 分层表、S2.1／S2.4'／S2.7 | `tools/acceptance/acceptance.mjs`；`tools/arch-stats.mjs` |
 
-### 批次 D · 魔改批（可选，约 5–8 人日，依赖 C；**工作包已直接实施，未立单独工单**）
+### 批次 D · 魔改批（已实施，依赖 C）
 
-| 工单 | 工作包 | 内容 | 结果 |
-|---|---|---|---|
-| OS-185（未立单） | D1 | 覆盖路由＋回退链 | 已实现 |
-| OS-186（未立单） | D2 | 迁移器框架（from→to 单向，失败安全阀） | 已实现 |
-| OS-187（未立单） | D3 | 套件统一 manifest（三层货架升格） | 已实现 |
-| OS-188（未立单） | D4 | slots 扩展＋动态装载评估 | 已实现；可执行装载裁定暂不开放（ADR 0003） |
+| 工作包 | 内容 | 落点 |
+|---|---|---|
+| D1 | 覆盖路由＋回退链 | `src/protocol/capabilityGraph.mjs`；`test/capabilityMigrationWiring.test.mjs` |
+| D2 | 迁移器框架（from→to 单向，失败安全阀） | OS-197；`src/host/libraryMigrations.mjs`、`src/protocol/hostWrite.mjs` |
+| D3 | 套件统一 manifest（三层货架升格） | OS-192；`src/protocol/shelfManifests.mjs` |
+| D4 | slots 扩展＋动态装载 | OS-188a／196／196a／198；`src/protocol/slots.mjs`、`src/host/moduleRuntime.mjs` |
 
-D 批收口数字：812 tests / 810 pass / 2 skip / 0 fail、验收门禁 27 项、`app.js` 10,338 行（不反弹）、测试文件 102。D4 的 slot 注册表在 `src/protocol/slots.mjs`，动态装载裁定与 G1–G5 开门条件见 `docs/adr/0003-dynamic-loading.md`。
+D 批收口与清账批数字以 `docs/number-anchors.json` 与 `ARCHITECTURE.md` 生成段为准，不在本文手写。D4 的 slot 注册表在 `src/protocol/slots.mjs`；动态装载已在 OS-196／196a 按 G1–G5 开放本机模块（ADR 0003），OS-198 把 `/api/plugins.slots` 接到前端并支持第三方 iframe 页。
 
 **顺序参考**（B 批起为工作包顺序，不是已立工单）：OS-169 → OS-170 →（出口 S5）→ OS-171 → OS-172 → OS-173 → OS-174 → OS-175 → OS-178 → OS-176 → OS-177 → OS-179 → OS-180 → OS-181 → OS-182 → OS-183 →（OS-183a，若 A2 采纳）→ OS-184 → OS-185 → OS-186 → OS-187 → OS-188。
 
-**里程碑口径**（作者）：A 完成＝宪法与地基干净（互认包袱清零）；B 完成＝平级的语言就位（manifest@2＋裁判），生态耦合第一条链路（deduce）跑通；C 完成＝微内核成型（L2 消失，三类就位），架构图从讨论稿变实测图；D 完成＝魔改能力就位（覆盖路由／迁移器／suite 升格／slot 编排），**第三方可执行模块装载按 ADR 0003 暂不开放，只开放数据类套件**，不属于未完成项。
+**里程碑口径**（作者）：A 完成＝宪法与地基干净（互认包袱清零）；B 完成＝平级的语言就位（manifest@2＋裁判），生态耦合第一条链路（deduce）跑通；C 完成＝微内核成型（L2 消失，三类就位），架构图从讨论稿变实测图；D 完成＝魔改能力就位（覆盖路由／迁移器／suite 升格／slot 编排），本机可执行模块按 ADR 0003 的 G1–G5 开放（OS-196／196a），数据类套件继续无代码。以上四档均已达成。
 
 ### 4.1 裁定留痕（S3、S4）
 
@@ -334,11 +336,9 @@ D 批收口数字：812 tests / 810 pass / 2 skip / 0 fail、验收门禁 27 项
 
 | 时点 | `app.js` 行数上限 | `public/views/` 模块数下限 |
 |---|---|---|
-| 现状 | 11,886 | 8 |
-| A 批末 | ≤11,800 | ≥8 |
-| B 批末 | ≤11,600 | ≥10 |
-| C 批末（第三批目标） | **≤10,500** | **≥14** |
-| D 批 | 不反弹 | 不减少 |
+| 现状（2026-11-25 清账批） | **10,110**（上限仍 10,500） | **16** |
+| C 批末（第三批目标） | ≤10,500 | ≥14 |
+| D 批／清账批 | 不反弹 | 不减少 |
 
 上限锚由 OS-170 写进验收门禁：只许下调，不许上调。
 
@@ -376,8 +376,8 @@ D 批收口数字：812 tests / 810 pass / 2 skip / 0 fail、验收门禁 27 项
 
 ## 6. 需要作者拍板
 
-0. **分类重捋稿过目**（§1.3a 第二版）：目录正名方向——`参考/`→`世界书/`、`拆解/`→`故事源/`、`推演/`→`扮演/`（随 OS-172 一次性迁移）；`text`、`media` 两件是否新增；运行时套件归哪一类；「生图与识图」「知识库」的 slug。
+0. ~~分类重捋稿过目~~ **已按 OS-172／190／190a 实施**：目录正名随一次性迁移落地；`text`、`media` 两件已新增；运行时套件归 suite；「生图与识图」「知识库」slug 为 `imagegen`／`knowledge`。
 1. ~~OS-172 去 Pinax 化~~ **已确认（2026-11-24 晚）**：互认拆除、目录改名、真库一次性迁移、署名统一为 `skkbsgzf`。
 2. **CI 形态**（OS-171）：默认 GitHub Actions（仓库在 GitHub、零依赖零构建）；若另有 CI，改触发器即可。
-3. **R3 分析引擎拆分**（OS-183a）与 **R11 生图执行器归属**：是否按建议改草案。
-4. **git push**：段 B⁺ 已做完，按之前的约定推送已解锁；但建议**先过 OS-169**（让别的机器上 `npm test` 也是绿的）再推。
+3. ~~R3 分析引擎拆分与 R11 生图执行器归属~~ **已实施**：分析纯引擎归 `text`（OS-193），生图执行器归 `media`（OS-193）；无待拍板。
+4. **git push**：段 B⁺ 与后续批次已按之前约定处理；推送与 tag 由作者下令。

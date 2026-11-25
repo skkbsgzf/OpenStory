@@ -44,7 +44,7 @@ import { builtinRuntimesDir, defaultUserRuntimesDir } from '../services/runtimes
 import { builtinSuitesDir, defaultSuiteStatePath, defaultUserSuitesDir } from '../services/suites.mjs'
 import { builtinGenresDir, defaultUserGenresDir } from '../services/genres.mjs'
 import { builtinSkillsDir, defaultUserSkillsDir } from '../services/skills.mjs'
-import { moduleDisabledOwnerFor, degradationFor, moduleManifestFor } from './moduleRuntime.mjs'
+import { moduleDisabledOwnerFor, degradationFor, moduleManifestFor, endpointOwnerFor, migrationStateFor, dataVersionAheadFor, moduleRootsReport } from './moduleRuntime.mjs'
 import { ensureLibraryUpgraded } from '../protocol/libraryUpgrade.mjs'
 import {
   resolveAgentRuntimeCapability, resolveFactCapability, resolveProseCapability
@@ -280,6 +280,40 @@ function contentTypeGateFail(req) {
 
 /* ---------- 静态托管 ---------- */
 
+/** OS-198：本机模块自带页面入口（`/module-page/<id>/<entry>`）。只服务已登记且已装载的本机模块。 */
+async function serveModulePage(req, res, url, env) {
+  let pathname
+  try {
+    pathname = decodeURIComponent(url.pathname)
+  } catch {
+    return sendError(res, API_ERROR_CODES.INVALID_ENTRY, '模块页面路径编码不合法')
+  }
+  const rest = pathname.slice('/module-page/'.length)
+  const slash = rest.indexOf('/')
+  const id = slash < 0 ? '' : rest.slice(0, slash)
+  const entry = slash < 0 ? '' : rest.slice(slash + 1)
+  if (!id || !entry) return sendError(res, API_ERROR_CODES.NOT_FOUND, `模块页面不存在：${pathname}`)
+  const report = await moduleRootsReport(env)
+  const found = report.localModules.find((item) => item.id === id && item.status === 'loaded')
+  if (!found) return sendError(res, API_ERROR_CODES.NOT_FOUND, `没有已装载的本机模块：${id}`)
+  const resolved = resolveInsideRoot(join(found.rootPath, id), entry)
+  if (!resolved.ok) return sendError(res, API_ERROR_CODES.PATH_ESCAPE, '模块页面路径越界')
+  let stats
+  try {
+    stats = statSync(resolved.path)
+  } catch {
+    return sendError(res, API_ERROR_CODES.NOT_FOUND, `模块页面文件不存在：${pathname}`)
+  }
+  if (!stats.isFile()) return sendError(res, API_ERROR_CODES.NOT_FOUND, `模块页面不是文件：${pathname}`)
+  if (stats.size > MAX_STATIC_BYTES) return sendError(res, API_ERROR_CODES.INVALID_ENTRY, '模块页面文件过大')
+  res.writeHead(200, {
+    'content-type': MIME[extname(resolved.path).toLowerCase()] ?? 'application/octet-stream',
+    'content-length': stats.size,
+    'cache-control': /\.(html|js|css|mjs)$/iu.test(resolved.path) ? 'no-store' : 'no-cache'
+  })
+  createReadStream(resolved.path).pipe(res)
+}
+
 async function serveStatic(req, res, url, publicDir) {
   let pathname
   try {
@@ -317,6 +351,45 @@ async function serveStatic(req, res, url, publicDir) {
 
 /* ---------- 路由分派（OS-141：契约解析 → 契约校验 → 取 handler → 调用）---------- */
 
+/** OS-197：迁移失败时仍放行「查看与修复」端点，业务面按失败门报错。 */
+const MIGRATION_SAFE_ENDPOINTS = new Set([
+  'pluginsGet', 'moduleRootsGet', 'moduleRootsPreview', 'moduleRootsAdd', 'moduleRootsRemove',
+  'moduleRootsRefresh', 'uiStateGet', 'uiStatePut', 'suitesGet', 'suiteSettingsPut', 'suiteStatePut'
+])
+
+async function migrationGateFail(endpointId, root, env) {
+  const state = await migrationStateFor(root, env)
+  if (!state.failures?.length) return null
+  const excluded = new Set(state.excluded ?? [])
+  const owner = await endpointOwnerFor(endpointId, env)
+  if (!state.fresh && !(owner && excluded.has(owner))) return null
+  if (state.fresh && MIGRATION_SAFE_ENDPOINTS.has(endpointId)) return null
+  const failure = state.failures[0]
+  return {
+    code: API_ERROR_CODES.MIGRATION_FAILED,
+    message: failure.message,
+    details: {
+      module: failure.plugin ?? failure.disable?.[0] ?? '',
+      capability: failure.capability,
+      from: failure.from,
+      to: failure.to,
+      reason: failure.reason,
+      journalPath: failure.journalPath,
+      rolledBack: failure.rolledBack,
+      restored: failure.restored,
+      excluded: [...excluded],
+      failures: state.failures.map((item) => ({
+        module: item.plugin ?? item.disable?.[0] ?? '',
+        capability: item.capability,
+        from: item.from,
+        to: item.to,
+        reason: item.reason,
+        journalPath: item.journalPath,
+        rolledBack: item.rolledBack
+      }))
+    }
+  }
+}
 
 async function handleApi(req, res, url, context) {
   // OS-196a：运行期自带契约也参与路由（本机模块端点路径在 /api/modules/<id>/ 下）。
@@ -373,6 +446,17 @@ async function handleApi(req, res, url, context) {
   // 库根取法（OS-146）：请求 root（已授权）优先——多库时按调用方自己的库判定；
   // 启动默认库/库清单第一条只是没带 root 时的兜底，不是语义。一个库都没有时无法判定，按启用处理。
   const gateRoot = moduleGateRoot(checked.value, context, allowlist)
+  // OS-197：覆盖者声明的迁移先于路由生效；失败者已被剔除，本次请求按失败门报错。
+  if (gateRoot) {
+    const migrationFail = await migrationGateFail(endpointId, gateRoot, context.env)
+    if (migrationFail) {
+      return sendError(res, migrationFail.code, migrationFail.message, migrationFail.details)
+    }
+    const versionAhead = await dataVersionAheadFor(endpointId, gateRoot, context.env)
+    if (versionAhead) {
+      return sendError(res, API_ERROR_CODES.DATA_VERSION_AHEAD, versionAhead.message, versionAhead)
+    }
+  }
   const owner = await moduleDisabledOwnerFor(endpointId, gateRoot, context.env)
   if (owner) {
     const label = (await moduleManifestFor(owner, context.env))?.name ?? owner
@@ -476,6 +560,7 @@ export function createOpenStoryHandler({
       if (req.method !== 'GET' && req.method !== 'HEAD') {
         return sendError(res, API_ERROR_CODES.NOT_FOUND, `静态托管只支持 GET/HEAD：${req.method}`)
       }
+      if (url.pathname.startsWith('/module-page/')) return await serveModulePage(req, res, url, env)
       return await serveStatic(req, res, url, publicDir)
     } catch (error) {
       if (res.headersSent) {

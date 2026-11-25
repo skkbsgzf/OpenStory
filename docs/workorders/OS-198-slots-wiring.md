@@ -7,7 +7,7 @@
 | 依赖 | OS-192、OS-194（OS-196 的本机模块根就绪后一并验证第三方工作台） |
 | 允许改动 | `src/**`、`public/**`、`test/**`、`tools/acceptance/**`、`docs/number-anchors.json`、`ARCHITECTURE.md`、`AGENTS.md`、`README.md`、`docs/protocol/module-manifest-2.md`、`docs/UX-STRUCTURE.md`、`docs/workorders/OS-198-slots-wiring.md` |
 | 风险 | **高**——动前端的页签主干；`app.js` 只许减不许增 |
-| 状态 | 待派 |
+| 状态 | 主体已验收（监督线，2026-11-25；施工由 Qoder 完成，未及提交，由监督线落袋）；四处返工 → [OS-198a](OS-198a-slots-rework.md) |
 
 通用规则见 [`COMMON-RULES.md`](COMMON-RULES.md)。
 
@@ -62,3 +62,16 @@
 - 生产调用点贴出来（`文件:行`）：投影生成、前端消费、第三方页面路由。
 - `docs/UX-STRUCTURE.md`、`docs/protocol/module-manifest-2.md`（§4.4 slot 一节）、`AGENTS.md` 同步。
 - `git diff --check` 干净；`node tools/number-anchors.mjs` 与 `npm run arch:stats` 跑过。
+
+## 验收记录（监督线，2026-11-25）
+
+- 施工由 Qoder 完成、未提交。全量 836／834 过／2 条件跳过／0 挂；门禁 29／0／0（新增 S2.12）。
+- **接口层**（`probe-198.mjs`，隔离 daemon）：`/api/plugins.slots` 的页签投影为「产物／正文／世界书／剧本／日志／故事源／习惯／扮演」，顺序与改动前一致（改动前测试代码钉死的就是这个世界书在第三的顺序，是那条测试的标题过时了）；标签取自 manifest；右栏／设置区／宿主动作三个位在投影里；第三方 iframe 页面按 `order` 落位、带 `entry`；没有可渲染页面的位置 `view=none` 并进警告；路径穿越 403；内置模块不走 `/module-page`；第三方页面自己的端点打通。反证 (b) 未登记的 slot 被拒。
+- **浏览器冒烟**（隔离 daemon＋冒烟副本库；截图在 `D:\Pinax-e2e\os-shots\os198-slots-20261125\`）：进库正常、正文渲染正常；页签顺序「产物／正文／世界书／故事源／习惯／扮演／外部台」（副本库没有 `剧本/`、`日志/` 目录，这两个页签按既有规则不出现）；内置页签逐个点开都有内容；「外部台」带标题条（页面名、模块名、版本、内容摘要）并能调通自己的端点（`FRAME-OK`）；用 × 收起「习惯」后「＋」面板能勾回；设置页插件中心完整，「本机模块」入口在。
+- **要返工的四处**（转 [OS-198a](OS-198a-slots-rework.md)）：
+  1. 第三方页签「外部台」用 × 收起后，「＋」面板里没有它；收起状态写进了库内 `tabHidden`，刷新重进后仍回不来。
+  2. `/module-page/<id>/…` 把模块目录里的任何文件都吐出来（`secret.txt`、`module.manifest.json` 都是 200）。
+  3. 门禁抓不到「前端写死页签顺序」：把一个页签顺序数组放进 `app.js`（行数不变），S2.12 仍绿——工单任务 4 的反证 (a) 不成立。
+  4. `app.js` 10,108 → 10,110，违反只减不增。
+  另：首次进库仍把四个已退场目录名写进 `tabHidden`（死种子）；`test/tabRegistry.test.mjs` 12→9 例，缺「库里没有 `世界书/` 目录时世界书页签不出」的场景。
+- 结论：**主体已验收**；四处返工走 OS-198a。
