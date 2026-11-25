@@ -5,7 +5,7 @@
 | 批次 | 清账批（E）第 4 张；规划见 [`cleanup-batch-20261125.md`](../plan/cleanup-batch-20261125.md) |
 | 对应 | D 批验收记录 §三 B2、B3、B4、B8，§五 D8 |
 | 依赖 | OS-188a |
-| 允许改动 | `src/protocol/capabilityGraph.mjs`、`src/protocol/capabilityMigration.mjs`、`src/services/suites.mjs`、`test/capabilityGraph.test.mjs`、`test/capabilityMigration.test.mjs`、`test/suiteModuleManifest.test.mjs`、`docs/protocol/module-manifest-2.md`、`docs/workorders/OS-191-graph-migration-consistency.md` |
+| 允许改动 | `src/protocol/capabilityGraph.mjs`、`src/protocol/capabilityMigration.mjs`、`src/services/suites.mjs`、`test/capabilityGraph.test.mjs`、`test/capabilityMigration.test.mjs`、`test/suiteModuleManifest.test.mjs`、`docs/protocol/module-manifest-2.md`、`ARCHITECTURE.md`、`docs/number-anchors.json`、`docs/workorders/OS-191-graph-migration-consistency.md` |
 | 风险 | 低——纯函数，目前没有生产调用方；但这是 OS-196 接线前的地基 |
 | 状态 | 待派 |
 
@@ -68,3 +68,11 @@
 - 机器门禁全绿；红线测试 `test/capabilityGraph.test.mjs`、`test/capabilityMigration.test.mjs`、`test/suiteModuleManifest.test.mjs` 全绿。
 - 复跑监督线探针 `D:\Pinax-e2e\.zcode\tmp\accept-d-probes.mjs`：A1–A4 不再出现「图放行、框架拒」；A6 放行；A7 覆盖者 loaded。贴输出。
 - `git diff --check` 干净；`node tools/number-anchors.mjs` 与 `npm run arch:stats` 跑过。
+
+## 验收记录（监督线，2026-11-25）
+
+- 施工两轮后停在门禁红：**根因是允许清单漏了 `ARCHITECTURE.md` 与 `docs/number-anchors.json`**——改协议行数后 `arch:stats` 回写不了，C6 架构规模测试红。代码本身无缺陷（三条红线测试全绿）。已把两者补进「允许改动」。
+- 监督线代跑 `npm run arch:stats` 与 `node tools/number-anchors.mjs` 后复跑：全量 812／810／0／2、门禁 27／0／0、数字锚与架构统计一致、隔离 e2e 全绿。
+- 探针（`accept-d-probes.mjs`）复跑：同主版本换金样 → `OVERRIDE_REJECTED: GOLDEN_CHANGE_REQUIRES_MAJOR`；`3→5` → `OVERRIDE_MIGRATION_GAP`；停用被覆盖的内置件 → 放行且路由指向覆盖者（A6／A7 不再出现 `SELF_OVERRIDE`）。
+- journal 改动已读：完整计划先落 `running`、逐文件标 `committed` 重写、恢复后写 `recovered`、回滚失败逐条上报；运行态放开 `.openstory/`；套件可执行扫描改扩展名白名单。
+- 结论：**已验收**（由监督线补齐文档回写后提交）。

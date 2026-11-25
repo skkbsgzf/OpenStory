@@ -322,8 +322,10 @@
 
 1. **显式声明**：必须点名 `type/target/from`；同 id 后装载静默替换不接受。
 2. **版本对齐**：`from` 必须等于当前被覆盖目标主版本；不能跨未知版本覆盖。
-3. **迁移责任**：capability 覆盖改变落盘格式时，必须带对应 `migrations` 且新金样通过；未带而金样检测到格式变化，拒绝覆盖。surface/resource 覆盖禁止迁移器。
-4. **回退链**：每个覆盖者必须能回退到前一合法候选；回退前重新跑三检查。若数据已迁到新主版本而旧供给者不支持，回退到「旧格式 provider」是非法的，消费者保持 degraded，绝不静默读错格式。
+   - 同主版本换金样＝改了落盘格式却没升版，直接 `OVERRIDE_REJECTED`，理由 `GOLDEN_CHANGE_REQUIRES_MAJOR`；不再要求、也不接受就地 `from === to` 的迁移器。
+   - 升主版本只在「供给版本 ＝ 被覆盖版本 ＋ 1」时受理，且必须带 `from ＝ 被覆盖版本`、`to ＝ 供给版本` 的迁移器；跨两档以上 `OVERRIDE_REJECTED`，理由 `OVERRIDE_MIGRATION_GAP`。
+3. **迁移责任**：capability 覆盖升主版本时必须带对应 `migrations` 且新金样通过，缺迁移器记 `OVERRIDE_MIGRATION_REQUIRED`。surface/resource 覆盖禁止迁移器。
+4. **回退链**：每个覆盖者必须能回退到前一合法候选；回退前重新跑三检查。若被覆盖的供给者被停用或缺席、同能力只剩覆盖者一个供给者，这条覆盖声明**不生效**——覆盖者按普通供给者装载、不进 degraded、路由指向它、消费者不断链；`SELF_OVERRIDE` 只保留给「场上除被覆盖者外确无他方、声明目标就是自己」的真正自覆盖错误。若数据已迁到新主版本而旧供给者不支持，回退到「旧格式 provider」是非法的，消费者保持 degraded，绝不静默读错格式。
 
 ### 7.3 优先级与环
 
@@ -362,12 +364,14 @@
 }
 ```
 
-- 只有 kernel capability 覆盖可携带迁移器；入口相对包目录，必须是受信内置/本机 kernel。
-- 迁移为 `from→to` 单向，一次执行；写前生成 `.history` 备份，正文/事实仍走各能力写协议，最终物理提交走 `base.write`。
+- 只有 kernel/workbench capability 覆盖可携带迁移器；入口相对包目录，必须是受信内置/本机模块。suite 禁止携带迁移器或任何可执行代码。
+- 迁移为 `from→to` 单向、只递增一档（`to === from + 1`）：`from === to` 与跨两档以上一律 `MIGRATION_VERSION_GAP`。这与 §7.2 的版本对齐同源——能力图判定放行的版本对，迁移框架必须同样受理，反之亦然。
+- 写前生成 `.history` 备份，正文/事实仍走各能力写协议，最终物理提交走 `base.write`。迁移上下文的 `readFile/listFiles` 与提交落盘开放 `.openstory/` 运行态（与模块代码同级可信）；`.history` 除本次迁移自己的备份目录外仍禁止访问。
 - 建议固定 journal：`<库>/.openstory/migrations/<capability>/<from>-to-<to>.json`；备份：`<库>/.history/capability-<capability>-<from>-to-<to>-<时间戳>/`。B2 落地时同步补入 AGENTS 落盘表。
 - journal 至少记录 plugin id、capability、from/to、迁移器哈希、operationId、开始/完成时间、before/after 哈希、备份路径与结果。
-- 执行前写 `running` journal；成功后写 `done`；重复启动见 `done` 直接跳过，见 `running` 先按 journal 恢复或续跑，不能重新盲跑。
-- 失败安全阀：停止提交、删除/隔离临时副本、按 journal 逆序恢复、保留原格式与原数据、禁用覆盖者、返回 `MIGRATION_FAILED`。绝不删旧数据文件。
+- 进入提交前 `running` journal 就写入**完整计划**：每个文件的相对路径、写前哈希（存在时）、备份相对路径、`committed:false`。每写完一个文件，先把该文件标 `committed:true` 并重写 journal，再写下一个。`running/done/failed/recovered` 四态都有写入点，不留死状态。
+- 成功后写 `done`；重复启动见 `done` 直接跳过；见 `running/failed/recovered` 先按 journal 恢复——只还原已提交文件（从备份恢复或删除新建文件），未提交的不动，恢复成功后写 `recovered` journal 再决定是否重试，绝不盲跑半迁数据。
+- 失败安全阀：停止提交、删除/隔离临时副本、按 journal 逆序恢复、保留原格式与原数据、禁用覆盖者、返回 `MIGRATION_FAILED`。回滚失败逐条记 `rollbackErrors` 并置 `rolledBack:false`，对外区分「已原样回滚」与「回滚未完成」；不得吞掉错误后宣称原数据已保留。绝不删旧数据文件。
 - 禁止自动 down migration。覆盖者停用不等于数据回滚；回退 provider 必须声明能读当前磁盘主版本，否则保持 degraded。
 - OS-172 的旧库一次性升级与 capability migration 是两个不同机制、两套 marker；module@2 上线不得重跑 OS-172。
 

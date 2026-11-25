@@ -13,6 +13,7 @@ import {
 } from '../src/protocol/modules.mjs'
 import { API_ERROR_CODES } from '../src/api/contracts.mjs'
 import { sendError } from '../src/host/http.mjs'
+import { validateCapabilityMigration } from '../src/protocol/capabilityMigration.mjs'
 
 const kernel = (id, capabilities, extra = {}) => ({
   spec: 'openstory-module@2',
@@ -122,6 +123,29 @@ test('合法能力覆盖只替换目标能力，停用后回退到前一合法�
   assert.equal(fallback.ok, true)
   assert.equal(fallback.candidate.routes['fact.store'].provider, 'fact')
   assert.ok(fallback.candidate.loaded.includes('worldbook'))
+
+  // 回退语义：被覆盖的内置供给者停用时，只剩覆盖者一个供给者，覆盖声明不生效，按普通供给者装载。
+  const soloManifests = [
+    kernel('solo-fact', [capability('fact.store')]),
+    kernel('solo-local', [capability('fact.store')], {
+      builtin: false,
+      overrides: [{ type: 'capability', target: 'fact.store', from: 1 }]
+    }),
+    workbench('solo-consumer', [requirement('fact.store')])
+  ]
+  const withoutTarget = deriveModuleStateChange({ manifests: soloManifests, patch: { 'modules.enabled.solo-fact': false } })
+  assert.equal(withoutTarget.ok, true, withoutTarget.message ?? '')
+  assert.equal(withoutTarget.candidate.routes['fact.store'].provider, 'solo-local')
+  assert.ok(withoutTarget.candidate.loaded.includes('solo-local'))
+  assert.ok(withoutTarget.candidate.loaded.includes('solo-consumer'))
+  assert.ok(!withoutTarget.candidate.issues.some((item) => item.code === 'CAPABILITY_MISSING'))
+  assert.ok(!withoutTarget.candidate.issues.some((item) => item.code === 'OVERRIDE_REJECTED' && item.details.reason === 'SELF_OVERRIDE'))
+  const bothOff = buildCapabilitySnapshot({
+    manifests: soloManifests,
+    state: { 'modules.enabled.solo-fact': false, 'modules.enabled.solo-local': false }
+  })
+  assert.ok(bothOff.issues.some((item) => item.code === 'CAPABILITY_MISSING'
+    && item.details.capability === 'fact.store' && item.details.consumers.includes('solo-consumer')))
 })
 
 test('两个本机覆盖争抢同一目标时拒绝双方，内置保持兜底，按级退出后回退链生效', () => {
@@ -213,6 +237,31 @@ test('升主版本覆盖必须带匹配迁移器，金样能力必须提供新�
     })]
   })
   assert.ok(reusedGolden.issues.some((item) => item.code === 'OVERRIDE_REJECTED' && item.details.reason === 'OVERRIDE_GOLDEN_REQUIRED'))
+
+  // 校验对齐：同主版本换金样与跨档被拒，3→4 带迁移器通过；两套校验器逐组一致。
+  const alignedBase = kernel('fact', [capability('fact.store', 3, 'g3')])
+  const consumer = workbench('worldbook', [requirement('fact.store', 3, 6)])
+  const groups = [
+    { to: 3, golden: 'g3-new', graphReason: 'GOLDEN_CHANGE_REQUIRES_MAJOR', frameworkOk: false },
+    { to: 4, golden: 'g4', graphReason: '', frameworkOk: true },
+    { to: 5, golden: 'g5', graphReason: 'OVERRIDE_MIGRATION_GAP', frameworkOk: false }
+  ]
+  for (const group of groups) {
+    const alignedLocal = kernel('fact-local', [capability('fact.store', group.to, group.golden)], {
+      builtin: false,
+      overrides: [{ type: 'capability', target: 'fact.store', from: 3 }],
+      migrations: [{ capability: 'fact.store', from: 3, to: group.to, entry: 'm.mjs' }]
+    })
+    const snapshot = buildCapabilitySnapshot({ manifests: [alignedBase, alignedLocal, consumer] })
+    const rejection = snapshot.issues.find((item) => item.code === 'OVERRIDE_REJECTED' && item.details.plugin === 'fact-local')
+    assert.equal(rejection?.details.reason ?? '', group.graphReason, `能力图 ${group.to}`)
+    const framework = validateCapabilityMigration(
+      { plugin: 'fact-local', capability: 'fact.store', from: 3, to: group.to, entry: 'm.mjs' },
+      { packageDir: '/tmp/openstory-migration-fixture' }
+    )
+    assert.equal(framework.ok, group.frameworkOk, `迁移框架 ${group.to}`)
+    assert.equal(!rejection, group.frameworkOk, `两套校验器对 ${group.to} 的判定必须一致`)
+  }
 })
 
 test('自覆盖、覆盖 base、未知目标与版本错位均拒绝', () => {

@@ -81,8 +81,13 @@ function normalizeSettingsSchema(rawSettings, bad) {
 }
 
 const ASSET_ENTRY = /^[\w\u4e00-\u9fff][\w\u4e00-\u9fff. -]{0,60}\.(?:html?|mjs|js|css|json)$/u
-/** module@2 suite 禁带可执行代码（含内联脚本 HTML）——legacy page 模式除外。 */
-const SUITE_EXECUTABLE = /\.(?:mjs|cjs|js|wasm|sh|ps1|bat|cmd)$/iu
+/**
+ * OS-191：module@2 suite 目录只许数据与说明——扩展名白名单。
+ * 数据 .json/.md/.txt/.yaml/.yml/.css，位图 .png/.jpg/.jpeg/.webp/.gif/.ico，字体 .woff2。
+ * HTML、SVG、WASM 与任何脚本扩展名一律拒收（理由不变：套件只许数据与说明）。
+ * legacy page 模式不走这里，仍由旧 loader 隔离。
+ */
+const SUITE_DATA_FILE = /\.(?:json|md|txt|yaml|yml|css|png|jpg|jpeg|webp|gif|ico|woff2)$/iu
 
 function findExecutableInSuite(dir) {
   let entries = []
@@ -93,15 +98,7 @@ function findExecutableInSuite(dir) {
   }
   for (const item of entries) {
     if (!item.isFile()) continue
-    const full = join(item.parentPath ?? dir, item.name)
-    if (SUITE_EXECUTABLE.test(item.name)) return full
-    if (/\.html?$/iu.test(item.name)) {
-      try {
-        if (/<script\b/iu.test(readFileSync(full, 'utf8'))) return full
-      } catch {
-        return null
-      }
-    }
+    if (!SUITE_DATA_FILE.test(item.name)) return join(item.parentPath ?? dir, item.name)
   }
   return null
 }

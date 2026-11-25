@@ -110,8 +110,32 @@ test('module@2 拒收：builtin 与来源不一致、entries 越界/缺失、携
     const inline = normalizeSuite(SHELF, { source: '内置', dir })
     assert.equal(inline.warning.code, 'SUITE_EXECUTABLE_CODE', '内联脚本 HTML 同样不入套件')
     await rm(join(dir, 'page.html'))
+    // OS-191：HTML 一律拒收，不再按是否带脚本区分（白名单只许数据与说明文件）
     await writeFile(join(dir, 'page.html'), '<html><body>纯说明</body></html>', 'utf-8')
-    assert.equal(normalizeSuite(SHELF, { source: '内置', dir }).ok, true, '无脚本的说明页可以留')
+    const plainHtml = normalizeSuite(SHELF, { source: '内置', dir })
+    assert.equal(plainHtml.warning.code, 'SUITE_EXECUTABLE_CODE', '纯说明 HTML 同样不入套件')
+    await rm(join(dir, 'page.html'))
+
+    // OS-191 扩展名白名单：.node/.exe/.svg/带 onerror 的 HTML 拒收，.md/.json/.png 通过
+    const rejected = [
+      ['addon.node', 'binary'],
+      ['setup.exe', 'binary'],
+      ['icon.svg', '<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)"/>'],
+      ['page.html', '<img src=x onerror="alert(1)">']
+    ]
+    for (const [name, content] of rejected) {
+      await writeFile(join(dir, name), content, 'utf-8')
+      const result = normalizeSuite(SHELF, { source: '内置', dir })
+      assert.equal(result.ok, false, `${name} 应被拒`)
+      assert.equal(result.warning.code, 'SUITE_EXECUTABLE_CODE')
+      await rm(join(dir, name))
+    }
+    const accepted = [['README.md', '# ok'], ['extra.json', '{}'], ['cover.png', 'binary']]
+    for (const [name, content] of accepted) {
+      await writeFile(join(dir, name), content, 'utf-8')
+      assert.equal(normalizeSuite(SHELF, { source: '内置', dir }).ok, true, `${name} 应通过`)
+      await rm(join(dir, name))
+    }
   } finally {
     await rm(base, { recursive: true, force: true })
   }

@@ -7,6 +7,7 @@
 | 依赖 | OS-189 |
 | 允许改动 | `src/**`、`public/**`、`test/**`、`tools/**`、`samples/**`、`docs/number-anchors.json`、`ARCHITECTURE.md`、`README.md`、`AGENTS.md`、`docs/adr/0002-base-constitution.md`（§2.2／§2.4 两张表）、`docs/workorders/OS-190-classify-complete.md` |
 | 风险 | **中**——改名面广（模块目录、页面 id、DOM id、设置键、门禁锚点）；对外契约名一个不动 |
+| 状态 | 部分验收（`f68331c`）：slug、日志 manifest、Agent 栏、套件归属已验；**前端页签 id／视图键未归一转 [OS-190a](OS-190a-page-ids-frontend.md)** |
 | 状态 | 已实施（2026-11-25；机器门禁全绿，待监督线验收） |
 
 通用规则见 [`COMMON-RULES.md`](COMMON-RULES.md)。
@@ -113,3 +114,10 @@ LIMITATIONS: 无
 
 （说明：`verify-shuihu.mjs` / `verify-newproj.mjs` 单独直跑需编排器设置 `OPENSTORY_ROOT` / `OPENSTORY_TEST_PREFERENCES_PATH` 环境变量，故未单独直跑；其覆盖已由 `verify-os172-e2e.mjs` 在临时夹具＋临时 LOCALAPPDATA 上实跑全绿。未执行任何 git add/commit/push，未启动或杀 daemon，未碰作者真库与真实 LOCALAPPDATA。）
 ```
+
+## 验收记录（监督线，2026-11-25）
+
+- 提交 `f68331c`；全量 812／810／0／2、门禁 27／0／0、隔离 e2e 全绿；红线四条全绿；未越界。
+- 已验：`src/modules/` 下已是 `imagegen`、`knowledge`，`log/` 有 manifest（`class:workbench`、slot `tab`、页面 `log`、零独占端点）；`comfyui`／`kb` 目录消失；21 份 manifest 页面 id 全部＝slug；`public/` 与 `tools/` 里 `Pi-Agent` 零命中；内置套件归属统一为 `skkbsgzf`；升级的 `VIEW_ID_RENAMES` 覆盖旧视图键与旧页 id。
+- **未过**：前端 `TAB_REGISTRY` 仍是 `id:'write'`／`'reference'`／`'deduce'`（`public/views/registry.mjs` 约 :228／:231／:248），而升级会把库内 `view` 写成 `chapters`／`worldbook`／`roleplay`——`viewScope()` 认不出，升级后的库打开会是空白页。门禁只核 manifest 页 id，所以自己没发现。
+- 结论：**部分验收**；前端一半与门禁补齐走 [OS-190a](OS-190a-page-ids-frontend.md)。

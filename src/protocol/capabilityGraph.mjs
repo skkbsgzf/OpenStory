@@ -136,7 +136,7 @@ function orderedOverrideTargets(targets) {
   return { reason: '', targets: [...local, ...builtin] }
 }
 
-function validateOverrides(manifests, enabled, providers, contributions) {
+function validateOverrides(manifests, enabled, providers, contributions, allProviders) {
   const edges = new Map()
   const rejectedOwners = new Set()
   const rejected = []
@@ -150,11 +150,19 @@ function validateOverrides(manifests, enabled, providers, contributions) {
         const externalTargets = providers.filter((provider) => provider.id === override.target
           && provider.version === override.from && provider.provider !== manifest.id)
         const externalAnyVersion = providers.some((provider) => provider.id === override.target && provider.provider !== manifest.id)
+        // 被覆盖的供给者可能声明在 manifest 里但当前被停用——它不是「在场」目标，
+        // 但证明这条覆盖声明原本指向别人，不算自覆盖。
+        const declaredExternalTargets = allProviders.filter((provider) => provider.id === override.target
+          && provider.version === override.from && provider.provider !== manifest.id)
         const ordered = orderedOverrideTargets(externalTargets)
         reason = ordered.reason
         targets = ordered.targets
         if (!supplied) reason = 'OVERRIDE_TARGET_NOT_SUPPLIED'
         else if (!externalTargets.length) {
+          if (declaredExternalTargets.length) {
+            // 目标不在场且只剩覆盖者一个供给者：覆盖声明不生效，覆盖者按普通供给者装载。
+            continue
+          }
           reason = !externalAnyVersion && providers.some((provider) => provider.id === override.target && provider.provider === manifest.id)
             ? 'SELF_OVERRIDE' : 'OVERRIDE_VERSION_MISMATCH'
         } else if (!reason) {
@@ -165,7 +173,10 @@ function validateOverrides(manifests, enabled, providers, contributions) {
           } else {
             const majorChanged = supplied.version !== target.version
             const goldenChanged = supplied.golden !== target.golden
-            if (majorChanged || goldenChanged) {
+            // 同主版本换金样＝改了落盘格式却没升版，直接拒绝且不再要求迁移器。
+            if (goldenChanged && !majorChanged) reason = 'GOLDEN_CHANGE_REQUIRES_MAJOR'
+            else if (majorChanged && supplied.version !== target.version + 1) reason = 'OVERRIDE_MIGRATION_GAP'
+            else if (majorChanged) {
               const migration = list(manifest.migrations).find((item) => item.capability === override.target
                 && item.from === target.version && item.to === supplied.version)
               if (!migration) reason = 'OVERRIDE_MIGRATION_REQUIRED'
@@ -275,11 +286,12 @@ export function buildCapabilitySnapshot({
   const enabledById = enabledMap(manifests, state, enabled, forceEnabled, suiteState)
   const baseCapabilities = list(base.capabilities)
   const providers = capabilityProviders(manifests, enabledById, baseCapabilities)
+  const allProviders = capabilityProviders(manifests, Object.fromEntries(manifests.map((manifest) => [manifest.id, true])), baseCapabilities)
   const contributions = surfaceProviders(manifests, enabledById)
   const issues = []
   const blocked = new Set()
   const dependencyBlocked = new Set()
-  const checkedOverrides = validateOverrides(manifests, enabledById, providers, contributions)
+  const checkedOverrides = validateOverrides(manifests, enabledById, providers, contributions, allProviders)
   issues.push(...checkedOverrides.rejected)
   for (const id of checkedOverrides.rejectedOwners) blocked.add(id)
   let resolved = resolveContributions(providers, contributions, checkedOverrides.edges, blocked, issues)

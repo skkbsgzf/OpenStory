@@ -132,8 +132,9 @@
 |---|---|---|---|---|
 | 1 | [OS-188a](OS-188a-batch-d-fixes.md) | 旧库升级补强：路径改写锚定库根、旧关系扩展键抬升、旧临时文件残留归档、解析失败入报告 | 中 | **已验收** `135a346`（探针✓ 812 例✓ 门禁 27✓） |
 | 2 | [OS-189](OS-189-pinax-retire.md) | Pinax 残留业务全部退役：院子克隆、旧清单读、导入识别、旧前缀、LICENSE、过时指引、门禁收紧 | 中 | **已验收** `3763589`（pinax 残留 29 处全属升级器/出处✓ 反向守卫 5 条✓） |
-| 3 | [OS-190](OS-190-classify-complete.md) | 分类补齐：`imagegen`／`knowledge` 两个 slug、页面 id＝slug、「日志」立 manifest、Agent 栏正名、套件归属统一 | 中 | 待派（第 2 轮） |
-| 4 | [OS-191](OS-191-graph-migration-consistency.md) | 能力图与迁移框架自洽：校验对齐、回退语义、journal 补全、可执行扫描改白名单 | 低 | 待派（第 2 轮） |
+| 2a | [OS-190a](OS-190a-page-ids-frontend.md) | 页面 id＝slug 的前端一半：页签 id／视图键归一、升级后视图可解析、门禁补核 `TAB_REGISTRY` | 中 | 待派（第 2b 轮） |
+| 3 | [OS-190](OS-190-classify-complete.md) | 分类补齐：`imagegen`／`knowledge` 两个 slug、页面 id＝slug、「日志」立 manifest、Agent 栏正名、套件归属统一 | 中 | **部分验收** `f68331c`（slug／日志／Agent 栏／套件✓；前端页签未归一 → OS-190a） |
+| 4 | [OS-191](OS-191-graph-migration-consistency.md) | 能力图与迁移框架自洽：校验对齐、回退语义、journal 补全、可执行扫描改白名单 | 低 | **已验收**（监督线补齐 `arch:stats` 回写；探针 A1–A7✓） |
 | 5 | [OS-192](OS-192-shelves-manifest2.md) | 货架全面升格：五类货架进能力图、漫剧占位套件与 legacy 页面模式退役、过渡脚手架退役 | 中高 | 待派（第 2 轮） |
 | 6 | [OS-193](OS-193-kernel-handles.md) | 内核件归位与句柄化：services 里的内核代码搬家、内核之间只经句柄、转供叶减半 | 高 | 待派（第 3 轮） |
 | 7 | [OS-194](OS-194-handlers-to-plugins.md) | 端点实现归插件：handler 搬进模块、经 `activate()` 登记、daemon 按库快照分派 | 高 | 待派（第 4 轮） |
