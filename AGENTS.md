@@ -42,8 +42,11 @@ L4 自持层→L2 自有内核 `src/kernel/`→L1 磁盘库；OS-157 起 L2/L3 �
    依赖注入解（范例见 `src/modules/knowledge/knowledgeHealth.mjs` 的 resolveCollections 注入）。
    建库/导入/章节号解析已**本仓自持**（`src/modules/storage/projectDoc.mjs`/`src/modules/library/importAdapter.mjs`/`textUtil.mjs`，
    OS-123/124 fork 点），不再复用上游内核。
-   > **模块插件（OS-144；B1–B5 已升级）**：工作面使用 `src/modules/<id>/module.manifest.json`
-   > （`openstory-module@2`：`id/name/version/class/endpoints/pages/slots/settings`；@1 只作迁移输入）。
+   > **模块插件（OS-144；B1–B5 已升级，OS-192 单规则收口）**：工作面使用 `src/modules/<id>/module.manifest.json`
+   > （`openstory-module@2`：`id/name/version/class/endpoints/pages/slots/settings`；@1 直接拒收，迁移脚手架已删）。
+   > 五类货架（skills/styles/genres/runtimes/suites）经 `src/protocol/shelfManifests.mjs` 投影成同一份 module@2 套件清单，
+   > 与模块共用能力图；启停与设置值统一落 `.openstory/plugins/suite-state.json`；本机覆盖内置必须显式报告。
+   > legacy `openstory-suite@1/@2` 页面模式、`/suite-assets/` 路由与两个 state-data 端点已退役。
    > `endpoints` 只登**独占**端点——共用端点（如 fact 读）不登记，停用任何模块都不许让它失效。
    > 启停判定与端点归属只有单一入口 `src/protocol/modules.mjs`；状态落库内 ui-state
    > `modules.enabled.<id>`（缺省 true，值不删），写入前必须通过 `capabilityGraph.mjs` 候选图事务。
@@ -235,7 +238,7 @@ L4 自持层→L2 自有内核 `src/kernel/`→L1 磁盘库；OS-157 起 L2/L3 �
 ## 改完必跑（验收线，详见 `docs/ACCEPTANCE.md`）
 
 ```bash
-node .zcode/run-gate.mjs                    # ① 全量单测（812 例）
+node .zcode/run-gate.mjs                    # ① 全量单测（808 例）
 node tools/acceptance/acceptance.mjs        # ② 交付标准 S0–S4 门禁（27 检查，Rea 式证据；S0=布局宪法）
 # ③ .ua/ 知识图谱增量（/understand，skill 在 ~/.zcode/skills/understand*）
 # ④ 前端批次给作者截图讲场景（对照 design-system/DESIGN.md + docs/UX-STRUCTURE.md）

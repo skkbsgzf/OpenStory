@@ -1,9 +1,9 @@
 /**
  * OS-186 / D3：套件统一 manifest（openstory-module@2 class:suite）。
  *
- * 货架三层升格后，套件与工作台/内核件共用同一张校验矩阵；能力图直接消费
- * `loadSuiteCapabilityManifests()` 的清单，按 appliesTo 判活跃。legacy page 模式
- * （openstory-suite@2，如漫剧）仍由旧 loader 隔离，不进能力图。
+ * 货架升格后，套件与工作台/内核件共用同一张校验矩阵；能力图直接消费
+ * `loadSuiteCapabilityManifests()` 的清单，按 appliesTo/deps 判活跃。
+ * OS-192：legacy page 模式（openstory-suite@1/@2）已整体退役，只剩 module@2。
  */
 import test from 'node:test'
 import assert from 'node:assert/strict'
@@ -42,9 +42,9 @@ async function fixture() {
   return { base, builtin: join(base, '内置'), local: join(base, '本机') }
 }
 
-test('内置货架：三个套件升格 module@2，漫剧留在 legacy page 模式', () => {
+test('OS-192 内置货架：漫剧占位已退役，三个套件全在 module@2 能力图', () => {
   const { suites, warnings } = loadSuites([builtinSuitesDir()])
-  assert.deepEqual(suites.map((suite) => suite.id).sort(), ['comicdrama', 'deduce-rules', 'screenwriting', 'writing'])
+  assert.deepEqual(suites.map((suite) => suite.id).sort(), ['deduce-rules', 'screenwriting', 'writing'])
   assert.deepEqual(warnings, [])
   const manifests = loadSuiteCapabilityManifests([builtinSuitesDir()])
   assert.deepEqual(manifests.map((suite) => suite.id).sort(), ['deduce-rules', 'screenwriting', 'writing'])

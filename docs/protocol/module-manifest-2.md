@@ -1,8 +1,8 @@
 # module-manifest@2 · 能力、工作台与创作套件协议
 
-**状态：B1–B5、C 批（C1–C6）与 D1–D4 均已实施；七内核统一注册、动态激活、能力路由、slot 注册表与数字锚门禁均已通过。D4 裁定本批不开放第三方可执行模块装载，全局热切换仍未实施（见 [ADR 0003](../adr/0003-dynamic-loading.md)）。架构裁定见 [ADR 0002](../adr/0002-base-constitution.md)。**
+**状态：B1–B5、C 批（C1–C6）、D1–D4 与 OS-192 均已实施；七内核统一注册、动态激活、能力路由、slot 注册表、五类货架一等套件与数字锚门禁均已通过。第三方可执行模块装载与全局热切换仍未实施（见 [ADR 0003](../adr/0003-dynamic-loading.md)）。架构裁定见 [ADR 0002](../adr/0002-base-constitution.md)。**
 
-当前仓使用 `openstory-module@2`，20 份内置 manifest＝7 kernel＋11 workbench＋2 无 class 宿主组合面；生产装载显式 stage C。能力图、停用事务、薄代理、模块级 `core`／`MODULE_CORE` 退役、动态 `activate` 与贡献校验均已落地。七内核全部进入统一实现注册表，activate 逐项解析 hard requires；静态 `HANDLERS` 仍是外部端点稳定壳，端点 id/path 与 MCP 工具名不变。D1–D4 已落地（覆盖路由、迁移器、suite 无代码化、slot 注册表归底座）；D4 裁定本机/第三方可执行装载与全局热切换暂不开放，开门条件见 ADR 0003。B/C/D 必填时点见 §12。
+当前仓使用 `openstory-module@2`，21 份内置 manifest＝7 kernel＋12 workbench＋2 无 class 宿主组合面；**OS-192 起装载只认一套规则（原 stage C），stage 参数与 @1 双读/迁移脚手架全部删除**。能力图、停用事务、薄代理、模块级 `core`／`MODULE_CORE` 退役、动态 `activate` 与贡献校验均已落地。五类货架（技能/文风/体裁/运行时/业务套装）经 `loadSuiteCapabilityManifests()` 投影成 module@2 套件，与模块共用一张能力图与一份 suite-state；legacy `openstory-suite@1/@2` 页面模式已整体退役。端点 id/path 与 MCP 工具名不变（退役的两个端点除外）。
 
 ---
 
@@ -27,7 +27,7 @@
 
 ### 1.3 与对外契约的关系
 
-内部 slug 可以改，既有端点路径、MCP 工具名与已发布错误码不随本协议自动改名。B3 已移除 `MODULE_CORE`，旧 @1 manifest 的 `core` 只保留为一次性迁移输入，运行态与 @2 schema 均不再接受该字段。
+内部 slug 可以改，既有端点路径、MCP 工具名与已发布错误码不随本协议自动改名。B3 已移除 `MODULE_CORE`；OS-192 起 `openstory-module@1` manifest 直接拒收并给出明确警告，`core` 字段在任何情况下都不接受，不再有迁移工具或 npm 脚本。
 
 ---
 
@@ -45,7 +45,7 @@
 | 贡献（contribution） | 插件向底座登记的 endpoint、page、slot、settings 或 supply |
 | 快照（snapshot） | 一次通过三检查后冻结的路由/贡献/能力表；切换前不可变 |
 | 降级（degraded） | 插件或宿主面仍在进程中，但部分贡献不可用，并在启动报告/请求错误中明确说明 |
-| legacy | 仍由旧 loader 处理、尚未符合 module@2 的旧 manifest 或货架格式 |
+| legacy（历史） | OS-192 已无运行态 legacy 套件：@1 直接拒收，五类货架全部投影成 module@2 |
 
 ---
 
@@ -82,6 +82,7 @@
 - `resource` 必须再给 `resourceKind: "style" | "genre"`。
 - `bundle` 必须给至少一个 `deps`，自身不提供可执行入口。
 - `runtime` 是 `agent.runtime` 的受控扩展描述，不是第四类插件。
+- OS-192 五类货架的投影来源见 [`suites/PROTOCOL.md`](../../suites/PROTOCOL.md)：`skills/<id>/SKILL.md`、`styles/<id>.json`、`genres/<id>.json`、`runtimes/<id>/manifest.json`、`suites/<id>/manifest.json`。单文件/单目录货架不另加 manifest。
 
 ---
 
@@ -179,7 +180,7 @@
 | `supplies` | 禁止 | 禁止 | 必填，≥1 |
 | `entries` | 禁止 | 禁止 | 必填，覆盖每个 supply |
 | `resourceKind` | 禁止 | 禁止 | 含 `resource` 时必填 |
-| `appliesTo` | 禁止 | 禁止 | 必填，≥1 |
+| `appliesTo` | 禁止 | 禁止 | 必填，≥1（文风包 `resourceKind:style` 允许空） |
 | `deps` | 禁止 | 禁止 | 可选；`bundle` 时必填且 ≥1 |
 | `description/minOpenStoryVersion` | 可选 | 可选 | 可选 |
 | `core` | 禁止 | 禁止 | 禁止 |
@@ -193,7 +194,7 @@
 - `class`：只收 `kernel/workbench/suite`。
 - `builtin`：必须与实际装载源一致；本机包不能自称 `builtin:true` 获取信任。
 - `entry`：相对路径，不得逃逸包目录；kernel/workbench 的入口导出约定见 §8。
-- `minOpenStoryVersion`：应用版本闸，与能力主版本无关；缺字段不校验，格式坏按 legacy fail-open warning，版本过高跳过装载。
+- `minOpenStoryVersion`：应用版本闸，与能力主版本无关；缺字段不校验，格式坏 fail-open warning，版本过高跳过装载。
 - 未声明字段一律拒绝，避免 typo 被静默忽略。
 
 ### 4.4 pages 与 slots
@@ -211,7 +212,7 @@
 
 - 只收 `{key,label,type,default,options?}`，type 为 `string/number/boolean/select`。
 - 每个 key 必须有真实消费者；OS-146 的消费者表继续有效。
-- suite 只允许 schema 设置；page 模式不属于新协议。
+- suite 只允许 schema 设置；page 模式已整体退役（无 `/suite-assets/`、无 state-data 端点）。
 - 凭据不得进入 settings 或库内 state；真配置仍只在本机配置文件，响应只回掩码。
 
 ---
@@ -270,7 +271,7 @@
 ### 6.1 状态落盘
 
 - kernel/workbench：`<库>/.openstory/ui-state.json` 的 `modules.enabled.<id>`，缺省 true。
-- suite：`<库>/.openstory/plugins/suite-state.json` 的 `suites.<id>.enabled`；设置值仍在同一文件。
+- suite（含五类货架投影出的全部套件）：`<库>/.openstory/plugins/suite-state.json` 的 `suites.<id>.enabled`；设置值仍在同一文件。`suitesGet`／`suiteStatePut`／`suiteSettingsPut` 对五类通用。
 - 无库时只能读机器级缺省；插件不得自己写 state 文件，统一经底座状态 API。
 - 停用不删稿件、不删设置、不删历史；重新启用恢复贡献。
 
@@ -331,7 +332,7 @@
 
 - 候选优先级：底座保底 → 内置 → 显式本机覆盖 → 装载序（仅在贡献 id 不同或已显式允许时）。
 - 互相覆盖、自覆盖、覆盖不存在目标、覆盖 base 能力均拒绝。
-- 本机同 id 包在 B 批 legacy 态可暂按旧 Map 顺序读取，但必须记 `LEGACY_IMPLICIT_OVERRIDE` warning；C 批新协议不接受隐式覆盖。
+- 本机同 id 覆盖内置一律显式报告（谁覆盖谁、来自哪个目录）：`/api/suites` 与 `/api/plugins` 的 `overrides`；不再静默按 Map 顺序替换。
 
 ### 7.4 切换与在途请求
 
@@ -343,7 +344,7 @@
 
 **B5 历史切片**：`src/protocol/capabilityResolver.mjs` 返回绑定快照的冻结薄代理；当时宿主组合根把 provider `deduce` 映射到模块本地 `deduceCapability`。推演相关 handler 按请求 root 解析 `deduce.engine@1`，不再直引引擎内部文件；外部端点路径与 MCP 工具名不变。
 
-**C6 当前机制**：动态入口与贡献校验已实现，生产清单走 stage C；`src/protocol/capabilityImplementations.mjs` 是统一注册表，宿主只允许点名声明的绑定。验收在独立进程激活全部内置模块，检查 capability/handler/page/settingsConsumer 与 manifest 一致。注册缺项或 activate 未解析 hard require 必须报错，不得用 fallback 掩盖；全局原子热切换仍未实施。
+**C6 当前机制**：动态入口与贡献校验已实现，生产清单只认原 stage C 的唯一规则；`src/protocol/capabilityImplementations.mjs` 是统一注册表，宿主只允许点名声明的绑定。验收在独立进程激活全部内置模块，检查 capability/handler/page/settingsConsumer 与 manifest 一致。注册缺项或 activate 未解析 hard require 必须报错，不得用 fallback 掩盖；全局原子热切换仍未实施。
 
 ---
 
@@ -462,9 +463,9 @@ export async function activate(context) {
 
 ### 10.1 装载源
 
-当前只扫描仓内固定 `src/modules/<id>/`。来源记录包含 `source:"builtin"`、`sourceDir`、manifest SHA-256 与派生角色；固定内置目录声明 `builtin:false` 会被拒绝。当前 20 份清单为 7 kernel、11 workbench，以及无 class 的 `agentbar`／`library` 宿主组合面；七内核件已落盘，运行时调用 `loadModuleManifests(..., { stage: 'C' })`。stage B 只供迁移/双读测试显式使用。D4 已评估本机目录与第三方 suite：数据类 suite 从仓内授权货架装载且禁可执行代码；本机/第三方可执行模块的装载门 G1–G5 见 ADR 0003。
+当前只扫描仓内固定 `src/modules/<id>/`。来源记录包含 `source:"builtin"`、`sourceDir`、manifest SHA-256 与派生角色；固定内置目录声明 `builtin:false` 会被拒绝。当前 21 份清单为 7 kernel、12 workbench，以及无 class 的 `agentbar`／`library` 宿主组合面；七内核件已落盘，运行时调用 `loadModuleManifests(dir)`（无 stage 参数）。D4 已评估本机目录与第三方 suite：数据类 suite 从仓内授权货架装载且禁可执行代码；本机/第三方可执行模块的装载门 G1–G5 见 ADR 0003。
 
-套件内置源映射：`skills/`、`runtimes/`、`styles/`、`genres/`、`suites/`。新 suite 包一律为目录，入口文件由 `entries` 声明；单文件 JSON 货架在迁移时包装成目录，不在运行时发明第二套 manifest 语法。
+套件源映射（OS-192 统一入口 `loadSuiteCapabilityManifests()`）：`skills/<id>/SKILL.md`、`styles/<id>.json`、`genres/<id>.json`、`runtimes/<id>/manifest.json`、`suites/<id>/manifest.json`。单文件/单目录货架由域适配器投影成 module@2，不另加 manifest、不发明第二套语法。五类都进能力图（loaded/degraded/disabled）与 `/api/plugins` 启动报告；依赖闭包覆盖 `deps` 与 `appliesTo`。
 
 ### 10.2 源发现顺序
 
@@ -483,16 +484,16 @@ export async function activate(context) {
 
 | 现行机制 | 协议归宿 | 迁移注意 |
 |---|---|---|
-| `openstory-module@1`＋`validateModuleManifest` | @2 schema＋class 矩阵＋@1 适配器 | B1 已双读；C 批内置全必填 |
+| `openstory-module@1`＋`validateModuleManifest` | @2 schema＋class 矩阵（OS-192 单规则） | @1 直接拒收并给明确警告；迁移脚本与 npm 脚本已删除 |
 | `core:true`／`MODULE_CORE` | 底座 hard requires＋`CAPABILITY_IN_USE` | core 不能一对一推断 kernel；B3 已删除模块级字段与错误码，页签级 core 仅表示顶栏可达 |
 | `src/api/registry.mjs:HANDLERS/ENDPOINT_MODULES` 静态聚合 | manifest 贡献＋能力路由快照 | endpoint id/path 保持；切换必须重新校验 |
 | S2.1 import 路径门禁 | 能力路由＋显式兼容转供叶＋函数体去重 | 只允许 re-export/绑定；复制实现仍拒绝，不一次性放宽 |
 | S2.7／`tools/acceptance/moduleCoverage.mjs` | stage-C 归属＋能力图＋独立进程 activate/贡献校验 | 宿主白名单只保留带能力理由的宿主组合面 |
 | `versionGate.mjs:minVersionGate` | `minOpenStoryVersion` 应用版本闸 | 与 capability major 分离；保留缺字段/坏格式 fail-open |
 | `test/decoupleStep2.test.mjs` | storage/fact 内部能力金样 | 金样随能力走，不作 Pinax 互认 |
-| skills/suites/runtimes/styles/genres 后装载覆盖 | suite＋显式 resource/capability override | B 批 warning；C/D 禁静默覆盖 |
-| suite `requires`＋`dependencyGraph` | suite `deps` 软依赖闭包 | 保留 SCC/拓扑算法思想；不得变成 hard 能力链 |
-| suite page 模式 `.html/.mjs/.js` | legacy 孤岛 | 不贴新 suite 标签；迁移前不开放第三方 |
+| skills/suites/runtimes/styles/genres 各自加载 | 统一 `loadSuiteCapabilityManifests()` 投影 | 不造第二份真源；本机覆盖必须显式报告 |
+| suite `requires`＋`dependencyGraph` | suite `deps`＋`appliesTo` 闭包 | `deps` 进拓扑/SCC；`appliesTo` 进能力图硬依赖检查 |
+| suite page 模式 `.html/.mjs/.js` | 已退役 | 无 `/suite-assets/`、无 suiteStateData 端点、无 legacy spec；漫剧占位套件已删 |
 | `host-api@2` | 底座 `context.*` API 的迁移入口 | 破坏性删除/改签名才升 host-api 主版本；C6 另要求 base.* 五项句柄存在 |
 | `.history` 50 份＋日锚＋最新保护 | `prose` 金样＋`base.write` 钩子 | 配额与删除留痕不变 |
 | OS-172 `ensureLibraryUpgraded` | 旧库一次性升级机制继续独立 | 不被 capability migration 重跑或替代 |
@@ -502,53 +503,20 @@ export async function activate(context) {
 
 ---
 
-## 12. @1 → @2 升版与过渡规则
+## 12. OS-192：过渡脚手架退役（原 @1 → @2 升版规则已删）
 
-### 12.1 旧模块推断/拆分表
+装载器只认一套规则（原 stage C）：`validateModuleManifest(raw, { dirName })` 不再接受 stage 参数。
+以下 B 批过渡面全部删除，不再有双读、推断或迁移入口：
 
-| @1 模块 | @2 归宿 | 是否一对一升版 |
-|---|---|---|
-| `chapters` | `prose` kernel＋正文 workbench | 否，拆两半 |
-| `worldbook` | 世界书 workbench | 能力依赖现有 `fact`，不是 kernel |
-| `script` | 剧本 workbench | 否，依赖 `prose/fact` |
-| `roleplay` | `deduce` kernel＋扮演 workbench＋默认推演规则 suite | 否，三拆 |
-| `analysis` | `text` kernel＋分析 workbench | 否，纯引擎与 UI 分开 |
-| `artifacts` | 产物 workbench | 是 |
-| `habits` | 习惯 workbench；lint 纯引擎归 `text` | 部分拆出 |
-| `storysource` | 故事源 workbench | 是；不并导入导出 |
-| `exchange` | 导入导出 workbench | 是 |
-| `comfyui` | `media` kernel＋生图与识图 workbench＋生图工作流 suite | 否，三拆 |
-| `kb` | 知识库 workbench；embedding 归 `agent-runtime` kernel（`agent.embedding` 能力） | 部分拆出 |
-| `agentbar` | `agent-runtime` kernel＋Agent 栏宿主组合面 | 否；宿主面不套 workbench |
-| `deduce` | `deduce` kernel | 是，去掉 UI/宿主域伪装 |
-| `library` | `storage` kernel＋库管理宿主组合面 | 否，拆两半 |
-| 无 manifest 的 `log` | 日志 workbench | 新增登记 |
+- `LEGACY_MODULE_SPEC`、`migrateModuleManifest`、`BUILTIN_PENDING_CLASSES`、`TRANSITION_NOTICES`、`SPLIT_PENDING`
+- `npm run modules:migrate` 与 `tools/migrate-module-manifests.mjs`
+- stage B 的 "@2 字段选填 / incomplete 标记 / @1 自动推断 class / core 迁移报告"
 
-### 12.2 推断规则
+`openstory-module@1` 形状的 manifest 直接拒收并给出明确警告；作者需手工改造为 `openstory-module@2`。
+运行时只需要 class 必填矩阵（宿主组合面 `agentbar`/`library` 例外）、`core` 禁止、能力/贡献归属唯一。
 
-1. `core:true` **不直接等于 kernel**；只表示旧核心集合，按上表拆分。
-2. 普通 @1 模块默认候选为 workbench；`analysis/comfyui/kb` 必须按上表拆出内核能力。
-3. 宿主域 `agentbar/library` 不直接升成 workbench；`deduce` 升 kernel。
-4. legacy skill/suite/runtime/style/genre spec 不走 module@1 推断；由对应货架适配器生成候选，并保留 legacy warning。
-5. 未知 @1 模块不得猜 class；B 批拒绝升版并要求人工归类。
-
-### 12.3 B 批过渡期选填
-
-B1 可接受 `spec:"openstory-module@2"` 的以下字段选填：`class/builtin/entry/capabilities/requires/optionalRequires/overrides/migrations/pages/slots/supplies/entries/resourceKind/appliesTo/deps`。
-
-- `spec/id/name/version` 仍必填。
-- 只有已知内置映射允许推断；推断结果写入迁移报告，不静默修改作者文件。
-- `class` 省略时标记 `incomplete:true`，只允许 schema/迁移工具使用，不激活动态能力路由；`agentbar`／`library` 是已登记的宿主组合面例外。
-- @1 的 `core` 只作迁移输入并报告 `MODULE_CORE_DEPRECATED`；@2 出现任意 `core` 字段直接校验失败。
-- B 批不同时上线隐式覆盖、第三方执行或完整热切换；B5 只打通 `deduce.engine` 的按库薄代理切片。
-
-### 12.4 必填时点
-
-- **B 批**：@1 继续受理；@2 新字段选填，完成 schema、推断与迁移报告。
-- **C 批起**：所有活跃内置 kernel/workbench/suite 满足 §4.2 必填矩阵；`core` 禁止；隐式覆盖禁止。
-- **后续动态装载开放前**（ADR 0003 G1–G5）：所有本机/第三方包同样满足矩阵；suite 可执行代码扫描已落地，runtime 信任门与回退链联调仍须通过。
-  D3 已落地套件无代码扫描；D4 裁定本批**不开放**本机/第三方可执行模块装载（缺口与开门条件见
-  [ADR 0003](../adr/0003-dynamic-loading.md)），数据类套件可继续按 module@2 供货。
+五类货架不再各走各的 spec：`openstory-skill@1`／`openstory-genre@1`／`openstory-runtime-kit@1` 的事实由域适配器投影成 module@2 套件；
+`openstory-suite@1/@2` 页面模式连同 `/suite-assets/` 与两个 state-data 端点一并退役。
 
 ---
 
@@ -556,7 +524,8 @@ B1 可接受 `spec:"openstory-module@2"` 的以下字段选填：`class/builtin/
 
 B/C/D 批不得只改 manifest 字符串，至少覆盖：
 
-- [x] 20 个内置 manifest 已升 @2（7 kernel／11 workbench／2 宿主组合面），生产装载 stage C。
+- [x] 21 个内置 manifest 已升 @2（7 kernel／12 workbench／2 宿主组合面），生产装载只认一套规则。
+- [x] OS-192：五类货架全部投影成 module@2 套件并进能力图；legacy 页面模式与过渡脚手架已退役。
 - [x] 能力闭环、冲突、覆盖合法三检查有正反例；缺 hard 能力不拖死 daemon。
 - [x] `CAPABILITY_IN_USE` 与 `PLUGIN_DEGRADED` 语义分开；`MODULE_DISABLED` 保持 409。
 - [x] 覆盖显式声明、版本对齐、迁移责任、回退链四守卫已有候选图校验。

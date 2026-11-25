@@ -3,7 +3,7 @@
  * OpenStory daemon（OS-1/4）——轻 Node HTTP 服务，OpenStory 工作台的唯一磁盘层。
  *
  * 四件事：
- *   1) 静态托管 `openstory/public/`（index.html ＋ app.js）＋套件资产（OS-95）；
+ *   1) 静态托管 `openstory/public/`（index.html ＋ app.js）；套件资产路由已随 legacy 页面模式退役；
  *   2) 文件绑定 API（库 / 条目 / 正文 / wiki）——端点行为在 src/api/handlers/ 八域文件
  *      （OS-141 拆分：与 contracts/ 八域一一对应，src/api/registry.mjs 合成一张表），
  *      读走 S1 `factFileStore`，写走 hostWrite/chapterWrite（本文件不重写任何写协议）；
@@ -40,7 +40,6 @@ import {
 import { HANDLERS } from '../api/registry.mjs'
 import { sendError, sendJson, readJson, text, DEFAULT_PORT } from './http.mjs'
 import { canonicalRoot, createRootAllowlist, loadLibraries, resolveInsideRoot } from './authorize.mjs'
-import { serveSuiteRequest } from '../services/suiteAssets.mjs'
 import { defaultAgentConfigPath, defaultSessionsDir } from '../protocol/agentStore.mjs'
 import { builtinStylesDir, defaultUserStylesDir } from '../services/stylePacks.mjs'
 import { builtinRuntimesDir, defaultUserRuntimesDir, stopAllSidecars } from '../services/runtimes.mjs'
@@ -66,7 +65,6 @@ export {
   resolveHistoryKeepPerFile
 } from '../protocol/chapterWrite.mjs'
 export { lintHabits } from '../protocol/habits.mjs'
-export { resolveSuiteAssetPath } from '../services/suiteAssets.mjs'
 import { systemPromptFor } from '../services/systemPrompt.mjs'
 import { courtyardPath } from './courtyard.mjs'
 /** 测试钩子（OS-45）：把 systemPromptFor 暴露给单测，验「世界书只给链接不给全文」。 */
@@ -434,10 +432,7 @@ export function createOpenStoryHandler({
        * 放在最前面——DNS 重绑定对静态资源同样成立（读得到 app.js 就读得到一切）。 */
       const hostFail = hostGateFail(req, port)
       if (hostFail) return sendError(res, hostFail.code, hostFail.message)
-      /* OS-95：套件前端令牌桥与资产同源装载（实现在 services/suiteAssets.mjs）。 */
-      if (url.pathname === '/suite-assets/_tokens.css' || url.pathname.startsWith('/suite-assets/')) {
-        return await serveSuiteRequest(req, res, url, resolvedSuitesDirs)
-      }
+      /* OS-192：legacy /suite-assets/ 页面模式路由整体退役——套件只许数据与说明。 */
       if (url.pathname === '/api' || url.pathname.startsWith('/api/')) {
         /* OS-136 ②③④ /api 来源闸：Origin → Sec-Fetch-Site → content-type，过了才进契约分派。 */
         const gateFail = originGateFail(req, port)

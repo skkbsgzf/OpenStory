@@ -1,8 +1,8 @@
 /**
  * 插件最低应用版本闸（OS-121）——学 Obsidian 的 minAppVersion。
  *
- * 三套插件规范（openstory-suite@2 / openstory-skill@1 / openstory-runtime-kit@1）
- * 各有一个可选字段 minOpenStoryVersion（形如 '0.2.0'）：
+ * 五类货架（OS-192 统一投影成 module@2 套件）各有可选字段 minOpenStoryVersion（形如 '0.2.0'）：
+ * skills 读 SKILL.md frontmatter、styles/genres 读 JSON、runtimes 读 kit manifest、suites 读 module@2 manifest；
  *   - 缺字段＝不校验（向后兼容：老插件照常加载）；
  *   - 要求版本 > 当前应用版本 → 该插件跳过加载，记一条 <KIND>_MIN_VERSION warning；
  *   - 字段格式非法 → 照常加载，记一条 <KIND>_MIN_VERSION_BAD warning（fail-open：宁可加载，也不因

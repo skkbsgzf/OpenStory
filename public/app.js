@@ -174,6 +174,13 @@ const MODULE_IDS = ['analysis', 'imagegen', 'knowledge', 'log', 'habits', 'story
 /* OS-149：运行时货架过滤（views/runtimeShelf.mjs）——fixture 套件不进作者可见列表；纯函数在 views/，这里只接线 */
 let runtimeShelf = null
 const runtimeShelfReady = import('./views/runtimeShelf.mjs').then((mod) => { runtimeShelf = mod; return mod }).catch((error) => { console.error('[runtimes] 运行时货架模块加载失败', error); return null })
+/* OS-192：五类货架统一设置面（views/suiteShelfViews.mjs）——app.js 只接线，不持渲染本体 */
+let suiteShelfViews = null
+const suiteShelfViewsReady = import('./views/suiteShelfViews.mjs').then((mod) => {
+  suiteShelfViews = mod.createSuiteShelfViews({ state, esc, text, isDarkSurface, settingsModulesSectionHtml })
+  return mod
+}).catch((error) => { console.error('[shelves] 统一货架视图加载失败', error); return null })
+
 
 /* C6：前端壳渲染面迁出——行为/API/事件仍留本文件，boot 首帧前await全部factory */
 let settingsViews = null
@@ -2924,7 +2931,6 @@ const SETTINGS_GROUPS = Object.freeze([
     // → 这里不再是「插件中心 → 业务套件」两级，而是插件中心直接列出全部套件。
     // 套件清单在渲染时动态展开（见 settingsNavHtml）。
     sections: [
-      { id: 'pluginsOverview', label: '插件总览', hint: '套件 / 技能 / 运行时 一份清单' },
       // OS-145：模块插件（分析 / 生图识图 / 知识库）的启停与自报设置——排在总览之后
       { id: 'moduleSettings', label: '模块', hint: '模块启停与各自设置' },
       { id: 'suites', label: '全部套件', hint: '小说 / 剧本 / 漫剧…' }
@@ -3490,9 +3496,11 @@ async function loadSuites() {
   try {
     const payload = await api(`/api/suites?root=${encodeURIComponent(state.current?.path || '')}`)
     state.suites = Array.isArray(payload.suites) ? payload.suites : []
+    state.settings.suiteOverrides = Array.isArray(payload.overrides) ? payload.overrides : []
     state.settings.suitesUserDir = text(payload.userDir)
   } catch {
     state.suites = []
+    state.settings.suiteOverrides = []
   }
 }
 
@@ -3565,250 +3573,12 @@ function suiteValue(key, id, fallback) {
  * 只回答一个问题：我现在装了哪些、各是什么版本、有没有被拦下。
  * 点回各自的详情仍走原有入口——这里不做编辑，只做盘点。
  */
-function pluginsOverviewHtml() {
-  const bag = state.plugins ?? { loaded: false, list: [], byKind: {}, stats: null, warnings: [], error: '' }
-  if (!bag.loaded) return '<div class="step"><h3>插件总览</h3><p class="sub">读取中…</p></div>'
-  if (bag.error) {
-    return `<div class="step"><h3>插件总览</h3>
-      <p class="sub">清单读不了：${esc(bag.error)}</p>
-      <p class="sub">套件、技能、Agent 运行时可以分别去各自那一节看——聚合失败不影响它们。</p></div>`
-  }
-  const stats = runtimeShelf ? runtimeShelf.pluginOverviewStats(bag.byKind) : (bag.stats ?? { total: 0, enabled: 0, blocked: 0, byKind: {} })
-  const kinds = ['suite', 'skill', 'runtime']
-  const labels = { suite: '套件', skill: '技能', runtime: 'Agent 运行时' }
-  const hints = {
-    suite: '业务套件：规则、设置页、自带业务页',
-    skill: '手艺配方：写作手法、评审口径、改写指令',
-    runtime: '跑 Agent 的地方：DSH / CLI / 端点'
-  }
-
-  // 每一类一块：标题 + 计数 + 条目行
-  const blocks = kinds.map((kind) => {
-    const items = runtimeShelf ? runtimeShelf.pluginOverviewItems(bag.byKind, kind) : (Array.isArray(bag.byKind?.[kind]) ? bag.byKind[kind] : [])
-    if (!items.length) {
-      return `<div class="plug-block">
-        <div class="plug-head"><b>${labels[kind]}</b><span>0</span></div>
-        <p class="sub plug-empty">还没有${labels[kind]}——${esc(hints[kind])}</p>
-      </div>`
-    }
-    const rows = items.map((item) => {
-      const blocked = item.blocked === true
-      const off = item.enabled === false
-      const why = blocked
-        ? (item.blockedReason || (item.missingDependencies?.length ? `缺依赖：${item.missingDependencies.join('、')}` : '被拦下'))
-        : ''
-      const tags = [
-        off ? '<i class="plug-tag off">停用</i>' : '',
-        blocked ? `<i class="plug-tag blocked" title="${esc(why)}">${esc(why || '被拦下')}</i>` : ''
-      ].join('')
-      // 套件可点进详情；技能与运行时点开看说明（暂不提供编辑）
-      const action = kind === 'suite'
-        ? `data-action="suite-select" data-id="${esc(item.id)}"`
-        : `data-action="plug-info" data-kind="${esc(kind)}" data-id="${esc(item.id)}"`
-      return `<button class="plug-row" ${action}>
-        <span class="plug-name">${esc(item.name || item.id)}</span>
-        <span class="plug-ver">v${esc(item.version || '—')}</span>
-        <span class="plug-src">${esc(item.source || '')}</span>
-        ${tags}
-      </button>`
-    }).join('')
-    return `<div class="plug-block">
-      <div class="plug-head"><b>${labels[kind]}</b><span>${items.length}</span></div>
-      <div class="plug-list">${rows}</div>
-    </div>`
-  }).join('')
-
-  const warnBlock = bag.warnings.length
-    ? `<div class="plug-warn"><b>${bag.warnings.length} 条装载警告</b>
-        <ul>${bag.warnings.slice(0, 5).map((w) => `<li>${esc(w.message || w.code || '')}</li>`).join('')}</ul>
-        ${bag.warnings.length > 5 ? `<p class="sub">还有 ${bag.warnings.length - 5} 条，见日志。</p>` : ''}
-      </div>`
-    : ''
-
-  return `<div class="step plug-overview">
-    <div class="plug-summary">
-      <span><b>${stats.total ?? 0}</b> 条</span>
-      <span>启用 <b>${stats.enabled ?? 0}</b></span>
-      <span class="${(stats.blocked ?? 0) > 0 ? 'plug-sum-bad' : ''}">拦下 <b>${stats.blocked ?? 0}</b></span>
-    </div>
-    ${warnBlock}
-    ${blocks}
-  </div>`
-}
-
-function suitesSectionHtml() {
-  const list = Array.isArray(state.suites) ? state.suites : []
-  if (!list.length) {
-    return `<div class="step"><h3>业务套件</h3>
-      <p class="sub">还没有套件——把套件目录丢进本机 suites 货架即上新。</p></div>`
-  }
-  const activeId = state.settings.suiteId && list.some((suite) => suite.id === state.settings.suiteId)
-    ? state.settings.suiteId
-    : list[0].id
-  const active = list.find((suite) => suite.id === activeId) ?? list[0]
-  return `<div class="step suite-center">
-    ${suiteDetailPaneHtml(active)}
-  </div>`
-}
-
-/** 右栏：单个套件的详情（来源 / 能力 / 启停 / 设置区）。 */
-function suiteDetailPaneHtml(suite) {
-  const caps = suite.capabilities ?? { settings: { mode: 'none' }, pages: [], services: [] }
-  const mode = caps.settings?.mode ?? 'none'
-  const src = suite.sourceDetail ?? {}
-  const on = suite.enabled !== false
-  const domains = Array.isArray(suite.domains) ? suite.domains : []
-  const pages = Array.isArray(caps.pages) ? caps.pages : []
-  const services = Array.isArray(caps.services) ? caps.services : []
-  const skills = Array.isArray(suite.bundledSkills) ? suite.bundledSkills : []
-
-  const rows = []
-  rows.push(['来源', `${esc(src.kind || suite.source || '—')}${src.shadowed ? '（覆盖同名内置）' : ''}`])
-  if (src.dir) rows.push(['安装目录', `<span class="mono">${esc(src.dir)}</span>`])
-  if (src.entry) rows.push(['自带设置页', `<span class="mono">${esc(src.entry)}</span>`])
-  rows.push(['版本', `v${esc(suite.version)}`])
-  rows.push(['归属', esc(suite.vendor)])
-  if (domains.length) rows.push(['业务域', esc(domains.join('／'))])
-  rows.push(['设置模式', { schema: '宿主表单（schema）', page: '套件自带页（page）', none: '无设置项' }[mode] || mode])
-
-  const sourceBlock = `<dl class="suite-source">${rows.map(([k, v]) =>
-    `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl>`
-
-  const capsBlock = `
-    <div class="suite-caps">
-      ${pages.length ? `<div class="suite-cap-row"><b>自带业务页</b><span>${pages.map((p) => esc(p.title || p.id)).join('、')}</span></div>` : ''}
-      ${services.length ? `<div class="suite-cap-row"><b>自带服务</b><span>${services.length} 项</span></div>` : ''}
-      ${skills.length ? `<div class="suite-cap-row"><b>捆绑技能</b><span>${skills.length} 个：${skills.slice(0, 6).map((s) => esc(s.name)).join('、')}${skills.length > 6 ? ' …' : ''}</span></div>` : ''}
-    </div>`
-
-  const header = `<div class="suite-detail-head">
-      <div class="sdh-main">
-        <h4>${esc(suite.name)}</h4>
-        <p class="sub">${esc(suite.description || '')}</p>
-      </div>
-      <button class="sm-toggle${on ? ' on' : ''}" data-action="suite-toggle" data-id="${esc(suite.id)}"
-        title="${on ? '停用（规则退回默认，值保留）' : '启用'}">
-        <span class="knob"></span><span class="lab">${on ? '启用中' : '已停用'}</span>
-      </button>
-    </div>`
-
-  const paused = on ? '' : '<div class="warn-box"><b>已停用</b>——这套件的规则当前走内置默认；下面的值保留，启用即恢复。</div>'
-
-  let settingsBody = ''
-  if (mode === 'page') {
-    const theme = isDarkSurface() ? 'dark' : 'light'
-    const entry = text(caps.settings.entry)
-    const sep = entry.includes('?') ? '&' : '?'
-    settingsBody = `<iframe class="suite-frame" src="/suite-assets/${esc(suite.id)}/${esc(entry)}${sep}theme=${theme}" title="${esc(suite.name)} 设置"></iframe>`
-  } else if (mode === 'schema') {
-    const schema = Array.isArray(suite.settingsSchema) ? suite.settingsSchema : []
-    settingsBody = `${schema.length ? schema.map(settingFieldHtml).join('') : '<p class="sub">这套件没有声明设置项。</p>'}
-      <div class="err" id="suite-err"></div>
-      <div class="ops">
-        <button class="btn-primary" data-action="suite-save" data-id="${esc(suite.id)}">保存设置</button>
-      </div>`
-  } else {
-    settingsBody = '<p class="sub">这套件没有设置项——它只提供规则或技能。</p>'
-  }
-
-  return `${header}
-    ${paused}
-    <div class="suite-detail-body">
-      <div class="suite-detail-section">
-        <h5>来源与身份</h5>
-        ${sourceBlock}
-        ${capsBlock}
-      </div>
-      <div class="suite-detail-section">
-        <h5>设置</h5>
-        ${settingsBody}
-      </div>
-      ${(() => {
-        // OS-101：工作台模块属于套件的内部设置，不是本体设置
-        const modHtml = settingsModulesSectionHtml({ suiteId: suite.id })
-        if (!modHtml) return ''
-        return `<div class="suite-detail-section">
-          <h5>工作台模块<span class="h5-sub">这套件启用时，左/右栏出现哪些分析模块</span></h5>
-          ${modHtml.replace(/<div class="step"><h3>/g, '<div class="suite-mod-group"><h6>')
-            .replace(/<\/h3>/g, '</h6>')
-            .replace(/<p class="sub">[^<]*<\/p>/g, '')}
-        </div>`
-      })()}
-    </div>`
-}
-
-function settingFieldHtml(setting) {
-  const value = state.settings.draftValues?.[setting.key] ?? setting.default ?? ''
-  if (setting.type === 'select') {
-    const options = (setting.options ?? []).map((option) => `<option value="${esc(option)}"${option === value ? ' selected' : ''}>${esc(option)}</option>`).join('')
-    return `<div class="field"><label>${esc(setting.label)}</label><select class="select" data-suite-key="${esc(setting.key)}">${options}</select></div>`
-  }
-  if (setting.type === 'boolean') {
-    return `<div class="field"><label>${esc(setting.label)}</label>
-      <select class="select" data-suite-key="${esc(setting.key)}">
-        <option value="true"${value === true ? ' selected' : ''}>开</option>
-        <option value="false"${value === false ? ' selected' : ''}>关</option>
-      </select></div>`
-  }
-  const inputType = setting.type === 'number' ? 'number' : 'text'
-  return `<div class="field"><label>${esc(setting.label)}</label>
-    <input data-suite-key="${esc(setting.key)}" type="${inputType}" value="${esc(value)}" ${setting.type === 'number' ? 'step="any"' : ''}>
-  </div>`
-}
-
-function suiteDetailHtml(id) {
-  const suite = suiteById(id)
-  if (!suite) {
-    return `<div class="step"><h3>套件不在货架上</h3><p class="sub">可能已被移除。<button class="btn-ghost" data-settings-section="plugins">← 回插件</button></p></div>`
-  }
-  state.settings.draftValues = { ...suite.values }
-  const caps = suite.capabilities ?? { settings: { mode: 'none' }, pages: [], services: [] }
-  const mode = caps.settings?.mode ?? 'none'
-  const head = `<div class="suite-head">
-      <span class="suite-name">${esc(suite.name)}</span>
-      <span class="pill">v${esc(suite.version)}</span>
-      <span class="pill">${esc(suite.vendor)}</span>
-      <span class="state-chip ${suite.enabled ? 'ok' : 'dead'}">${suite.enabled ? '启用中' : '已停用'}</span>
-    </div>`
-  const paused = suite.enabled ? '' : '<div class="warn-box"><b>已停用</b>——这套件的规则当前走内置默认；下面的值保留，启用即恢复。</div>'
-  let body = ''
-  if (mode === 'page') {
-    // OS-95：把宿主当前主题透给插件页——插件页据此决定加载亮/暗令牌表。
-    // 宿主主题真源是 skin 注入的 --bg 令牌值（不是 data-theme），所以按亮度判：
-    // #fff/#faf9f7 这类亮底 → light；#1c1b1a 这类暗底 → dark。
-    const theme = isDarkSurface() ? 'dark' : 'light'
-    const entry = caps.settings.entry
-    const sep = entry.includes('?') ? '&' : '?'
-    body = `${paused}<iframe class="suite-frame" src="/suite-assets/${esc(suite.id)}/${esc(entry)}${sep}theme=${theme}" title="${esc(suite.name)} 设置"></iframe>`
-  } else if (mode === 'schema') {
-    const schema = suite.settingsSchema ?? []
-    body = `
-      ${paused}
-      ${schema.length ? schema.map(settingFieldHtml).join('') : '<p class="sub">这套件没有声明设置项。</p>'}
-      <div class="err" id="suite-err"></div>
-      <div class="row">
-        <button class="btn-primary" data-action="suite-settings-save" data-id="${esc(suite.id)}">保存</button>
-      </div>`
-  } else {
-    body = '<p class="sub">这套件没有设置项。</p>'
-  }
-  // 捆绑技能（OS-68）：这套件自带的手艺配方——启用就上货架，停用就撤下
-  const bundled = Array.isArray(suite.bundledSkills) ? suite.bundledSkills : []
-  const catLabel = { craft: '技法', review: '审阅', transform: '改写', extract: '抽取' }
-  const bundledHtml = bundled.length ? `<div class="bundled-skills">
-      <div class="sub" style="margin-top:14px">捆绑技能（${bundled.length}）——启用即进 Agent 技能货架</div>
-      ${bundled.map((skill) => `<div class="bskill-row"><b>${esc(skill.name)}</b><span class="pill sm">${esc(catLabel[skill.category] || skill.category || '技能')}</span><span class="sub">${esc(skill.summary || '')}</span></div>`).join('')}
-    </div>` : ''
-  return `<div class="step">
-    ${head}
-    ${body}
-    ${bundledHtml}
-    <div class="row">
-      <button class="btn-ghost" data-action="suite-toggle" data-id="${esc(suite.id)}" data-enabled="${suite.enabled ? 'true' : 'false'}">${suite.enabled ? '停用' : '启用'}</button>
-      <button class="btn-ghost" data-settings-section="plugins">← 回插件</button>
-    </div>
-  </div>`
-}
+/* OS-192：渲染本体已迁 views/suiteShelfViews.mjs，这里只留装配壳委托（只减不增） */
+function pluginsOverviewHtml() { return suiteShelfViews?.suitesSectionHtml() ?? '' }
+function suitesSectionHtml() { return suiteShelfViews?.suitesSectionHtml() ?? '' }
+function suiteDetailPaneHtml(suite) { return suiteShelfViews?.suiteDetailPaneHtml(suite) ?? '' }
+function settingFieldHtml(setting) { return suiteShelfViews?.settingFieldHtml(setting) ?? '' }
+function suiteDetailHtml() { return suiteShelfViews?.suitesSectionHtml() ?? '' }
 
 async function saveSuiteValues(id) {
   const suite = suiteById(id)
@@ -7995,7 +7765,7 @@ function deduceAgentHtml() {
 /* ---------- 数据加载 ---------- */
 
 async function boot() {
-  await Promise.all([registryReady, runtimeShelfReady, workbenchViewsReady, scriptViewsReady, referenceViewsReady, deduceViewsReady, settingsAggregationReady, uiKitReady, settingsViewsReady, analysisViewsReady, agentViewsReady, libraryFlowViewsReady, syncViewsReady, referencePageViewsReady]) // OS-143/149/161/163/164：注册表、运行时货架、各工作面纯视图先就位（首帧起页签全部由注册表驱动）
+  await Promise.all([registryReady, runtimeShelfReady, suiteShelfViewsReady, workbenchViewsReady, scriptViewsReady, referenceViewsReady, deduceViewsReady, settingsAggregationReady, uiKitReady, settingsViewsReady, analysisViewsReady, agentViewsReady, libraryFlowViewsReady, syncViewsReady, referencePageViewsReady]) // OS-143/149/161/163/164：注册表、运行时货架、各工作面纯视图先就位（首帧起页签全部由注册表驱动）
   applyTypography()   // OS-91：无库时也先套默认字号档，避免首帧跳变
   applyAgentCollapse() // OS-103
   // 运行时清单与 config 一起拉：chip 要能显示「DSH 原生」这类具体名字，不能等进设置页才加载

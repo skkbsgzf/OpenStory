@@ -13,7 +13,7 @@ import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { loadSuites, normalizeSuite, KNOWN_SERVICE_IDS } from '../src/services/suites.mjs'
+import { loadSuites, normalizeSuite } from '../src/services/suites.mjs'
 import { loadSkills, parseSkillMarkdown } from '../src/services/skills.mjs'
 import { loadRuntimeKits, normalizeRuntimeKit } from '../src/services/runtimes.mjs'
 import { minVersionGate, readAppVersion, satisfiesMinVersion } from '../src/protocol/versionGate.mjs'
@@ -23,11 +23,18 @@ const REPO = dirname(dirname(fileURLToPath(import.meta.url)))
 /* ---------- 夹具 ---------- */
 
 const SUITE = {
-  schemaVersion: 'openstory-suite@2',
+  spec: 'openstory-module@2',
   id: 'governed',
   name: '受闸套件',
   version: '0.1.0',
-  vendor: 'skkbsgzf'
+  class: 'suite',
+  builtin: true,
+  description: '受闸套件',
+  supplies: ['skill'],
+  entries: { skill: 'manifest.json' },
+  appliesTo: [{ id: 'prose.write', min: 1 }],
+  deps: [],
+  settings: []
 }
 
 function skillMarkdown({ name = 'governed-skill', extra = '' } = {}) {
@@ -151,7 +158,7 @@ test('套件：要求版本高于当前 → 跳过加载 + SUITE_MIN_VERSION war
 
 test('套件：要求版本等于当前 → 正常加载（无版本闸 warning）', async () => {
   await withTemp(async (base) => {
-    const shelf = await makeSuiteShelf(base, { same: { ...SUITE, minOpenStoryVersion: '0.1.0' } })
+    const shelf = await makeSuiteShelf(base, { governed: { ...SUITE, minOpenStoryVersion: '0.1.0' } })
     const { suites, warnings } = loadSuites([shelf])
     assert.deepEqual(suites.map((suite) => suite.id), ['governed'])
     assert.equal(warnings.length, 0)
@@ -159,14 +166,17 @@ test('套件：要求版本等于当前 → 正常加载（无版本闸 warning�
 })
 
 test('套件：字段缺失 → 正常加载，不校验', async () => {
-  const normalized = normalizeSuite(SUITE, { source: '内置', dir: 'D:/s/governed' })
-  assert.equal(normalized.ok, true)
-  assert.equal(normalized.warnings, undefined, '没有版本闸问题就不带 warnings 字段')
+  await withTemp(async (base) => {
+    const shelf = await makeSuiteShelf(base, { governed: SUITE })
+    const normalized = normalizeSuite(JSON.parse(await (await import('node:fs/promises')).readFile(join(shelf, 'governed', 'manifest.json'), 'utf-8')), { source: '内置', dir: join(shelf, 'governed') })
+    assert.equal(normalized.ok, true, normalized.warning?.message)
+    assert.equal(normalized.warnings, undefined, '没有版本闸问题就不带 warnings 字段')
+  })
 })
 
 test('套件：格式非法（abc）→ 照常加载 + SUITE_MIN_VERSION_BAD warning', async () => {
   await withTemp(async (base) => {
-    const shelf = await makeSuiteShelf(base, { broken: { ...SUITE, minOpenStoryVersion: 'abc' } })
+    const shelf = await makeSuiteShelf(base, { governed: { ...SUITE, minOpenStoryVersion: 'abc' } })
     const { suites, warnings } = loadSuites([shelf])
     assert.deepEqual(suites.map((suite) => suite.id), ['governed'], '格式坏不阻断加载')
     const hit = warnings.find((warning) => warning.code === 'SUITE_MIN_VERSION_BAD')
@@ -266,11 +276,10 @@ test('依赖闸：缺依赖 → 该套件 blocked，missing 列出缺谁，其�
       const d = join(root, id)
       await mkdir(d, { recursive: true })
       await writeFile(join(d, 'manifest.json'), JSON.stringify({
-        schemaVersion: 'openstory-suite@2', id, name: id, version: '0.1.0', vendor: 'x', description: 'y',
-        ...(requires ? { requires } : {}),
-        capabilities: { settings: { mode: 'page', entry: 'settings.html' } }
+        spec: 'openstory-module@2', id, name: id, version: '0.1.0', class: 'suite', builtin: true,
+        description: 'y', supplies: ['skill'], entries: { skill: 'manifest.json' },
+        appliesTo: [{ id: 'prose.write', min: 1 }], deps: requires ?? [], settings: []
       }), 'utf-8')
-      await writeFile(join(d, 'settings.html'), 'x', 'utf-8')
     }
     await mk('standalone')
     await mk('needy', ['openstory.suite.ghost'])
@@ -325,69 +334,44 @@ test('依赖闸：自依赖 → 归入 cycles；停用套件不算可用依赖',
   assert.deepEqual(disabledDep.unmet, [{ id: 'user', needs: ['off'] }], '停用的依赖＝缺依赖')
 })
 
-test('依赖闸：requires 里的非法项被丢弃并记 SUITE_REQUIRES warning', async () => {
+test('OS-192 退役守卫：legacy requires/SUITE_REQUIRES 不再存在，deps 直接进依赖闭包', async () => {
   const root = await mkdtemp(join(tmpdir(), 'reqbad-'))
   try {
     const d = join(root, 'sloppy')
     await mkdir(d, { recursive: true })
     await writeFile(join(d, 'manifest.json'), JSON.stringify({
-      schemaVersion: 'openstory-suite@2', id: 'sloppy', name: 'sloppy', version: '0.1.0', vendor: 'x', description: 'y',
-      requires: ['good-id', 'x'.repeat(90), ''],
-      capabilities: { settings: { mode: 'page', entry: 'settings.html' } }
+      spec: 'openstory-module@2', id: 'sloppy', name: 'sloppy', version: '0.1.0',
+      class: 'suite', builtin: true, description: 'y', supplies: ['skill'],
+      entries: { skill: 'manifest.json' }, appliesTo: [{ id: 'prose.write', min: 1 }],
+      deps: ['good-id', 'ghost-id'], settings: []
     }), 'utf-8')
-    await writeFile(join(d, 'settings.html'), 'x', 'utf-8')
     const r = await listSuitesPublic([root], join(root, 'state.json'))
-    assert.ok(r.warnings.some((w) => w.code === 'SUITE_REQUIRES'), '非法项要有 warning')
+    assert.ok(!r.warnings.some((w) => w.code === 'SUITE_REQUIRES'), 'legacy SUITE_REQUIRES warning 已退役')
     const sloppy = r.suites.find((s) => s.id === 'sloppy')
-    assert.equal(sloppy.blocked, true, 'good-id 不在货架＝缺依赖，照常标 blocked')
-    assert.deepEqual(sloppy.missingDependencies, ['good-id'], '非法项已丢弃，missing 里只剩合法项')
+    assert.equal(sloppy.blocked, true, '缺依赖仍要标 blocked')
+    assert.deepEqual(sloppy.missingDependencies, ['good-id', 'ghost-id'], 'module@2 deps 全进闭包')
   } finally { await rm(root, { recursive: true, force: true }) }
 })
 
-/* ══ OS-129 服务白名单：services id 对齐宿主真实实现（warning 不拒载） ══ */
+/* ══ OS-192 退役守卫：page 模式 capabilities.pages/services 与服务白名单整体退场 ══ */
 
-test('服务白名单：已知 id（KNOWN_SERVICE_IDS 全部）→ 照常登记，零 warning', async () => {
-  assert.ok(Object.isFrozen(KNOWN_SERVICE_IDS), '白名单必须是冻结数组')
+test('退役守卫：module@2 套件不再有 capabilities.pages/services 与服务白名单', async () => {
   await withTemp(async (base) => {
     const shelf = await makeSuiteShelf(base, {
-      wired: {
-        ...SUITE, id: 'wired',
-        capabilities: { pages: [], services: KNOWN_SERVICE_IDS.map((id) => ({ id, description: `${id} 通道` })) }
+      legacy: {
+        ...SUITE, id: 'legacy',
+        capabilities: { pages: [{ id: 'board', entry: 'board.html' }], services: [{ id: 'state-data' }] }
       }
     })
     const { suites, warnings } = loadSuites([shelf])
-    assert.deepEqual(suites.map((suite) => suite.id), ['wired'])
-    assert.equal(warnings.length, 0, `宿主真的会理的 id 不该有 warning，实际：${JSON.stringify(warnings)}`)
-    assert.deepEqual(suites[0].capabilities.services.map((service) => service.id), [...KNOWN_SERVICE_IDS], '白名单 id 全部照常登记')
+    assert.deepEqual(suites.map((suite) => suite.id), [], '携带页面/服务声明的 legacy 套件不得上架')
+    assert.ok(warnings.some((warning) => warning.code === 'SUITE_MODULE_SHAPE'))
   })
-})
-
-test('服务白名单：未知 id → SUITE_SERVICE_UNKNOWN warning，但套件照常加载、声明照常登记', async () => {
   await withTemp(async (base) => {
-    const shelf = await makeSuiteShelf(base, {
-      dreamer: {
-        ...SUITE, id: 'dreamer',
-        capabilities: { pages: [], services: [{ id: 'quantum-teleport', description: '宿主还没这能力' }, { id: 'state-data', description: '这个宿主会理' }] }
-      }
-    })
-    const { suites, warnings } = loadSuites([shelf])
-    assert.deepEqual(suites.map((suite) => suite.id), ['dreamer'], '未知服务 id 不拒载——白名单是提示，不是权限闸')
-    const hit = warnings.find((warning) => warning.code === 'SUITE_SERVICE_UNKNOWN')
-    assert.ok(hit, `应有 SUITE_SERVICE_UNKNOWN warning，实际：${JSON.stringify(warnings)}`)
-    assert.match(hit.message, /quantum-teleport/)
-    const registered = suites[0].capabilities.services.map((service) => service.id)
-    assert.deepEqual(registered, ['quantum-teleport', 'state-data'], '未知 id 照常登记，不丢声明')
-    assert.equal(warnings.filter((warning) => warning.code === 'SUITE_SERVICE_UNKNOWN').length, 1, '已知 id（state-data）不捎 warning')
+    const shelf = await makeSuiteShelf(base, { governed: SUITE })
+    const plain = normalizeSuite(SUITE, { source: '内置', dir: join(shelf, 'governed') })
+    assert.equal(plain.ok, true)
+    assert.deepEqual(plain.suite.capabilities.pages, [])
+    assert.deepEqual(plain.suite.capabilities.services, [])
   })
-})
-
-test('服务白名单：services 缺省（无 capabilities／空对象）→ 无 warning', () => {
-  const noCaps = normalizeSuite(SUITE, { source: '内置', dir: 'D:/s/governed' })
-  assert.equal(noCaps.ok, true)
-  assert.equal(noCaps.warnings, undefined, '整个 capabilities 缺省＝不涉服务声明，零 warning')
-
-  const emptyCaps = normalizeSuite({ ...SUITE, capabilities: {} }, { source: '内置', dir: 'D:/s/governed' })
-  assert.equal(emptyCaps.ok, true)
-  assert.equal(emptyCaps.warnings, undefined, 'capabilities 空对象（services 缺省）也零 warning')
-  assert.deepEqual(emptyCaps.suite.capabilities.services, [], 'services 规整为空数组')
 })

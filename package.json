@@ -7,7 +7,6 @@
   "scripts": {
     "start": "node src/host/daemon.mjs",
     "mcp": "node src/host/mcp.mjs",
-    "modules:migrate": "node tools/migrate-module-manifests.mjs",
     "test": "node --test \"test/*.test.mjs\"",
     "arch:stats": "node tools/arch-stats.mjs",
     "arch:check": "node tools/arch-stats.mjs --check"

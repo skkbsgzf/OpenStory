@@ -1,18 +1,17 @@
 /**
- * plugins 域 handler（OS-141 daemon 拆分）——10 端点，与 contracts/plugins.mjs 一一对应：
- * stylesGet/skillsGet/skillGet/genresGet（风格·技能·体裁货架）、pluginsGet（三套 spec 只读聚合）、
- * suitesGet/suiteSettingsPut/suiteStatePut/suiteStateDataGet/suiteStateDataPut（套件货架与设置）。
+ * plugins 域 handler（OS-141 daemon 拆分）——8 端点，与 contracts/plugins.mjs 一一对应：
+ * stylesGet/skillsGet/skillGet/genresGet（风格·技能·体裁货架）、pluginsGet（统一清单只读聚合）、
+ * suitesGet/suiteSettingsPut/suiteStatePut（五类货架的统一治理）。
  *
- * 统一签名 `async handler(ctx)`：全部端点只读货架／写套件状态，不碰库文件，不做 root 校验
- * （与拆分前一致）。
+ * 统一签名 `async handler(ctx)`：全部端点只读货架／写套件状态，不碰库文件。
+ * OS-192：legacy page 模式的 suiteStateDataGet/Put 已退役。
  */
 import { API_ERROR_CODES } from '../contracts.mjs'
 import { sendError, sendJson, text } from '../../host/http.mjs'
 import { authorizeRoot } from '../../host/authorize.mjs'
-import { loadStylePacks } from '../../services/stylePacks.mjs'
-import { loadSkills, skillSummary, skillsForGenre } from '../../services/skills.mjs'
+import { skillSummary, skillsForGenre } from '../../services/skills.mjs'
 import { effectiveSkillsDirs } from '../../services/systemPrompt.mjs'
-import { loadGenres } from '../../services/genres.mjs'
+import { shelfDomainData } from '../../protocol/shelfManifests.mjs'
 import { listAllPlugins } from '../../protocol/plugins.mjs'
 import {
   MODULE_MANIFESTS, MODULE_MANIFEST_WARNINGS, MODULE_MANIFEST_NOTICES, MODULE_SOURCE_GROUPS,
@@ -21,33 +20,45 @@ import {
 import {
   listSuitesPublic,
   saveSuiteSettings,
-  saveSuiteStateData,
-  setSuiteEnabled,
-  getSuiteStateData
+  setSuiteEnabled
 } from '../../services/suites.mjs'
 
+/** 五类货架的统一装载参数（一个入口取数：suites/skills/styles/genres/runtimes）。 */
+function shelfOpts(context, root = '') {
+  return {
+    suitesDirs: context.suitesDirs ?? [],
+    skillsDirs: context.skillsDirs ?? [],
+    stylesDirs: context.stylesDirs ?? [],
+    genresDirs: context.genresDirs ?? [],
+    runtimesDirs: context.runtimesDirs ?? [],
+    suiteStatePath: context.suiteStatePath ?? '',
+    root
+  }
+}
+
+/** OS-192：四个货架读取端点保留 id/路径/响应形状，内部统一从 shelfManifests 取数。 */
 export async function stylesGet(ctx) {
   const { res, context } = ctx
-  const packs = await loadStylePacks(context.stylesDirs)
+  const { items, warnings } = shelfDomainData({ stylesDirs: context.stylesDirs }, 'style')
   // OS-109：带上真实目录——前端「本机路径」要显示绝对路径并能一键打开
-  return sendJson(res, 200, { ok: true, styles: packs.styles, warnings: packs.warnings, dirs: (context.stylesDirs || []).filter(Boolean) })
+  return sendJson(res, 200, { ok: true, styles: items, warnings, dirs: (context.stylesDirs || []).filter(Boolean) })
 }
 
 export async function skillsGet(ctx) {
   const { res, request, context } = ctx
-  const loaded = loadSkills(effectiveSkillsDirs(context))
-  const filtered = request.genre ? skillsForGenre(loaded.skills, request.genre) : loaded.skills
+  const { items, warnings } = shelfDomainData({ skillsDirs: effectiveSkillsDirs(context) }, 'skill')
+  const filtered = request.genre ? skillsForGenre(items, request.genre) : items
   return sendJson(res, 200, {
     ok: true,
     skills: filtered.map(skillSummary),
-    warnings: loaded.warnings
+    warnings
   })
 }
 
 export async function skillGet(ctx) {
   const { res, request, context } = ctx
-  const loaded = loadSkills(effectiveSkillsDirs(context))
-  const skill = loaded.skills.find((item) => item.name === request.name)
+  const { items } = shelfDomainData({ skillsDirs: effectiveSkillsDirs(context) }, 'skill')
+  const skill = items.find((item) => item.name === request.name)
   if (!skill) return sendError(res, API_ERROR_CODES.NOT_FOUND, `货架上没有这个技能：${request.name}`)
   return sendJson(res, 200, {
     ok: true,
@@ -57,8 +68,8 @@ export async function skillGet(ctx) {
 
 export async function genresGet(ctx) {
   const { res, context } = ctx
-  const loaded = loadGenres(context.genresDirs)
-  return sendJson(res, 200, { ok: true, genres: loaded.genres, warnings: loaded.warnings })
+  const { items, warnings } = shelfDomainData({ genresDirs: context.genresDirs }, 'genre')
+  return sendJson(res, 200, { ok: true, genres: items, warnings })
 }
 
 export async function pluginsGet(ctx) {
@@ -72,12 +83,16 @@ export async function pluginsGet(ctx) {
     suiteStatePath: context.suiteStatePath,
     root: auth.root,
     skillsDirs: context.skillsDirs,
+    stylesDirs: context.stylesDirs,
+    genresDirs: context.genresDirs,
     runtimesDirs: context.runtimesDirs
   })
   return sendJson(res, 200, {
     ok: true,
     plugins: listed.plugins,
     byKind: listed.byKind,
+    byGroup: listed.byGroup,
+    overrides: listed.overrides,
     stats: listed.stats,
     // OS-145：模块插件自报设置（设置页「模块」组的数据底；启停状态由前端按库内 ui-state 判定）
     // OS-146：settingsHint/settingsJump ＝真配置在别处时的指路（设置页只指路，不摆第二份输入框）
@@ -112,9 +127,15 @@ export async function suitesGet(ctx) {
   // OS-160：root 可选——带库（开着库）才授权并写库内；不带＝设置页全局入口，回落机器级缺省。
   const auth = text(request.root).trim() ? authorizeRoot(allowlist, request.root) : { ok: true, root: '' }
   if (!auth.ok) return sendError(res, auth.code, auth.message, auth.details)
-  const listed = await listSuitesPublic(context.suitesDirs, context.suiteStatePath, auth.root)
+  const listed = await listSuitesPublic(shelfOpts(context, auth.root))
   const suitesUserDir = Array.isArray(context.suitesDirs) && context.suitesDirs[1] ? context.suitesDirs[1] : ''
-  return sendJson(res, 200, { ok: true, suites: listed.suites, ...(suitesUserDir ? { userDir: suitesUserDir } : {}), ...(listed.warnings?.length ? { warnings: listed.warnings } : {}) })
+  return sendJson(res, 200, {
+    ok: true,
+    suites: listed.suites,
+    overrides: listed.overrides,
+    ...(suitesUserDir ? { userDir: suitesUserDir } : {}),
+    ...(listed.warnings?.length ? { warnings: listed.warnings } : {})
+  })
 }
 
 export async function suiteSettingsPut(ctx) {
@@ -122,7 +143,7 @@ export async function suiteSettingsPut(ctx) {
   // OS-160：root 可选——带库（开着库）才授权并写库内；不带＝设置页全局入口，回落机器级缺省。
   const auth = text(request.root).trim() ? authorizeRoot(allowlist, request.root) : { ok: true, root: '' }
   if (!auth.ok) return sendError(res, auth.code, auth.message, auth.details)
-  const saved = await saveSuiteSettings(context.suitesDirs, context.suiteStatePath, request.id, request.values, auth.root)
+  const saved = await saveSuiteSettings(shelfOpts(context, auth.root), '', request.id, request.values, '')
   if (!saved.ok) return sendError(res, saved.code ?? API_ERROR_CODES.INVALID_ENTRY, saved.message)
   return sendJson(res, 200, { ok: true, values: saved.values })
 }
@@ -132,29 +153,9 @@ export async function suiteStatePut(ctx) {
   // OS-160：root 可选——带库（开着库）才授权并写库内；不带＝设置页全局入口，回落机器级缺省。
   const auth = text(request.root).trim() ? authorizeRoot(allowlist, request.root) : { ok: true, root: '' }
   if (!auth.ok) return sendError(res, auth.code, auth.message, auth.details)
-  const set = await setSuiteEnabled(context.suitesDirs, context.suiteStatePath, request.id, request.enabled, auth.root)
+  const set = await setSuiteEnabled(shelfOpts(context, auth.root), '', request.id, request.enabled, '')
   if (!set.ok) return sendError(res, set.code ?? API_ERROR_CODES.INVALID_ENTRY, set.message)
   return sendJson(res, 200, { ok: true, enabled: set.enabled })
-}
-
-export async function suiteStateDataGet(ctx) {
-  const { res, request, context, allowlist } = ctx
-  // OS-160：root 可选——带库（开着库）才授权并写库内；不带＝设置页全局入口，回落机器级缺省。
-  const auth = text(request.root).trim() ? authorizeRoot(allowlist, request.root) : { ok: true, root: '' }
-  if (!auth.ok) return sendError(res, auth.code, auth.message, auth.details)
-  const loaded = await getSuiteStateData(context.suitesDirs, context.suiteStatePath, request.id, auth.root)
-  if (!loaded.ok) return sendError(res, loaded.code ?? API_ERROR_CODES.INVALID_ENTRY, loaded.message)
-  return sendJson(res, 200, { ok: true, id: loaded.id, values: loaded.values })
-}
-
-export async function suiteStateDataPut(ctx) {
-  const { res, request, context, allowlist } = ctx
-  // OS-160：root 可选——带库（开着库）才授权并写库内；不带＝设置页全局入口，回落机器级缺省。
-  const auth = text(request.root).trim() ? authorizeRoot(allowlist, request.root) : { ok: true, root: '' }
-  if (!auth.ok) return sendError(res, auth.code, auth.message, auth.details)
-  const saved = await saveSuiteStateData(context.suitesDirs, context.suiteStatePath, request.id, request.values, auth.root)
-  if (!saved.ok) return sendError(res, saved.code ?? API_ERROR_CODES.INVALID_ENTRY, saved.message)
-  return sendJson(res, 200, { ok: true, values: saved.values })
 }
 
 /** plugins 域端点 → handler 注册表片段（registry.mjs 聚合）。 */
@@ -166,7 +167,5 @@ export const handlers = {
   pluginsGet,
   suitesGet,
   suiteSettingsPut,
-  suiteStatePut,
-  suiteStateDataGet,
-  suiteStateDataPut
+  suiteStatePut
 }

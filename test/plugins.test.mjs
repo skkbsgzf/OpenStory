@@ -27,22 +27,27 @@ after(async () => {
   await rm(base, { recursive: true, force: true })
 })
 
-/** 造一个最小套件目录（spec @2，page 模式设置页）。 */
+/** 造一个最小 module@2 套件目录（OS-192：套件只许数据与说明）。 */
 async function makeSuite(dir, id, extra = {}) {
   const suiteDir = join(dir, id)
   await mkdir(suiteDir, { recursive: true })
   const manifest = {
-    schemaVersion: 'openstory-suite@2',
+    spec: 'openstory-module@2',
     id,
     name: id,
     version: '0.1.0',
-    vendor: '测试',
+    class: 'suite',
+    builtin: true,
     description: '测试用套件',
-    capabilities: { settings: { mode: 'page', entry: 'settings.html' } },
+    supplies: ['skill'],
+    entries: { skill: 'data.json' },
+    appliesTo: [{ id: 'prose.write', min: 1 }],
+    deps: [],
+    settings: [],
     ...extra
   }
   await writeFile(join(suiteDir, 'manifest.json'), JSON.stringify(manifest, null, 2), 'utf-8')
-  await writeFile(join(suiteDir, 'settings.html'), '<p>hi</p>', 'utf-8')
+  await writeFile(join(suiteDir, 'data.json'), '{}', 'utf-8')
   return suiteDir
 }
 
@@ -178,7 +183,8 @@ describe('三套聚合', () => {
       assert.deepEqual(payload.moduleManifestWarnings, [])
       assert.equal(payload.capabilityReport.ok, true)
       assert.deepEqual(payload.capabilityReport.issues, [])
-      assert.equal(payload.capabilityReport.loaded.length, payload.modules.length)
+      assert.ok(payload.modules.every((item) => payload.capabilityReport.loaded.includes(item.id)), '模块全在 loaded')
+      assert.ok(payload.byGroup['运行时套件'].length >= 2, '五类货架按组出现在 /api/plugins')
     } finally {
       await daemon.close()
     }
@@ -251,16 +257,17 @@ describe('详情与健康', () => {
     assert.deepEqual(result.plugins, [])
   })
 
-  it('suiteAssetPath：套件返回物理路径，其它种类返回空串', async () => {
+  it('OS-192 退役守卫：page 模式资产路径不再存在，统一清单给出物理目录与六组', async () => {
     const root = join(base, 'asset')
     const suites = join(root, 'suites')
     const suiteDir = await makeSuite(suites, 'alpha')
     const opts = { suitesDirs: [suites], suiteStatePath: join(root, 'state.json') }
     const suite = await pluginDetail(opts, 'suite', 'alpha')
-    // Windows 临时目录会返回短路径（ADMINI~1），两边都 resolve 归一后再比
-    assert.equal(resolve(suiteAssetPath(suite, 'dir')), resolve(suiteDir))
-    assert.ok(suiteAssetPath(suite, 'settings').endsWith('settings.html'))
-    assert.equal(suiteAssetPath({ kind: 'skill', sourceDetail: {} }, 'dir'), '')
-    assert.equal(suiteAssetPath(null, 'dir'), '')
+    assert.ok(suite)
+    assert.equal(suiteAssetPath(suite, 'settings'), '', 'page 模式设置页资产路径已退役')
+    assert.equal(suiteAssetPath(suite, 'dir'), '', '套件自带页资产路径已退役')
+    // 物理目录仍由统一清单如实给出（来源透明，不是 page 模式挟带的可执行内容）
+    assert.equal(resolve(suite.sourceDetail.dir), resolve(suiteDir))
+    assert.equal(typeof suite.group, 'string')
   })
 })

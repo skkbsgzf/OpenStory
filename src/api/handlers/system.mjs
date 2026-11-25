@@ -20,7 +20,6 @@ import { authorizeRoot, resolveInsideRoot, RESERVED_LIB_DIRS } from '../../host/
 import { readHabits, normalizeHabits, writeHabitsWithBackup } from '../../protocol/habits.mjs'
 import { loadGenres, readBrief, writeBrief } from '../../services/genres.mjs'
 import { readAgentPicks, writeAgentPicks } from '../../services/skills.mjs'
-import { getSuiteStateData, saveSuiteStateData } from '../../services/suites.mjs'
 import { loadStylePacks } from '../../services/stylePacks.mjs'
 import { defaultKbConfigPath } from '../../protocol/knowledgeAdapter.mjs'
 import { collectKbStatus, kbServiceState, probeServices } from '../../protocol/knowledgeHealth.mjs'

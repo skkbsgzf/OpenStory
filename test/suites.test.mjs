@@ -14,25 +14,27 @@ import {
   builtinSuitesDir,
   defaultSuiteStatePath,
   defaultUserSuitesDir,
-  getSuiteStateData,
   listSuitesPublic,
   loadSuites,
   normalizeSuite,
   saveSuiteSettings,
-  saveSuiteStateData,
   setSuiteEnabled,
   suiteValue
 } from '../src/services/suites.mjs'
-import { resolveSuiteAssetPath, startDaemon } from '../src/host/daemon.mjs'
+import { startDaemon } from '../src/host/daemon.mjs'
 
 const GOOD = {
-  schemaVersion: 'openstory-suite@1',
+  spec: 'openstory-module@2',
   id: 'writing',
   name: '写作套件',
   version: '0.1.0',
-  vendor: 'skkbsgzf',
+  class: 'suite',
+  builtin: true,
   description: '小说写作',
-  domains: ['写作'],
+  supplies: ['skill'],
+  entries: { skill: 'manifest.json' },
+  appliesTo: [{ id: 'prose.write', min: 1 }],
+  deps: [],
   settings: [
     { key: 'newChapterTitle', label: '新建章节默认标题', type: 'string', default: '未命名章' },
     { key: 'deduceBranches', label: '推演默认分支数', type: 'number', default: 2 }
@@ -56,56 +58,44 @@ async function makeFixture() {
   }
 }
 
-test('套件规整：@1 兼容（settings→schema 模式）；@2 能力声明逐项把门', () => {
-  const ok = normalizeSuite(GOOD, { source: '内置', dir: 'D:/s/writing' })
-  assert.equal(ok.ok, true)
-  assert.equal(ok.suite.version, '0.1.0')
-  assert.equal(ok.suite.capabilities.settings.mode, 'schema', '@1 顶层 settings 自动按 schema 模式兼容')
-
-  assert.equal(normalizeSuite({ ...GOOD, schemaVersion: 'x' }, { source: '内置', dir: 'd' }).ok, false)
-  assert.equal(normalizeSuite({ ...GOOD, version: '0.1' }, { source: '内置', dir: 'd' }).ok, false)
-  assert.equal(normalizeSuite({ ...GOOD, vendor: '' }, { source: '内置', dir: 'd' }).ok, false)
-  assert.equal(normalizeSuite({ ...GOOD, settings: [{ key: 'k', type: 'magic' }] }, { source: '内置', dir: 'd' }).ok, false)
-  assert.equal(normalizeSuite({ ...GOOD, settings: [{ key: 'k', type: 'select', options: [], default: 'a' }] }, { source: '内置', dir: 'd' }).ok, false)
-  const select = normalizeSuite({ ...GOOD, settings: [{ key: 'ratio', type: 'select', options: ['16:9', '4:3'], default: '4:3' }] }, { source: '内置', dir: 'd' })
-  assert.equal(select.ok, true)
-})
-
-test('套件规整 @2：page 模式（entry 文件必须在）、pages/services 登记、坏能力拒', async () => {
+test('套件规整：只认 module@2；legacy @1/@2 页面模式直接拒收并给出警告', async () => {
   const { base } = await makeFixture()
   try {
-    const suiteDir = join(base, 'kit')
+    const suiteDir = join(base, 'writing')
     await mkdir(suiteDir, { recursive: true })
-    await writeFile(join(suiteDir, 'settings.html'), '<html></html>', 'utf-8')
-    const page = normalizeSuite({
-      schemaVersion: 'openstory-suite@2', id: 'comicdrama', name: '漫剧', version: '0.2.0', vendor: 'skkbsgzf',
-      domains: ['漫剧'],
-      capabilities: { settings: { mode: 'page', entry: 'settings.html' }, pages: [{ id: 'board', title: '分镜板', entry: 'board.html' }], services: [] }
-    }, { source: '内置', dir: suiteDir })
-    assert.equal(page.ok, true)
-    assert.equal(page.suite.capabilities.settings.mode, 'page')
-    assert.deepEqual(page.suite.capabilities.pages, [{ id: 'board', title: '分镜板', entry: 'board.html' }])
+    await writeFile(join(suiteDir, 'manifest.json'), JSON.stringify(GOOD), 'utf-8')
+    const ok = normalizeSuite(GOOD, { source: '内置', dir: suiteDir })
+    assert.equal(ok.ok, true)
+    assert.equal(ok.suite.version, '0.1.0')
+    assert.equal(ok.suite.capabilities.settings.mode, 'schema')
+    assert.equal(ok.suite.capabilities.pages.length, 0, 'module@2 套件不携带可执行页面')
 
-    assert.equal(normalizeSuite({ schemaVersion: 'openstory-suite@2', id: 'x', name: 'x', version: '0.1.0', vendor: 'v', capabilities: { settings: { mode: 'page', entry: '不存在.html' } } }, { source: '内置', dir: suiteDir }).ok, false, 'entry 文件不在＝拒')
-    assert.equal(normalizeSuite({ schemaVersion: 'openstory-suite@2', id: 'x', name: 'x', version: '0.1.0', vendor: 'v', capabilities: { settings: { mode: 'telepathy' } } }, { source: '内置', dir: suiteDir }).ok, false)
-    assert.equal(normalizeSuite({ schemaVersion: 'openstory-suite@2', id: 'x', name: 'x', version: '0.1.0', vendor: 'v', capabilities: { pages: [{ id: 'bad id!', entry: 'a.html' }] } }, { source: '内置', dir: suiteDir }).ok, false)
-    const none = normalizeSuite({ schemaVersion: 'openstory-suite@2', id: 'x', name: 'x', version: '0.1.0', vendor: 'v' }, { source: '内置', dir: suiteDir })
-    assert.equal(none.ok, true)
-    assert.equal(none.suite.capabilities.settings.mode, 'none', '无能力声明＝不摆设置')
+    const legacy1 = normalizeSuite({ ...GOOD, spec: 'openstory-suite@1', schemaVersion: 'openstory-suite@1' }, { source: '内置', dir: suiteDir })
+    assert.equal(legacy1.ok, false)
+    assert.equal(legacy1.warning.code, 'SUITE_SPEC')
+    const legacy2 = normalizeSuite({ ...GOOD, spec: 'openstory-suite@2', schemaVersion: 'openstory-suite@2' }, { source: '内置', dir: suiteDir })
+    assert.equal(legacy2.ok, false)
+    assert.equal(legacy2.warning.code, 'SUITE_SPEC')
+
+    assert.equal(normalizeSuite({ ...GOOD, settings: [{ key: 'k', type: 'magic' }] }, { source: '内置', dir: suiteDir }).ok, false)
+    assert.equal(normalizeSuite({ ...GOOD, settings: [{ key: 'k', type: 'select', options: [], default: 'a' }] }, { source: '内置', dir: suiteDir }).ok, false)
+    const select = normalizeSuite({ ...GOOD, settings: [{ key: 'ratio', label: '画幅比例', type: 'select', options: ['16:9', '4:3'], default: '4:3' }] }, { source: '内置', dir: suiteDir })
+    assert.equal(select.ok, true)
   } finally {
     await rm(base, { recursive: true, force: true })
   }
 })
 
-test('套件货架：内置有写作/编剧/漫剧；本机覆盖；坏 kit 记 warning', async () => {
+test('OS-192 套件货架：漫剧占位已删，内置写作/编剧/推演规则；本机覆盖；坏 kit 记 warning', async () => {
   const { base, userSuites } = await makeFixture()
   try {
     const builtin = loadSuites([builtinSuitesDir(), userSuites])
     const ids = builtin.suites.map((suite) => suite.id)
-    for (const id of ['writing', 'screenwriting', 'comicdrama']) assert.ok(ids.includes(id), `缺 ${id}`)
+    for (const id of ['writing', 'screenwriting', 'deduce-rules']) assert.ok(ids.includes(id), `缺 ${id}`)
+    assert.equal(ids.includes('comicdrama'), false, '漫剧占位套件已退役')
 
     await mkdir(join(userSuites, 'writing'), { recursive: true })
-    await writeFile(join(userSuites, 'writing', 'manifest.json'), JSON.stringify({ ...GOOD, name: '写作（本机改）', version: '0.2.0' }), 'utf-8')
+    await writeFile(join(userSuites, 'writing', 'manifest.json'), JSON.stringify({ ...GOOD, builtin: false, name: '写作（本机改）', version: '0.2.0' }), 'utf-8')
     await mkdir(join(userSuites, '坏套件'), { recursive: true })
     await writeFile(join(userSuites, '坏套件', 'manifest.json'), JSON.stringify({ id: 'x' }), 'utf-8')
     const merged = loadSuites([builtinSuitesDir(), userSuites])
@@ -174,19 +164,7 @@ test('默认路径：跟随 LOCALAPPDATA/OpenStory/openstory', () => {
   assert.equal(defaultUserSuitesDir({}), '')
 })
 
-test('套件资产路径闸：../、绝对、.pinax 逐段拒收（服务端真闸）', () => {
-  const dir = 'D:/s/comicdrama'
-  assert.equal(resolveSuiteAssetPath(dir, '../writing/manifest.json').code, 'PATH_ESCAPE')
-  assert.equal(resolveSuiteAssetPath(dir, '..\\writing\\manifest.json').code, 'PATH_ESCAPE')
-  assert.equal(resolveSuiteAssetPath(dir, '.pinax/project.json').code, 'PATH_ESCAPE')
-  assert.equal(resolveSuiteAssetPath(dir, '/etc/passwd').code, 'PATH_ESCAPE')
-  assert.equal(resolveSuiteAssetPath(dir, '').ok, false)
-  const ok = resolveSuiteAssetPath(dir, 'settings.html')
-  assert.equal(ok.ok, true)
-  assert.ok(ok.abs.includes('comicdrama'))
-})
-
-test('daemon 端到端：page 模式套件——assets 同源装载＋state-data 往返＋逃逸 403', async () => {
+test('OS-192 退役守卫：/suite-assets 路由与两个 state-data 端点都不存在', async () => {
   const fixture = await makeFixture()
   const daemon = await startDaemon({
     port: 0,
@@ -198,29 +176,21 @@ test('daemon 端到端：page 模式套件——assets 同源装载＋state-data
   })
   const origin = `http://127.0.0.1:${daemon.port}`
   try {
-    // 漫剧是 @2 page 模式（内置）：自带设置页同源可达
-    const page = await fetch(`${origin}/suite-assets/comicdrama/settings.html`)
-    assert.equal(page.status, 200)
-    assert.match(page.headers.get('content-type'), /text\/html/u)
-    assert.ok((await page.text()).includes('漫剧套件 · 设置'))
-
-    // state-data 往返（宿主只存不校验形状；PUT 的 id 在 body）
-    const put = await fetch(`${origin}/api/suite/state-data`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: 'comicdrama', values: { boardRatio: '2.35:1', gridColumns: 4, nested: { ok: true } } }) })
-    assert.equal(put.status, 200)
-    const got = await (await fetch(`${origin}/api/suite/state-data?id=comicdrama`)).json()
-    assert.deepEqual(got.values, { boardRatio: '2.35:1', gridColumns: 4, nested: { ok: true } })
-
-    // values 非对象拒收；逃逸与未知套件拒收
-    const bad = await fetch(`${origin}/api/suite/state-data`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: 'comicdrama', values: [1, 2] }) })
-    assert.equal(bad.status, 400)
-    // URL 解析器（浏览器同理）会把 %2e%2e 归一成 ..——落到 /suite-assets/writing/manifest.json，
-    // 仍是货架内合法资产；服务端逐段拒 `..` 的闸在纯函数层（resolveSuiteAssetPath）另测。
-    const normalizedEscape = await fetch(`${origin}/suite-assets/comicdrama/%2e%2e/writing/manifest.json`)
-    if (normalizedEscape.status === 200) {
-      assert.match(await normalizedEscape.text(), /openstory-(?:suite|module)@/u, '归一后仍只可能落在货架内套件资产上')
-    }
-    const unknown = await fetch(`${origin}/suite-assets/nope/settings.html`)
-    assert.equal(unknown.status, 404)
+    const page = await fetch(`${origin}/suite-assets/writing/settings.html`)
+    assert.equal(page.status, 404, 'legacy page 模式资产路由已退役')
+    const tokens = await fetch(`${origin}/suite-assets/_tokens.css`)
+    assert.equal(tokens.status, 404, '令牌桥随 page 模式一并退役')
+    const get = await fetch(`${origin}/api/suite/state-data?id=writing`)
+    assert.equal(get.status, 404, 'suiteStateDataGet 已退役')
+    const put = await fetch(`${origin}/api/suite/state-data`, {
+      method: 'PUT', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ id: 'writing', values: { x: 1 } })
+    })
+    assert.equal(put.status, 404, 'suiteStateDataPut 已退役')
+    // 正常读写端点仍在（三端点契约不变）
+    const shelves = await (await fetch(`${origin}/api/suites`)).json()
+    assert.equal(shelves.ok, true)
+    assert.ok(Array.isArray(shelves.overrides))
   } finally {
     await daemon.close()
     await rm(fixture.base, { recursive: true, force: true })
@@ -277,13 +247,17 @@ test('daemon 端到端：套件捆绑技能——启用上货架＋详情页可�
   const suiteDir = join(fixture.userSuites, 'bundling')
   await mkdir(join(suiteDir, 'skills', 'suite-only'), { recursive: true })
   await writeFile(join(suiteDir, 'manifest.json'), JSON.stringify({
-    schemaVersion: 'openstory-suite@1',
+    spec: 'openstory-module@2',
     id: 'bundling',
     name: '捆绑测试套件',
     version: '0.1.0',
-    vendor: 'Test',
+    class: 'suite',
+    builtin: false,
     description: '验证捆绑技能随启停生效',
-    domains: ['测试'],
+    supplies: ['skill'],
+    entries: { skill: 'skills/suite-only/SKILL.md' },
+    appliesTo: [{ id: 'prose.write', min: 1 }],
+    deps: [],
     settings: []
   }), 'utf-8')
   await writeFile(join(suiteDir, 'skills', 'suite-only', 'SKILL.md'), `---

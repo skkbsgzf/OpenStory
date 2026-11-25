@@ -35,7 +35,8 @@ import {
 import { loadConfigV2, saveConfigV2, configPublicLegacy, configTextBlock } from '../../services/agentConfig.mjs'
 import { resolveChatUpstream } from '../../services/chatUpstream.mjs'
 import { systemPromptFor } from '../../services/systemPrompt.mjs'
-import { loadRuntimeKits, probeRuntimeKit, sidecarRunning } from '../../services/runtimes.mjs'
+import { probeRuntimeKit, sidecarRunning } from '../../services/runtimes.mjs'
+import { shelfDomainData } from '../../protocol/shelfManifests.mjs'
 import { detectDshAny, detectDshModels, probeDshStack, setupDshStack } from '../../services/dsh-bridge.mjs'
 import { runCliChat } from '../../services/cli-bridge.mjs'
 import { runDshStdio } from '../../services/dsh-cli.mjs'
@@ -63,7 +64,7 @@ export async function agentRuntimesGet(ctx) {
   const { res, context } = ctx
   const { config } = await loadConfigV2(context.agentConfigPath)
   const textBlock = config.text
-  const { kits } = loadRuntimeKits(context.runtimesDirs)
+  const kits = shelfDomainData({ runtimesDirs: context.runtimesDirs }, 'runtime').items
   // OS-18：货架三组（native＝Pi/DSH/套件侧车；cli＝CLI 嫁接），CLI 与 DSH 带实测状态
   const enriched = []
   for (const kit of kits) {
@@ -124,7 +125,7 @@ export async function agentRuntimePut(ctx) {
   const { res, request, context } = ctx
   const id = text(request.id).trim()
   if (id) {
-    const { kits } = loadRuntimeKits(context.runtimesDirs)
+    const kits = shelfDomainData({ runtimesDirs: context.runtimesDirs }, 'runtime').items
     const kit = kits.find((item) => item.id === id)
     if (!kit) {
       return sendError(res, API_ERROR_CODES.INVALID_ENTRY, `货架上没有这个运行时套件：${id}`)
@@ -152,7 +153,7 @@ export async function agentDshModelsGet(ctx) {
 
 export async function agentRuntimeSetup(ctx) {
   const { res, request, context } = ctx
-  const { kits } = loadRuntimeKits(context.runtimesDirs)
+  const kits = shelfDomainData({ runtimesDirs: context.runtimesDirs }, 'runtime').items
   const kit = kits.find((item) => item.id === text(request.id).trim())
   if (!kit) return sendError(res, API_ERROR_CODES.INVALID_ENTRY, `货架上没有这个运行时套件：${text(request.id)}`)
   if (kit.kind !== 'dsh') {

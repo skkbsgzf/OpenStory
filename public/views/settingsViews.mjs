@@ -617,24 +617,28 @@ function settingsHtml() {
   // 插件中心不再是二级壳：它直接把**每个套件**列成一行（作者：「插件中心就是很多套件排列」）。
   const nav = SETTINGS_GROUPS.map((group) => {
     const isPluginGroup = group.id === 'plugins'
-    // OS-120：插件组最前面是「总览」入口（三套一份清单）；其后是各套件。
-    const overviewEntry = isPluginGroup
-      // OS-145：插件组里除「全部套件」（由动态套件清单渲染）外的固定节都按声明顺序出（总览 → 模块）
+    // OS-192：插件组固定节（模块启停）在前；其后五类货架按供给类型六组排列。
+    const fixedEntries = isPluginGroup
       ? group.sections.filter((section) => section.id !== 'suites').map((section) => `
         <button class="settings-nav-item${section.id === navOn ? ' on' : ''}" data-settings-section="${esc(section.id)}">
           <b>${esc(section.label)}</b>
           <span>${esc(section.hint)}</span>
         </button>`).join('')
       : ''
+    const shelfGroups = ['技能包', '文风包', '体裁包', '运行时套件', '业务套装', '推演规则包']
     const items = isPluginGroup
-      ? overviewEntry + ((Array.isArray(state.suites) ? state.suites : []).map((suite) => {
-        const on = suite.enabled !== false
-        const active = state.settings.section === 'suites' && state.settings.suiteId === suite.id
-        return `<button class="settings-nav-item${active ? ' on' : ''}" data-action="suite-select" data-id="${esc(suite.id)}">
-          <b>${esc(suite.name)}${on ? '' : '<i class="nav-off-tag">停用</i>'}</b>
-          <span>${esc((suite.domains ?? []).join('／') || suite.description || '')}</span>
-        </button>`
-      }).join('') || '<p class="nav-empty">还没有套件</p>')
+      ? fixedEntries + (shelfGroups.map((shelfGroup) => {
+        const list = (Array.isArray(state.suites) ? state.suites : []).filter((suite) => (suite.group || '业务套装') === shelfGroup)
+        if (!list.length) return ''
+        return `<div class="settings-nav-sub">${esc(shelfGroup)}</div>` + list.map((suite) => {
+          const on = suite.enabled !== false
+          const active = state.settings.section === 'suites' && state.settings.suiteId === suite.id
+          return `<button class="settings-nav-item${active ? ' on' : ''}" data-action="suite-select" data-id="${esc(suite.id)}">
+            <b>${esc(suite.name)}${on ? '' : '<i class="nav-off-tag">停用</i>'}</b>
+            <span>${esc((suite.domains ?? []).join('／') || suite.description || '')}</span>
+          </button>`
+        }).join('')
+      }).join('') || '<p class="nav-empty">还没有货架条目</p>')
       : group.sections.map((section) => `
         <button class="settings-nav-item${section.id === navOn ? ' on' : ''}" data-settings-section="${esc(section.id)}">
           <b>${esc(section.label)}</b>

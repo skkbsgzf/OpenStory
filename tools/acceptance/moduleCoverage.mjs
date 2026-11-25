@@ -45,7 +45,7 @@ export const HOST_OWNED_ENDPOINTS = Object.freeze({
     'stylesGet', 'skillsGet', 'skillGet', 'genresGet'
   ],
   '插件系统自身（插件货架/套件状态不能被插件自己管）': [
-    'pluginsGet', 'suitesGet', 'suiteSettingsPut', 'suiteStatePut', 'suiteStateDataGet', 'suiteStateDataPut'
+    'pluginsGet', 'suitesGet', 'suiteSettingsPut', 'suiteStatePut'
   ],
   '进程、配置与后台任务（daemon 本机设施，与库/插件无关）': [
     'healthGet', 'configGet', 'configPut', 'configProbe', 'jobsGet', 'jobCancel', 'jobsClear'

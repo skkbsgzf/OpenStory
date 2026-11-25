@@ -12,6 +12,7 @@
  * 坏档/坏名不拖垮清单：跳过＋warning，工作台摆人话。
  */
 import { dirname, join } from 'node:path'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
 
 
 /** 六位/三位 hex 色参校验（OS-54 自 wikiHtml.mjs 迁入——wiki 工作面剔除后由风格包与设置侧继续使用）。 */
@@ -19,7 +20,6 @@ export function isHexColor(value) {
   return /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/iu.test(String(value ?? '').trim())
 }
 import { fileURLToPath } from 'node:url'
-import { readdir, readFile } from 'node:fs/promises'
 import { courtyardPath } from '../protocol/courtyard.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -83,18 +83,19 @@ export function normalizeStylePack(raw, { source, file } = {}) {
 }
 
 /**
- * 合并加载：按目录顺序，后面的目录按 id 覆盖前面的（本机覆盖内置）。
+ * 合并加载（同步核心）：按目录顺序，后面的目录按 id 覆盖前面的（本机覆盖内置）。
  * 目录不存在＝跳过（内置目录缺失才记 warning——本机目录本来可能还没有）。
+ * OS-192：能力图在模块装载期同步取清单，故把扫描核心抽成同步版；异步入口仅包一层。
  */
-export async function loadStylePacks(dirs = []) {
+export function loadStylePacksSync(dirs = []) {
   const warnings = []
   const byId = new Map()
   for (const [index, dir] of dirs.entries()) {
     if (!text(dir).trim()) continue
     let names
     try {
-      names = await readdir(dir)
-    } catch (error) {
+      names = readdirSync(dir)
+    } catch {
       if (index === 0) {
         warnings.push({ code: 'STYLES_DIR_MISSING', dir, message: `内置风格目录不在：${dir}` })
       }
@@ -102,9 +103,11 @@ export async function loadStylePacks(dirs = []) {
     }
     const source = index === 0 ? '内置' : '本机'
     for (const name of names.filter((item) => item.toLowerCase().endsWith('.json') && !item.includes('.tmp-'))) {
+      const file = join(dir, name)
+      if (!existsSync(file)) continue
       let raw
       try {
-        raw = JSON.parse(await readFile(join(dir, name), 'utf-8'))
+        raw = JSON.parse(readFileSync(file, 'utf-8'))
       } catch (error) {
         warnings.push({ code: 'STYLE_PACK_UNREADABLE', file: `${source}·${name}`, message: `风格包读不了/不是 JSON：${source}·${name}（${text(error?.message || error)}）` })
         continue
@@ -114,8 +117,13 @@ export async function loadStylePacks(dirs = []) {
         warnings.push(normalized.warning)
         continue
       }
-      byId.set(normalized.pack.id, normalized.pack)
+      byId.set(normalized.pack.id, { ...normalized.pack, dir })
     }
   }
   return { styles: [...byId.values()], warnings }
+}
+
+/** 异步入口（历史签名）：行为与同步核心一致，await 调用方无需改动。 */
+export async function loadStylePacks(dirs = []) {
+  return loadStylePacksSync(dirs)
 }

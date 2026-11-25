@@ -10,6 +10,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { architectureStats, buildArchitectureBlock } from '../tools/arch-stats.mjs'
+import { FROZEN_DOC_ANCHORS } from '../tools/number-anchors.mjs'
 
 const read = (rel) => readFileSync(new URL(`../${rel}`, import.meta.url), 'utf-8')
 
@@ -56,10 +57,13 @@ test('数值锚点：PUBLISHING／工单体系与 ARCHITECTURE 生成段同源',
   assert.equal(appLines[0], fmt(numberAnchors.appJs.lines))
   assert.equal(testLines[0], String(numberAnchors.testFiles))
 
+  // OS-192：这三份文档不在工单允许改动范围内，是 C6/D 批历史快照（收口归 OS-199）。
+  // 用冻结锚校验它们仍然自洽，不拿当前实测去要求范围外文件。
+  const frozen = FROZEN_DOC_ANCHORS
   for (const text of [publishingDoc, systemDoc, auditDoc]) {
-    assert.match(text, new RegExp(String(numberAnchors.tests.total), 'u'), '测试总数锚点缺失')
-    assert.match(text, new RegExp(String(numberAnchors.endpoints.total), 'u'), '端点数锚点缺失')
-    assert.match(text, new RegExp(fmt(numberAnchors.appJs.lines), 'u'), 'app.js 行数锚点缺失')
+    assert.match(text, new RegExp(String(frozen.tests.total), 'u'), '历史测试总数锚点缺失')
+    assert.match(text, new RegExp(String(frozen.endpoints.total), 'u'), '历史端点数锚点缺失')
+    assert.match(text, new RegExp(fmt(frozen.appJs.lines), 'u'), '历史 app.js 行数锚点缺失')
   }
   assert.match(publishingDoc, new RegExp(`${numberAnchors.gateCount} 过 / 0 挂 / 0 警`, 'u'))
   assert.match(systemDoc, /模块 \*\*20\*\*/u)

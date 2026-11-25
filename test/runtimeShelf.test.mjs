@@ -105,7 +105,10 @@ test('接线：app.js 的货架与下拉都走 views/runtimeShelf.mjs（不内�
   assert.match(src, /runtimeShelf:\s*\(\)\s*=>\s*runtimeShelf/u, 'app.js 给设置视图注入晚绑定货架')
   assert.match(settingsSrc, /runtimeShelf\(\)\?\.runtimeKitsByCategory\(/u, '设置页货架走纯函数')
   assert.match(settingsSrc, /runtimeShelf\(\)\?\.selectableRuntimeKits\(/u, 'Agent 运行时下拉走纯函数')
-  assert.match(src, /runtimeShelf \? runtimeShelf\.pluginOverviewItems\(bag\.byKind, kind\)/u, '插件总览的渲染数据走同一个过滤纯函数')
+  // OS-192：插件总览旧入口退役，五类货架在同一个统一视图里按组呈现
+  assert.match(src, /import\('\.\/views\/suiteShelfViews\.mjs'\)/u, '统一货架视图由 app.js 接线')
+  assert.match(src, /suiteShelfViews\?\.suitesSectionHtml\(\)/u, '货架渲染委托给 views，不内联')
+  assert.doesNotMatch(src, /\/suite-assets\//u, 'legacy 页面模式资产路由不在前端')
 })
 
 test('OS-150a：插件总览的运行时分组不含夹具套件，套件/技能原样', () => {

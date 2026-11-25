@@ -4,15 +4,18 @@ import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
-  LEGACY_MODULE_SPEC, MODULE_SPEC, MODULE_MANIFESTS, MODULE_MANIFEST_WARNINGS, MODULE_MANIFEST_NOTICES,
+  MODULE_SPEC, MODULE_MANIFESTS, MODULE_MANIFEST_WARNINGS, MODULE_MANIFEST_NOTICES,
   MODULE_SOURCES, MODULE_SOURCE_GROUPS, HOST_COMPOSITION_IDS, moduleRole, moduleSource, moduleManifest,
-  loadModuleManifests, migrateModuleManifest, validateModuleManifest, readModuleEnabled, deriveModuleStateChange
+  loadModuleManifests, validateModuleManifest, readModuleEnabled, deriveModuleStateChange
 } from '../src/protocol/modules.mjs'
 
 const BUILTIN_KERNEL_IDS = Object.freeze(['agent-runtime', 'deduce', 'fact', 'media', 'prose', 'storage', 'text'])
+/** OS-192：@1 只作为「必须被拒」的夹具存在，模块不再导出 LEGACY_MODULE_SPEC/migrate 入口。 */
+const LEGACY_SPEC = 'openstory-module@1'
+const RETIRED_SPEC_LABEL = LEGACY_SPEC
 
 const legacy = (id, extra = {}) => ({
-  spec: LEGACY_MODULE_SPEC,
+  spec: LEGACY_SPEC,
   id,
   name: id,
   version: '0.1.0',
@@ -37,82 +40,22 @@ const kernel = {
   endpoints: []
 }
 
-test('@1 双读：旧 manifest 继续通过，core 只作迁移输入且不进入运行态', () => {
-  const checked = validateModuleManifest(legacy('habits', { core: true }), { dirName: 'habits' })
-  assert.equal(checked.ok, true, checked.errors.join('；'))
-  assert.equal(checked.manifest.spec, LEGACY_MODULE_SPEC)
-  assert.equal(Object.prototype.hasOwnProperty.call(checked.manifest, 'core'), false)
-  assert.equal(checked.manifest.pages[0].slot, 'tab')
-  assert.equal(checked.incomplete, false)
-})
-
-test('@1→@2：普通模块推断 workbench，page.slot 提升为顶层 slots', () => {
-  const result = migrateModuleManifest(legacy('habits', {
-    endpoints: ['habitsGet', 'habitsPut'],
-    settingsHint: '在习惯页编辑'
-  }), { dirName: 'habits' })
-  assert.equal(result.ok, true, result.errors.join('；'))
-  assert.equal(result.changed, true)
-  assert.equal(result.candidate.spec, MODULE_SPEC)
-  assert.equal(result.candidate.class, 'workbench')
-  assert.equal(result.candidate.builtin, true)
-  assert.deepEqual(result.candidate.pages, [{ id: 'habits-page', label: 'habits' }])
-  assert.deepEqual(result.candidate.slots, [{ slot: 'tab', page: 'habits-page' }])
-  assert.equal(result.candidate.settingsHint, '在习惯页编辑')
-  assert.equal(result.candidate.core, undefined)
-  assert.ok(result.warnings.includes('MODULE_CORE_DEPRECATED'))
-})
-
-test('@1→@2：旧 core 不等于 kernel，chapters 仍推断 workbench', () => {
-  const result = migrateModuleManifest(legacy('chapters', { core: true }), { dirName: 'chapters' })
-  assert.equal(result.ok, true, result.errors.join('；'))
-  assert.equal(result.candidate.class, 'workbench')
-  assert.equal(result.candidate.core, undefined, '旧 core 只作迁移报告，不进入 @2')
-  assert.equal(result.report.splitPending, '写协议后续拆入 prose kernel')
-})
-
-test('@1→@2：deduce 推断 kernel 并丢弃界面指路字段', () => {
-  const result = migrateModuleManifest(legacy('deduce', { settingsHint: '宿主域实现' }), { dirName: 'deduce' })
-  assert.equal(result.ok, true, result.errors.join('；'))
-  assert.equal(result.candidate.class, 'kernel')
-  assert.equal(result.candidate.pages, undefined)
-  assert.equal(result.candidate.slots, undefined)
-  assert.equal(result.candidate.settings, undefined)
-  assert.equal(result.candidate.settingsHint, undefined)
-  assert.deepEqual(result.report.droppedFields, ['settingsHint'])
-})
-
-test('@1→@2：agentbar/library 归宿主组合面，不猜 workbench 或内核件', () => {
-  for (const id of ['agentbar', 'library']) {
-    const result = migrateModuleManifest(legacy(id), { dirName: id })
-    assert.equal(result.ok, true, result.errors.join('；'))
-    assert.equal(result.candidate.class, undefined)
-    assert.equal(result.incomplete, true)
-    assert.equal(result.report.role, 'host-composition')
-    assert.equal(result.report.hostComposition, true)
-    assert.ok(result.warnings.includes('MODULE_CORE_DEPRECATED'))
-    assert.ok(!result.warnings.includes('MODULE_CLASS_INCOMPLETE'))
-    assert.deepEqual(result.notices, ['MODULE_HOST_COMPOSITION'])
+test('OS-192 退役守卫：@1 manifest 直接拒收并给出明确警告，不再双读/迁移', () => {
+  for (const id of ['habits', 'chapters', 'deduce', 'agentbar', 'library', 'third-party']) {
+    const checked = validateModuleManifest(legacy(id), { dirName: id })
+    assert.equal(checked.ok, false, `${id} 的 @1 不得通过`)
+    assert.ok(checked.errors.some((error) => error.includes(`${RETIRED_SPEC_LABEL} 已退役`)), checked.errors.join('；'))
   }
+  const unknownSpec = validateModuleManifest({ ...legacy('x'), spec: 'openstory-module@9' }, { dirName: 'x' })
+  assert.equal(unknownSpec.ok, false)
+  assert.ok(unknownSpec.errors.some((error) => error.includes(`spec 必须是 ${MODULE_SPEC}`)))
 })
 
-test('@1→@2：未知模块拒绝自动推断，迁移幂等', () => {
-  const unknown = migrateModuleManifest(legacy('third-party'), { dirName: 'third-party' })
-  assert.equal(unknown.ok, false)
-  assert.match(unknown.errors.join('；'), /不得自动推断 class/u)
-
-  const first = migrateModuleManifest(legacy('artifacts'), { dirName: 'artifacts' })
-  const second = migrateModuleManifest(first.candidate, { dirName: 'artifacts' })
-  assert.equal(second.ok, true, second.errors.join('；'))
-  assert.equal(second.changed, false)
-})
-
-test('@2 B 过渡：最小形状可受理，但标记 incomplete，不伪装完整协议', () => {
-  const checked = validateModuleManifest({ spec: MODULE_SPEC, id: 'pending', name: '待归类', version: '0.1.0' }, { dirName: 'pending', stage: 'B' })
-  assert.equal(checked.ok, true, checked.errors.join('；'))
-  assert.equal(checked.incomplete, true)
-  assert.deepEqual(checked.manifest.endpoints, [])
-  assert.ok(checked.warnings.includes('MODULE_CLASS_INCOMPLETE'))
+test('OS-192 退役守卫：stage B 规则不再存在，最小形状无条件拒收', () => {
+  const pending = { spec: MODULE_SPEC, id: 'pending', name: '待归类', version: '0.1.0' }
+  assert.equal(validateModuleManifest(pending, { dirName: 'pending' }).ok, false)
+  assert.equal(validateModuleManifest(pending, { dirName: 'pending', stage: 'B' }).ok, false)
+  assert.equal(validateModuleManifest(pending, { dirName: 'pending', stage: 'C' }).ok, false)
 })
 
 test('@2 校验：未知字段、page.slot、悬空 slot 与 class 禁字段都拒绝', () => {
@@ -154,19 +97,16 @@ test('@2 C 必填矩阵：kernel 正例与缺 entry/capabilities 反例', () => 
   assert.equal(validateModuleManifest({ ...kernel, core: false }, { dirName: 'fact', stage: 'C' }).ok, false)
 })
 
-test('@2 C 严格拒绝缺 class/core；B 双读仍保留迁移入口', () => {
+test('@2 严格拒绝缺 class/core；@1 也无迁移入口可回退', () => {
   const pending = { spec: MODULE_SPEC, id: 'pending', name: '待归类', version: '0.1.0' }
-  const transition = validateModuleManifest(pending, { dirName: 'pending', stage: 'B' })
-  assert.equal(transition.ok, true)
-  assert.equal(transition.incomplete, true)
-  const strict = validateModuleManifest(pending, { dirName: 'pending', stage: 'C' })
+  const strict = validateModuleManifest(pending, { dirName: 'pending' })
   assert.equal(strict.ok, false)
   assert.ok(strict.errors.some((error) => error.includes('class 必填')))
 
   const withCore = { ...kernel, core: false }
-  const core = validateModuleManifest(withCore, { dirName: 'fact', stage: 'C' })
+  const core = validateModuleManifest(withCore, { dirName: 'fact' })
   assert.equal(core.ok, false)
-  assert.ok(core.errors.some((error) => error.includes('禁止 core')))
+  assert.ok(core.errors.some((error) => error.includes('core 已退役')))
 })
 
 test('@2 C 必填矩阵：workbench 需要 entry/requires/slots', () => {
@@ -193,7 +133,7 @@ test('@2 C 必填矩阵：suite 数据契约与 bundle 依赖', () => {
   assert.equal(validateModuleManifest({ ...suite, supplies: ['bundle'], entries: { bundle: 'bundle.json' }, deps: [] }, { dirName: 'default-rules', stage: 'C' }).ok, false)
 })
 
-test('装载器双读：显式 stage B 接受 @1 与 @2，坏 manifest 只记 warning', async () => {
+test('OS-192 装载器守卫：只认 @2，@1 被拒并给出 MODULE_MANIFEST_INVALID 警告', async () => {
   const base = await mkdtemp(join(tmpdir(), 'openstory-module2-'))
   try {
     for (const [id, raw] of [['old', legacy('old')], ['fact', kernel]]) {
@@ -204,9 +144,12 @@ test('装载器双读：显式 stage B 接受 @1 与 @2，坏 manifest 只记 wa
     const bad = join(base, 'bad')
     await mkdir(bad, { recursive: true })
     await writeFile(join(bad, 'module.manifest.json'), '{bad', 'utf-8')
-    const loaded = loadModuleManifests(base, { stage: 'B' })
-    assert.deepEqual(loaded.manifests.map((item) => item.id), ['fact', 'old'])
-    assert.equal(loaded.warnings[0].code, 'MODULE_MANIFEST_UNREADABLE')
+    const loaded = loadModuleManifests(base)
+    assert.deepEqual(loaded.manifests.map((item) => item.id), ['fact'])
+    const invalid = loaded.warnings.find((item) => item.code === 'MODULE_MANIFEST_INVALID')
+    assert.ok(invalid, '@1 必须给出 MODULE_MANIFEST_INVALID 警告')
+    assert.match(invalid.message, /已退役/u)
+    assert.ok(loaded.warnings.some((item) => item.code === 'MODULE_MANIFEST_UNREADABLE'))
   } finally {
     await rm(base, { recursive: true, force: true })
   }

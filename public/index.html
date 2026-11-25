@@ -1756,6 +1756,40 @@ html[data-doc-auto-gap="off"] .doc-block { margin-bottom: 0; }
 }
 .plug-info-bad { color: var(--danger); }
 
+/* ══ OS-192 五类货架统一设置面：六组供给类型，每项就地启停 ══ */
+.shelf-groups { display: flex; flex-direction: column; gap: var(--ui-gap-sm); margin-bottom: var(--ui-gap-lg); }
+.shelf-group {
+  border: 1px solid var(--line); border-radius: var(--radius);
+  background: var(--surface-card); padding: var(--ui-gap-xs);
+}
+.shelf-group-head {
+  display: flex; align-items: baseline; gap: var(--ui-gap-xs);
+  padding: var(--ui-row-py) var(--ui-ctl-px); border-bottom: 1px solid var(--hair);
+}
+.shelf-group-head b { font-size: var(--ui-fs-sm); color: var(--ink); font-weight: 600; }
+.shelf-group-head span { font-size: var(--ui-fs-xs); color: var(--meta); }
+.shelf-row {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center; gap: var(--ui-gap-xs);
+  padding: var(--ui-row-py) var(--ui-ctl-px); border-radius: var(--radius-sm);
+}
+.shelf-row.on { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.shelf-name {
+  display: flex; flex-direction: column; gap: 2px; min-width: 0;
+  text-align: left; background: transparent; border: 0; cursor: pointer;
+  color: var(--ink); font-size: var(--ui-fs-md);
+}
+.shelf-name b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.shelf-name .sub { font-size: var(--ui-fs-xs); color: var(--meta); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.settings-nav-sub {
+  padding: var(--ui-gap-xs) var(--ui-ctl-px) 2px;
+  font-size: var(--ui-fs-xs); color: var(--meta); font-weight: 600;
+}
+@media (max-width: 1000px) {
+  .shelf-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .shelf-row .plug-tag { display: none; }
+}
+
 /* ══ OS-99 业务套件中心（主从两栏，对齐 DSH 插件管理）══════════
    左列＝套件清单（谁是谁一眼看出），右列＝选中项详情（来源/能力/启停/设置） */
 .suite-center .suite-split {

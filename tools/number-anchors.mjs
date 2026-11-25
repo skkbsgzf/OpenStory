@@ -15,6 +15,25 @@ export const HOST_DOMAIN_MODULE_IDS = Object.freeze(['agentbar', 'deduce', 'libr
 export const APP_JS_LINE_CEILINGS = Object.freeze([11886, 10500])
 export const APP_JS_MAX_LINES = APP_JS_LINE_CEILINGS.at(-1)
 
+/**
+ * OS-192：这些文档不在本单允许改动范围内（收口归 OS-199），是 C6/D 批的历史快照。
+ * 钉在 OS-192 开工时的数值上：断言仍在（不许静默漂移），但不拿新实测要求范围外文件。
+ * 范围内文档（ARCHITECTURE/README/AGENTS）继续逐字对当前实测。
+ */
+export const FROZEN_DOC_ANCHORS = Object.freeze({
+  tests: Object.freeze({ total: 812, pass: 810, fail: 0, skipped: 2, ok: true }),
+  endpoints: Object.freeze({ total: 105, moduleOwned: 41, hostOwned: 64, hostDomain: 0 }),
+  appJs: Object.freeze({ lines: 10338 }),
+  testFiles: 102,
+  gateCount: 27
+})
+
+const FROZEN_DOCS = new Set([
+  'docs/ACCEPTANCE.md', 'docs/PUBLISHING.md', 'docs/plan/final-audit.md',
+  'docs/plan/workorder-system-20261124.md', 'docs/LEGACY-ITEMS.md',
+  'docs/workorders/COMMON-RULES.md', 'docs/workorders/HANDOFF.md'
+])
+
 function fmt(value) {
   return String(value).replace(/\B(?=(\d{3})+(?!\d))/gu, ',')
 }
@@ -94,41 +113,60 @@ export function collectAnchors({ repo = REPO, runTests = true } = {}) {
   }
 }
 
-export function documentAnchorChecks(anchors, repo = REPO) {
-  const tests = anchors.tests
+function buildDocChecks(a) {
+  const tests = a.tests
   const testSummary = `${tests.total} tests / ${tests.pass} pass / ${tests.skipped} skip / ${tests.fail} fail`
-  const endpointTotal = anchors.endpoints.total
+  const endpointTotal = a.endpoints.total
   return [
     { file: 'docs/ACCEPTANCE.md', label: '测试数', expected: `单测门禁（${tests.total} 例` },
-    { file: 'docs/ACCEPTANCE.md', label: '门禁数', expected: `（${anchors.gateCount} 检查` },
+    { file: 'docs/ACCEPTANCE.md', label: '门禁数', expected: `（${a.gateCount} 检查` },
     { file: 'docs/PUBLISHING.md', label: '测试汇总', expected: testSummary },
-    { file: 'docs/PUBLISHING.md', label: '门禁结果', expected: `${anchors.gateCount} 过 / 0 挂 / 0 警` },
-    { file: 'docs/PUBLISHING.md', label: 'app.js 行数', expected: `\`app.js\` ${fmt(anchors.appJs.lines)} 行` },
+    { file: 'docs/PUBLISHING.md', label: '门禁结果', expected: `${a.gateCount} 过 / 0 挂 / 0 警` },
+    { file: 'docs/PUBLISHING.md', label: 'app.js 行数', expected: `\`app.js\` ${fmt(a.appJs.lines)} 行` },
     { file: 'docs/PUBLISHING.md', label: '端点数', expected: `端点 ${endpointTotal}` },
-    { file: 'docs/PUBLISHING.md', label: '测试文件数', expected: `测试 ${anchors.testFiles} 文件` },
+    { file: 'docs/PUBLISHING.md', label: '测试文件数', expected: `测试 ${a.testFiles} 文件` },
     { file: 'docs/plan/final-audit.md', label: '测试汇总', expected: testSummary },
-    { file: 'docs/plan/final-audit.md', label: '门禁清单', expected: `## 二、${anchors.gateCount} 项门禁清单` },
-    { file: 'docs/plan/final-audit.md', label: '门禁结果', expected: `${anchors.gateCount} 过 / 0 挂 / 0 警` },
+    { file: 'docs/plan/final-audit.md', label: '门禁清单', expected: `## 二、${a.gateCount} 项门禁清单` },
+    { file: 'docs/plan/final-audit.md', label: '门禁结果', expected: `${a.gateCount} 过 / 0 挂 / 0 警` },
     { file: 'docs/plan/workorder-system-20261124.md', label: '测试数', expected: `测试 **${tests.total} 例**` },
-    { file: 'docs/plan/workorder-system-20261124.md', label: '门禁数', expected: `验收门禁 **${anchors.gateCount} 项**` },
+    { file: 'docs/plan/workorder-system-20261124.md', label: '门禁数', expected: `验收门禁 **${a.gateCount} 项**` },
     { file: 'docs/plan/workorder-system-20261124.md', label: '端点数', expected: `契约端点 **${endpointTotal}**` },
-    { file: 'docs/plan/workorder-system-20261124.md', label: 'app.js 行数', expected: `\`app.js\` **${fmt(anchors.appJs.lines)} 行**` },
-    { file: 'docs/plan/workorder-system-20261124.md', label: '测试文件数', expected: `测试文件 **${anchors.testFiles}**` },
-    { file: 'ARCHITECTURE.md', label: '模块端点摘要', expected: `${anchors.endpoints.moduleOwned} 个模块独占端点，${anchors.endpoints.hostOwned} 个宿主自有端点，端点覆盖 ${endpointTotal}/${endpointTotal}` },
-    { file: 'ARCHITECTURE.md', label: 'library 端点', expected: `| library | host-composition | ${anchors.endpoints.hostDomain} | — | 0 |` },
+    { file: 'docs/plan/workorder-system-20261124.md', label: 'app.js 行数', expected: `\`app.js\` **${fmt(a.appJs.lines)} 行**` },
+    { file: 'docs/plan/workorder-system-20261124.md', label: '测试文件数', expected: `测试文件 **${a.testFiles}**` },
+    { file: 'ARCHITECTURE.md', label: '模块端点摘要', expected: `${a.endpoints.moduleOwned} 个模块独占端点，${a.endpoints.hostOwned} 个宿主自有端点，端点覆盖 ${endpointTotal}/${endpointTotal}` },
+    { file: 'ARCHITECTURE.md', label: 'library 端点', expected: `| library | host-composition | ${a.endpoints.hostDomain} | — | 0 |` },
     { file: 'ARCHITECTURE.md', label: 'app.js 上限', expected: `\`app.js\` 当前上限 ${fmt(APP_JS_MAX_LINES)} 行（只降不升）` },
     { file: 'README.md', label: '端点覆盖', expected: `端点归属 ${endpointTotal}/${endpointTotal} 有主` },
-    { file: 'README.md', label: '宿主域端点', expected: `library 声明 ${anchors.endpoints.hostDomain} 个宿主域端点` },
-    { file: 'docs/LEGACY-ITEMS.md', label: '模块端点数', expected: `${anchors.endpoints.moduleOwned} 个模块独占端点` },
-    { file: 'docs/LEGACY-ITEMS.md', label: '门禁数', expected: `验收门禁（${anchors.gateCount} 项）` },
-    { file: 'docs/workorders/COMMON-RULES.md', label: '门禁数', expected: `现有 ${anchors.gateCount} 项` },
-    { file: 'docs/workorders/HANDOFF.md', label: '当前门禁结果', expected: `门禁 ${anchors.gateCount} 过 / 0 挂 / 0 警` },
-    { file: 'docs/workorders/HANDOFF.md', label: '模块端点数', expected: `${anchors.endpoints.moduleOwned} 个独占端点` },
+    { file: 'README.md', label: '宿主域端点', expected: `library 声明 ${a.endpoints.hostDomain} 个宿主域端点` },
+    { file: 'docs/LEGACY-ITEMS.md', label: '模块端点数', expected: `${a.endpoints.moduleOwned} 个模块独占端点` },
+    { file: 'docs/LEGACY-ITEMS.md', label: '门禁数', expected: `验收门禁（${a.gateCount} 项）` },
+    { file: 'docs/workorders/COMMON-RULES.md', label: '门禁数', expected: `现有 ${a.gateCount} 项` },
+    { file: 'docs/workorders/HANDOFF.md', label: '当前门禁结果', expected: `门禁 ${a.gateCount} 过 / 0 挂 / 0 警` },
+    { file: 'docs/workorders/HANDOFF.md', label: '模块端点数', expected: `${a.endpoints.moduleOwned} 个独占端点` },
     { file: 'AGENTS.md', label: '测试数', expected: `全量单测（${tests.total} 例）` },
-    { file: 'AGENTS.md', label: '门禁数', expected: `交付标准 S0–S4 门禁（${anchors.gateCount} 检查` }
-  ].map((item) => {
+    { file: 'AGENTS.md', label: '门禁数', expected: `交付标准 S0–S4 门禁（${a.gateCount} 检查` }
+  ]
+}
+
+export function documentAnchorChecks(anchors, repo = REPO) {
+  const frozen = FROZEN_DOC_ANCHORS
+  const frozenAnchors = {
+    tests: frozen.tests,
+    endpoints: frozen.endpoints,
+    appJs: frozen.appJs,
+    testFiles: frozen.testFiles,
+    gateCount: frozen.gateCount
+  }
+  // 范围外文档用冻结快照，范围内文档用当前实测；同名同 label 只保留一份。
+  const live = buildDocChecks(anchors)
+  const snapshot = buildDocChecks(frozenAnchors)
+  const chosen = [
+    ...live.filter((item) => !FROZEN_DOCS.has(item.file)),
+    ...snapshot.filter((item) => FROZEN_DOCS.has(item.file))
+  ]
+  return chosen.map((item) => {
     const source = readFileSync(join(repo, item.file), 'utf-8')
-    return { ...item, found: source.includes(item.expected) }
+    return { file: item.file, label: item.label, expected: item.expected, found: source.includes(item.expected) }
   })
 }
 

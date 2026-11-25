@@ -1,147 +1,85 @@
-# OpenStory 业务套件注册协议 · openstory-suite@2
+# OpenStory 货架协议 · 套件＝`openstory-module@2`
 
-> 定位（作者 2026-11-15）：**先定协议，让插件方注册进来；宿主再按协议与功能开放情况准备设置页。**
-> 套件与 OpenStory 的关系＝DSH 与 DSH 插件的关系：有版本号、有归属、有独立设置页、**不常驻**。
-> 本文件是插件方的注册协议原文；宿主（daemon＋工作台）按这里实现，双方以 schemaVersion 对齐。
+> OS-192 收口：五类货架（技能／文风／体裁／运行时／业务套装）都是能力图里的一等套件。
+> **一个装载入口、一套启停与状态、一条依赖闭包**；套件目录里不再有任何可执行内容。
+> legacy 的 `openstory-suite@1`／`@2` 页面模式、`/suite-assets/` 路由与 `suiteStateDataGet/Put` 已整体退役。
 
-## 1. 注册＝放一个目录
+## 1. 唯一真源与投影
+
+`loadSuiteCapabilityManifests()`（`src/protocol/shelfManifests.mjs`）是唯一的套件清单来源。
+单文件/单目录货架**不另加 manifest**：由各自的域适配器把现有事实投影成 module@2 套件形状，不造第二份真源。
+
+| 货架 | 投影来源 | `supplies` | `appliesTo`（硬依赖） |
+|---|---|---|---|
+| `skills/<id>/` | `SKILL.md` frontmatter | `skill` | `agent.runtime` |
+| `styles/<id>.json` | JSON 的 id/name/version/vendor | `resource`（`resourceKind: style`） | 无（消费方是底座界面；校验器只对文风包允许空） |
+| `genres/<id>.json` | 同上 | `resource`（`resourceKind: genre`） | `storage.scaffold`、`prose.write` |
+| `runtimes/<id>/` | kit 的 `manifest.json` | `runtime` | `agent.runtime` |
+| `suites/<id>/` | `manifest.json`（已是 module@2） | 原样 | 原样 |
+
+投影出的五类都进能力图（`loaded`／`degraded`／`disabled`）与 `/api/plugins` 启动报告。
+各货架原有读取端点（`skillsGet`／`skillGet`／`stylesGet`／`genresGet`／运行时相关端点）保留端点 id、路径与响应形状，内部改从统一清单取数。
+
+## 2. 业务套装目录（真源就是 `manifest.json`）
 
 ```
-suites/                          ← 内置 openstory/suites/ 或本机 %LOCALAPPDATA%/OpenStory/openstory/suites/
+suites/                          ← 内置 <库或仓>/suites/ 或本机 %LOCALAPPDATA%/OpenStory/openstory/suites/
   <suite-id>/
-    manifest.json                ← 注册表（唯一必需）
-    settings.html                ← 可选：自带设置页（capabilities.settings.mode="page" 时）
-    （其他资产随套件自带）
+    manifest.json                ← openstory-module@2 class:suite（唯一必需）
+    rules.json / skills/…        ← 数据 .json/.md/.txt/.yaml/.yml/.css、位图、字体
 ```
 
-宿主每次请求现扫货架；**本机目录按 id 覆盖内置**；删目录即下架；`.openstory`/隐藏目录不扫。
-
-## 2. manifest（注册表）
+宿主每次请求现扫货架；**本机目录按 id 覆盖内置，并显式报告谁覆盖谁、来自哪个目录**（`/api/suites`、`/api/plugins` 的 `overrides`）；删目录即下架；`.openstory`／隐藏目录不扫。
 
 ```json
 {
-  "schemaVersion": "openstory-suite@2",
-  "id": "comicdrama",
-  "name": "漫剧套件",
-  "version": "0.2.0",
-  "vendor": "skkbsgzf",
-  "description": "一句话说明",
-  "domains": ["漫剧"],
-  "capabilities": {
-    "settings": { "mode": "page", "entry": "settings.html" },
-    "pages":    [{ "id": "board", "title": "分镜板", "entry": "board.html" }],
-    "services": []
-  }
+  "spec": "openstory-module@2",
+  "id": "writing",
+  "name": "写作套件",
+  "version": "0.1.0",
+  "class": "suite",
+  "builtin": true,
+  "description": "小说写作的默认规则",
+  "supplies": ["skill"],
+  "entries": { "skill": "skills" },
+  "appliesTo": [{ "id": "prose.write", "min": 1 }],
+  "deps": [],
+  "settings": [
+    { "key": "newChapterTitle", "label": "新建章节默认标题", "type": "string", "default": "未命名章" }
+  ]
 }
 ```
 
 | 字段 | 必填 | 规则 |
 |---|---|---|
-| `schemaVersion` | ✓ | 精确 `openstory-suite@2`（`@1` 的顶层 settings[] 自动按 schema 模式兼容，新套件请用 @2） |
-| `id` / `name` / `version` / `vendor` | ✓ | id `[\w-]`；version 三段数字；vendor＝归属（官方/社区署名） |
-| `domains` |  | 业务域标签（写作/编剧/漫剧…），展示用 |
-| `capabilities.settings` |  | **设置页能力**，两种模式见 §3 |
-| `capabilities.pages` |  | 自带业务页登记（id/title/entry）——**协议位：宿主登记并展示，装载随业务页宿主上线** |
-| `capabilities.services` |  | 服务声明（id/description），id 应落在宿主白名单——见 §3.5 |
+| `spec` | ✓ | 精确 `openstory-module@2`；`openstory-module@1` 直接拒收并给出明确警告（无迁移入口） |
+| `id` / `name` / `version` | ✓ | id 小写字母开头、`a-z0-9-`、≤40 字；version 三段数字；id 必须等于目录名 |
+| `class` | ✓ | `suite`（内核/工作台另有矩阵） |
+| `builtin` | ✓ | 必须与装载源一致（内置目录 `true`、本机目录 `false`） |
+| `supplies` / `entries` | ✓ | supplies ∈ skill/deduce-rule/media-workflow/resource/runtime/bundle；entries 每个供给一项、必须指向目录内真实文件 |
+| `appliesTo` | ✓ | 硬依赖范围数组（文风包允许空）；`resource` 供给必须声明 `resourceKind: style\|genre` |
+| `deps` |  | 其它套件 id 数组，进 `resolveSuiteDependencies` 依赖闭包 |
+| `settings` |  | `{key,label,type,default,options?}`，type ∈ string/number/boolean/select |
 
-## 3. 设置页能力（两种模式，宿主按声明准备）
+## 3. 套件只许数据与说明
 
-### 模式 A：`schema`（宿主渲染表单）
-```json
-"settings": { "mode": "schema", "schema": [ { "key": "newChapterTitle", "label": "…", "type": "string", "default": "…" } ] }
-```
-type ∈ string/number/boolean/select（select 带 options，default 必须在 options 内）。
-宿主渲染表单＋校验＋落本机 `suite-state.json`（原子写）。
+扩展名白名单：`.json/.md/.txt/.yaml/.yml/.css/.png/.jpg/.jpeg/.webp/.gif/.ico/.woff2`。
+HTML、SVG、WASM 与任何脚本扩展名一律拒收（理由：不凭空许诺可执行内容、不许死设置项）。
+漫剧占位套件（`comicdrama`）因两个设置项无任何消费者、设置页是可执行孤岛，已按作者裁定删除。
 
-### 模式 B：`page`（套件自带设置页——DSH 插件同款）
-```json
-"settings": { "mode": "page", "entry": "settings.html" }
-```
-- 宿主经 **`GET /suite-assets/<id>/<相对路径>`** 提供套件资产（同源 iframe 装载；路径安全化，≤2MB，只读）。
-- 套件页读写自己的配置走两个同源 API（宿主存本机，值＝任意 JSON 对象，宿主不校验形状）：
-  - `GET /api/suite/state-data?id=<id>` → `{ok, values}`
-  - `PUT /api/suite/state-data?id=<id>` body `{values: {...}}` → `{ok, values}`
-- 停用语义不变：停用＝宿主不再应用套件规则（值保留）。
+## 4. 生命周期与统一治理
 
-## 3.5 服务白名单（`capabilities.services`，OS-129）
+安装＝放目录 → 货架可见；启用/停用＝`PUT /api/suite/state`（值保留）；下架＝删目录。
+启停与设置值统一落库内 `.openstory/plugins/suite-state.json`（机器级同名文件只作没开库时的缺省）：
+五类货架通用 `suitesGet`／`suiteStatePut`／`suiteSettingsPut`。停用＝规则退回内置默认，值保留，宿主绝不假装它在场。
 
-服务声明＝套件告诉宿主「我要用哪些宿主侧服务面」。**白名单是「宿主真的会理你」的提示，
-不是权限闸**（学 @open-design/plugin-runtime 的 KNOWN_CAPABILITIES：warning 不拒载）：
-id 不在白名单里，宿主捎一条 `SUITE_SERVICE_UNKNOWN` warning，**声明照常登记、套件照常加载**。
+依赖闭包覆盖 `deps`（套件 id）与 `appliesTo`（能力范围）：缺依赖/成环的条目照常上架但标 `blocked`，作者能看见「它为什么没生效」。
 
-宿主白名单（`suites.mjs` 的 `KNOWN_SERVICE_IDS`，冻结数组；每项对应一处真实宿主实现）：
-
-| 服务 id | 宿主实现 |
-|---|---|
-| `settings-page` | page 模式设置页同源 iframe 装载：`GET /suite-assets/<id>/<entry>`（§3 模式 B） |
-| `assets` | 套件静态资产只读服务：`GET /suite-assets/<id>/<相对路径>`（路径安全化、≤2MB）＋ `/suite-assets/_tokens.css` 宿主令牌下发（§4.5） |
-| `state-data` | page 模式原始配置读写通道：`GET/PUT /api/suite/state-data`（§3 模式 B 的两个同源 API） |
-
-```json
-"services": [
-  { "id": "settings-page", "description": "自带设置页经宿主同源装载" },
-  { "id": "state-data", "description": "配置走宿主 state-data 通道" }
-]
-```
-
-盘点口径：宿主没有对应实现的 id **不进白名单**（如业务页装载——宿主今天只登记展示）。
-声明白名单外的 id 不报错：新服务面上线前，作者可以先占位声明，宿主升级后自动「被理」。
-
-## 4. 生命周期（非常驻）
-
-安装＝放目录 → 货架可见（版本/归属/能力 chips）；启用/停用＝`PUT /api/suite/state`（值保留）；
-下架＝删目录。停用的套件：宿主不应用其规则、其自带页横幅提示——**宿主绝不假装它在场**。
-
-## 4.5 套件前端规范（OS-95，page 模式的 settings.html / board.html 必读）
-
-作者口径：「整体的规范性还是要在统一的 UI 里面去管理。」
-插件页跑在同源 iframe 里，**不继承父文档的 CSS 变量**——所以宿主要主动下发。
-
-### 第一步：链接宿主令牌
-
-```html
-<link rel="stylesheet" href="/suite-assets/_tokens.css">
-```
-
-这一个 link 给你全套令牌（宿主按当前档位算好具体值下发）：
-
-| 类别 | 令牌 |
-|---|---|
-| 字号 | `--ui-fs-2xs` … `--ui-fs-2xl`（8 级） |
-| 行高 | `--ui-lh-tight|normal|loose` |
-| 控件 | `--ui-ctl-h`（高度）、`--ui-ctl-px`（横向内边距）、`--ui-row-py` |
-| 间距 | `--ui-gap-3xs` … `--ui-gap-2xl`（8 级） |
-| 配色 | `--bg` `--soft` `--ink` `--ink-2` `--muted` `--meta` `--line` `--hair` `--accent` `--accent-hover` `--accent-soft` `--ok` `--danger` `--warn` `--on-accent` |
-| 圆角 | `--radius` `--radius-md` `--radius-lg` `--pill` |
-| 字体 | `--sans` `--serif` `--mono` |
-
-暗色：`html[data-theme="dark"]` 已内置覆盖；套件页在 `<html>` 上打这个属性即可跟随夜皮。
-
-### 第二步：只用令牌写样式
-
-```css
-/* ✅ */
-label { font-size: var(--ui-fs-sm); color: var(--ink-2); margin-bottom: var(--ui-gap-2xs); }
-input { height: var(--ui-ctl-h); padding: 0 var(--ui-ctl-px); border: 1px solid var(--line); border-radius: var(--radius); }
-
-/* ❌ 禁止 */
-label { font-size: 12px; color: #6f6a63; }
-```
-
-**禁止裸写像素与十六进制色值**。宿主换皮、调字号档时，插件页必须自动跟随。
-
-### 第三步：样板
-
-`suites/comicdrama/settings.html` 是完整样板（0 裸值、全令牌）。新套件照抄它的结构。
-
-### 自检
-
-- [ ] `<link rel="stylesheet" href="/suite-assets/_tokens.css">` 在 head 里
-- [ ] 页面样式里没有 `font-size: Npx` / `#hex`
-- [ ] 控件高度用 `--ui-ctl-h`，间距用 `--ui-gap-*`
-- [ ] 暗色下可读（切夜皮看一眼）
+设置页只在一处管理六组（技能包／文风包／体裁包／运行时套件／业务套装／推演规则包），每项可启停；
+原来分散的「插件总览」「运行时货架」「风格包」「技能」管理入口不再重复同一个动作。
+选择动作（当前皮肤、当前 Agent 运行时）仍留在「外观」与「引擎与存储」，与启停不是同一件事。
 
 ## 5. 最小示例
 
-见 `openstory/suites/comicdrama/`（@2 page 模式：自带 settings.html）与
-`openstory/suites/writing/manifest.json`（@1 schema 模式，两处规则已接线）。
+`src/services/suites.mjs` 的 `normalizeSuite()` 是唯一规整入口；内置写作/编剧/推演规则三个套件（见 `suites/`）是金样。
+页面渲染样板见 `public/views/suiteShelfViews.mjs`（只用令牌，无裸色值/裸像素）。
