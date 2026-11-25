@@ -157,3 +157,16 @@ VERIFIED:
 
 LIMITATIONS: 发现另有一类同源残留但未改：`tools/eval/eval-kbw.mjs:19` 与 `tools/eval/write-sample.mjs:13` 仍 import 已删除的 `src/services/style-check.mjs`（现实现在 `src/modules/text/lint.mjs`）。它们不在工单「允许改动」清单内，也不在本次必跑的测试/门禁/e2e 覆盖范围内，故按范围约束未动；如需一并修复请授权。
 ```
+
+## 验收记录（监督线，2026-11-25）
+
+- 施工提交 `2e17198`（两轮；第二轮只修了 `tools/verify/verify-os172-e2e.mjs` 两处失效 import）。全量 816／814 过／2 条件跳过／0 挂；门禁 28／0／0；数字锚与架构统计一致；隔离 e2e 全绿；金样测试文件相对第三批落袋（`106af36`）未动。
+- 监督线独立探针（不依赖施工方的门禁实现）实测：
+  - `src/protocol/` 9,060→5,975 行；上一轮被搬进去的九个业务实现文件（`agentStore`、`deduceSession`、`habits`、`knowledge*`、`importAdapter`、`libraryInventory`、`referenceStore`、`libraryTextUtil`、`agentCredentials`）已全部回到所属模块；带网络请求与子进程的代码不在 protocol。
+  - 模块空壳 0；模块→别的模块静态 import 0；内核↔内核 0。
+  - 宿主→模块内部：3 条，全部指向两个宿主组合面（`api/handlers/agent.mjs`、`host/daemon.mjs` → `agentbar/agentStore`；`host/libraryManage.mjs` → `library/index`）；宿主→其它模块内部 0。
+  - `src/services/` 正好七个：`genres`、`runtimes`、`skills`、`stylePacks`、`suites`、`systemPrompt`、`syncCheck`；`systemPrompt` 顶层不再持有任何内核实现。
+  - 钩子贡献到位：`CONTRIBUTION_KEYS` 含 `hooks`；`habits`、`knowledge`、`worldbook` 在 `activate()` 里贡献 `beforeWrite`／`promptContext`／`referenceIndex`／`startup` 钩子；`src/host/moduleHooks.mjs` 退成经 `hooksFor()` 取用的薄口，与 handler 同一张按库快照换的贡献表。
+  - 门禁三条新断言在册（模块不是壳／protocol 清单与 `README` 逐一对上＋I/O 例外登记在册／宿主只对两个宿主组合面放行）。监督线亲跑反证：往 `src/protocol/slots.mjs` 写一个 `fetch()` → S2.1 红并点名「协议层不许调用 fetch / spawn」；还原后绿。
+- **余项（同手法的小尾巴，转 [OS-195b](OS-195b-boundary-tails.md)）**：`src/protocol/factGuard.mjs`（263 行写前守卫，只有一个工作台在用）、`upstream.mjs`（推演内核经叶子拿对话通道，没走句柄）、`index.mjs`（`host-api@2`，只有三个测试文件在用）、`embeddingBackend.mjs`（裸包名挪进 protocol）、`runtimeShelf.mjs`（从 services 转供 sidecar）；另有三处在模块顶层持有实现登记表（`imagegenEngine`、`host/daemon`、`host/mcp`），以及 `tools/eval` 两处失效 import。
+- 结论：**主体已验收**；余项走 OS-195b。
