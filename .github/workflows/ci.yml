@@ -45,24 +45,29 @@ jobs:
           node tools/arch-stats.mjs --check 2>&1 | tee arch-check.log
 
       # 失败时把失败用例名当注解发出来（公开仓也能查，不必登录取 artifact）。
+      # GitHub 的 bash 默认带 -e -o pipefail：grep 没命中会让步骤自己变红，所以这里显式 set +e。
       - name: Report failing tests as annotations
         if: failure()
         shell: bash
         run: |
+          set +e
           shopt -s nullglob
-          for log in test-round-*.log acceptance.log arch-check.log; do
+          for log in test-round-1.log test-round-2.log acceptance.log arch-check.log; do
             [ -f "$log" ] || continue
-            grep -E '^not ok |^✖ |^  ✖ |^✗ ' "$log" | head -n 30 | while IFS= read -r line; do
+            while IFS= read -r line; do
+              [ -n "$line" ] || continue
               safe="${line//'%'/'%25'}"
               safe="${safe//$'\r'/}"
-              safe="${safe//$'\n'/'%0A'}"
               echo "::error title=${log}::${safe}"
-            done
+            done < <(grep -E '^not ok |^✖ |^✗ ' "$log" | head -n 30)
           done
-          echo "### 失败摘要（$GITHUB_SHA）" >> "$GITHUB_STEP_SUMMARY"
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
-          grep -hE '^ℹ (tests|pass|fail|skipped)|^not ok |^✖ |^✗ |^验收门禁' test-round-*.log acceptance.log 2>/dev/null | head -n 40 >> "$GITHUB_STEP_SUMMARY" || true
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "### 失败摘要（$GITHUB_SHA）"
+            echo '```'
+            grep -hE '^ℹ (tests|pass|fail|skipped)|^not ok |^✖ |^✗ |^验收门禁' test-round-1.log test-round-2.log acceptance.log arch-check.log 2>/dev/null | head -n 40
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit 0
 
       - name: Upload gate logs
         if: always()
