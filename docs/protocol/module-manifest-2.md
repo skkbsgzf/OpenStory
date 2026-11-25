@@ -2,7 +2,7 @@
 
 **状态：B1–B5、C 批（C1–C6）、D1–D4 与 OS-192 均已实施；七内核统一注册、动态激活、能力路由、slot 注册表、五类货架一等套件与数字锚门禁均已通过。本机可执行模块由 OS-196 开放、OS-196a 返工三道门（运行期边界／先检查后激活／整图摘要）与端点归属规则；OS-198 起 slot 投影（`slots` 字段＋第三方 iframe 页面）已接线；按层原子热切换已由 OS-196a 实施（候选层三检查后一次同步赋值、在途请求持旧句柄，见 §7.4 与 [ADR 0003](../adr/0003-dynamic-loading.md) §三），剩余的是「运行时自注册端点／slot 旁路」与第三方 runtime 命令执行，均仍不开放。架构裁定见 [ADR 0002](../adr/0002-base-constitution.md)。**
 
-当前仓使用 `openstory-module@2`，21 份内置 manifest＝7 kernel＋12 workbench＋2 无 class 宿主组合面；**OS-192 起装载只认一套规则（原 stage C），stage 参数与 @1 双读/迁移脚手架全部删除**。能力图、停用事务、薄代理、模块级 `core`／`MODULE_CORE` 退役、动态 `activate` 与贡献校验均已落地。五类货架（技能/文风/体裁/运行时/业务套装）经 `loadSuiteCapabilityManifests()` 投影成 module@2 套件，与模块共用一张能力图与一份 suite-state；legacy `openstory-suite@1/@2` 页面模式已整体退役。端点 id/path 与 MCP 工具名不变（退役的两个端点除外）。
+当前仓使用 `openstory-module@2`，21 份内置 manifest＝7 kernel＋12 workbench＋2 无 class 宿主组合面；**OS-192 起装载只认一套规则（原 stage C），stage 参数与 @1 双读/迁移脚手架全部删除**。能力图、停用事务、薄代理、模块级 `core`／`MODULE_CORE` 退役、动态 `activate` 与贡献校验均已落地。五类货架（技能/文风/体裁/运行时/业务套装）经 `loadShelfCapabilityManifests()` 投影成 module@2 套件，与模块共用一张能力图与一份 suite-state；legacy `openstory-suite@1/@2` 页面模式已整体退役。端点 id/path 与 MCP 工具名不变（退役的两个端点除外）。
 
 ---
 
@@ -516,7 +516,7 @@ export async function activate(context) {
 
 内置源扫描仓内固定 `src/modules/<id>/`；OS-196 起，作者显式登记并确认的本机模块根也进入候选源（只枚举登记根，未登记不扫描；见 §8.5 与 ADR 0003）。来源记录包含 `source`、`sourceDir`、manifest SHA-256、`contentSha256` 与派生角色；固定内置目录声明 `builtin:false` 会被拒绝。当前 21 份内置清单为 7 kernel、12 workbench，以及无 class 的 `agentbar`／`library` 宿主组合面；七内核件已落盘，运行时调用 `loadModuleManifests(dir)`（无 stage 参数）。数据类 suite 从仓内授权货架装载且禁可执行代码；本机/第三方可执行模块的装载门 G1–G5 见 ADR 0003。
 
-套件源映射（OS-192 统一入口 `loadSuiteCapabilityManifests()`）：`skills/<id>/SKILL.md`、`styles/<id>.json`、`genres/<id>.json`、`runtimes/<id>/manifest.json`、`suites/<id>/manifest.json`。单文件/单目录货架由域适配器投影成 module@2，不另加 manifest、不发明第二套语法。五类都进能力图（loaded/degraded/disabled）与 `/api/plugins` 启动报告；依赖闭包覆盖 `deps` 与 `appliesTo`。
+套件源映射（OS-192 统一入口 `loadShelfCapabilityManifests()`）：`skills/<id>/SKILL.md`、`styles/<id>.json`、`genres/<id>.json`、`runtimes/<id>/manifest.json`、`suites/<id>/manifest.json`。单文件/单目录货架由域适配器投影成 module@2，不另加 manifest、不发明第二套语法。五类都进能力图（loaded/degraded/disabled）与 `/api/plugins` 启动报告；依赖闭包覆盖 `deps` 与 `appliesTo`。
 
 ### 10.2 源发现顺序
 
@@ -542,7 +542,7 @@ export async function activate(context) {
 | S2.7／`tools/acceptance/moduleCoverage.mjs` | stage-C 归属＋能力图＋独立进程 activate/贡献校验 | 宿主白名单只保留带能力理由的宿主组合面 |
 | `versionGate.mjs:minVersionGate` | `minOpenStoryVersion` 应用版本闸 | 与 capability major 分离；保留缺字段/坏格式 fail-open |
 | `test/decoupleStep2.test.mjs` | storage/fact 内部能力金样 | 金样随能力走，不作 Pinax 互认 |
-| skills/suites/runtimes/styles/genres 各自加载 | 统一 `loadSuiteCapabilityManifests()` 投影 | 不造第二份真源；本机覆盖必须显式报告 |
+| skills/suites/runtimes/styles/genres 各自加载 | 统一 `loadShelfCapabilityManifests()` 投影 | 不造第二份真源；本机覆盖必须显式报告 |
 | suite `requires`＋`dependencyGraph` | suite `deps`＋`appliesTo` 闭包 | `deps` 进拓扑/SCC；`appliesTo` 进能力图硬依赖检查 |
 | suite page 模式 `.html/.mjs/.js` | 已退役 | 无 `/suite-assets/`、无 suiteStateData 端点、无 legacy spec；漫剧占位套件已删 |
 | ~~`host-api@2`~~（已退役，OS-195b） | 由底座 `context.*` ＋ `capabilityImplementations.mjs` 登记表＋ `context.resolve` 句柄取代；本行只作迁移索引，不是现存入口 | 第二套 `host-api@2` 命名空间入口已删；破坏性删除/改签名才升主版本；C6 另要求 `base.*` 五项句柄存在 |

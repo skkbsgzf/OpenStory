@@ -185,7 +185,13 @@ export function loadShelfFacts({
       // 同一目录喂两遍，让加载器分别按「内置/本机」口径验 builtin；只取需要的那一遍。
       const wantedSource = sourceOf(index)
       const shelf = (typeof loadSuitesOverride === 'function' ? loadSuitesOverride : loadSuites)([dir, dir])
-      for (const warning of shelf.warnings ?? []) warnings.push({ kind: 'suite', ...warning })
+      // 双喂只为让加载器分别按「内置/本机」验一遍 builtin；只保留与本次装载源匹配那一遍的警告。
+      // 否则内置套件会被合成出来的「本机」那一遍报 SUITE_BUILTIN_MISMATCH，挂到每次 /api/plugins 上。
+      const sourcePrefix = `${wantedSource}·`
+      for (const warning of shelf.warnings ?? []) {
+        if (text(warning?.dir) && !text(warning.dir).startsWith(sourcePrefix)) continue
+        warnings.push({ kind: 'suite', ...warning })
+      }
       for (const raw of (shelf.suites ?? []).filter((item) => item.source === wantedSource)) {
         const suite = { ...raw, source: wantedSource, builtin: index === 0 }
         const manifest = projectSuite(suite)
