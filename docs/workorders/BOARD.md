@@ -137,7 +137,7 @@
 | 4 | [OS-191](OS-191-graph-migration-consistency.md) | 能力图与迁移框架自洽：校验对齐、回退语义、journal 补全、可执行扫描改白名单 | 低 | **已验收**（监督线补齐 `arch:stats` 回写；探针 A1–A7✓） |
 | 5 | [OS-192](OS-192-shelves-manifest2.md) | 货架全面升格：五类货架进能力图、漫剧占位套件与 legacy 页面模式退役、过渡脚手架退役 | 中高 | **已验收** `2c99b6c`（48 货架全 loaded✓ 两处退役面 404✓ 808 例✓） |
 | 6 | [OS-193](OS-193-kernel-handles.md) | 内核件归位与句柄化：services 里的内核代码搬家、内核之间只经句柄、转供叶减半 | 高 | **已验收** `7f28172`（跨内核直连 0✓ services→内核 0✓ S2.11✓ 金样未动✓；K4 签名一半转 OS-195） |
-| 7 | [OS-194](OS-194-handlers-to-plugins.md) | 端点实现归插件：handler 搬进模块、经 `activate()` 登记、daemon 按库快照分派 | 高 | 待派（第 4 轮） |
+| 7 | [OS-194](OS-194-handlers-to-plugins.md) | 端点实现归插件：handler 搬进模块、经 `activate()` 登记、daemon 按库快照分派 | 高 | **已验收** `826e75e`（activate 生产调用点✓ 停用 409✓ 契约零变✓） |
 | 8 | [OS-195](OS-195-boundary-gates.md) | 边界收口：工作台之间去直连、`protocol` 只留底座契约、门禁改量真实耦合 | 高 | 待派（第 5 轮） |
 | 9 | [OS-196](OS-196-dynamic-loading.md) | 动态装载开放：本机模块根的信任门、身份门、边界门、切换门、失败门 | 高 | 待派（第 6 轮） |
 | 10 | [OS-197](OS-197-migration-wiring.md) | 迁移器接线：生产调用点、失败安全阀、回退保护 | 中高 | 待派（第 7 轮） |

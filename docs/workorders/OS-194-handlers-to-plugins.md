@@ -88,3 +88,13 @@ LIMITATIONS:
 - MCP server 未改代码：24 工具本就全走 daemon HTTP，自动共用 contribution table；仅 analysis 走 `KERNEL_CAPABILITIES.textAnalyze` 单一静态入口（符合 OS-193）。本轮未跑水浒/新建 e2e。
 - 「在途请求持旧句柄」由「先取 handler 引用再 await」的代码结构保证，未写专门的并发时序测试。
 ```
+
+## 验收记录（监督线，2026-11-25）
+
+- 提交 `826e75e`；工作树干净；全量 816／814 过／2 条件跳过／0 挂；门禁 28／0／0；数字锚与架构统计一致；隔离 e2e 全绿；`app.js` 未动。
+- **`activate()` 的生产调用点已落地**：`src/host/handlerTable.mjs` 的 `contributionTable(root)` 按 `capabilitySnapshotFor(root).id` 缓存并调用 `activateModules({ snapshot })`；daemon 的端点分派（`src/host/daemon.mjs:385`）经 `handlerFor` 取 handler——不是测试或门禁在调。
+- handler 归位：`chapters`／`worldbook`／`roleplay`／`artifacts`／`habits`／`imagegen`／`knowledge`／`exchange` 八个模块各有 `handlers.mjs`；`src/api/handlers/exchange.mjs` 删除，`fact`／`reference`／`system`／`chapters` 四个宿主文件大幅瘦身（宿主自有 64 个端点留在契约壳）。
+- 贡献校验双向：handler 键不在 manifest `endpoints` 里拒收；声明的端点没有 handler 也拒收（`src/protocol/moduleActivation.mjs:27-33`）。
+- 隔离 daemon 实测：`/api/artifacts` 200、`/api/habits` 200；停用 `artifacts` 后该端点 409 `MODULE_DISABLED`、共用端点 `/api/fact/curve` 仍 200；重新启用回 200。
+- 对外契约零变化：端点 103、路径、方法、请求/响应形状、MCP 工具名均未变（契约与 MCP 测试全绿）。
+- 结论：**已验收**。剩余 `src/api/handlers/*` 只承载宿主自有端点；工作台之间与 protocol 转供叶的收口归 OS-195。
