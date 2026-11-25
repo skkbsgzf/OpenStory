@@ -113,3 +113,19 @@ LIMITATIONS:
 - 边界门按工单要求明确「不是沙箱」：登记的模块与 daemon 同进程同权限，`eval`/`Function` 直接访问 `process`、使用允许的 `node:fs` 等不在 import 解析钩子的管辖内；已写入 AGENTS/ADR/协议文档与预览风险说明。
 - 本机模块按新归属规则不得认领宿主端点或他人端点；既有红线测试中依赖旧行为（新 id 模块声明 `stylesGet`/`genresGet`）的断言已同步改写为自带端点，未弱化原守卫目标。
 ```
+
+## 验收记录（监督线，2026-11-25）
+
+- 提交 `28ca775`；工作树干净；全量 832／830 过／2 条件跳过／0 挂；门禁 28／0／0；数字锚与架构统计一致；隔离 e2e 全绿；`app.js` 未增（10,108）。
+- **监督线六场景验收仪器**（`D:\Pinax-e2e\.zcode\tmp\verify-196a.mjs`，隔离 daemon＋临时院子＋临时模块根，端到端），六个全部翻转：
+  1. 注释吞 import 的模块 → `invalid / boundary`，标记文件未被写（上一版：装载成功并读到仓库内核登记表）。
+  2. 两个工作台抢同一端点 → 两者 `activate()` 都没跑（上一版：都跑过）。
+  3. 改依赖文件 `v1→v2` 后刷新 → `activate()` 看到 `v1→v2`（上一版：仍是 v1）。
+  4. 全新模块声明 `uiStatePut` → `invalid / switch`，`PUT /api/ui-state` 仍是宿主行为（上一版：被接管）。
+  5. 模块自带端点 `GET /api/modules/own-ep/hello` → 200 `{"marker":"from-local-module"}`（新增能力）。
+  6. 本机模块贡献 `promptContext` 钩子 → 宿主 `hooksFor(root, name, env)` 取到 `HOOK_FROM_LOCAL`（上一版：未接入）。
+- **静态扫描器九例对抗**：八种绕法全部点名拒绝（注释吞 import、`createRequire` 改名、unicode 转义 `eval`、`(0, eval)`、`Function` 不带 new、`getBuiltinModule`、`AsyncFunction`、`file://` 绝对 URL、计算属性名），合规那例放行。
+- 实现要点核对：运行期解析钩子在 `src/host/moduleBoundaryHooks.mjs:99`（`module.registerHooks`），激活前安装（`src/host/moduleLoader.mjs:106`）；三检查前移（`moduleRuntime.mjs:253` manifest 层端点归属 → `:257` 底座/内置路由 → `:289` 只激活合格模块 → `:317`/`:324` 淘汰后重做 → 原子切换）；端点归属判定 `moduleRuntime.mjs:124`。
+- `package.json` 的 `engines` 抬到 `>=22.15.0`（`module.registerHooks` 需要），ADR 0003、AGENTS.md 已写明；CI 用 Node 24，不受影响。ADR 0003 与 AGENTS 同时写明「边界门不是沙箱」。
+- 新增守护测试 `test/localModules196a.test.mjs` 8 例（七绕法静态点名、八个绕法端到端、CJS `require` 越界、抢端点双方不跑 activate、依赖与 JSON 新值、自带端点校验与停用 409、拒接管 `uiStatePut`、本机钩子接入与停用消失）。
+- 结论：**已验收**。动态装载五道门（信任／身份／边界／切换／失败）至此真正成立。
