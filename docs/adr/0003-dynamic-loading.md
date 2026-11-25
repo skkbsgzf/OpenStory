@@ -24,23 +24,32 @@ slot 扩展程序：新增 slot＝在本表登记（id/label/description/scope�
 底座初始保留位仍是 `tab/right/sidebar/host-actions/settings`；OS-198 起 `/api/plugins.slots` 按库投影，
 前端不再持有页签名单。第三方工作台页面用 `pages[].kind:'iframe'`＋`entry`，经 `/module-page/<id>/<entry>` 只对已登记且装载成功的本机模块提供。
 
-## 二、开盘前现状盘点（历史，OS-196 前）
+## 二、开门前基线（OS-196 前；逐条附现状）
 
-> 以下六条是 D4 评估时的代码事实，用于说明当时为何不开放；OS-196／196a 已逐条改变，现状见 §三证据。
+> 以下六条的行号与措辞是 D4 评估当时的代码事实（开门前基线），用于说明为何当时不开放；
+> 每条「现状」才是当前实现，逐门证据见 §三。
 
-1. **清单来源是静态的**：`MODULE_MANIFESTS` 只从仓内 `src/modules/` 读取（`src/protocol/modules.mjs:585`），
-   本机目录尚未进入装载源。`MODULE_SOURCES` 已记录每份清单的 `manifestSha256`，但未参与快照身份。
-2. **快照身份不含代码内容**：`snapshotId()` 只哈希 `id/version/enabled`＋路由＋surface＋issues
-   （`src/protocol/capabilityGraph.mjs:52`）。同版本改入口文件，快照 id 不变。
-3. **激活缓存按声明键**：`moduleLoader` 的缓存键是 `[snapshot.id, modulesDir, [id, version, entry]]`
-   （`src/host/moduleLoader.mjs:39`）；同版本改代码会命中旧激活结果。这是当前内置装载可接受的
-   「版本即契约」，但对本机/第三方包是错误前提。
-4. **实现表静态导入**：`IMPLEMENTATIONS = { base, ...MODULE_IMPLEMENTATIONS }`（`src/host/capabilityBindings.mjs:6`），
-   能力实现来自仓内 import；真实 `activate` 贡献只做形状校验（`src/protocol/moduleActivation.mjs`），
-   尚未接管端点/页面注册。
-5. **套件已是无代码数据包**：D3 后 `openstory-module@2 class:suite` 禁带可执行入口，
-   安装源只做 entries 越界与存在性校验；能力图按 `appliesTo` 判活跃。
-6. **切换语义是「按库薄代理」**：每库解析一次快照，句柄冻结实现与快照 id；没有全局热切换。
+1. **基线**：清单来源静态，`MODULE_MANIFESTS` 只从仓内 `src/modules/` 读取（`src/protocol/modules.mjs:585`），
+   本机目录尚未进入装载源；`MODULE_SOURCES` 的 `manifestSha256` 未参与快照身份。
+   **现状**：本机根须经机器级信任表登记与确认（`src/host/moduleRoots.mjs`）才进入候选源，
+   `manifestSha256`＋入口与包内传递依赖（含 JSON）的 `contentSha256` 进快照 id（`src/protocol/capabilityGraph.mjs:52,292`）。
+2. **基线**：快照身份只哈希 `id/version/enabled`＋路由＋surface＋issues，同版本改入口不换 id。
+   **现状**：`snapshotId(..., digests)` 已把逐文件摘要纳入（同上），同版本改代码＝新快照；证据 G2-3。
+3. **基线**：激活缓存键 `[snapshot.id, modulesDir, [id, version, entry]]`（`src/host/moduleLoader.mjs:39`），
+   同版本改代码命中旧激活结果；这是当时内置装载可接受的「版本即契约」。
+   **现状**：缓存键已追加 `fingerprint = [id, manifestSha256, contentSha256]`（`src/host/moduleLoader.mjs:70-71`），
+   解析钩子给包内 import 追加逐文件摘要（`:107`）；证据 G2-3。
+4. **基线**：`IMPLEMENTATIONS = { base, ...MODULE_IMPLEMENTATIONS }`（`src/host/capabilityBindings.mjs:6`），
+   能力实现只来自仓内 import；`activate` 贡献只做形状校验，尚未接管端点/页面注册。
+   **现状**：`capabilityResolver(snapshot, extraImplementations, dataVersions)` 合并本机层贡献
+   （`src/host/capabilityBindings.mjs:8-11`），`src/host/handlerTable.mjs:25` 在真实请求路径按快照从 `activate()` 取
+   handler/钩子，端点归属与贡献校验见 `src/host/moduleRuntime.mjs`。
+5. **基线／现状（未变）**：套件仍是无代码数据包，`class:suite` 禁带可执行入口，
+   安装源校验 entries 越界与存在性，能力图按 `appliesTo` 判活跃；OS-192 的五类货架投影不改这条边界。
+6. **基线**：切换语义是「按库薄代理」，每库解析一次快照、句柄冻结实现与 id，没有全局热切换。
+   **现状**：OS-196a 起按层原子切换已实施——候选层做端点归属＋三检查 → 淘汰违规模块 → 只激活合格者
+   → 校验贡献 → 重做检查 → 一次同步赋值（`src/host/moduleRuntime.mjs:buildLayer/rebuildRuntime`），
+   新请求用新层、在途请求持旧句柄到底；薄代理只是句柄形态，不再是切换机制。
 
 ## 三、G1–G5 逐门验收（OS-196／196a）
 

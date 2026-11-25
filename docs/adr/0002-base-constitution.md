@@ -58,7 +58,7 @@
 
 以下清单覆盖页签栏、正文/剧本右栏、设置页、库切换面板、顶栏路由与 Agent 栏；不是只列可停用工作台。2026-11-25 已与 21 份 manifest（12 workbench＋7 kernel＋2 宿主组合面）及宿主页逐行核对。
 
-| 正名（显示名＝插件名） | 建议 slug | 库内目录名 | 日志模块名 | 前端位置 | 现状不一致／归一动作 |
+| 正名（显示名＝插件名） | 正式 slug（正名 slug） | 库内目录名 | 日志模块名 | 前端位置 | 现状不一致／归一动作 |
 |---|---|---|---|---|---|
 | 正文 | `chapters` | `正文` | `正文` | 页签＋右栏 | 已一致；写引擎已拆为 `prose` 内核件（OS-163），本工作台只留页面与独占端点 |
 | 世界书 | `worldbook` | `世界书` | `世界书` | 页签＋「＋」面板 | OS-190 已把 `namingEntry('reference')` 旧 id 调用改为 `worldbook`；页面 id＝slug `worldbook`，图谱节点类型同步为 `worldbook` |
@@ -87,10 +87,10 @@
 | 1 | `storage` | `storage.roots@1`、`library.list@1`、`storage.scaffold@1`、`storage.inventory@1` | `base.write`、`base.naming` | 所有库、本机院子、货架源、建库骨架与产物盘点的上游；不先解决 root 与源，装载器无法找本机插件，也不能授权库 | `src/modules/storage/{projectDoc,libraryManifest,libraryInventory}.mjs`；`src/protocol/courtyard.mjs` 只作路径纯函数 |
 | 2 | `fact` | `fact.store@3`、`fact.pack@1`、`fact.enrich@1`、`fact.engine@1`、`fact.books@1`、`fact.write@1`、`fact.domain@1` | `base.write`、`base.naming` | 事实链是多个工作台共享的数据契约，无 UI；位于 storage 之上、文本/推演/Agent 之下；engine/books/write/domain 是 OS-153～156 拆出的消费面 | `src/modules/fact/index.mjs`、`src/modules/fact/{fact,enrich}/`、`src/protocol/capabilityImplementations.mjs` |
 | 3 | `prose` | `prose.write@1` | `base.write`、`base.naming`、`fact.store`、`fact.pack` | 正文/剧本/待确认卡/扮演转正共用读取、写语义、备份和留痕；页面不是写协议本身 | `src/modules/prose/{chapters,chapterWrite,factGuard}.mjs` |
-| 4 | `text` | `text.analyze@1` | `base.naming` | 纯函数文本分析同时服务浏览器、MCP、扮演去 AI 味闸和习惯 lint；挂在「分析」工作台会造成内核反向依赖 UI | `src/modules/text/{analysis,lint}.mjs`；`public/analysis.mjs` 与 `src/protocol/text.mjs` 只转供 |
+| 4 | `text` | `text.analyze@1` | `base.naming` | 纯函数文本分析同时服务浏览器、MCP、扮演去 AI 味闸和习惯 lint；挂在「分析」工作台会造成内核反向依赖 UI | `src/modules/text/{index,analysis,lint}.mjs`；`public/analysis.mjs` 只是前端消费，原 `src/protocol/text.mjs` 转供叶已删 |
 | 5 | `deduce` | `deduce.engine@1` | `base.naming`、`fact.store`、`fact.pack`、`agent.runtime` | 确定性回合执行器无 UI；规则由套件参数化，扮演只负责舞台与交互 | `src/modules/deduce/{index,deduceCapability,deduceEngine,deduceSession}.mjs`、`src/modules/deduce/engine/`、`suites/deduce-rules/` |
 | 6 | `agent-runtime` | `agent.runtime@1` | `base.write`、`base.contract` | Agent 存储、DSH/CLI/endpoint 上游、LLM port 是跨工作台服务；不拥有 Agent 栏界面 | `src/modules/agent-runtime/{index,config,credentials,dsh-cli,cli-bridge}.mjs` |
-| 7 | `media` | `media.generate@1`、`media.describe@1` | `base.contract` | 生图不是 LLM 对话运行时；识图虽可经 DSH 执行，产品能力仍是媒体输入/输出。单独成件才能让工作流套件替换参数而不换执行器 | `src/modules/media/{index,generate,describe,probe,comfyEngine}.mjs`；`src/protocol/media.mjs` 只转供 |
+| 7 | `media` | `media.generate@1`、`media.describe@1` | `base.contract` | 生图不是 LLM 对话运行时；识图虽可经 DSH 执行，产品能力仍是媒体输入/输出。单独成件才能让工作流套件替换参数而不换执行器 | `src/modules/media/{index,generate,describe,probe,comfyEngine}.mjs`；工作流 JSON 是 `media-workflow` 套件数据，原 `src/protocol/media.mjs` 转供叶已删 |
 
 **text 结论（建议）**：新增。分析页面可以停用，但 MCP 分析与扮演质量闸不能因此消失；把纯引擎留在工作台会造成 R3 的依赖倒挂。
 
@@ -128,7 +128,7 @@
 |---|---|---|---|---|
 | 1 | skill 包 | `skill` | 提示词与手艺配方是数据；Agent 执行，套件不加载代码 | `skills/`（31 包）、`src/services/skills.mjs` |
 | 2 | 推演规则包 | `deduce-rule` | 2d6、局面卡、候选模板是可替换规则数据；确定性仍在 `deduce.engine` | `suites/deduce-rules/{manifest,rules}.json` |
-| 3 | 生图工作流包 | `media-workflow` | ComfyUI 工作流 JSON、节点映射与参数预设是数据；执行在 `media` | `workflows/`、`src/modules/media/comfyEngine.mjs` |
+| 3 | 生图工作流包 | `media-workflow` | ComfyUI 工作流 JSON、节点映射与参数预设是数据；执行在 `media` | 工作流 JSON 样例 `samples/qwen-image-2.1-t2i.json`（仓根 `workflows/` 已随 OS-159 归位并删目录）；执行器 `src/modules/media/comfyEngine.mjs`；`media-workflow` 是协议登记的供给类型，内置套件尚未捆绑该供给 |
 | 4 | 文风包／体裁包 | `resource`＋`resourceKind=style|genre` | 色板、体裁、篇幅与页签裁剪是声明式资源；storage 只执行模板 | `styles/`、`genres/`、`src/services/{stylePacks,genres}.mjs` |
 | 5 | 运行时套件 | `runtime` | CLI kit 的 endpoint/probe/command 是**受控扩展描述**，不是可导入插件代码；适配器在 `agent-runtime` | `runtimes/`、`src/services/runtimes.mjs` |
 | 6 | 业务套装 | `bundle` | 只捆绑上述供给与依赖闭包，不另造执行器 | `suites/`（`writing`、`screenwriting`、`deduce-rules`）、`src/services/suites.mjs` |
@@ -261,14 +261,14 @@
 
 ### 5.1 storage × genres
 
-**现状**：`src/modules/storage/projectDoc.mjs:PROJECT_KINDS/createProject` 拥有骨架目录、载体与建库流程，`libraryInventory.mjs` 提供产物盘点；`src/services/genres.mjs:normalizeGenre/allowedDirs/briefPromptSection` 仍拥有 `deliverables/excludedPages/agentPolicy`。体裁是数据类套件资源，尚未把模板闭包写进能力图。
+**现状**：`src/modules/storage/projectDoc.mjs:PROJECT_KINDS/createProject` 拥有骨架目录、载体与建库流程，`libraryInventory.mjs` 提供产物盘点；`src/services/genres.mjs:normalizeGenre/allowedDirs/briefPromptSection` 仍拥有 `deliverables/excludedPages/agentPolicy`。体裁自 OS-192 起已是 `class:suite` 的 `resource` 供给（`resourceKind:genre`），由 `src/protocol/shelfManifests.mjs:projectGenre` 投影进能力图；尚未做的只有「把体裁模板闭包（交付物／`excludedPages`／篇幅／Agent policy）完整写进能力图」这一步，闭包字段仍由 `src/services/genres.mjs` 的 `allowedDirs/briefPromptSection` 与 `src/services/systemPrompt.mjs` 在目录约束与提示词处消费。
 
 **结论**：
 
 - `storage` 拥有 root、清单、目录安全与「按已验证模板建骨架」的执行器。
 - 体裁包拥有骨架模板、交付物、`excludedPages`、篇幅与 Agent policy。
 - storage 不解释体裁规则；genre 不直接写盘，只能声明模板。
-- 内置最小模板作为保底资源随包；缺体裁资源时 generic 建库仍可用，体裁专属页签不出现。当前 `genres/*.json` 是这一形态的起点，尚未升成 `class:suite` 的独立供给（`src/services/genres.mjs` 继续装载）。
+- 内置最小模板作为保底资源随包；缺体裁资源时 generic 建库仍可用，体裁专属页签不出现。`genres/*.json` 自 OS-192 起已由 `src/protocol/shelfManifests.mjs` 投影成独立 `class:suite` 的 `resource`（`resourceKind:genre`），与模块共用能力图与 suite-state；`src/services/genres.mjs` 继续做原始资源的装载与规范化，未做的是模板闭包写进能力图。
 
 ### 5.2 jobCenter／events
 
@@ -328,7 +328,7 @@
 | 收尾项 | 当前落点 | 状态 |
 |---|---|---|
 | `project.json` 谱系名 | `openstory-project@4`、`openstory.carrier.*`；wiki `openstory-wiki-derived@2`；临时前缀 `.openstory-tmp-` | OS-172 已实现 |
-| `DEMO.md` 口径 | `docs/DEMO.md` 只留《水浒传》 | 已实现；Agent 栏仍写 Pi-Agent 归本稿后续命名批 |
+| `DEMO.md` 口径 | `docs/DEMO.md` 只留《水浒传》 | 已实现（OS-172）；Agent 栏显示名与头像字母 OS-190 已改为「Agent 栏」/`A`，门禁钉死与 agentbar manifest 同名 |
 | 三份 Pinax 对标/历史规划 | `docs/plan/{decouple-pinax-core-20261122,kernel-own-design,route-batch2-20261123}.md` 顶部均标「历史文档，现状以 OS-172 为准」 | 已实现 |
 | 台账「桌面端开新库确认」 | `docs/LEGACY-ITEMS.md` 已无该动作；真库首次打开看升级报告保留为作者动作 | 已实现 |
 | 真实出处 | `docs/kernel-provenance.md`、README 致谢 | 必须保留，不属于品牌关联 |
@@ -350,9 +350,9 @@
 
 ---
 
-## 九、待作者裁定
+## 九、裁定与实施状态（D1–D8 已全部落地）
 
-下列事项均已完成实施或已给出最终裁定；如作者后续调整，以新的明确裁定为准。
+作者已按「不接受妥协」的口径逐项裁定并实施；下列状态是实施事实，不是待批建议；如作者后续调整，以新的明确裁定为准。
 
 | # | 事项 | 状态与证据 |
 |---|---|---|
@@ -361,7 +361,7 @@
 | D3 | `生图与识图`／`知识库` slug | **已实施（OS-190）**：`imagegen`／`knowledge`；外部 `/api/kb/*`、`/api/vision/describe`、MCP 工具名未改。 |
 | D4 | runtime kit 归属 | **已实施（OS-192）**：`runtime` 供给仍属 suite，命令执行在 `agent-runtime`；`src/services/suites.mjs` 禁可执行文件。 |
 | D5 | 宿主域旧模块拆法 | **已实施（OS-193/194）**：`deduce→kernel`；`library→storage 能力＋库管理宿主面`；`agentbar→agent.runtime＋Agent 栏宿主面`。 |
-| D6 | naming 最终归属 | **已裁定（§5.4）**：保留「单一数据＋双端消费」；`base.naming` 只读投影；slot 词表归底座。 |
+| D6 | naming 最终归属 | **已实施（§5.4 定稿，OS-198）**：保留「单一数据＋双端消费」；`base.naming` 只读投影；slot 词表归底座。 |
 | D7 | suite 边界与 legacy page 模式 | **已实施（OS-192）**：新 suite 无宿主可执行代码；legacy 页面模式与 `/suite-assets/` 已退役。 |
 | D8 | 底座硬依赖与停用语义 | **已实施（OS-193/195/196）**：缺依赖不拖死 daemon，hard consumer 缺失回 `PLUGIN_DEGRADED`，作者停用回 `MODULE_DISABLED`。 |
 

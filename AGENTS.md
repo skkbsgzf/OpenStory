@@ -10,10 +10,12 @@ node:http 手写路由，127.0.0.1:8807；
 OS-127 进程治理：单实例锁＋stamp＋generation＋`/api/health`）
 + `public/` 原生 JS 前端。模块：**小说**（纯净写作面）/ **世界书**（世界书笔记＋故事源词条只读层）/
 **习惯**（写作规矩表）/ **故事源**（fact 链可视化）/ **扮演**（主持人＋多角色，默认）/ **确定性推演**（可选）/ **剧本** / **分析**（本地引擎）。
-全部经契约层（`src/api/contracts.mjs` 聚合 `src/api/contracts/` 八域分片，105 端点）分派；
+全部经契约层（`src/api/contracts.mjs` 聚合 `src/api/contracts/` 八域分片，108 端点）分派；
 MCP 对外 24 工具（`src/host/mcp.mjs` 直跑；stdio 独立进程，数据操作走 daemon HTTP 薄适配）。
-分层见 [ARCHITECTURE.md](./ARCHITECTURE.md)（L7 前端→L6 契约→L5 daemon→
-L4 自持层→L2 自有内核 `src/kernel/`→L1 磁盘库；OS-157 起 L2/L3 合并）。
+分层见 [ARCHITECTURE.md](./ARCHITECTURE.md)：OS-173/C6 起不再用 L7–L2 旧层号；按
+前端 `public/` → 契约 `src/api/` → 底座 `src/host/` → 协议 `src/protocol/`＋能力句柄 →
+`src/modules/`（七个内核件＋工作台＋宿主组合面）→ 物理写管道 `src/kernel/` → 磁盘库 描述依赖方向。
+`src/kernel/` 只留写管道、错误词表与身份五个文件；fact 链与 enrich 已归 `src/modules/fact/`。
 
 ## 硬规则（违反＝白干）
 
@@ -310,7 +312,7 @@ node tools/acceptance/acceptance.mjs        # ② 交付标准 S0–S4 门禁（
 
 - 启动入口：`src/host/daemon.mjs` / `src/host/mcp.mjs`（OS-159 直跑，仓根零垫片）
 - 契约层：`src/api/contracts.mjs` 聚合器 ＋ `src/api/contracts/` 八域分片（library/chapters/fact/reference/
-  agent/plugins/system/exchange，105 端点）→ `src/api/handlers/` 八域 handler ＋ `src/api/registry.mjs` 注册表（OS-141，键＝endpointId）
+  agent/plugins/system/exchange，108 端点）→ `src/api/handlers/` 八域 handler ＋ `src/api/registry.mjs` 注册表（OS-141，键＝endpointId）
   → `src/host/daemon.mjs` 路由分派（endpointFor → validateRequest → 取 handler → 调用）＋ 共享管线 `src/host/{http,authorize,sse}.mjs`
 - 自有物理内核：`src/kernel/index.mjs`（身份常量＋ok/fail/writeFileAtomic）＋ `identity.mjs`（`openstory-kernel@1`）；
   业务内核能力由 `src/protocol/capabilityImplementations.mjs` 统一注册，经 `src/host/capabilityBindings.mjs` 按库快照解析。
