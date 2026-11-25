@@ -40,6 +40,9 @@ try {
     for (const id of Object.keys(contribution.handlers ?? {})) {
       if (!declaredEndpoints.has(id)) issues.push(`${manifest.id}: 贡献未声明端点 ${id}`)
     }
+    for (const id of declaredEndpoints) {
+      if (typeof contribution.handlers?.[id] !== 'function') issues.push(`${manifest.id}: 声明端点 ${id} 无 handler`)
+    }
     const declaredPages = new Set((manifest.pages ?? []).map((page) => page.id))
     for (const id of Object.keys(contribution.pages ?? {})) {
       if (!declaredPages.has(id)) issues.push(`${manifest.id}: 贡献未声明页面 ${id}`)

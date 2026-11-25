@@ -19,7 +19,8 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { ENDPOINTS } from '../src/api/contracts.mjs'
-import { HANDLERS, ENDPOINT_MODULES, HANDLER_MODULE_SOURCES } from '../src/api/registry.mjs'
+import { ENDPOINT_MODULES, HANDLER_MODULE_SOURCES } from '../src/api/registry.mjs'
+import { allHandlers } from '../src/host/handlerTable.mjs'
 import {
   MODULE_MANIFESTS,
   MODULE_SPEC,
@@ -101,7 +102,7 @@ test('模块 manifest：全部工作台过形状校验，core 已退役且端点
   assert.equal(validateModuleManifest({ ...MODULE_MANIFESTS[0], core: true }).ok, false, '@2 的 core 字段必须拒绝')
 })
 
-test('端点归属：只登记独占端点，共用端点没有归属', () => {
+test('端点归属：只登记独占端点，共用端点没有归属', async () => {
   assert.equal(moduleOfEndpoint('kbStatusGet'), 'knowledge')
   assert.equal(moduleOfEndpoint('kbConfigPut'), 'knowledge')
   assert.equal(moduleOfEndpoint('deduceImage'), 'imagegen')
@@ -122,7 +123,8 @@ test('端点归属：只登记独占端点，共用端点没有归属', () => {
   for (const id of ['analysis', 'imagegen', 'knowledge', 'log', 'habits', 'storysource', 'artifacts', 'exchange']) {
     assert.ok(HANDLER_MODULE_SOURCES.some((item) => item.id === id), `段 C 前已落地模块 ${id} 必须在来源表`)
   }
-  for (const endpoint of Object.keys(ENDPOINT_MODULES)) assert.ok(HANDLERS[endpoint], `归属端点缺 handler：${endpoint}`)
+  const table = await allHandlers()
+  for (const endpoint of Object.keys(ENDPOINT_MODULES)) assert.ok(table[endpoint], `归属端点缺 handler：${endpoint}`)
 })
 
 test('isModuleEnabled：单一判定入口，缺省启用，嵌套与扁平键都认', async () => {

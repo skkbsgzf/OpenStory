@@ -1,19 +1,14 @@
 /**
- * API handler 注册表用例（OS-141 daemon 拆分，node:test）。
+ * API handler 注册表用例（OS-141 拆分 / OS-194 归插件后重写）。
  *
- * 契约分域（OS-130）落了执行面：contracts/<域>.mjs 声明形状，src/api/handlers/<域>.mjs
- * 实现行为，src/api/registry.mjs 把七个域合成一张表（键＝endpointId）。这里钉死两条：
- *   ① 注册表的键集合与 ENDPOINTS 的键集合完全相等——不多不少（漏一个键＝端点在
- *      路由层「端点未实现」，多一个键＝注册表游离于契约之外，都不许）；
- *   ② 每个 handler 调用后返回 Promise（统一签名 `async handler(ctx)`，daemon 路由
- *      直接 await 它）——用隔离夹具环境真实调用全部 101 个 handler。
+ * 契约壳现在只持有宿主端点（62）；模块声明的 41 个端点经 activate() 贡献登记。
+ * 这里钉死三条：
+ *   ① 宿主表键集合＝宿主端点集合，全量表（宿主＋贡献）键集合＝ENDPOINTS 键集合；
+ *   ② 每个 handler 调用后返回 Promise——用隔离夹具真实调用全部 103 个 handler；
+ *   ③ 宿主表与贡献表都冻结，路由层不能被运行期改表。
  *
  * 夹具纪律：LOCALAPPDATA 指向临时目录；fs-browse.json 预写 nativeDialog=NO_DESKTOP
- * （nativePick 首查即早退，绝不弹真对话框）；DSH_CLI 指向不存在的命令（模型探测
- * spawn 即 ENOENT 快速失败）；货架目录全空；配置/状态路径全落夹具内——全部 handler
- * 的真实首段都在夹具内完成，不碰作者真机、不联网写盘。
- *
- * 跑法：node --test test/apiRegistry.test.mjs
+ * （nativePick 首查即早退，绝不弹真对话框）；DSH_CLI 指向不存在的命令；货架目录全空。
  */
 import test from 'node:test'
 import assert from 'node:assert/strict'
@@ -21,41 +16,30 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { ENDPOINTS } from '../src/api/contracts.mjs'
-import { HANDLERS } from '../src/api/registry.mjs'
+import { HOST_HANDLERS } from '../src/api/registry.mjs'
+import { allHandlers } from '../src/host/handlerTable.mjs'
+import { hostOwnedEndpointIds } from '../tools/acceptance/moduleCoverage.mjs'
 import { createRootAllowlist, loadLibraries } from '../src/host/authorize.mjs'
 
-/** 隔离夹具：临时 LOCALAPPDATA＋预置 NO_DESKTOP 记忆＋空货架目录。 */
 function makeFixture() {
   const fixtureDir = mkdtempSync(join(tmpdir(), 'openstory-os141-'))
   const openstoryDir = join(fixtureDir, 'OpenStory', 'openstory')
   mkdirSync(openstoryDir, { recursive: true })
-  // nativePick 首查「本机弹不出原生框」的记忆（OS-118/119）——预写后立即 400 早退，不 spawn PowerShell。
   writeFileSync(join(openstoryDir, 'fs-browse.json'), JSON.stringify({ nativeDialog: 'NO_DESKTOP' }), 'utf-8')
-  const cleanup = () => rmSync(fixtureDir, { recursive: true, force: true })
-  return { fixtureDir, cleanup }
+  return { fixtureDir, cleanup: () => rmSync(fixtureDir, { recursive: true, force: true }) }
 }
 
-/** 假 res：接住 sendJson/writeHead 的最小表面（handler 断言只看「返回了 Promise」）。 */
 function makeRes() {
   return {
     headersSent: false,
     statusCode: 0,
     body: null,
-    writeHead(status) {
-      this.headersSent = true
-      this.statusCode = status
-    },
-    end(body) {
-      this.body = body ?? null
-    },
-    write() {
-      return true
-    }
+    writeHead(status) { this.headersSent = true; this.statusCode = status },
+    end(body) { this.body = body ?? null },
+    write() { return true }
   }
 }
 
-/** handler 统一调用的 ctx：allowlist 恒空（root 端点第一件事就早退 NO_LIBRARY），
- * context 全部指向夹具（配置/状态写盘都在夹具内），request 给空对象（handler 只读字段）。 */
 function makeContext(fixtureDir) {
   return {
     port: 0,
@@ -70,23 +54,20 @@ function makeContext(fixtureDir) {
     suiteStatePath: join(fixtureDir, 'OpenStory', 'openstory', 'suite-state.json'),
     genresDirs: [],
     skillsDirs: [],
-    // 只有夹具 LOCALAPPDATA＋无效 DSH_CLI：模型探测 spawn 即 ENOENT，绝不碰真机 dsh
     env: { LOCALAPPDATA: fixtureDir, DSH_CLI: 'dsh-not-installed-os141-test' },
     runtime: { generation: 0, startedAt: '', booted: false },
     currentPort: () => 0
   }
 }
 
-test('注册表键集合与 ENDPOINTS 键集合完全相等（不多不少）', () => {
-  const registryKeys = Object.keys(HANDLERS).sort()
-  const endpointIds = Object.keys(ENDPOINTS).sort()
-  assert.equal(registryKeys.length, endpointIds.length,
-    `键数应相等：注册表 ${registryKeys.length} vs 契约 ${endpointIds.length}`)
-  const onlyInRegistry = registryKeys.filter((id) => !Object.prototype.hasOwnProperty.call(ENDPOINTS, id))
-  const onlyInEndpoints = endpointIds.filter((id) => !Object.prototype.hasOwnProperty.call(HANDLERS, id))
-  assert.deepEqual(onlyInRegistry, [], `注册表多出的键（契约里没有）：${onlyInRegistry.join(', ')}`)
-  assert.deepEqual(onlyInEndpoints, [], `注册表缺的键（契约里有但没实现）：${onlyInEndpoints.join(', ')}`)
-  assert.deepEqual(registryKeys, endpointIds, '键集合应逐项相等')
+test('注册表键集合：宿主表＝宿主白名单，全量表＝ENDPOINTS（不多不少）', async () => {
+  const hostIds = Object.keys(HOST_HANDLERS).sort()
+  const expectedHost = [...hostOwnedEndpointIds()].sort()
+  assert.deepEqual(hostIds, expectedHost, '宿主静态表只许放宿主白名单端点')
+  const table = await allHandlers()
+  const contributed = Object.keys(table).filter((id) => !hostOwnedEndpointIds().has(id))
+  assert.equal(contributed.length, 41, '模块贡献恰为 41 个独占端点')
+  assert.deepEqual(Object.keys(table).sort(), Object.keys(ENDPOINTS).sort())
 })
 
 test('每个 handler 调用后返回 Promise（隔离夹具内真实调用全部端点）', async () => {
@@ -96,10 +77,8 @@ test('每个 handler 调用后返回 Promise（隔离夹具内真实调用全部
     const loaded = loadLibraries({ preferencesPath: context.preferencesPath, env: context.env })
     const allowlist = createRootAllowlist(loaded.libraries, context.extraRoots)
     const url = new URL('http://127.0.0.1/api/probe')
-    // 逐个调用（config 一族都要原子写同一份 agent-config.json，并发会撞 rename），
-    // 每个都先断言返回 Promise，再限时等落定（拒绝也吃掉，避免 unhandled rejection 噪音）。
-    // 限时器要 clear——否则 101 个 20s 定时器会把测试进程吊到超时才退。
-    for (const [endpointId, handler] of Object.entries(HANDLERS)) {
+    const table = await allHandlers()
+    for (const [endpointId, handler] of Object.entries(table)) {
       assert.equal(typeof handler, 'function', `handler ${endpointId} 应是函数`)
       const res = makeRes()
       const outcome = handler({ req: { method: 'GET' }, res, url, request: {}, context, allowlist, loaded })
@@ -117,6 +96,8 @@ test('每个 handler 调用后返回 Promise（隔离夹具内真实调用全部
   }
 })
 
-test('注册表是冻结的：路由层不能被运行期改表', () => {
-  assert.equal(Object.isFrozen(HANDLERS), true, 'HANDLERS 应 Object.freeze')
+test('注册表是冻结的：路由层不能被运行期改表', async () => {
+  assert.equal(Object.isFrozen(HOST_HANDLERS), true, 'HOST_HANDLERS 应 Object.freeze')
+  const table = await allHandlers()
+  assert.equal(Object.isFrozen(table), true, '全量 handler 表应 Object.freeze')
 })

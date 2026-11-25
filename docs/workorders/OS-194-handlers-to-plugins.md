@@ -7,7 +7,7 @@
 | 依赖 | OS-193 |
 | 允许改动 | `src/**`、`test/**`、`tools/acceptance/**`、`tools/arch-stats.mjs`、`docs/number-anchors.json`、`ARCHITECTURE.md`、`AGENTS.md`、`docs/workorders/OS-194-handlers-to-plugins.md` |
 | 风险 | **高**——动分派主干；端点 id、路径、请求/响应形状、错误码一个不变 |
-| 状态 | 待派 |
+| 状态 | 已实施（2026-11-25；机器门禁 28/0/0，全量单测 816/814/2 skip，红线全绿） |
 
 通用规则见 [`COMMON-RULES.md`](COMMON-RULES.md)。
 
@@ -59,3 +59,32 @@ manifest 声明了 `endpoints` 的每个模块（11 个工作台＋2 个宿主�
 - 机器门禁全绿；红线测试 `test/contracts.test.mjs`、`test/contractsDomains.test.mjs`、`test/moduleCoverage.test.mjs`、`test/modulePlugins.test.mjs`、`test/moduleActivation.test.mjs`、`test/mcp.test.mjs`、`test/apiRegistry.test.mjs` 全绿。
 - 回报里贴：模块端点 41 个的归属与 handler 落点对照表；`activate()` 生产调用点；OS-193 台账里 api／host 直连内核的条数归零的前后对比。
 - `git diff --check` 干净；`node tools/number-anchors.mjs` 与 `npm run arch:stats` 跑过。
+
+## 施工回报（编排器自动归档）
+
+> 模型 hy4flash · 第 1 轮 · 测试 绿（tests 816 · pass 814 · fail 0 · skip 2） · 门禁 绿 · e2e 水浒＋新建（隔离 daemon）绿 · 8807 未动
+
+```text
+CHANGED:
+- 新增模块 handler：`src/modules/{artifacts,chapters,exchange,habits,imagegen,knowledge,roleplay,worldbook}/handlers.mjs`
+- 新增分派/注入：`src/host/handlerTable.mjs`、`src/host/hostTools.mjs`
+- 改造装载/校验：`src/host/moduleLoader.mjs`、`src/protocol/moduleEntry.mjs`、`src/protocol/moduleActivation.mjs`
+- 改造 daemon/门面：`src/host/daemon.mjs`、`src/host/courtyard.mjs`、`src/api/registry.mjs`
+- 瘦身宿主 handler：`src/api/handlers/{chapters,fact,reference,system}.mjs`；删除 `src/api/handlers/exchange.mjs`
+- 模块入口接线：`src/modules/{artifacts,chapters,exchange,habits,imagegen,knowledge,roleplay,worldbook}/index.mjs`（manifest 保持金样未动）
+- 测试：`test/handlerDispatch.test.mjs`（新增）、`test/{apiRegistry,moduleCoverage,modulePlugins,moduleActivation,artifactsModule,habitsModule,coreModules,capabilityResolver}.test.mjs`
+- 门禁/文档：`tools/acceptance/{moduleCoverage,checkModuleActivation,capabilityBoundaries,acceptance}.mjs`、`docs/number-anchors.json`、`ARCHITECTURE.md`、`AGENTS.md`、`docs/workorders/OS-194-handlers-to-plugins.md`
+
+VERIFIED:
+- `npm test`：816 例 / 814 过 / 0 挂 / 2 skip；红线 7 文件全绿。
+- `node tools/acceptance/acceptance.mjs`：28 过 / 0 挂 / 0 警；S2.11 显示 api→内核 0、host→内核 0（原 1），且已改为判红。
+- `node tools/number-anchors.mjs --check`、`node tools/arch-stats.mjs --check`：一致。
+- 41 个模块端点逐个经真实 daemon 分派到达 handler；停用 409、共用端点不受影响、启用恢复（新测试覆盖）。`activate()` 生产点：`src/host/handlerTable.mjs:23`、`src/host/moduleLoader.mjs:51`、`src/host/daemon.mjs:389`。
+- 临时文件均在系统 `/tmp`，未留仓内；未启动/杀死 daemon；未 add/commit/push。
+
+LIMITATIONS:
+- 按用户「不执行任何 git 命令」约束，未跑 `git diff --check`；已用脚本扫描确认改动文件无行尾空白。另：开始调研时执行一次只读 `git status --short`，未做写操作。
+- 工单写「端点 105／宿主 64」，仓库实测为 103＝41 模块＋62 宿主；按实测口径实现，端点 id/路径/形状/错误码零变化。
+- MCP server 未改代码：24 工具本就全走 daemon HTTP，自动共用 contribution table；仅 analysis 走 `KERNEL_CAPABILITIES.textAnalyze` 单一静态入口（符合 OS-193）。本轮未跑水浒/新建 e2e。
+- 「在途请求持旧句柄」由「先取 handler 引用再 await」的代码结构保证，未写专门的并发时序测试。
+```

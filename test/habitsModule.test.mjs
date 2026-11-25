@@ -11,7 +11,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { startDaemon } from '../src/host/daemon.mjs'
 import { ENDPOINTS } from '../src/api/contracts.mjs'
-import { HANDLERS } from '../src/api/registry.mjs'
+import { allHandlers } from '../src/host/handlerTable.mjs'
 import { moduleManifest, moduleOfEndpoint, isModuleEnabled } from '../src/protocol/modules.mjs'
 import { habitLint, habitsForPrompt } from '../src/host/moduleHooks.mjs'
 import { computeTabDefs, TAB_REGISTRY } from '../public/views/registry.mjs'
@@ -34,13 +34,14 @@ async function setEnabled(root, enabled) {
   await writeFile(join(root, '.openstory', 'ui-state.json'), JSON.stringify({ modules: { enabled: { habits: enabled } } }), 'utf-8')
 }
 
-test('manifest：habits 非核心，独占两端点，两者契约都登记 MODULE_DISABLED', () => {
+test('manifest：habits 非核心，独占两端点，两者契约都登记 MODULE_DISABLED', async () => {
   const manifest = moduleManifest('habits')
   assert.ok(manifest, 'habits manifest 必须装载')
   assert.equal(Object.prototype.hasOwnProperty.call(manifest, 'core'), false)
   assert.deepEqual([...manifest.endpoints].sort(), ['habitsGet', 'habitsPut'])
+  const table = await allHandlers()
   for (const endpoint of manifest.endpoints) {
-    assert.ok(HANDLERS[endpoint], `${endpoint} 必须有 handler`)
+    assert.ok(table[endpoint], `${endpoint} 必须有 handler`)
     assert.ok(ENDPOINTS[endpoint].errors.includes('MODULE_DISABLED'), `${endpoint} 契约须登记 MODULE_DISABLED`)
     assert.equal(moduleOfEndpoint(endpoint), 'habits')
   }

@@ -37,7 +37,8 @@ import {
   isPlainObject,
   validateRequest
 } from '../api/contracts.mjs'
-import { HANDLERS } from '../api/registry.mjs'
+import { HOST_HANDLERS } from '../api/registry.mjs'
+import { handlerFor } from './handlerTable.mjs'
 import { sendError, sendJson, readJson, text, DEFAULT_PORT } from './http.mjs'
 import { canonicalRoot, createRootAllowlist, loadLibraries, resolveInsideRoot } from './authorize.mjs'
 import { defaultAgentConfigPath, defaultSessionsDir } from '../protocol/agentStore.mjs'
@@ -329,14 +330,14 @@ async function handleApi(req, res, url, context) {
   //   healthGet——OS-127 探活要轻，先于库清单读取（这是「还没授权 root」时唯一有用的 API）；
   //   libraries——直接用下面读好的库清单，不收请求体。
   if (endpointId === 'healthGet') {
-    return HANDLERS.healthGet({ req, res, url, context })
+    return HOST_HANDLERS.healthGet({ req, res, url, context })
   }
 
   const loaded = loadLibraries({ preferencesPath: context.preferencesPath, env: context.env })
   const allowlist = createRootAllowlist(loaded.libraries, context.extraRoots)
 
   if (endpointId === 'libraries') {
-    return HANDLERS.libraries({ req, res, url, context, loaded })
+    return HOST_HANDLERS.libraries({ req, res, url, context, loaded })
   }
 
   let input
@@ -355,10 +356,6 @@ async function handleApi(req, res, url, context) {
     return sendError(res, API_ERROR_CODES.INVALID_ENTRY, '请求参数不符合契约', { errors: checked.errors })
   }
 
-  const handler = HANDLERS[endpointId]
-  if (!handler) {
-    return sendError(res, API_ERROR_CODES.NOT_FOUND, `端点未实现：${endpointId}`)
-  }
   // OS-172：旧库必须在模块开关（会读 ui-state）与任何业务 handler 之前完成一次性升级。
   // 只迁移请求显式指定且已授权的 root，不顺手碰默认库或清单里的其它库。
   const requestedRoot = typeof checked.value?.root === 'string' ? allowlist.resolve(checked.value.root.trim()) : null
@@ -374,15 +371,30 @@ async function handleApi(req, res, url, context) {
   // OS-144 模块插件闸：独占端点所属模块被停用 → MODULE_DISABLED（共用端点没有归属，照常放行）。
   // 库根取法（OS-146）：请求 root（已授权）优先——多库时按调用方自己的库判定；
   // 启动默认库/库清单第一条只是没带 root 时的兜底，不是语义。一个库都没有时无法判定，按启用处理。
-  const owner = await isModuleDisabledFor(endpointId, moduleGateRoot(checked.value, context, allowlist))
+  const gateRoot = moduleGateRoot(checked.value, context, allowlist)
+  const owner = await isModuleDisabledFor(endpointId, gateRoot)
   if (owner) {
     const label = moduleManifest(owner)?.name ?? owner
     return sendError(res, API_ERROR_CODES.MODULE_DISABLED, `「${label}」模块已停用——重新启用后可用，已存的值与数据都还在`)
   }
-  const degraded = await moduleDegradationFor(endpointId, moduleGateRoot(checked.value, context, allowlist))
+  const degraded = await moduleDegradationFor(endpointId, gateRoot)
   if (degraded) {
     const label = moduleManifest(degraded.module)?.name ?? degraded.module
     return sendError(res, API_ERROR_CODES.PLUGIN_DEGRADED, `「${label}」缺少所需能力，当前不可用`, degraded)
+  }
+  // OS-194：模块端点按库快照从 activate() 贡献取 handler；宿主端点走静态表。
+  // 快照重建后新请求换表；这里先取到 handler 引用，在途请求持旧句柄不受换表影响。
+  let handler
+  try {
+    handler = await handlerFor(endpointId, gateRoot)
+  } catch (error) {
+    if (error?.code === 'PLUGIN_DEGRADED') {
+      return sendError(res, API_ERROR_CODES.PLUGIN_DEGRADED, error.message, error.details)
+    }
+    throw error
+  }
+  if (!handler) {
+    return sendError(res, API_ERROR_CODES.NOT_FOUND, `端点未实现：${endpointId}`)
   }
   return handler({ req, res, url, request: checked.value, context, allowlist, loaded, libraryUpgrade })
 }

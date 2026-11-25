@@ -90,10 +90,13 @@ test('内置推演能力：manifest 金样、roleplay 硬依赖与真实薄代�
 })
 
 test('推演端点消费方不再直引引擎与成文内部实现', async () => {
-  const source = await readFile(join(ROOT, 'src', 'api', 'handlers', 'fact.mjs'), 'utf8')
+  // OS-194：消费方从 api/handlers 搬到 roleplay 模块；仍不许直引引擎实现，
+  // 能力经 activate(context) 的 context.resolve('deduce.engine') 注入。
+  const source = await readFile(join(ROOT, 'src', 'modules', 'roleplay', 'handlers.mjs'), 'utf8')
   assert.doesNotMatch(source, /from ['"]\.\.\/\.\.\/modules\/deduce\/(?:deduceEngine|turnProse)\.mjs['"]/u)
   assert.doesNotMatch(source, /deduceStatePath|readFileSync\([^\n]*lastTurn/u)
-  assert.match(source, /resolveDeduceCapability/u)
+  const entry = await readFile(join(ROOT, 'src', 'modules', 'roleplay', 'index.mjs'), 'utf8')
+  assert.match(entry, /context\.resolve\('deduce\.engine'/u)
 })
 
 test('按库快照解析推演能力：停用供给者时角色工作面明确降级', async () => {

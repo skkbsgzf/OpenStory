@@ -11,40 +11,20 @@
  *     本机端点不碰库文件，不做 root 校验（与拆分前一致）。
  * handler 文件之间不许互相 import；共用逻辑走 src/host/*、src/services/*、src/protocol/*。
  */
-import { existsSync, readFileSync, statSync } from 'node:fs'
-import { mkdir, readdir, readFile } from 'node:fs/promises'
-import { dirname, join } from 'node:path'
+import { existsSync, statSync } from 'node:fs'
+import { mkdir, readdir } from 'node:fs/promises'
+import { join } from 'node:path'
 import { API_ERROR_CODES, isPlainObject, validateResponse } from '../contracts.mjs'
 import { sendError, sendJson, text } from '../../host/http.mjs'
-import { authorizeRoot, resolveInsideRoot, RESERVED_LIB_DIRS } from '../../host/authorize.mjs'
-import { readHabits, normalizeHabits, writeHabitsWithBackup } from '../../protocol/habits.mjs'
+import { authorizeRoot, RESERVED_LIB_DIRS } from '../../host/authorize.mjs'
 import { loadGenres, readBrief, writeBrief } from '../../services/genres.mjs'
-import { readAgentPicks, writeAgentPicks } from '../../services/skills.mjs'
-import { loadStylePacks } from '../../services/stylePacks.mjs'
-import { defaultKbConfigPath } from '../../protocol/knowledgeAdapter.mjs'
-import { collectKbStatus, kbServiceState, probeServices } from '../../protocol/knowledgeHealth.mjs'
-import { resolveCollections } from '../../protocol/knowledgeRouter.mjs'
 import { listJobs, cancelJob, clearSettled, activeCount } from '../../services/jobCenter.mjs'
-import {
-  pickFile,
-  pickFolder,
-  readBrowseMemory,
-  writeBrowseMemory,
-  defaultBrowseRoot
-} from '../../services/nativePicker.mjs'
-import {
-  loadConfigV2,
-  saveConfigV2,
-  configPublicV2,
-  validateConfigPatch,
-  normalizeConfigBlock,
-  probeTextConfig
-} from '../../services/agentConfig.mjs'
-import { resolveAgentRuntimeCapability, resolveMediaCapability } from '../../host/capabilityBindings.mjs'
-import { listArtifacts, listLibraryFiles } from '../../protocol/libraryInventory.mjs'
+import { readBrowseMemory, writeBrowseMemory, defaultBrowseRoot } from '../../services/nativePicker.mjs'
+import { loadConfigV2, saveConfigV2, configPublicV2, validateConfigPatch, normalizeConfigBlock, probeTextConfig } from '../../services/agentConfig.mjs'
+import { resolveMediaCapability } from '../../host/capabilityBindings.mjs'
+import { listLibraryFiles } from '../../protocol/libraryInventory.mjs'
 import { readUiState, writeUiState } from '../../protocol/libState.mjs'
 import { BASE_GRAPH, MODULE_MANIFESTS, deriveModuleStateChange } from '../../protocol/modules.mjs'
-import { atomicWriteFile } from '../../protocol/hostWrite.mjs'
 import { defaultUiPreferencesPath, readUiPreferences, writeUiSkin } from '../../services/uiPreferences.mjs'
 
 /* OS-127 健康端点：免 root 授权（不碰库清单、不落任何库信息，只报进程事实），
@@ -151,105 +131,6 @@ export async function configProbe(ctx) {
 
 /* ---------- OS-97：知识库配置（可读可写可测，不再只是只读状态牌） ---------- */
 
-export async function kbConfigGet(ctx) {
-  const { res, context } = ctx
-  const configPath = defaultKbConfigPath(context.env ?? process.env)
-  let config = {}
-  let error = ''
-  try {
-    if (existsSync(configPath)) config = JSON.parse(readFileSync(configPath, 'utf-8'))
-  } catch (err) { error = text(err?.message || err) }
-  // 密钥只回掩码：sk-abc…xyz
-  const rawKey = text(config.apiKey)
-  const masked = rawKey ? `${rawKey.slice(0, 6)}…${rawKey.slice(-4)}` : ''
-  return sendJson(res, 200, {
-    ok: true,
-    configPath,
-    config: {
-      backend: text(config.backend) || 'weknora',
-      baseUrl: text(config.baseUrl) || 'http://127.0.0.1:8080',
-      apiKeyMasked: masked,
-      spaceId: text(config.spaceId),
-      collections: config.collections && typeof config.collections === 'object' ? config.collections : {}
-    },
-    ...(error ? { configError: error } : {})
-  })
-}
-
-export async function kbConfigPut(ctx) {
-  const { res, request, context } = ctx
-  const configPath = defaultKbConfigPath(context.env ?? process.env)
-  let current = {}
-  try { if (existsSync(configPath)) current = JSON.parse(readFileSync(configPath, 'utf-8')) } catch { current = {} }
-  // apiKey 传 __KEEP__ ＝保留原值（前端不回传明文）
-  const incomingKey = text(request.apiKey)
-  const apiKey = incomingKey === '__KEEP__' ? text(current.apiKey) : incomingKey
-  const next = {
-    ...current,
-    backend: text(request.backend) || text(current.backend) || 'weknora',
-    baseUrl: text(request.baseUrl) || text(current.baseUrl) || 'http://127.0.0.1:8080',
-    apiKey,
-    spaceId: request.spaceId !== undefined ? text(request.spaceId) : text(current.spaceId),
-    collections: request.collections && typeof request.collections === 'object'
-      ? request.collections
-      : (current.collections ?? {})
-  }
-  try {
-    await mkdir(dirname(configPath), { recursive: true })
-    await atomicWriteFile(configPath, JSON.stringify(next, null, 2))
-  } catch (err) {
-    return sendError(res, API_ERROR_CODES.WRITE_PROTOCOL_IO_FAILED, `知识库配置写入失败：${text(err?.message || err)}`)
-  }
-  // 写后立刻重探
-  await probeServices({ weknoraUrl: next.baseUrl, weknoraApiKey: next.apiKey }).catch(() => {})
-  const status = await collectKbStatus({ configPath, services: kbServiceState, resolveCollections })
-  return sendJson(res, 200, { ok: true, status })
-}
-
-export async function kbTest(ctx) {
-  const { res, request, context } = ctx
-  const configPath = defaultKbConfigPath(context.env ?? process.env)
-  let saved = {}
-  try { if (existsSync(configPath)) saved = JSON.parse(readFileSync(configPath, 'utf-8')) } catch { saved = {} }
-  const baseUrl = text(request.baseUrl) || text(saved.baseUrl) || 'http://127.0.0.1:8080'
-  const apiKey = text(request.apiKey) && text(request.apiKey) !== '__KEEP__' ? text(request.apiKey) : text(saved.apiKey)
-  await probeServices({ weknoraUrl: baseUrl, weknoraApiKey: apiKey }).catch(() => {})
-  const status = await collectKbStatus({ configPath, services: kbServiceState, resolveCollections })
-  return sendJson(res, 200, {
-    ok: true,
-    weknora: kbServiceState.weknora ?? { up: false },
-    embedding: kbServiceState.embedding ?? { up: false },
-    collections: status.collections ?? []
-  })
-}
-
-export async function kbStatusGet(ctx) {
-  const { res, context } = ctx
-  const status = await collectKbStatus({
-    configPath: defaultKbConfigPath(context.env ?? process.env),
-    services: kbServiceState.lastCheck ? kbServiceState : null,
-    resolveCollections
-  })
-  return sendJson(res, 200, status)
-}
-
-export async function habitsGet(ctx) {
-  const { res, request, allowlist } = ctx
-  const authorized = authorizeRoot(allowlist, request.root)
-  if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
-  return sendJson(res, 200, { ok: true, habits: readHabits(authorized.root) })
-}
-
-export async function habitsPut(ctx) {
-  const { res, request, allowlist } = ctx
-  const authorized = authorizeRoot(allowlist, request.root)
-  if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
-  const habits = normalizeHabits(request.habits)
-  if (!habits) return sendError(res, API_ERROR_CODES.INVALID_ENTRY, '习惯表形状不对：需要 { tone, style, bannedWords, preferredWords, bannedPatterns, bannedRhetoric, formulas }')
-  const backup = await writeHabitsWithBackup(authorized.root, habits)
-  return sendJson(res, 200, { ok: true, habits, backup })
-}
-
 export async function briefGet(ctx) {
   const { res, request, context, allowlist } = ctx
   const authorized = authorizeRoot(allowlist, request.root)
@@ -349,15 +230,6 @@ export async function filesGet(ctx) {
   return sendJson(res, 200, payload)
 }
 
-export async function artifactsGet(ctx) {
-  const { res, request, allowlist } = ctx
-  const authorized = authorizeRoot(allowlist, request.root)
-  if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
-  const inventory = await listArtifacts(authorized.root)
-  if (!inventory.ok) return sendError(res, inventory.code ?? API_ERROR_CODES.INVALID_ENTRY, inventory.message)
-  return sendJson(res, 200, { ok: true, groups: inventory.groups, totals: inventory.totals })
-}
-
 export async function fsBrowse(ctx) {
   const { res, request, context } = ctx
   // OS-110 兜底：无桌面环境（后台启动的 daemon 弹不出模态对话框）时，
@@ -427,45 +299,9 @@ export async function fsBrowse(ctx) {
   })
 }
 
-export async function visionDescribe(ctx) {
-  const { res, request, context, allowlist } = ctx
-  // OS-76：识图走 DSH 子 agent（不是 LLM API）——DSH 有内置 read_image 工具，
-  // 子 agent 用「设置里指定的 vision 模型」读图，按预设提示词写文学白描。
-  // 这样不引入额外模型变量，跑动记录与 DSH 自己的会话一致。
-  const authorized = authorizeRoot(allowlist, request.root)
-  if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
-  const imageRel = text(request.image).trim().replaceAll('\x5c', '/')
-  if (!imageRel) return sendError(res, API_ERROR_CODES.INVALID_ENTRY, 'image 必填（库内图片相对路径）')
-  if (!/\.(png|jpe?g|webp|gif|avif)$/iu.test(imageRel)) {
-    return sendError(res, API_ERROR_CODES.INVALID_ENTRY, `不是图片：${imageRel}`)
-  }
-  const resolvedImage = resolveInsideRoot(authorized.root, imageRel, { allowMetadata: false })
-  if (!resolvedImage.ok) return sendError(res, resolvedImage.code ?? API_ERROR_CODES.PATH_ESCAPE, resolvedImage.message)
-  if (!existsSync(resolvedImage.path)) {
-    return sendError(res, API_ERROR_CODES.INVALID_ENTRY, `图片不存在：${imageRel}`)
-  }
-
-  const { config } = await loadConfigV2(context.agentConfigPath)
-  const media = await resolveMediaCapability(authorized.root, 'media.describe')
-  if (!media.ok) return sendError(res, API_ERROR_CODES.PLUGIN_DEGRADED, media.message, media.details)
-  const runtime = await resolveAgentRuntimeCapability(authorized.root)
-  if (!runtime.ok) return sendError(res, API_ERROR_CODES.PLUGIN_DEGRADED, runtime.message, runtime.details)
-  const described = await media.capability.describe({
-    imagePath: resolvedImage.path,
-    root: authorized.root,
-    vision: config.vision,
-    target: text(request.target).trim() || 'character',
-    focus: text(request.focus).trim(),
-    habitContext: text(request.habitContext).trim(),
-    env: context.env ?? process.env,
-    runtime: runtime.capability
-  })
-  if (!described.ok) return sendError(res, API_ERROR_CODES.AGENT_UPSTREAM_ERROR, described.error)
-  return sendJson(res, 200, { ok: true, text: described.text, chars: described.chars, ...(described.model ? { model: described.model } : {}) })
-}
-
 /** system 域端点 → handler 注册表片段（registry.mjs 聚合）。 */
 export const handlers = {
+
   healthGet,
   configGet,
   configPut,
@@ -473,12 +309,6 @@ export const handlers = {
   jobsGet,
   jobCancel,
   jobsClear,
-  kbConfigGet,
-  kbConfigPut,
-  kbTest,
-  kbStatusGet,
-  habitsGet,
-  habitsPut,
   briefGet,
   briefPut,
   uiStateGet,
@@ -487,7 +317,5 @@ export const handlers = {
   uiPreferencesPut,
   dirCreate,
   filesGet,
-  artifactsGet,
   fsBrowse,
-  visionDescribe
 }

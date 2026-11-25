@@ -12,11 +12,11 @@
     "hostDomain": 0,
     "hostDomainIds": []
   },
-  "testFiles": 104,
+  "testFiles": 105,
   "gateCount": 28,
   "tests": {
-    "total": 812,
-    "pass": 810,
+    "total": 816,
+    "pass": 814,
     "fail": 0,
     "skipped": 2,
     "ok": true,

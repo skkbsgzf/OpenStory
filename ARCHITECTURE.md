@@ -53,11 +53,11 @@
 <!-- arch-stats:start -->
 | 分工 | 范围 | 文件数 | 行数 |
 |---|---|---:|---:|
-| 底座 | `src/host/`＋`src/kernel/` | 17 | 2,317 |
-| 契约 | `src/api/` | 18 | 5,075 |
-| 协议 | `src/protocol/` | 48 | 4,966 |
+| 底座 | `src/host/`＋`src/kernel/` | 19 | 2,427 |
+| 契约 | `src/api/` | 17 | 3,619 |
+| 协议 | `src/protocol/` | 48 | 4,987 |
 | 内核件（class: kernel，7） | `src/modules/agent-runtime/`＋`src/modules/deduce/`＋`src/modules/fact/`＋`src/modules/media/`＋`src/modules/prose/`＋`src/modules/storage/`＋`src/modules/text/` | 57 | 10,549 |
-| 工作台（class: workbench，12） | `src/modules/analysis/`＋`src/modules/artifacts/`＋`src/modules/chapters/`＋`src/modules/exchange/`＋`src/modules/habits/`＋`src/modules/imagegen/`＋`src/modules/knowledge/`＋`src/modules/log/`＋`src/modules/roleplay/`＋`src/modules/script/`＋`src/modules/storysource/`＋`src/modules/worldbook/` | 22 | 2,875 |
+| 工作台（class: workbench，12） | `src/modules/analysis/`＋`src/modules/artifacts/`＋`src/modules/chapters/`＋`src/modules/exchange/`＋`src/modules/habits/`＋`src/modules/imagegen/`＋`src/modules/knowledge/`＋`src/modules/log/`＋`src/modules/roleplay/`＋`src/modules/script/`＋`src/modules/storysource/`＋`src/modules/worldbook/` | 30 | 4,361 |
 | 宿主组合面（恒启） | `src/modules/agentbar/`＋`src/modules/library/` | 6 | 1,361 |
 | 套件模块（class: suite） | `src/modules/` | 0 | 0 |
 | 服务 | `src/services/` | 20 | 2,455 |
@@ -71,7 +71,7 @@
 | `public/app.js` 行数 | 10,108 |
 | `public/views/*.mjs` 文件数 | 15 |
 | 契约端点数（`ENDPOINTS` 键数） | 103 |
-| 测试文件数（`test/*.test.mjs`） | 104 |
+| 测试文件数（`test/*.test.mjs`） | 105 |
 
 **模块清单（由 `src/modules/*/module.manifest.json` 自动生成）**
 

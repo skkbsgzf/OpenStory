@@ -408,14 +408,14 @@ check('S2.10', 'S2', `OS-172/189 产品谱系名与作者身份（扫描 ${linea
   lineageAudit.ok ? '一次性升级单独放行＋逐行出处白名单，整文件豁免已取消' : `${lineageAudit.violations.length} 处陈旧谱系名或身份声明`)
 
 // S2.11 OS-193「内核直连」：量真实静态耦合（含 export-from / 动态 import / 副作用 import）。
-// api/host 的直连本单只登记台账（OS-194 清零），不判红；其余三类必须为 0。
+// api/host 的直连 OS-193 只登记台账；OS-194 起清零并判红，五类都必须为 0。
 const kernelDirect = auditKernelDirectImports(srcMjs)
 check('S2.11', 'S2', `内核直连为零（内核↔内核 ${kernelDirect.counts.kernelToKernel}；services→内核 ${kernelDirect.counts.servicesToKernel}；protocol 转供叶 ${kernelDirect.counts.protocolLeaves}；台账 api→内核 ${kernelDirect.counts.apiToKernel}／host→内核 ${kernelDirect.counts.hostToKernel}）`,
   kernelDirect.violations.length === 0,
   kernelDirect.violations.slice(0, 6).map((item) => `${item.from}:${item.line} -> ${item.to}：${item.reason}`),
   kernelDirect.violations.length
     ? `直连未清：${kernelDirect.violations.slice(0, 4).map((item) => `${item.from}→${item.to}`).join('; ')}`
-    : 'K1 唯一静态入口＋K2 句柄＋K3 归位＋K4 传句柄全部落地；api/host 直连留 OS-194 台账')
+    : 'K1 唯一静态入口＋K2 句柄＋K3 归位＋K4 传句柄＋OS-194 api/host 直连清零，全部落地')
 
 console.log('\n── S3 前端一致性 ──')
 

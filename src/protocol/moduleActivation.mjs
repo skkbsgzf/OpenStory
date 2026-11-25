@@ -24,14 +24,24 @@ export function validateModuleContribution(manifest, contribution) {
   if (manifest.class === 'kernel' && Object.keys(contribution.capabilities ?? {}).length === 0) {
     errors.push('kernel activate 必须返回已声明能力')
   }
+  // OS-194：handler 贡献与 manifest.endpoints 双向对齐——多一个越界键、少一个声明端点都拒收。
+  const declaredEndpoints = new Set(manifest.endpoints ?? [])
+  for (const id of Object.keys(contribution.handlers ?? {})) {
+    if (!declaredEndpoints.has(id)) errors.push(`handler ${id} 未在 manifest endpoints 声明`)
+  }
+  for (const id of declaredEndpoints) {
+    if (typeof contribution.handlers?.[id] !== 'function') errors.push(`声明端点 ${id} 没有 handler`)
+  }
   return { ok: errors.length === 0, errors }
 }
 
-export function createModuleActivationContext(manifest, resolve) {
+export function createModuleActivationContext(manifest, resolve, host = {}) {
   const resolved = []
   return {
     manifest,
     resolved,
+    /** OS-194：宿主工具袋（契约词汇/HTTP 管线/授权）——模块 handler 从闭包取，不静态 import 宿主。 */
+    host,
     resolve(id, range = { min: 1 }) {
       const result = resolve(id, range)
       if (!result?.ok) {

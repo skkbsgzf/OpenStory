@@ -3,6 +3,7 @@ import { pathToFileURL } from 'node:url'
 import { MODULE_MANIFESTS, MODULES_DIR } from '../protocol/modules.mjs'
 import { createModuleActivationContext, validateModuleContribution } from '../protocol/moduleActivation.mjs'
 import { capabilityResolver } from './capabilityBindings.mjs'
+import { HOST_TOOLS } from './hostTools.mjs'
 
 const entryCache = new Map()
 const activationCache = new Map()
@@ -33,7 +34,8 @@ async function loadEntry(modulesDir, manifest) {
 }
 
 export async function activateModules({
-  snapshot, manifests = MODULE_MANIFESTS, modulesDir = MODULES_DIR, resolver = capabilityResolver(snapshot)
+  snapshot, manifests = MODULE_MANIFESTS, modulesDir = MODULES_DIR,
+  resolver = capabilityResolver(snapshot), host = HOST_TOOLS
 } = {}) {
   if (!snapshot?.id) throw new Error('激活模块需要能力快照')
   const cacheKey = JSON.stringify([snapshot.id, modulesDir, manifests.map((item) => [item.id, item.version, item.entry])])
@@ -45,7 +47,7 @@ export async function activateModules({
     for (const manifest of manifests) {
       if (!snapshot.enabled?.[manifest.id] || !manifest.entry) continue
       const module = await loadEntry(modulesDir, manifest)
-      const context = createModuleActivationContext(manifest, resolverApi.resolve)
+      const context = createModuleActivationContext(manifest, resolverApi.resolve, host)
       const contribution = await module.activate(context)
       const checked = validateModuleContribution(manifest, contribution)
       if (!checked.ok) throw new Error(`模块 ${manifest.id} 激活贡献非法：${checked.errors.join('；')}`)

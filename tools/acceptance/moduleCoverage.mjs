@@ -11,7 +11,7 @@
 import { readdirSync, existsSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { HANDLERS } from '../../src/api/registry.mjs'
+import { ENDPOINTS } from '../../src/api/contracts.mjs'
 import { TAB_REGISTRY } from '../../public/views/registry.mjs'
 import {
   MODULE_MANIFESTS, MODULE_SOURCES, MODULE_SOURCE_GROUPS, MODULE_SPEC,
@@ -115,7 +115,7 @@ export function coverageReport() {
     .filter((manifest) => !manifest.entry || !(manifest.requires?.length > 0) || !(manifest.slots?.length > 0))
     .map((manifest) => manifest.id)
   const claimed = new Set(MODULE_MANIFESTS.flatMap((manifest) => manifest.endpoints))
-  const uncoveredEndpoints = Object.keys(HANDLERS)
+  const uncoveredEndpoints = Object.keys(ENDPOINTS)
     .filter((id) => !claimed.has(id) && !hostEndpoints.has(id))
   const uncoveredTabs = TAB_REGISTRY.filter((entry) => !entry.retired && entry.label)
     .filter((entry) => !entry.module && !HOST_OWNED_TABS[entry.id])
@@ -134,7 +134,7 @@ export function coverageReport() {
     workbenchContractIssues,
     endpointOwnerIssues,
     capabilityGraphIssues: CAPABILITY_SNAPSHOT.issues.map((issue) => `${issue.code}:${issue.module ?? issue.details?.capability ?? ''}`),
-    endpointCount: Object.keys(HANDLERS).length,
+    endpointCount: Object.keys(ENDPOINTS).length,
     claimedEndpointCount: claimed.size,
     hostEndpointCount: hostEndpoints.size,
     uncoveredEndpoints,

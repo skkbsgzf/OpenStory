@@ -86,7 +86,7 @@ export function auditCapabilityRoutes(files) {
  * ① 七个内核件之间互相静态 import ＝ 0（只许经 activate(context) 的 context.resolve 句柄）；
  * ② src/services/** 静态 import 内核实现 ＝ 0（归位后只经唯一静态入口/句柄）；
  * ③ src/protocol/** 不许再出现指向内核模块的 `export ... from '../modules/…'` 转供叶；
- * ④ api/host 对内核的直连本单只统计入台账（OS-194 清零），不判红。
+ * ④ api/host 对内核的直连在 OS-193 只统计入台账；OS-194 已清零，本单起同样判红。
  */
 const OS193_LEAVES = Object.freeze(new Set([
   'src/protocol/factDomain.mjs', 'src/protocol/chapters.mjs', 'src/protocol/chapterWrite.mjs',
@@ -114,8 +114,14 @@ export function auditKernelDirectImports(files) {
       counts.servicesToKernel += 1
       violations.push({ ...edge, reason: '内核代码已归位；底座服务只经实现登记表/句柄取能力（K3/K4）' })
     }
-    if (from.startsWith('src/api/') && toKernel) counts.apiToKernel += 1
-    if (from.startsWith('src/host/') && toKernel) counts.hostToKernel += 1
+    if (from.startsWith('src/api/') && toKernel) {
+      counts.apiToKernel += 1
+      violations.push({ ...edge, reason: 'OS-194：契约壳只注册与分派，handler 归插件，api 不得直连内核实现' })
+    }
+    if (from.startsWith('src/host/') && toKernel) {
+      counts.hostToKernel += 1
+      violations.push({ ...edge, reason: 'OS-194：宿主只走能力句柄/协议转供，不得直连内核实现' })
+    }
     // courtyard / deduceSession / worldbookContract 等工作台内部叶是 OS-195 的范围，
     // 本单只钉 OS-193 点名的七个内核件转供叶，不替下一张单清账。
     if (OS193_LEAVES.has(from) && toKernel) {

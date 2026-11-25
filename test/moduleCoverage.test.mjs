@@ -18,7 +18,8 @@ import {
   coverageReport, hostOwnedEndpointIds
 } from '../tools/acceptance/moduleCoverage.mjs'
 import { TAB_REGISTRY } from '../public/views/registry.mjs'
-import { HANDLERS } from '../src/api/registry.mjs'
+import { HOST_HANDLERS } from '../src/api/registry.mjs'
+import { allHandlers } from '../src/host/handlerTable.mjs'
 import { MODULE_MANIFESTS, moduleOfEndpoint, validateModuleManifest } from '../src/protocol/modules.mjs'
 import { auditCapabilityRoutes, auditTransferDuplication } from '../tools/acceptance/capabilityBoundaries.mjs'
 
@@ -85,15 +86,18 @@ test('C6 能力归属：kernel 零端点/UI，workbench 有 requires/slots，能
   ]), [], '纯 re-export 转供叶允许')
 })
 
-test('b) 端点覆盖：105 个 handler 键 100% 有归属或宿主白名单理由', () => {
+test('b) 端点覆盖：全量 handler 键 100% 有归属或宿主白名单理由', async () => {
   const claimed = MODULE_MANIFESTS.flatMap((manifest) => manifest.endpoints)
   assert.equal(report.uncoveredEndpoints.length, 0, `无归属端点：${report.uncoveredEndpoints.join('、')}`)
-  assert.equal(claimed.length + report.hostEndpointCount, Object.keys(HANDLERS).length + claimed.filter((id) => hostOwnedEndpointIds().has(id)).length,
+  const table = await allHandlers()
+  assert.deepEqual(Object.keys(HOST_HANDLERS).sort(), [...hostOwnedEndpointIds()].sort(),
+    '宿主静态表与宿主白名单逐项相等')
+  assert.equal(Object.keys(table).length, report.endpointCount,
     '归属集合与宿主白名单不得重复计数')
   for (const [reason, ids] of Object.entries(HOST_OWNED_ENDPOINTS)) {
     assert.ok(reason.trim().length > 8, `宿主理由不能空：${reason}`)
     for (const id of ids) {
-      assert.ok(HANDLERS[id], `宿主白名单里的端点不存在：${id}`)
+      assert.ok(HOST_HANDLERS[id], `宿主白名单里的端点不存在：${id}`)
       assert.equal(moduleOfEndpoint(id), null, `${id} 已有模块归属，不该再占宿主白名单`)
     }
   }

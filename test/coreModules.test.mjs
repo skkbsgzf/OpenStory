@@ -15,7 +15,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { startDaemon } from '../src/host/daemon.mjs'
 import { API_ERROR_CODES, ENDPOINTS } from '../src/api/contracts.mjs'
-import { HANDLERS } from '../src/api/registry.mjs'
+import { allHandlers } from '../src/host/handlerTable.mjs'
 import {
   MODULE_MANIFESTS, moduleManifest, moduleOfEndpoint, moduleRole,
   isModuleEnabled, isModuleDisabledFor
@@ -55,7 +55,7 @@ async function forceDisable(root) {
   await writeFile(join(root, '.openstory', 'ui-state.json'), JSON.stringify(state), 'utf-8')
 }
 
-test('manifest：四个原核心工作台已去 core，端点归属与错误契约仍精确', () => {
+test('manifest：四个原核心工作台已去 core，端点归属与错误契约仍精确', async () => {
   for (const id of FORMER_CORE_IDS) {
     const manifest = moduleManifest(id)
     assert.equal(manifest.class, 'workbench')
@@ -71,9 +71,10 @@ test('manifest：四个原核心工作台已去 core，端点归属与错误契�
   assert.equal(moduleManifest('roleplay').endpoints.includes('deduceImage'), false)
   assert.equal(moduleOfEndpoint('deduceImage'), 'imagegen')
   assert.equal(moduleOfEndpoint('referenceImageGenerate'), 'imagegen')
+  const table = await allHandlers()
   for (const manifest of MODULE_MANIFESTS) {
     for (const endpoint of manifest.endpoints) {
-      assert.ok(HANDLERS[endpoint], `${endpoint} 必须有 handler`)
+      assert.ok(table[endpoint], `${endpoint} 必须有 handler`)
       assert.ok(ENDPOINTS[endpoint].errors.includes('MODULE_DISABLED'), `${endpoint} 必须登记可停用语义`)
       assert.equal(moduleOfEndpoint(endpoint), manifest.id)
     }

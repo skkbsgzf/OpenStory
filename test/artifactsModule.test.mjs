@@ -10,7 +10,7 @@ import { join } from 'node:path'
 import { startDaemon } from '../src/host/daemon.mjs'
 import { moduleManifest, moduleOfEndpoint, isModuleDisabledFor } from '../src/protocol/modules.mjs'
 import { ENDPOINTS } from '../src/api/contracts.mjs'
-import { HANDLERS } from '../src/api/registry.mjs'
+import { allHandlers } from '../src/host/handlerTable.mjs'
 import { computeTabDefs } from '../public/views/registry.mjs'
 import { artifactsHtml } from '../public/views/workbenchViews.mjs'
 
@@ -19,14 +19,14 @@ function esc(value) {
     .replace(/"/gu, '&quot;').replace(/'/gu, '&#39;')
 }
 
-test('manifest：artifacts 非核心，独占 artifactsGet，契约登记 MODULE_DISABLED', () => {
+test('manifest：artifacts 非核心，独占 artifactsGet，契约登记 MODULE_DISABLED', async () => {
   const manifest = moduleManifest('artifacts')
   assert.ok(manifest)
   assert.equal(Object.prototype.hasOwnProperty.call(manifest, 'core'), false)
   assert.deepEqual(manifest.endpoints, ['artifactsGet'])
   assert.equal(moduleOfEndpoint('artifactsGet'), 'artifacts')
   assert.ok(ENDPOINTS.artifactsGet.errors.includes('MODULE_DISABLED'))
-  assert.ok(HANDLERS.artifactsGet)
+  assert.ok((await allHandlers()).artifactsGet)
   assert.ok(manifest.settingsHint.trim())
 })
 

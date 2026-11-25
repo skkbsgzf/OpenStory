@@ -109,3 +109,40 @@ test('生产能力图：20 个内置入口全部真实激活，七内核贡献�
     for (const dependency of item.resolved) assert.equal(dependency.capability.snapshot, CAPABILITY_SNAPSHOT.id)
   }
 })
+
+test('贡献校验：声明端点却无 handler / handler 键越出 manifest 都拒绝', () => {
+  const withEndpoints = (extra = {}) => manifest('alpha', {
+    class: 'workbench',
+    endpoints: ['alpha.get'],
+    slots: [{ slot: 'tab', page: 'alpha' }],
+    capabilities: [],
+    ...extra
+  })
+  const missing = validateModuleContribution(withEndpoints(), { pages: {} })
+  assert.equal(missing.ok, false)
+  assert.ok(missing.errors.some((message) => message.includes('没有 handler')), missing.errors.join('；'))
+
+  const rogue = validateModuleContribution(withEndpoints(), { handlers: { 'beta.get': () => {} } })
+  assert.equal(rogue.ok, false)
+  assert.ok(rogue.errors.some((message) => message.includes('未在 manifest endpoints 声明')), rogue.errors.join('；'))
+
+  const good = validateModuleContribution(withEndpoints(), { handlers: { 'alpha.get': () => {} } })
+  assert.deepEqual(good, { ok: true, errors: [] })
+})
+
+test('activate：handler 工厂失败即激活失败（如实报告，不静默漏登记）', async () => {
+  await fixture(async (dir) => {
+    const moduleDir = join(dir, 'alpha')
+    await mkdir(moduleDir)
+    await writeFile(join(moduleDir, 'index.mjs'), `export async function activate() { throw new Error('handler 装配失败') }`)
+    await assert.rejects(
+      activateModules({
+        snapshot: snapshot({ alpha: true }),
+        manifests: [manifest('alpha', { class: 'workbench', endpoints: ['alpha.get'], slots: [{ slot: 'tab', page: 'alpha' }], capabilities: [] })],
+        modulesDir: dir,
+        resolver: resolver()
+      }),
+      /handler 装配失败/u
+    )
+  })
+})
