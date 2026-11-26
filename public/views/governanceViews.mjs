@@ -46,6 +46,176 @@ function groupOf(module) {
   return 'workbench'
 }
 
+/* ── OS-202 能力图：布局尺寸是视图常量，坐标一律由投影数据算出来 ──────────
+   字号/颜色/间距全部走令牌类；SVG 属性里的颜色只写 var(--*)。 */
+const GRAPH_COLS = 6
+const GRAPH_NODE_W = 140
+const GRAPH_NODE_H = 34
+const GRAPH_GAP_X = 20
+const GRAPH_GAP_Y = 28
+const GRAPH_SEG_GAP = 18
+const GRAPH_PAD = 24
+const GRAPH_NOTE_H = 40
+const num = (value) => Number.isFinite(value) ? Math.round(value * 100) / 100 : 0
+
+function graphStatus(module) {
+  const status = text(module.status)
+  return status === 'disabled' || status === 'degraded' ? status : 'loaded'
+}
+
+function graphStatusLabel(status) {
+  if (status === 'disabled') return '已停用'
+  if (status === 'degraded') return '降级'
+  return '正常'
+}
+
+/** 线段从源节点框边出发、止于目标节点框边，箭头落在供给方一端。 */
+function trimToRect(center, toward, node) {
+  const nx = node.x + node.w / 2
+  const ny = node.y + node.h / 2
+  const vx = toward.x - nx
+  const vy = toward.y - ny
+  const len = Math.hypot(vx, vy)
+  if (!Number.isFinite(len) || len === 0) return { x: nx, y: ny }
+  const ux = vx / len
+  const uy = vy / len
+  const tx = ux === 0 ? Infinity : (node.w / 2) / Math.abs(ux)
+  const ty = uy === 0 ? Infinity : (node.h / 2) / Math.abs(uy)
+  const t = Math.min(tx, ty)
+  return { x: nx + ux * t, y: ny + uy * t }
+}
+
+/**
+ * OS-202：能力图纯函数（零 import、同输入逐字相同）。
+ *
+ * 节点＝投影里的全部模块（内置 21 件＋本机模块；货架不进图），按 id 稳定排序后
+ * 自上而下分三段：工作台（每行至多 6 个）、宿主组合面（靠右竖排）、内核件（换行）；
+ * 边＝graph.edges（from 依赖方 → to 供给方），指向底座的边折进底部说明条不画。
+ *
+ * @param {object} graph   /api/plugins 的 moduleGraph（{spec,snapshot,edges,base}）
+ * @param {Array}  modules /api/plugins 的 modules[]
+ * @param {object} options { selected } 当前选中的模块 id
+ * @returns {string} 内联 SVG；graph 缺失／无节点时返回空串（不留空框）
+ */
+export function capabilityGraphSvg(graph, modules, options = {}) {
+  const source = isObj(graph) ? graph : null
+  const catalog = asArray(modules).filter(isObj).filter(isGovernanceModule)
+  if (!source || !Array.isArray(source.edges) || !catalog.length) return ''
+  const opts = isObj(options) ? options : {}
+  const selected = text(opts.selected)
+
+  const byId = new Map()
+  for (const module of catalog) {
+    const id = text(module.id)
+    if (!id || byId.has(id)) continue
+    byId.set(id, {
+      id,
+      name: text(module.name || id),
+      version: text(module.version),
+      group: groupOf(module),
+      status: graphStatus(module),
+      builtin: module.builtin !== false
+    })
+  }
+  const nodes = [...byId.values()].sort((left, right) => left.id.localeCompare(right.id))
+  const width = GRAPH_PAD * 2 + GRAPH_COLS * GRAPH_NODE_W + (GRAPH_COLS - 1) * GRAPH_GAP_X
+  const placed = []
+  let cursor = GRAPH_PAD
+  const laySegment = (items, rightAligned, onePerRow) => {
+    const rows = onePerRow ? items.map((item) => [item]) : []
+    if (!onePerRow) {
+      for (let index = 0; index < items.length; index += GRAPH_COLS) {
+        rows.push(items.slice(index, index + GRAPH_COLS))
+      }
+    }
+    for (let row = 0; row < rows.length; row += 1) {
+      for (let col = 0; col < rows[row].length; col += 1) {
+        placed.push({
+          ...rows[row][col],
+          x: rightAligned ? width - GRAPH_PAD - GRAPH_NODE_W : GRAPH_PAD + col * (GRAPH_NODE_W + GRAPH_GAP_X),
+          y: cursor + row * (GRAPH_NODE_H + GRAPH_GAP_Y),
+          w: GRAPH_NODE_W,
+          h: GRAPH_NODE_H
+        })
+      }
+    }
+    if (rows.length) cursor += rows.length * (GRAPH_NODE_H + GRAPH_GAP_Y) + GRAPH_SEG_GAP
+  }
+  laySegment(nodes.filter((node) => node.group === 'workbench'), false, false)
+  laySegment(nodes.filter((node) => node.group === 'host'), true, true)
+  laySegment(nodes.filter((node) => node.group === 'kernel'), false, false)
+  const posById = new Map(placed.map((node) => [node.id, node]))
+
+  const edges = asArray(source.edges).filter(isObj).map((edge) => ({
+    from: text(edge.from),
+    to: text(edge.to),
+    capability: text(edge.capability),
+    optional: edge.optional === true
+  })).filter((edge) => edge.to !== 'base' && edge.from !== edge.to
+    && posById.has(edge.from) && posById.has(edge.to))
+
+  const hasSelected = Boolean(selected) && posById.has(selected)
+  const related = new Set()
+  if (hasSelected) {
+    for (const edge of edges) {
+      if (edge.from === selected || edge.to === selected) {
+        related.add(edge.from)
+        related.add(edge.to)
+      }
+    }
+  }
+
+  const edgesHtml = edges.map((edge) => {
+    const from = posById.get(edge.from)
+    const to = posById.get(edge.to)
+    const sourcePoint = { x: from.x + from.w / 2, y: from.y + from.h / 2 }
+    const targetPoint = { x: to.x + to.w / 2, y: to.y + to.h / 2 }
+    const start = trimToRect(sourcePoint, targetPoint, from)
+    const end = trimToRect(targetPoint, sourcePoint, to)
+    // 已停用模块的依赖边当前不活跃：画虚线，且不参与选中高亮。
+    const off = from.status === 'disabled'
+    const touches = hasSelected && (edge.from === selected || edge.to === selected)
+    const hot = touches && !off
+    const dim = hasSelected && !touches
+    const classes = ['gov-graph-edge', ...(off ? ['off'] : []), ...(hot ? ['hot'] : []), ...(dim ? ['dim'] : [])]
+    const marker = hot ? 'gov-graph-arrow-hot' : 'gov-graph-arrow'
+    return `<path class="${classes.join(' ')}" d="M ${num(start.x)} ${num(start.y)} L ${num(end.x)} ${num(end.y)}" data-from="${escText(edge.from)}" data-to="${escText(edge.to)}" data-capability="${escText(edge.capability)}" stroke="var(--line)" marker-end="url(#${marker})"${off ? ' stroke-dasharray="4 3"' : ''}><title>${escText(`${from.name} 依赖 ${edge.capability} ← ${to.name}`)}</title></path>`
+  }).join('')
+
+  const nodesHtml = placed.map((node) => {
+    const classes = ['gov-graph-node', `cat-${node.group}`]
+    if (node.status === 'disabled') classes.push('off')
+    if (node.status === 'degraded') classes.push('degraded')
+    if (hasSelected && node.id === selected) classes.push('sel')
+    else if (hasSelected && related.has(node.id)) classes.push('adj')
+    else if (hasSelected) classes.push('dim')
+    const stroke = hasSelected && node.id === selected ? 'var(--accent)'
+      : node.status === 'degraded' ? 'var(--warn)' : `var(--cat-${node.group})`
+    const title = `${node.name} · ${node.id}@v${node.version} · ${graphStatusLabel(node.status)}`
+    return `<g class="${classes.join(' ')}" data-id="${escText(node.id)}" data-status="${node.status}">
+      <title>${escText(title)}</title>
+      <rect x="${num(node.x)}" y="${num(node.y)}" width="${node.w}" height="${node.h}" rx="14" fill="var(--surface-card)" stroke="${stroke}"${node.status === 'disabled' ? ' stroke-dasharray="4 3"' : ''}/>
+      <text class="gov-graph-label" x="${num(node.x + node.w / 2)}" y="${num(node.y + node.h / 2)}">${escText(node.name)}</text>
+      ${node.builtin ? '' : `<text class="gov-graph-local" x="${num(node.x + node.w - 6)}" y="${num(node.y + 12)}">本机</text>`}
+    </g>`
+  }).join('')
+
+  // 底座能力：只列有依赖方的（全员依赖的折叠成一句），数量取自 graph.base.consumers。
+  const baseRows = asArray(source.base).filter(isObj).map((item) => ({
+    id: text(item.id), count: asArray(item.consumers).length
+  })).filter((item) => item.id && item.count > 0)
+    .sort((left, right) => right.count - left.count || left.id.localeCompare(right.id))
+  const noteHtml = baseRows.length
+    ? `<g class="gov-graph-base"><rect x="${GRAPH_PAD}" y="${num(cursor)}" width="${width - GRAPH_PAD * 2}" height="${GRAPH_NOTE_H}" rx="10" fill="var(--soft)" stroke="var(--line)"/><text class="gov-graph-note-text" x="${num(GRAPH_PAD + 12)}" y="${num(cursor + GRAPH_NOTE_H / 2)}">${escText(`底座 · ${baseRows.map((item) => `${item.id}（${item.count} 件依赖）`).join(' / ')} ＋ 装载协议 · 能力图 · 契约壳 · 物理写管道（全员依赖，图中略）`)}</text></g>`
+    : ''
+  const height = (baseRows.length ? cursor + GRAPH_NOTE_H : cursor - GRAPH_SEG_GAP) + GRAPH_PAD
+  const defs = `<defs>
+      <marker id="gov-graph-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="var(--line)"/></marker>
+      <marker id="gov-graph-arrow-hot" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="var(--accent)"/></marker>
+    </defs>`
+  return `<svg class="gov-graph" viewBox="0 0 ${width} ${num(height)}" role="img" aria-label="插件能力图">${defs}<g class="gov-graph-edges">${edgesHtml}</g><g class="gov-graph-nodes">${nodesHtml}</g>${noteHtml}</svg>`
+}
+
 function clsLabelOf(group, role) {
   if (group === 'kernel') return '内核件'
   if (group === 'host') return '宿主组合面'
@@ -377,6 +547,8 @@ export function pluginCardHtml(card, options = {}) {
   // OS-201a：expanded === true 出卡体；expandedId 命中本卡也给默认展开（OS-202 点节点定位到卡）。
   const isExpanded = opts.expanded === true || (opts.expandedId !== undefined && text(opts.expandedId) === text(source.id))
   if (isExpanded) classes.push('open')
+  // OS-202：图与卡片共用选中态——点节点选中后，对应卡片也带上 sel 标记。
+  if (text(opts.selectedId) && text(opts.selectedId) === text(source.id)) classes.push('sel')
   if (source.status === 'disabled') classes.push('off')
   if (source.status === 'degraded') classes.push('degraded')
   const head = cardHeadHtml(normalized, esc, opts)
@@ -409,6 +581,8 @@ function governanceHtml(view = {}, options = {}) {
   const confirming = uiState.confirming || ''
   const error = uiState.error
   const opts = isObj(options) ? options : {}
+  const selectedId = text(opts.selectedId || '')
+  const graphCollapsed = opts.graphCollapsed === true
   const currentUiState = () => {
     if (!state.current) return {}
     const mem = uiMemory(state.current.path)
@@ -423,12 +597,29 @@ function governanceHtml(view = {}, options = {}) {
     const reason = payload?.error || (payload?.slots === null ? '插件投影读取失败' : (isObj(payload) ? '投影里没有模块数组' : '没有收到 /api/plugins 投影'))
     return `<div class="gov"><div class="gov-head"><h2>插件治理台</h2><span class="gov-count">${esc(head)}</span></div><div class="gov-empty">拿不到插件清单：${esc(reason)}</div></div>`
   }
+  // OS-202：能力图由投影现算；graph 缺失时整块不出现，不留空框。
+  const graphSvg = capabilityGraphSvg(payload.moduleGraph, payload.modules, { selected: selectedId })
+  const graphBlock = graphSvg ? `<section class="gov-map${graphCollapsed ? ' collapsed' : ''}">
+    <div class="gov-map-head">
+      <h3>能力图</h3>
+      <span class="gov-count">${model.total} 件 · ${asArray(payload.moduleGraph?.edges).filter((edge) => isObj(edge) && text(edge.to) !== 'base').length} 条依赖</span>
+      <div class="gov-graph-legend">
+        <span><i class="gov-dot cat-workbench"></i>工作台</span>
+        <span><i class="gov-dot cat-host"></i>宿主组合面</span>
+        <span><i class="gov-dot cat-kernel"></i>内核件</span>
+        <span class="gov-graph-arrow-note">箭头＝能力依赖（依赖方 → 供给方）</span>
+      </div>
+      <button type="button" class="uikit-btn uikit-btn-ghost gov-map-toggle" data-gov-action="graph-toggle">${graphCollapsed ? '展开能力图' : '收起'}</button>
+    </div>
+    ${graphSvg}
+  </section>` : ''
   const groups = model.groups.map((group) => {
     const cards = group.cards.length
       ? group.cards.map((card) => pluginCardHtml(card, {
         esc,
         expanded: expanded.has(card.id),
-        expandedId: opts.expandedId,
+        expandedId: selectedId || opts.expandedId,
+        selectedId,
         confirming: confirming === card.id,
         error: error && error.id === card.id ? error : null,
         canToggle: opts.canToggle !== false
@@ -442,6 +633,7 @@ function governanceHtml(view = {}, options = {}) {
   return `<div class="gov">
     <div class="gov-head"><h2>插件治理台</h2><span class="gov-count">${esc(head)}</span></div>
     <p class="gov-lead">能力图看全局，卡片管单件：启停看影响、依赖有出处、设置有指路。内核件与宿主组合面只读。</p>
+    ${graphBlock}
     ${groups}
   </div>`
 }
@@ -464,6 +656,9 @@ export function createGovernanceViews(scope) {
   const expanded = new Set()
   let confirming = ''
   let error = null
+  // OS-202：选中态与图的开合都是视图内存（不是内容性数据，不落浏览器存储）。
+  let selected = ''
+  let graphCollapsed = false
 
   function currentUiState() {
     if (!state.current) return {}
@@ -481,7 +676,28 @@ export function createGovernanceViews(scope) {
   }
 
   function renderPage() {
-    return governanceHtml({ state, esc, text: textOf, uiMemory, navLabel, settingsAggregation, ui: { expanded, confirming, error } }, { canToggle: Boolean(state.current?.path) })
+    return governanceHtml({ state, esc, text: textOf, uiMemory, navLabel, settingsAggregation, ui: { expanded, confirming, error } }, {
+      canToggle: Boolean(state.current?.path), selectedId: selected, graphCollapsed
+    })
+  }
+
+  /** 图与卡片共用一个选中态：再点一次取消；选中即展开卡片并滚动定位、闪一下强调。 */
+  function selectPlugin(id, scrollToCard) {
+    selected = selected === id ? '' : id
+    if (selected) expanded.add(selected)
+    else expanded.delete(id)
+    confirming = ''
+    error = null
+    render()
+    if (selected && scrollToCard && typeof document !== 'undefined') {
+      for (const card of document.querySelectorAll('[data-gov-id]')) {
+        if (card.dataset.govId !== id) continue
+        card.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        card.classList.add('flash')
+        setTimeout(() => card.classList.remove('flash'), 1600)
+        break
+      }
+    }
   }
 
   async function commit(id, enabled) {
@@ -507,10 +723,15 @@ export function createGovernanceViews(scope) {
       const id = textOf(target.dataset.id)
       try {
         if (action === 'expand') {
-          if (expanded.has(id)) expanded.delete(id)
-          else expanded.add(id)
-          if (confirming && confirming !== id) confirming = ''
-          error = null
+          selectPlugin(id, false)
+          return
+        }
+        if (action === 'graph-node') {
+          selectPlugin(id, true)
+          return
+        }
+        if (action === 'graph-toggle') {
+          graphCollapsed = !graphCollapsed
           render()
           return
         }

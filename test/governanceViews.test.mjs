@@ -16,7 +16,8 @@ import { slotProjection } from '../src/protocol/slots.mjs'
 import { BUILTIN_PAGE_IDS } from '../src/protocol/naming.mjs'
 import * as settingsAggregation from '../public/views/settingsAggregation.mjs'
 import {
-  governanceModel, isGovernanceModule, pluginCardHtml, confirmStripHtml, governanceHtml, createGovernanceViews
+  governanceModel, isGovernanceModule, pluginCardHtml, confirmStripHtml, governanceHtml, createGovernanceViews,
+  capabilityGraphSvg
 } from '../public/views/governanceViews.mjs'
 import { createSettingsViews } from '../public/views/settingsViews.mjs'
 
@@ -27,7 +28,7 @@ const navLabel = (id) => (id === 'engines' ? '引擎与存储' : text(id))
 const deps = { esc, text, navLabel, settingsAggregation }
 
 function buildPayload(overrides = {}) {
-  const { projections } = projectModuleGraph({
+  const { projections, moduleGraph } = projectModuleGraph({
     snapshot: CAPABILITY_SNAPSHOT, manifests: MODULE_MANIFESTS, state: {}, suiteState: {}, base: BASE_GRAPH
   })
   const modules = MODULE_MANIFESTS.map((manifest) => ({
@@ -36,7 +37,7 @@ function buildPayload(overrides = {}) {
     ...projections.get(manifest.id)
   }))
   const slots = slotProjection(MODULE_MANIFESTS, {}, { builtinPages: new Set(BUILTIN_PAGE_IDS) }).slots
-  return { modules, slots, ...overrides }
+  return { modules, slots, moduleGraph, ...overrides }
 }
 
 const payload = buildPayload()
@@ -302,4 +303,143 @@ test('OS-201a·展开入口：expandedId 命中卡片默认展开，未命中保
   assert.doesNotMatch(cardHtml(located, 'fact'), /class="gov-body"/u, '未命中的卡不展开')
   const plain = governanceHtml(view)
   assert.doesNotMatch(cardHtml(plain, 'roleplay'), /class="gov-body"/u, '没有 expandedId 时行为不变')
+})
+
+/* ── OS-202 能力图 ─────────────────────────────────────────────────────── */
+const graphOf = (selected) => capabilityGraphSvg(payload.moduleGraph, payload.modules, selected ? { selected } : {})
+const attrOf = (tag, name) => tag.match(new RegExp(`${name}="([^"]*)"`, 'u'))?.[1] ?? ''
+const nodeTags = (html) => [...html.matchAll(/<g class="gov-graph-node[ "][^>]*>/gu)].map((match) => match[0])
+const nodeGroups = (html) => [...html.matchAll(/<g class="gov-graph-node[ "][\s\S]*?<\/g>/gu)].map((match) => match[0])
+const edgeTags = (html) => [...html.matchAll(/<path class="gov-graph-edge[ "][^>]*>/gu)].map((match) => match[0])
+const hasClass = (tag, cls) => new RegExp(`\\b${cls}\\b`, 'u').test(attrOf(tag, 'class'))
+
+test('OS-202·布局：21 节点坐标有限且互不相交、同输入逐字相同；38 条非底座边全带箭头且端点都在图里', () => {
+  const html = graphOf()
+  const nodes = nodeTags(html)
+  assert.equal(nodes.length, 21)
+  const ids = nodes.map((tag) => attrOf(tag, 'data-id'))
+  assert.equal(new Set(ids).size, 21)
+  const rects = [...html.matchAll(/<g class="gov-graph-node[ "][\s\S]*?<rect ([^>]*)\/>/gu)].map((match) => match[1])
+  assert.equal(rects.length, 21)
+  const boxes = rects.map((rect) => ({
+    x: Number(attrOf(rect, 'x')), y: Number(attrOf(rect, 'y')),
+    w: Number(attrOf(rect, 'width')), h: Number(attrOf(rect, 'height'))
+  }))
+  for (const box of boxes) {
+    for (const value of [box.x, box.y, box.w, box.h]) {
+      assert.ok(Number.isFinite(value) && value > 0, `坐标非有限数：${JSON.stringify(box)}`)
+    }
+  }
+  for (let i = 0; i < boxes.length; i += 1) {
+    for (let j = i + 1; j < boxes.length; j += 1) {
+      const a = boxes[i]
+      const b = boxes[j]
+      assert.ok(a.x + a.w <= b.x || b.x + b.w <= a.x || a.y + a.h <= b.y || b.y + b.h <= a.y,
+        `节点 ${ids[i]} 与 ${ids[j]} 的矩形相交`)
+    }
+  }
+  assert.equal(html, graphOf(), '同一输入两次输出逐字相同')
+  const edges = edgeTags(html)
+  assert.equal(edges.length, 38)
+  for (const edge of edges) {
+    assert.match(edge, /marker-end="url\(#gov-graph-arrow[^"]*\)"/u, '每条非底座边都要有箭头')
+    assert.ok(ids.includes(attrOf(edge, 'data-from')), `边的 from 不是节点：${attrOf(edge, 'data-from')}`)
+    assert.ok(ids.includes(attrOf(edge, 'data-to')), `边的 to 不是节点：${attrOf(edge, 'data-to')}`)
+    assert.ok(attrOf(edge, 'data-capability'), '边要带能力 id')
+  }
+  assert.doesNotMatch(html, /data-to="base"/u, '指向底座的边不画')
+  assert.ok(html.indexOf('gov-graph-edges') < html.indexOf('gov-graph-nodes'), '边在节点下层')
+})
+
+test('OS-202·选中：fact 高亮 14 边/10 邻节点/压暗 10 节点，roleplay 高亮 4 边，取消后无高亮无压暗', () => {
+  const hotEdges = (html) => edgeTags(html).filter((tag) => hasClass(tag, 'hot')).length
+  const adjNodes = (html) => nodeTags(html).filter((tag) => hasClass(tag, 'adj')).length
+  const dimNodes = (html) => nodeTags(html).filter((tag) => hasClass(tag, 'dim')).length
+  const fact = graphOf('fact')
+  assert.equal(hotEdges(fact), 14)
+  assert.equal(adjNodes(fact), 10)
+  assert.equal(dimNodes(fact), 10)
+  assert.match(nodeTags(fact).find((tag) => attrOf(tag, 'data-id') === 'fact'), /\bsel\b/u)
+  assert.equal(hotEdges(graphOf('roleplay')), 4)
+  const plain = graphOf()
+  assert.equal(hotEdges(plain), 0)
+  assert.equal(adjNodes(plain), 0)
+  assert.equal(dimNodes(plain), 0)
+  assert.equal(edgeTags(plain).filter((tag) => hasClass(tag, 'dim')).length, 0)
+})
+
+test('OS-202·状态：本机标记、停用虚线框与虚线边且不高亮、降级描边用 warn', () => {
+  const graph = {
+    spec: 'openstory-module-graph@1', snapshot: 'stub', base: [],
+    edges: [
+      { from: 'ext-local', to: 'fact', capability: 'fact.store', min: 3, maxExclusive: 4 },
+      { from: 'off-wb', to: 'fact', capability: 'fact.pack', min: 1, maxExclusive: 2 },
+      { from: 'deg-wb', to: 'fact', capability: 'fact.write', min: 1, maxExclusive: 2 }
+    ]
+  }
+  const modules = [
+    { id: 'fact', name: '事实内核', class: 'kernel', role: 'kernel', version: '1.0.0', status: 'loaded', builtin: true },
+    { id: 'ext-local', name: '本机件', class: 'workbench', role: 'workbench', version: '0.1.0', status: 'loaded', builtin: false },
+    { id: 'off-wb', name: '停用件', class: 'workbench', role: 'workbench', version: '0.1.0', status: 'disabled', builtin: true },
+    { id: 'deg-wb', name: '降级件', class: 'workbench', role: 'workbench', version: '0.1.0', status: 'degraded', builtin: true }
+  ]
+  const html = capabilityGraphSvg(graph, modules, { selected: 'fact' })
+  assert.match(html, /<text class="gov-graph-local"[^>]*>本机<\/text>/u)
+  const groupOf = (id) => nodeGroups(html).find((group) => attrOf(group, 'data-id') === id)
+  assert.match(groupOf('off-wb'), /data-status="disabled"/u)
+  assert.match(groupOf('off-wb'), /stroke-dasharray="4 3"/u)
+  assert.match(groupOf('deg-wb'), /data-status="degraded"/u)
+  assert.match(groupOf('deg-wb'), /stroke="var\(--warn\)"/u)
+  const offEdge = edgeTags(html).find((tag) => attrOf(tag, 'data-from') === 'off-wb')
+  assert.match(offEdge, /stroke-dasharray="4 3"/u)
+  assert.doesNotMatch(attrOf(offEdge, 'class'), /\bhot\b/u, '停用方的边不参与高亮')
+})
+
+test('OS-202·说明条：三个底座能力与依赖方数取自数据；graph 缺失整块不出', () => {
+  const note = graphOf().match(/<text class="gov-graph-note-text"[^>]*>([^<]*)<\/text>/u)?.[1] || ''
+  assert.match(note, /base\.write（4 件依赖）/u)
+  assert.match(note, /base\.contract（2 件依赖）/u)
+  assert.match(note, /base\.naming（5 件依赖）/u)
+  assert.match(note, /装载协议 · 能力图 · 契约壳 · 物理写管道（全员依赖，图中略）/u)
+  assert.equal(capabilityGraphSvg(null, payload.modules), '')
+  const view = { ...deps, state: { plugins: { ...payload, moduleGraph: null }, current: null }, uiMemory: () => ({ values: {} }) }
+  const html = governanceHtml(view)
+  assert.doesNotMatch(html, /gov-map/u)
+  assert.doesNotMatch(html, /gov-graph/u)
+  assert.match(html, /21 件/u, '卡片流照常渲染')
+})
+
+test('OS-202·装配：图例、收起/展开按钮、图与卡片共用选中态并滚动闪一下', () => {
+  const view = { ...deps, state: { plugins: payload, current: null }, uiMemory: () => ({ values: {} }) }
+  const html = governanceHtml(view)
+  assert.match(html, /class="gov-map"/u)
+  assert.match(html, /箭头＝能力依赖（依赖方 → 供给方）/u)
+  assert.match(html, /class="gov-dot cat-workbench"/u)
+  assert.match(html, /class="gov-dot cat-host"/u)
+  assert.match(html, /class="gov-dot cat-kernel"/u)
+  assert.match(html, /data-gov-action="graph-toggle"/u)
+  assert.match(html, />收起</u)
+  assert.match(governanceHtml(view, { graphCollapsed: true }), /class="gov-map collapsed"/u)
+  assert.match(governanceHtml(view, { graphCollapsed: true }), /展开能力图/u)
+  const selected = governanceHtml(view, { selectedId: 'roleplay' })
+  assert.match(selected, /class="gov-card gov-workbench open sel" data-gov-id="roleplay"/u, '卡片按同一选中态高亮')
+  assert.ok(edgeTags(selected).some((tag) => hasClass(tag, 'hot')), '同一次渲染里图也高亮')
+  const source = readFileSync(join(REPO, 'public/views/governanceViews.mjs'), 'utf8')
+  assert.match(source, /export function capabilityGraphSvg\(/mu)
+  assert.match(source, /action === 'graph-node'/u)
+  assert.match(source, /scrollIntoView/u)
+  assert.match(source, /classList\.add\('flash'\)/u)
+  const app = readFileSync(join(REPO, 'public/app.js'), 'utf8')
+  const lines = app.split('\n').length - (app.endsWith('\n') ? 1 : 0)
+  assert.ok(lines <= 10096, `app.js 行数从 10096 涨到 ${lines}`)
+})
+
+test('OS-202·转义：节点名含 < 与引号时转义，边标题同样转义', () => {
+  const modules = payload.modules.map((module) => module.id === 'fact'
+    ? { ...module, name: '<img src="x">' } : module)
+  const html = capabilityGraphSvg(payload.moduleGraph, modules, { selected: 'fact' })
+  assert.doesNotMatch(html, /<img/u)
+  assert.match(html, /&lt;img/u)
+  assert.match(html, /&quot;x&quot;/u)
+  assert.match(html, /← &lt;img/u, '边 title 也转义了供给方名')
 })

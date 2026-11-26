@@ -66,3 +66,28 @@
 - 机器门禁全绿；`app.js` 行数不增；`git diff --check` 干净。
 - 生产调用点贴出来（`文件:行`）：`capabilityGraphSvg`、`governanceHtml` 里的装配、选中态与卡片的联动。
 - 反证一则：把 `marker-end` 临时去掉，对应测试必须红；贴输出后还原。
+## 施工回报（编排器自动归档）
+
+> 模型 hy4flash · 第 1 轮 · 测试 绿（tests 874 · pass 872 · fail 0 · skip 2） · 门禁 绿 · e2e 水浒＋新建（隔离 daemon）绿 · 8807 未动
+
+```text
+CHANGED:
+- public/views/governanceViews.mjs — 新增 `capabilityGraphSvg` 纯函数、图例/收起装配、图与卡片共用选中态
+- public/index.html — 新增 `.gov-map` / `.gov-graph` 及其节点、边、压暗、flash 样式（全部令牌）
+- test/governanceViews.test.mjs — 新增 6 例 OS-202 测试，buildPayload 带上 moduleGraph
+- AGENTS.md — 测试数 868→874（数字锚要求）
+- README.md — 测试数 868/866→874/872（数字锚要求）
+- ARCHITECTURE.md — arch:stats 回写前端行数
+- docs/number-anchors.json — number-anchors 回写 874/872
+
+VERIFIED:
+- `node --test test/governanceViews.test.mjs`：21/21 通过（含 6 例新增）。
+- `node .zcode/run-gate.mjs`：874 tests / 872 pass / 0 fail / 2 skip。
+- `node tools/acceptance/acceptance.mjs`：29 过 / 0 挂 / 0 警。
+- `npm run arch:stats`、`node tools/number-anchors.mjs` 已按序回写；`npm run arch:check` ✓（51 行一致）。
+- `git diff --check`：干净。
+- 生产调用点：`capabilityGraphSvg` 定义 `public/views/governanceViews.mjs:100`；`governanceHtml` 装配 `:601`；选中态 `selectPlugin` `:685`、卡片 flash `:696`、节点点击 `:730`、开合 `:733`。
+- 反证：临时删去 `marker-end` 后 `node --test test/governanceViews.test.mjs` 报 `✖ OS-202·布局 … 每条非底座边都要有箭头`（fail 1），已还原并复跑 21/21 通过。
+
+LIMITATIONS: 无
+```
