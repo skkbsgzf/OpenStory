@@ -48,3 +48,26 @@
 - 机器门禁全绿；`app.js` 行数不增（当前 10,096）；`git diff --check` 干净。
 - **浏览器实测必做**（这次是缺陷的发现方式）：点节点后截图证明高亮与定位生效，贴截图路径。
 - 反证：把节点上的 `data-gov-action` 去掉，新加的接线测试必须红；贴输出后还原。
+## 施工回报（编排器自动归档）
+
+> 模型 hy4flash · 第 1 轮 · 测试 绿（tests 878 · pass 876 · fail 0 · skip 2） · 门禁 绿 · e2e 水浒＋新建（隔离 daemon）绿 · 8807 未动
+
+```text
+CHANGED:
+- `public/views/governanceViews.mjs`
+- `test/governanceViews.test.mjs`
+- `README.md`
+- `AGENTS.md`
+- `ARCHITECTURE.md`（`npm run arch:stats` 回写）
+- `docs/number-anchors.json`（`node tools/number-anchors.mjs` 回写）
+
+VERIFIED:
+- `node --test test/governanceViews.test.mjs`：25/25 过。
+- 反证：临时删掉节点上的 `data-gov-action` 后，3 条新断言红（`每个节点都要能被整页委托命中`／装配断言／`页面上没有任何可被委托命中的 graph-node 节点`），还原后复跑 25/25 过。
+- `node .zcode/run-gate.mjs`：878 例 / 876 过 / 2 跳过 / 0 挂。
+- `npm run arch:stats` → `node tools/number-anchors.mjs` → `node tools/acceptance/acceptance.mjs`：29 过 / 0 挂 / 0 警。
+- `git diff --check` 干净；`public/app.js` 仍为 10,096 行。
+- 浏览器实测：`startDaemon({ port: 0 })` 临时库 + Edge CDP，真实鼠标点击 `graph-node/data-id=fact`；命中目标 `rect → graph-node/fact`；点击后 `nodeSel=true, hotEdges=14, dimNodes=10, cardOpen=true, cardFlash=true, cardVisible=true`。截图：`C:/Users/Administrator/AppData/Local/Temp/os202a-graph-highlight.png`。临时脚本与库已删除，未动 8807 daemon。
+
+LIMITATIONS: 无
+```

@@ -192,7 +192,10 @@ export function capabilityGraphSvg(graph, modules, options = {}) {
     const stroke = hasSelected && node.id === selected ? 'var(--accent)'
       : node.status === 'degraded' ? 'var(--warn)' : `var(--cat-${node.group})`
     const title = `${node.name} · ${node.id}@v${node.version} · ${graphStatusLabel(node.status)}`
-    return `<g class="${classes.join(' ')}" data-id="${escText(node.id)}" data-status="${node.status}">
+    // OS-202a：节点必须能被整页委托命中——data-gov-action 是点击/键盘的统一入口；
+    // role/tabindex/aria-label 让键盘与读屏也能触发（名称＋状态）。
+    const ariaLabel = `${node.name} · ${graphStatusLabel(node.status)}`
+    return `<g class="${classes.join(' ')}" data-gov-action="graph-node" role="button" tabindex="0" aria-label="${escText(ariaLabel)}" data-id="${escText(node.id)}" data-status="${node.status}">
       <title>${escText(title)}</title>
       <rect x="${num(node.x)}" y="${num(node.y)}" width="${node.w}" height="${node.h}" rx="14" fill="var(--surface-card)" stroke="${stroke}"${node.status === 'disabled' ? ' stroke-dasharray="4 3"' : ''}/>
       <text class="gov-graph-label" x="${num(node.x + node.w / 2)}" y="${num(node.y + node.h / 2)}">${escText(node.name)}</text>
@@ -715,53 +718,65 @@ export function createGovernanceViews(scope) {
     }
   }
 
-  if (typeof document !== 'undefined') {
-    document.addEventListener('click', async (event) => {
-      const target = event.target?.closest?.('[data-gov-action]')
-      if (!target) return
-      const action = target.dataset.govAction
-      const id = textOf(target.dataset.id)
-      try {
-        if (action === 'expand') {
-          selectPlugin(id, false)
-          return
-        }
-        if (action === 'graph-node') {
-          selectPlugin(id, true)
-          return
-        }
-        if (action === 'graph-toggle') {
-          graphCollapsed = !graphCollapsed
-          render()
-          return
-        }
-        if (action === 'toggle') {
-          const card = findCard(id)
-          if (!card || card.group !== 'workbench' || !state.current?.path) return
-          if (card.enabled) {
-            expanded.add(id)
-            confirming = id
-            error = null
-            render()
-          } else {
-            await commit(id, true)
-          }
-          return
-        }
-        if (action === 'cancel') {
-          confirming = ''
+  /** 点击与键盘共用一套动作分派：委托只负责找到 [data-gov-action]，动作口径不变。 */
+  async function runGovAction(target) {
+    const action = target.dataset.govAction
+    const id = textOf(target.dataset.id)
+    try {
+      if (action === 'expand') {
+        selectPlugin(id, false)
+        return
+      }
+      if (action === 'graph-node') {
+        selectPlugin(id, true)
+        return
+      }
+      if (action === 'graph-toggle') {
+        graphCollapsed = !graphCollapsed
+        render()
+        return
+      }
+      if (action === 'toggle') {
+        const card = findCard(id)
+        if (!card || card.group !== 'workbench' || !state.current?.path) return
+        if (card.enabled) {
+          expanded.add(id)
+          confirming = id
           error = null
           render()
-          return
+        } else {
+          await commit(id, true)
         }
-        if (action === 'confirm-disable') {
-          await commit(id, false)
-          return
-        }
-      } catch (failure) {
-        error = { id, code: textOf(failure?.code || 'WRITE_FAILED'), message: textOf(failure?.message || failure) }
-        render()
+        return
       }
+      if (action === 'cancel') {
+        confirming = ''
+        error = null
+        render()
+        return
+      }
+      if (action === 'confirm-disable') {
+        await commit(id, false)
+        return
+      }
+    } catch (failure) {
+      error = { id, code: textOf(failure?.code || 'WRITE_FAILED'), message: textOf(failure?.message || failure) }
+      render()
+    }
+  }
+
+  if (typeof document !== 'undefined') {
+    document.addEventListener('click', (event) => {
+      const target = event.target?.closest?.('[data-gov-action]')
+      if (target) runGovAction(target)
+    })
+    document.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter' && event.key !== ' ' && event.key !== 'Spacebar') return
+      const target = event.target?.closest?.('[data-gov-action]')
+      // 原生按钮/输入自己会响应 Enter/Space，交给它们，避免同一动作触发两次。
+      if (!target || target.matches?.('button, a, input, select, textarea')) return
+      event.preventDefault()
+      runGovAction(target)
     })
     document.addEventListener('change', (event) => {
       const target = event.target?.closest?.('[data-gov-action="setting"]')

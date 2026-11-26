@@ -443,3 +443,113 @@ test('OS-202·转义：节点名含 < 与引号时转义，边标题同样转义
   assert.match(html, /&quot;x&quot;/u)
   assert.match(html, /← &lt;img/u, '边 title 也转义了供给方名')
 })
+
+/* ── OS-202a 节点可点：纯函数 / 装配 / 委托命中 / 键盘实测 ────────────────── */
+test('OS-202a·节点可点：纯函数输出每个节点都带 data-gov-action/role/tabindex/aria-label，数量与节点数相等', () => {
+  const tags = nodeTags(graphOf())
+  assert.equal(tags.length, 21)
+  for (const tag of tags) {
+    assert.equal(attrOf(tag, 'data-gov-action'), 'graph-node', '每个节点都要能被整页委托命中')
+    assert.equal(attrOf(tag, 'role'), 'button', '读屏要当成按钮')
+    assert.equal(attrOf(tag, 'tabindex'), '0', '键盘要能聚焦')
+    assert.ok(attrOf(tag, 'aria-label'), '读屏要能念出节点')
+  }
+  assert.equal(tags.filter((tag) => /data-gov-action="graph-node"/u.test(tag)).length, tags.length)
+  const groups = nodeGroups(graphOf())
+  assert.equal(groups.length, tags.length)
+  const fact = groups.find((group) => attrOf(group, 'data-id') === 'fact')
+  assert.match(attrOf(fact, 'aria-label'), /事实内核/u, 'aria-label 带名称')
+  assert.match(attrOf(fact, 'aria-label'), /正常/u, 'aria-label 带状态')
+})
+
+test('OS-202a·装配：governanceHtml 里的 svg 节点同样带 data-gov-action（防止只在纯函数分支加、装配又被换掉）', () => {
+  const view = { ...deps, state: { plugins: payload, current: null }, uiMemory: () => ({ values: {} }) }
+  const svg = governanceHtml(view).match(/<svg class="gov-graph"[\s\S]*?<\/svg>/u)?.[0]
+  assert.ok(svg, '整页要有能力图 svg')
+  const tags = nodeTags(svg)
+  assert.equal(tags.length, 21)
+  for (const tag of tags) {
+    assert.equal(attrOf(tag, 'data-gov-action'), 'graph-node')
+    assert.equal(attrOf(tag, 'role'), 'button')
+    assert.equal(attrOf(tag, 'tabindex'), '0')
+    assert.ok(attrOf(tag, 'aria-label'))
+    assert.ok(attrOf(tag, 'data-id'))
+  }
+})
+
+test('OS-202a·接线回归：假 DOM 上委托选择器能命中 [data-gov-action="graph-node"][data-id]（本次缺陷的直接护栏）', () => {
+  const view = { ...deps, state: { plugins: payload, current: null }, uiMemory: () => ({ values: {} }) }
+  const html = governanceHtml(view)
+  // 极简假 DOM：把每个 <g> 开标签映射成带 closest/dataset 的元素，模拟 event.target.closest('[data-gov-action]')。
+  const elements = [...html.matchAll(/<g\b[^>]*>/gu)].map((match) => {
+    const tag = match[0]
+    const dataset = { govAction: attrOf(tag, 'data-gov-action'), id: attrOf(tag, 'data-id') }
+    return {
+      tag,
+      dataset,
+      closest(selector) { return selector === '[data-gov-action]' && dataset.govAction ? this : null }
+    }
+  })
+  const hits = elements.filter((element) => {
+    const target = element.closest('[data-gov-action]')
+    return target && target.dataset.govAction === 'graph-node' && target.dataset.id
+  })
+  assert.equal(hits.length, 21, '页面上没有任何可被委托命中的 graph-node 节点——节点可点性回归')
+  for (const hit of hits) assert.ok(hit.tag.includes('role="button"'))
+  const source = readFileSync(join(REPO, 'public/views/governanceViews.mjs'), 'utf8')
+  assert.match(source, /closest\?\.\('\[data-gov-action\]'\)/u, '点击委托用的选择器')
+  assert.match(source, /addEventListener\('keydown'/u, '键盘委托')
+  assert.match(source, /event\.key !== 'Enter'/u, 'Enter 触发同一动作')
+  assert.match(source, /event\.key !== ' '/u, 'Space 触发同一动作')
+})
+
+test('OS-202a·委托实测：假 document 上 click 与 Enter/Space 都走 graph-node→选中高亮，再点取消', () => {
+  const handlers = {}
+  const previous = globalThis.document
+  const target = {
+    dataset: { govAction: 'graph-node', id: 'fact' },
+    matches: () => false,
+    closest(selector) { return selector === '[data-gov-action]' ? this : null }
+  }
+  const eventOf = (key, node = target) => ({
+    key, prevented: false, target: { closest: () => node },
+    preventDefault() { this.prevented = true }
+  })
+  globalThis.document = {
+    addEventListener: (type, fn) => { handlers[type] = fn },
+    querySelectorAll: () => []
+  }
+  try {
+    let renders = 0
+    const views = createGovernanceViews({
+      ...deps, state: { plugins: payload, current: null }, uiMemory: () => ({ values: {} }),
+      loadPlugins: async () => {}, render: () => { renders += 1 }, setModuleEnabled: async () => {}, uiSet: () => {}
+    })
+    assert.equal(typeof handlers.click, 'function')
+    assert.equal(typeof handlers.keydown, 'function')
+    handlers.click(eventOf('Unidentified'))
+    assert.ok(renders >= 1, 'click 命中节点后重渲染')
+    const selected = views.governanceHtml()
+    assert.ok(edgeTags(selected).some((tag) => hasClass(tag, 'hot')), '点节点后相连边高亮')
+    assert.match(nodeTags(selected).find((tag) => attrOf(tag, 'data-id') === 'fact'), /\bsel\b/u, '节点自身高亮')
+    handlers.click(eventOf('Unidentified'))
+    assert.equal(edgeTags(views.governanceHtml()).filter((tag) => hasClass(tag, 'hot')).length, 0, '再点同一节点取消选中')
+
+    for (const key of ['Enter', ' ', 'Spacebar']) {
+      const event = eventOf(key)
+      handlers.keydown(event)
+      assert.equal(event.prevented, true, `${key} 被消费`)
+      assert.ok(edgeTags(views.governanceHtml()).some((tag) => hasClass(tag, 'hot')), `${key} 选中后高亮`)
+      handlers.keydown(eventOf(key)) // 再触发一次＝取消，回到未选中
+    }
+    const other = eventOf('a')
+    handlers.keydown(other)
+    assert.equal(other.prevented, false, '非动作键不触发')
+    const native = { ...target, matches: () => true }
+    const nativeEvent = eventOf('Enter', native)
+    handlers.keydown(nativeEvent)
+    assert.equal(nativeEvent.prevented, false, '原生控件交给自己处理，不重复触发')
+  } finally {
+    globalThis.document = previous
+  }
+})
