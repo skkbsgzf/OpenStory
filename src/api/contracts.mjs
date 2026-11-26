@@ -202,6 +202,13 @@ export function validateResponse(endpointId, payload = {}) {
   return { ok: errors.length === 0, errors }
 }
 
+/** 按任意契约形状校验响应（静态端点与本机运行期契约共用）。 */
+export function validateResponseShape(shape, payload = {}) {
+  const errors = []
+  validateShape(shape, payload, errors)
+  return { ok: errors.length === 0, errors }
+}
+
 /** 失败载荷（daemon 与测试共用一套形状）。 */
 export function errorEnvelope(code, message, details) {
   const error = { code: String(code), message: text(message) }

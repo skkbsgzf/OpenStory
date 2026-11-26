@@ -30,7 +30,7 @@ import { createReadStream, existsSync, mkdirSync, readFileSync, realpathSync, st
 import { createServer } from 'node:http'
 import { dirname, extname, join, posix, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { API_ERROR_CODES, isPlainObject } from '../api/contracts.mjs'
+import { API_ERROR_CODES, ENDPOINTS, isPlainObject, validateResponseShape } from '../api/contracts.mjs'
 import { HOST_HANDLERS } from '../api/registry.mjs'
 import { handlerFor } from './handlerTable.mjs'
 // OS-196a：静态契约＋本机模块自带契约同一张合并视图（分派/校验走同一套）。
@@ -532,6 +532,52 @@ async function handleApi(req, res, url, context) {
   }
   if (!handler) {
     return sendError(res, API_ERROR_CODES.NOT_FOUND, `端点未实现：${endpointId}`)
+  }
+  // OS-209：本机 JSON 契约端点先缓冲、校验后再发；二进制/流式端点用空 response 明确豁免。
+  if (!ENDPOINTS[endpointId]) {
+    const runtimeContract = await contractFor(endpointId, context.env)
+    const writesItself = runtimeContract?.writesResponse === true
+      || (runtimeContract?.response && Object.keys(runtimeContract.response).length === 0)
+    if (runtimeContract?.response && !writesItself) {
+      const chunks = []
+      let statusCode = 200
+      const headers = { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' }
+      const originalWriteHead = res.writeHead.bind(res)
+      res.writeHead = (status, value) => {
+        statusCode = Number(status) || 200
+        if (value && typeof value === 'object') Object.assign(headers, value)
+        return res
+      }
+      const originalEnd = res.end.bind(res)
+      const flush = () => {
+        const body = Buffer.concat(chunks)
+        let payload = null
+        try { payload = JSON.parse(body.toString('utf-8')) } catch { payload = null }
+        if (!payload || typeof payload !== 'object') {
+          res.writeHead = originalWriteHead
+          res.end = originalEnd
+          return sendError(res, API_ERROR_CODES.INVALID_ENTRY, `本机模块 ${endpointId} 必须返回 JSON 对象`)
+        }
+        const checked = validateResponseShape(runtimeContract.response, payload)
+        if (!checked.ok) {
+          res.writeHead = originalWriteHead
+          res.end = originalEnd
+          return sendError(res, API_ERROR_CODES.INVALID_ENTRY, `本机模块 ${endpointId} 响应不符合自带契约`, { errors: checked.errors })
+        }
+        originalWriteHead(statusCode, { ...headers, 'content-length': Buffer.byteLength(body) })
+        res.writeHead = originalWriteHead
+        res.end = originalEnd
+        return originalEnd(body)
+      }
+      res.write = (chunk) => {
+        if (chunk) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)))
+        return true
+      }
+      res.end = (chunk) => {
+        if (chunk) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)))
+        return flush()
+      }
+    }
   }
   return handler({ req, res, url, request: checked.value, context, allowlist, loaded, libraryUpgrade })
 }

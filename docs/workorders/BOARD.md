@@ -183,10 +183,10 @@
 
 | 序 | 工单 | 内容 | 风险 | 状态 |
 |---|---|---|---|---|
-| 1 | [OS-206](OS-206-test-harness-matrix.md) | 共享临时 daemon fixture、页面矩阵、CDP 客户端、浏览器 smoke 入口与报告 schema | 中 | 待施工 |
-| 2 | [OS-207](OS-207-browser-page-tests.md) | 全页面真实可视测试、页内视图、弹层、窄屏、iframe、截图与错误门禁 | 高 | 待施工（等 OS-206） |
-| 3 | [OS-208](OS-208-page-api-tests.md) | 页面必需 API 真实 HTTP 测试，补日志/草稿/Agent/任务/偏好/KB 缺口 | 中高 | 待施工（等 OS-206） |
-| 4 | [OS-209](OS-209-write-governance-mcp-tests.md) | 写入/治理/恢复/迁移/41 模块端点停用恢复/MCP 隔离数据工具矩阵 | 高 | 待施工（等 OS-206～208） |
+| 1 | [OS-206](OS-206-test-harness-matrix.md) | 共享临时 daemon fixture、页面矩阵、CDP 客户端、浏览器 smoke 入口与报告 schema | 中 | **已验收** `963d4a8` |
+| 2 | [OS-207](OS-207-browser-page-tests.md) | 全页面真实可视测试、页内视图、弹层、窄屏、iframe、截图与错误门禁 | 高 | **已验收** `5888f45`（34/34） |
+| 3 | [OS-208](OS-208-page-api-tests.md) | 页面必需 API 真实 HTTP 测试，补日志/草稿/Agent/任务/偏好/KB 缺口 | 中高 | **已验收** `435fe64` |
+| 4 | [OS-209](OS-209-write-governance-mcp-tests.md) | 写入/治理/恢复/迁移/41 模块端点停用恢复/MCP 隔离数据工具矩阵 | 高 | **已验收**（[记录](OS-209-acceptance.md)） |
 | 5 | [OS-210](OS-210-ci-report-docs.md) | CI 隔离 e2e＋browser job、报告完整性门禁、文档与数字锚收口 | 中 | 待施工（等 OS-207～209） |
 
 **出口条件（六句）**见规划 §4；**不做**：不引 npm 浏览器框架、不做像素 diff、不连 8807、不写真实库。

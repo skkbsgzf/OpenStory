@@ -53,8 +53,8 @@
 <!-- arch-stats:start -->
 | 分工 | 范围 | 文件数 | 行数 |
 |---|---|---:|---:|
-| 底座 | `src/host/`＋`src/kernel/` | 28 | 4,414 |
-| 契约 | `src/api/` | 17 | 3,911 |
+| 底座 | `src/host/`＋`src/kernel/` | 28 | 4,485 |
+| 契约 | `src/api/` | 17 | 3,918 |
 | 协议 | `src/protocol/` | 34 | 6,098 |
 | 内核件（class: kernel，7） | `src/modules/agent-runtime/`＋`src/modules/deduce/`＋`src/modules/fact/`＋`src/modules/media/`＋`src/modules/prose/`＋`src/modules/storage/`＋`src/modules/text/` | 59 | 11,205 |
 | 工作台（class: workbench，12） | `src/modules/analysis/`＋`src/modules/artifacts/`＋`src/modules/chapters/`＋`src/modules/exchange/`＋`src/modules/habits/`＋`src/modules/imagegen/`＋`src/modules/knowledge/`＋`src/modules/log/`＋`src/modules/roleplay/`＋`src/modules/script/`＋`src/modules/storysource/`＋`src/modules/worldbook/` | 30 | 3,557 |
@@ -71,7 +71,7 @@
 | `public/app.js` 行数 | 10,044 |
 | `public/views/*.mjs` 文件数 | 17 |
 | 契约端点数（`ENDPOINTS` 键数） | 108 |
-| 测试文件数（`test/*.test.mjs`） | 118 |
+| 测试文件数（`test/*.test.mjs`） | 122 |
 
 **模块清单（由 `src/modules/*/module.manifest.json` 自动生成）**
 

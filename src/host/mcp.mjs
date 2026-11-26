@@ -609,6 +609,34 @@ function invalidArgs(what) {
   return err
 }
 
+/** JSON Schema 子集：required、type、enum、additionalProperties。 */
+function validateToolArgs(schema, args) {
+  if (!schema || schema.type !== 'object') return []
+  if (!args || typeof args !== 'object' || Array.isArray(args)) return ['arguments 必须是对象']
+  const errors = []
+  const valueMissing = (value) => value === undefined || value === null || value === ''
+  for (const key of schema.required ?? []) if (valueMissing(args[key])) errors.push(`缺少必填参数：${key}`)
+  const properties = schema.properties ?? {}
+  for (const [key, spec] of Object.entries(properties)) {
+    const value = args[key]
+    if (value === undefined || value === null) continue
+    const type = spec?.type ?? spec
+    const ok = type === 'integer' ? Number.isSafeInteger(value)
+      : type === 'number' ? (typeof value === 'number' && Number.isFinite(value))
+      : type === 'boolean' ? typeof value === 'boolean'
+      : type === 'string' ? typeof value === 'string'
+      : type === 'array' ? Array.isArray(value)
+      : type === 'object' ? (value && typeof value === 'object' && !Array.isArray(value))
+      : true
+    if (!ok) errors.push(`${key} 必须是 ${type}`)
+    if (Array.isArray(spec?.enum) && !spec.enum.includes(value)) errors.push(`${key} 必须是 ${spec.enum.join('/')}`)
+  }
+  if (schema.additionalProperties === false) {
+    for (const key of Object.keys(args)) if (!(key in properties)) errors.push(`未知参数：${key}`)
+  }
+  return errors
+}
+
 /** 去掉 undefined/空串的 body（deduce 的可选参数都不污染请求）。 */
 function cleanBody(args) {
   const body = {}
@@ -716,14 +744,11 @@ function handleMessage(line) {
           send({ jsonrpc: '2.0', id, error: { code: -32601, message: `未知工具：${name}` } })
           return
         }
-        // 参数形状校验：required 缺失 → -32602（沿用历史协议口径）
+        // 参数形状校验：required/type/enum/additionalProperties 全部在协议层拒绝。
         const schema = toolsByName.get(name).inputSchema
-        const missing = (schema?.required || []).filter((key) => {
-          const value = params?.arguments?.[key]
-          return value === undefined || value === null || value === ''
-        })
-        if (missing.length) {
-          send({ jsonrpc: '2.0', id, error: { code: -32602, message: `缺少必填参数：${missing.join(', ')}` } })
+        const argErrors = validateToolArgs(schema, params?.arguments)
+        if (argErrors.length) {
+          send({ jsonrpc: '2.0', id, error: { code: -32602, message: argErrors.join('；') } })
           return
         }
         callTool(name, params?.arguments).then((result) => send({ jsonrpc: '2.0', id, result }))
