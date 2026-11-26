@@ -22,10 +22,24 @@ import {
   migrateLegacySettings,
   moduleSettingKey,
   normalizeSettingsSchema,
-  normalizeSettingValue,
-  renderSettingsModules
+  normalizeSettingValue
 } from '../public/views/settingsAggregation.mjs'
+import { governanceModel, pluginCardHtml } from '../public/views/governanceViews.mjs'
+import * as settingsAggregationModule from '../public/views/settingsAggregation.mjs'
 import { loadModuleManifests, validateModuleManifest } from '../src/protocol/modules.mjs'
+
+const escHtml = (value) => String(value ?? '').replace(/&/gu, '&amp;').replace(/</gu, '&lt;').replace(/>/gu, '&gt;').replace(/"/gu, '&quot;')
+const navLabel = (id) => (id === 'engines' ? '引擎与存储' : String(id ?? ''))
+/** OS-201：从聚合夹具拼出 /api/plugins 形状载荷，治理台卡片直接吃它。 */
+function cardsOf(modules, uiState = {}, slots = {}) {
+  const payload = {
+    modules: modules.map((module) => ({
+      class: 'workbench', role: 'workbench', version: '0.1.0', status: 'loaded', enabled: true, ...module
+    })),
+    slots
+  }
+  return governanceModel(payload, uiState, { navLabel, settingsAggregation: settingsAggregationModule }).groups.flatMap((group) => group.cards)
+}
 
 const MODULES = [
   {
@@ -135,34 +149,37 @@ test('聚合：坏 manifest / 坏值不崩——跳过坏项，值回落 default
   assert.equal(y.settings[0].stored, false)
 })
 
-test('渲染：停用模块整卡带 mp-off 且控件 disabled；启用模块可编辑', () => {
-  const agg = aggregateSettings({ modules: MODULES, enabled: { kb: false }, state: {} })
-  const esc = (value) => String(value ?? '').replace(/[&<>"]/gu, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]))
-  const html = renderSettingsModules(agg, { esc })
-  assert.match(html, /模块/u)
-  assert.match(html, /内核设置/u, '内核设置属宿主的说明要在')
-  assert.match(html, /data-action="plugin-module-toggle" data-module-id="kb"/u)
-  assert.match(html, /mp-off/u, '停用模块整卡压暗')
-  assert.match(html, /data-module-id="kb"[^>]*disabled/u, '停用模块的设置项不可编辑')
-  assert.doesNotMatch(html, /data-module-id="comfyui"[^>]*disabled/u, '启用模块照常可编辑')
+test('治理台卡片：停用模块整卡标记已停用且控件 disabled；启用模块可编辑', () => {
+  const modules = MODULES.map((module) => module.id === 'kb'
+    ? { ...module, status: 'disabled', enabled: false }
+    : { ...module, status: 'loaded', enabled: true })
+  const cards = cardsOf(modules, { [moduleSettingKey('kb', 'kb.baseUrl')]: 'http://127.0.0.1:9' })
+  const kb = cards.find((card) => card.id === 'kb')
+  assert.equal(kb.summary, '已停用 · 数据与配置保留')
+  const html = pluginCardHtml(kb, { esc: escHtml, expanded: true })
+  assert.match(html, /role="switch"/u)
+  assert.match(html, /aria-checked="false"/u)
+  assert.match(html, /class="gov-card gov-workbench open off"/u, '停用模块整卡压暗')
+  assert.match(html, /value="http:\/\/127\.0\.0\.1:9"[^>]*disabled/u, '停用模块的设置项不可编辑')
+  const comfy = pluginCardHtml(cards.find((card) => card.id === 'comfyui'), { esc: escHtml, expanded: true })
+  assert.doesNotMatch(comfy, /value="[^"]*"[^>]*disabled/u, '启用模块照常可编辑')
 })
 
-test('B4 设置页只给工作台启停卡，宿主组合面/内核件/套件不伪装成模块开关', () => {
-  const agg = aggregateSettings({
-    modules: [
-      { id: 'agentbar', name: 'Agent 栏', role: 'host-composition', settings: [] },
-      { id: 'library', name: '库管理', role: 'host-composition', settings: [] },
-      { id: 'deduce', name: '推演引擎', role: 'kernel', settings: [] },
-      { id: 'default-rules', name: '默认规则', role: 'suite', settings: [] },
-      { id: 'habits', name: '习惯', role: 'workbench', settings: [] }
-    ],
-    enabled: { agentbar: false, library: false, deduce: false, habits: true }
-  })
-  assert.deepEqual(agg.groups[1].modules.map((item) => item.id), ['habits'])
-  const html = renderSettingsModules(agg, { esc: (value) => String(value ?? '') })
-  assert.match(html, /data-module-id="habits"/u)
+test('治理台分组：只有工作台画开关，宿主组合面/内核件/套件不伪装成模块开关', () => {
+  const cards = cardsOf([
+    { id: 'agentbar', name: 'Agent 栏', role: 'host-composition', settings: [] },
+    { id: 'library', name: '库管理', role: 'host-composition', settings: [] },
+    { id: 'deduce', name: '推演引擎', role: 'kernel', settings: [] },
+    { id: 'default-rules', name: '默认规则', role: 'suite', settings: [] },
+    { id: 'habits', name: '习惯', role: 'workbench', settings: [] }
+  ])
+  const byId = (id) => cards.find((card) => card.id === id)
+  assert.equal(byId('habits').group, 'workbench')
+  assert.match(pluginCardHtml(byId('habits'), { esc: escHtml }), /role="switch"/u)
   for (const id of ['agentbar', 'library', 'deduce', 'default-rules']) {
-    assert.doesNotMatch(html, new RegExp(`data-module-id="${id}"`, 'u'))
+    const html = pluginCardHtml(byId(id), { esc: escHtml })
+    assert.doesNotMatch(html, /role="switch"/u, `${id} 不画成开关`)
+    assert.match(html, /class="gov-lock"/u)
   }
 })
 
@@ -348,18 +365,16 @@ test('模块 manifest：settings 声明合法；kernel 禁止界面设置，OS-1
   assert.equal(emptyHint.ok, false)
 })
 
-test('渲染指路：没有自报设置项的模块渲染指路行＋跳转按钮，不渲染空输入框', () => {
-  const esc = (value) => String(value ?? '').replace(/[&<>"]/gu, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]))
-  const html = renderSettingsModules(aggregateSettings({
-    modules: [
-      { id: 'comfyui', name: '生图与识图', settings: [], settingsHint: '真配置在「设置 · 引擎与存储」的生图区', settingsJump: 'engines' }
-    ],
-    enabled: {},
-    state: {}
-  }), { esc })
+test('治理台指路：没有自报设置项的模块渲染指路框＋跳转按钮，不渲染空输入框', () => {
+  const cards = cardsOf([
+    { id: 'comfyui', name: '生图与识图', settings: [], settingsHint: '真配置在「设置 · 引擎与存储」的生图区', settingsJump: 'engines' }
+  ])
+  const card = cards[0]
+  assert.equal(card.jumpLabel, '引擎与存储')
+  const html = pluginCardHtml(card, { esc: escHtml, expanded: true })
   assert.match(html, /真配置在「设置 · 引擎与存储」的生图区/u)
   assert.match(html, /data-settings-section="engines"/u, '跳转按钮指向设置页区块')
-  assert.match(html, /去配置/u)
+  assert.match(html, /去 引擎与存储 →/u)
   assert.doesNotMatch(html, /没有自报设置项/u, '给了指路就不再显示「没有设置项」占位')
   assert.doesNotMatch(html, /class="uikit-input"/u, '不许摆会写进死键的输入框')
 })

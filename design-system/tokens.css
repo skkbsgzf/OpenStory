@@ -33,6 +33,11 @@
   --warn-ink: #a06a00;
   --warn-on-dark: #ffd7a8;
 
+  /* OS-201：插件治理台三类着色（浅底由 color-mix 派生，夜皮另提到亮一档） */
+  --cat-kernel: #8a63d2;
+  --cat-workbench: #4f8fd0;
+  --cat-host: #b08968;
+
   /* 推演场景渐变（galgame 舞台回退底） */
   --scene-deep: #2b2a4a;
   --scene-mid: #4a3d6b;

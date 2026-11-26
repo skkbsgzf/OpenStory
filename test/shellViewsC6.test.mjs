@@ -28,16 +28,23 @@ function settingsFixture() {
   let kit = null
   let shelf = null
   let aggregation = null
+  let governance = null
+  const SETTINGS_GROUPS = [
+    { id: 'app', label: '本体设置', hint: '', sections: [{ id: 'appearance', label: '外观', hint: '皮肤' }, { id: 'about', label: '关于', hint: '版本' }] },
+    { id: 'plugins', label: '插件中心', hint: '', sections: [{ id: 'governance', label: '插件治理台', hint: '能力图 · 启停 · 依赖 · 设置指路' }] }
+  ]
   const views = createSettingsViews({
     state, agent, esc, text, uiKit: () => kit, runtimeShelf: () => shelf, moduleOn: () => true,
-    hiddenModules: () => new Set(), WORKBENCH_MODULES: [], SETTINGS_GROUPS: [], scriptPrefs: () => ({}),
+    hiddenModules: () => new Set(), WORKBENCH_MODULES: [], SETTINGS_GROUPS, scriptPrefs: () => ({}),
     dirWork: () => null, castColorOf: () => ({}), settingsScriptSectionHtml: noop, settingRuntimeKind: () => 'pi',
     probeBadgeLabel: () => '未测试', comfyNodeMapText: () => '', typographyState: () => ({ ui: 'comfortable', doc: 'm' }),
     docPrefSlidersHtml: () => '<div class="sliders"></div>', syncPolicy: () => ({ checkOn: 'enter', action: 'remind' }),
     syncProblemsFrom: () => [], warningsHtml: () => '', uiMemory: () => ({ values: {} }),
-    settingsAggregation: () => aggregation, suitesSectionHtml: noop, pluginsOverviewHtml: noop, errorHtml: noop
+    settingsAggregation: () => aggregation, suitesSectionHtml: noop, pluginsOverviewHtml: noop, errorHtml: noop,
+    api: () => {}, render: () => {}, loadPlugins: async () => {},
+    governanceHtml: () => governance?.governanceHtml() ?? '<div class="gov"><div class="gov-empty">拿不到插件清单：治理台视图没有接上</div></div>'
   })
-  return { views, state, agent, setKit: (value) => { kit = value }, setShelf: (value) => { shelf = value }, setAggregation: (value) => { aggregation = value } }
+  return { views, state, agent, setKit: (value) => { kit = value }, setShelf: (value) => { shelf = value }, setAggregation: (value) => { aggregation = value }, setGovernance: (value) => { governance = value } }
 }
 
 test('settingsViews：模型/字号/知识库金样；uiKit、runtimeShelf、聚合模块均晚绑定', () => {
@@ -47,7 +54,9 @@ test('settingsViews：模型/字号/知识库金样；uiKit、runtimeShelf、聚
   assert.match(fx.views.settingsTypographySectionHtml(), /data-action="typo-doc"/u)
   assert.match(fx.views.settingsCombinedDataSectionHtml(), /data-action="sync-policy-checkon"/u)
   assert.match(fx.views.settingsHtml(), /<h1>设置<\/h1>/u)
-  assert.match(fx.views.settingsModuleSettingsSectionHtml(), /正在读取模块清单/u)
+  fx.state.settings.section = 'governance'
+  assert.match(fx.views.settingsHtml(), /插件治理台/u, '导航含治理台入口')
+  assert.match(fx.views.settingsHtml(), /拿不到插件清单/u, '无载荷给空态')
 
   fx.setShelf({ selectableRuntimeKits: () => [{ id: 'dsh', name: 'DSH', source: '本机' }] })
   fx.agent.config = { text: { endpoint: 'http://127.0.0.1/v1', model: 'local' }, image: { backend: 'comfyui' }, vision: {}, agent: {} }
@@ -64,8 +73,8 @@ test('settingsViews：模型/字号/知识库金样；uiKit、runtimeShelf、聚
   assert.match(kb, /data-knowledge-collection-alias value="style"/u)
   assert.match(kb, /data-action="knowledge-test"/u)
 
-  fx.setAggregation({ moduleSettingsSectionHtml: () => '<div class="step">模块已装载</div>' })
-  assert.match(fx.views.settingsModuleSettingsSectionHtml(), /模块已装载/u)
+  fx.setGovernance({ governanceHtml: () => '<div class="gov">治理台已装载</div>' })
+  assert.match(fx.views.settingsHtml(), /治理台已装载/u)
 })
 
 test('analysisViews：选择器、章节/作品卡与 SVG 金样；charts 和注册表晚绑定', () => {
@@ -196,7 +205,8 @@ test('C6 壳门禁：app.js ≤10500 行、views ≥14 个；渲染本体只留�
     agentViews: ['threadHtml', 'processBlockHtml', 'renderAgent'],
     libraryFlowViews: ['createHtml', 'importHtml', 'repairHtml'],
     syncViews: ['syncBarHtml', 'syncPromptHtml'],
-    referencePageViews: ['chapterTreeHtml', 'graphModuleHtml', 'refImagesSlotHtml']
+    referencePageViews: ['chapterTreeHtml', 'graphModuleHtml', 'refImagesSlotHtml'],
+    governanceViews: ['governanceHtml']
   }
   for (const [moduleName, names] of Object.entries(moved)) {
     const source = readFileSync(join(REPO, `public/views/${moduleName}.mjs`), 'utf8')

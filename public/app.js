@@ -185,7 +185,7 @@ const suiteShelfViewsReady = import('./views/suiteShelfViews.mjs').then((mod) =>
 
 /* C6：前端壳渲染面迁出——行为/API/事件仍留本文件，boot 首帧前await全部factory */
 let settingsViews = null
-const settingsViewsReady = import('./views/settingsViews.mjs').then((mod) => { settingsViews = mod.createSettingsViews({ state, agent, esc, text, uiKit: () => uiKit, runtimeShelf: () => runtimeShelf, moduleOn, hiddenModules, WORKBENCH_MODULES, SETTINGS_GROUPS, scriptPrefs, dirWork, castColorOf, settingsScriptSectionHtml, settingRuntimeKind, probeBadgeLabel, comfyNodeMapText, typographyState, docPrefSlidersHtml, syncPolicy, syncProblemsFrom, warningsHtml, uiMemory, settingsAggregation: () => settingsAggregation, suitesSectionHtml, pluginsOverviewHtml, errorHtml, api, render, loadPlugins }); return settingsViews })
+const settingsViewsReady = import('./views/settingsViews.mjs').then((mod) => { settingsViews = mod.createSettingsViews({ state, agent, esc, text, uiKit: () => uiKit, runtimeShelf: () => runtimeShelf, moduleOn, hiddenModules, WORKBENCH_MODULES, SETTINGS_GROUPS, scriptPrefs, dirWork, castColorOf, settingsScriptSectionHtml, settingRuntimeKind, probeBadgeLabel, comfyNodeMapText, typographyState, docPrefSlidersHtml, syncPolicy, syncProblemsFrom, warningsHtml, uiMemory, settingsAggregation: () => settingsAggregation, suitesSectionHtml, pluginsOverviewHtml, errorHtml, api, render, loadPlugins, governanceHtml }); return settingsViews })
 let analysisViews = null
 const analysisViewsReady = import('./views/analysisViews.mjs').then((mod) => { analysisViews = mod.createAnalysisViews({ state, esc, hiddenModules, chapterNoFromFile, analyzeEnabled, analyzeModulesFor, analyzeModuleById, chartsModule: () => chartsModule, analysisModules: () => analysisModules }); return analysisViews })
 let agentViews = null
@@ -196,6 +196,8 @@ let syncViews = null
 const syncViewsReady = import('./views/syncViews.mjs').then((mod) => { syncViews = mod.createSyncViews({ state, esc, text, formatAt }); return syncViews })
 let referencePageViews = null
 const referencePageViewsReady = import('./views/referencePageViews.mjs').then((mod) => { referencePageViews = mod.createReferencePageViews({ state, esc, text, moduleOn, registryModule: () => registryModule, refNodeCardHtml, refModulesHtml, dirWork, scriptViews: () => scriptViews }); return referencePageViews })
+let governanceViews = null // OS-201：治理台视图只接线，渲染与委托都在 views/governanceViews.mjs
+const governanceViewsReady = import('./views/governanceViews.mjs').then((mod) => { governanceViews = mod.createGovernanceViews({ state, esc, text, uiKit: () => uiKit, loadPlugins, render, setModuleEnabled, uiSet, uiMemory, settingsAggregation: () => settingsAggregation, navLabel }); return mod }).catch((error) => { console.error('[governance] 治理台视图加载失败', error); return null })
 
 /* OS-147：正文章节清单加载状态机（纯函数在 views/chapterLoad.mjs）——首帧占位必须由本次加载自己收口 */
 const chapterLoadReady = import('./views/chapterLoad.mjs').catch((error) => { console.error('[chapters] 章节加载状态机没装上', error); return null })
@@ -2941,7 +2943,7 @@ const SETTINGS_GROUPS = Object.freeze([
     // 套件清单在渲染时动态展开（见 settingsNavHtml）。
     sections: [
       // OS-145：模块插件（分析 / 生图识图 / 知识库）的启停与自报设置——排在总览之后
-      { id: 'moduleSettings', label: '模块', hint: '模块启停与各自设置' },
+      { id: 'governance', label: '插件治理台', hint: '能力图 · 启停 · 依赖 · 设置指路' },
       { id: 'suites', label: '全部套件', hint: '小说 / 剧本 / 漫剧…' }
     ]
   }
@@ -2951,6 +2953,8 @@ const SETTINGS_GROUPS = Object.freeze([
 const SETTINGS_SECTIONS = Object.freeze(
   SETTINGS_GROUPS.flatMap((group) => group.sections.map((section) => ({ ...section, group: group.id })))
 )
+
+function navLabel(id) { return SETTINGS_SECTIONS.find((section) => section.id === id)?.label || '' } // OS-201：治理台跳转区块名只取导航定义
 
 /**
  * 工作台模块清单（OS-44）：左栏三个 + 右栏分析模块。
@@ -3427,8 +3431,7 @@ function settingsCombinedAppearanceHtml() { return settingsViews?.settingsCombin
  */
 function settingsCombinedEnginesHtml() { return settingsViews?.settingsCombinedEnginesHtml()  }
 
-/** OS-145：设置页「模块」组。OS-146：渲染函数已迁 views/settingsAggregation.mjs，这里只接线。 */
-function settingsModuleSettingsSectionHtml() { return settingsViews?.settingsModuleSettingsSectionHtml()  }
+function governanceHtml() { return governanceViews?.governanceHtml() } // OS-201：治理台卡片流，一行转交壳
 
 function settingsHtml() { return settingsViews?.settingsHtml()  }
 
@@ -7749,7 +7752,7 @@ function deduceAgentHtml() {
 /* ---------- 数据加载 ---------- */
 
 async function boot() {
-  await Promise.all([registryReady, runtimeShelfReady, suiteShelfViewsReady, workbenchViewsReady, scriptViewsReady, referenceViewsReady, deduceViewsReady, settingsAggregationReady, uiKitReady, settingsViewsReady, analysisViewsReady, agentViewsReady, libraryFlowViewsReady, syncViewsReady, referencePageViewsReady]) // OS-143/149/161/163/164：注册表、运行时货架、各工作面纯视图先就位（首帧起页签全部由注册表驱动）
+  await Promise.all([registryReady, runtimeShelfReady, suiteShelfViewsReady, workbenchViewsReady, scriptViewsReady, referenceViewsReady, deduceViewsReady, settingsAggregationReady, uiKitReady, settingsViewsReady, analysisViewsReady, agentViewsReady, libraryFlowViewsReady, syncViewsReady, referencePageViewsReady, governanceViewsReady]) // OS-143/149/161/163/164：注册表、运行时货架、各工作面纯视图先就位（首帧起页签全部由注册表驱动）
   applyTypography()   // OS-91：无库时也先套默认字号档，避免首帧跳变
   applyAgentCollapse() // OS-103
   // 运行时清单与 config 一起拉：chip 要能显示「DSH 原生」这类具体名字，不能等进设置页才加载
@@ -9214,22 +9217,6 @@ document.addEventListener('change', (event) => {
     setModuleHidden(target.dataset.moduleId, target.checked !== true)
     return
   }
-  // OS-145：模块插件启停与自报设置——值落库内 ui-state；停用不清值。
-  // OS-198：启停后重拉 slot 投影，页签/右栏/设置区照投影消失或回来。
-  if (target.dataset?.action === 'plugin-module-toggle' && target.dataset.moduleId) {
-    Promise.resolve(uiSet(`modules.enabled.${target.dataset.moduleId}`, target.checked === true, { immediate: true }))
-      .then(() => loadPlugins())
-      .then(() => render())
-      .catch(() => render())
-    return
-  }
-  if (target.dataset?.action === 'plugin-module-setting' && target.dataset.moduleId) {
-    const { moduleId, key, type } = target.dataset
-    const value = settingsAggregation?.coerceSettingValue(type, target.type === 'checkbox' ? target.checked : target.value)
-    if (value !== undefined) uiSet(`modules.settings.${moduleId}.${key}`, value, { immediate: true })
-    render()
-    return
-  }
   if (target.id === 'import-root') {
     state.impo.root = target.value
     return
@@ -9740,6 +9727,18 @@ function uiSet(key, value, { immediate = false } = {}) {
   }
   if (uiFlushTimer) clearTimeout(uiFlushTimer)
   uiFlushTimer = setTimeout(uiFlush, 400)
+}
+
+/**
+ * OS-201：工作台模块启停专用写回——先落排队中的界面状态，再只补丁写这一个键；
+ * 成功以库为准回填内存镜像，失败原样抛出且内存不动（不许出现内存与库错位）。
+ */
+async function setModuleEnabled(id, enabled) {
+  const root = state.current?.path
+  if (!root) throw Object.assign(new Error('先打开一个库——启停按库分别记'), { code: 'NO_LIBRARY' })
+  if (uiPendingKeys.size) await uiFlush()
+  await api('/api/ui-state', { method: 'PUT', body: JSON.stringify({ root, state: { [`modules.enabled.${id}`]: enabled } }) })
+  await loadUiState()
 }
 
 /** 页面关闭前把没落库的写掉（尽力而为）。 */

@@ -23,9 +23,8 @@ import {
 import {
   projectedTabDefs, BUILTIN_PAGE_IDS
 } from '../public/views/registry.mjs'
-import {
-  aggregateSettings, renderSettingsModules
-} from '../public/views/settingsAggregation.mjs'
+import { governanceModel, pluginCardHtml } from '../public/views/governanceViews.mjs'
+import * as settingsAggregationModule from '../public/views/settingsAggregation.mjs'
 
 const FORMER_CORE_IDS = ['chapters', 'roleplay', 'script', 'worldbook']
 
@@ -174,26 +173,26 @@ test('证据④端点可恢复：停用回 409，重新启用回 200，稿件字
   }
 })
 
-test('设置页：四工作台改为普通开关，停用压暗且不再出现核心徽标', () => {
-  const modules = MODULE_MANIFESTS.map((manifest) => ({ ...manifest, role: moduleRole(manifest) }))
-  const disabled = Object.fromEntries(FORMER_CORE_IDS.map((id) => [id, false]))
-  const agg = aggregateSettings({ modules, enabled: disabled, state: {} })
-  const group = agg.groups.find((item) => item.id === 'modules')
+test('治理台：四工作台是普通可启停卡，停用后标记已停用且不出现核心徽标', () => {
+  const modules = MODULE_MANIFESTS.map((manifest) => ({
+    ...manifest,
+    role: moduleRole(manifest),
+    status: FORMER_CORE_IDS.includes(manifest.id) ? 'disabled' : 'loaded',
+    enabled: !FORMER_CORE_IDS.includes(manifest.id)
+  }))
+  const cards = governanceModel({ modules, slots: {} }, {}, { settingsAggregation: settingsAggregationModule }).groups.flatMap((group) => group.cards)
+  const byId = (id) => cards.find((card) => card.id === id)
+  const htmlOf = (id) => pluginCardHtml(byId(id), { esc: (value) => String(value ?? '') })
   for (const id of FORMER_CORE_IDS) {
-    const card = group.modules.find((item) => item.id === id)
-    assert.equal(card.enabled, false)
-    assert.equal(card.editable, false)
-    assert.equal(Object.prototype.hasOwnProperty.call(card, 'core'), false)
+    assert.equal(byId(id).group, 'workbench')
+    assert.equal(byId(id).summary, '已停用 · 数据与配置保留')
+    assert.equal(byId(id).enabled, false)
+    assert.match(htmlOf(id), /aria-checked="false"/u)
+    assert.match(htmlOf(id), /off/u, '停用卡压暗')
   }
-  const html = renderSettingsModules(agg, { esc: (value) => String(value ?? '') })
   for (const id of ['agentbar', 'library', 'deduce']) {
-    assert.equal(group.modules.some((item) => item.id === id), false, `${id} 不是工作台启停卡`)
-    assert.doesNotMatch(html, new RegExp(`data-action="plugin-module-toggle" data-module-id="${id}"`, 'u'))
+    assert.notEqual(byId(id).group, 'workbench', `${id} 不是工作台启停卡`)
+    assert.doesNotMatch(htmlOf(id), /role="switch"/u)
   }
-  assert.doesNotMatch(html, /核心模块/u)
-  assert.match(html, /已停用：设置值保留/u)
-  for (const id of FORMER_CORE_IDS) {
-    assert.match(html, new RegExp(`data-action="plugin-module-toggle" data-module-id="${id}"`, 'u'))
-    assert.doesNotMatch(html, new RegExp(`checked disabled data-module-id="${id}"`, 'u'))
-  }
+  assert.doesNotMatch(FORMER_CORE_IDS.map(htmlOf).join(''), /核心模块/u)
 })

@@ -122,3 +122,31 @@
 - 机器门禁全绿；`app.js` 行数不增；`git diff --check` 干净。
 - 生产调用点贴出来（`文件:行`）：视图工厂与转交壳、boot 等待、`setModuleEnabled`、导航入口与旧 id 重定向。
 - 反证一则：把确认条文案临时换成复述指路文案，对应测试必须红；贴输出后还原。
+## 施工回报（编排器自动归档）
+
+> 模型 hy4flash · 第 1 轮 · 测试 绿（tests 863 · pass 861 · fail 0 · skip 2） · 门禁 绿 · e2e 水浒＋新建（隔离 daemon）绿 · 8807 未动
+
+```text
+CHANGED:
+- `public/views/governanceViews.mjs`（新建：纯函数模型/卡片/确认条＋工厂＋`gov-*` 委托监听）
+- `public/app.js`（接线：动态 import、转交壳、boot 等待、`setModuleEnabled` 补丁写回；10097→10096 行）
+- `public/views/settingsViews.mjs`（治理台渲染映射＋旧 id 重定向＋帮助文案）
+- `public/views/settingsAggregation.mjs`（旧「模块」组渲染退役，聚合纯函数保留）
+- `public/index.html`（`--cat-*` 令牌＋夜皮提亮＋`.gov-*` 样式与窄屏单列）
+- `design-system/tokens.css`（同步三类着色令牌）
+- `test/governanceViews.test.mjs`（新建 10 例）
+- `test/shellViewsC6.test.mjs`、`test/settingsAggregation.test.mjs`、`test/coreModules.test.mjs`（逐处改指治理台，断言等价或加强）
+- `AGENTS.md`、`README.md`、`ARCHITECTURE.md`、`docs/number-anchors.json`（数字回写）
+
+VERIFIED:
+- `npm test`：863 例／861 过／0 挂／2 跳过。
+- `node tools/acceptance/acceptance.mjs`：29 过／0 挂／0 警。
+- `npm run arch:check`、`node tools/number-anchors.mjs --check`、`git diff --check`：全通过/干净。
+- 按要求顺序回写：`npm run arch:stats` → `node tools/number-anchors.mjs` → 验收门禁。
+- 反证：把确认条 tab 文案临时换成复述指路文案，`node --test --test-name-pattern="确认条" test/governanceViews.test.mjs` 红（`AssertionError: /停用后，页签「扮演」从导航消失。/u` 不匹配，tests 1／pass 0／fail 1）；逐字还原后同命令绿（tests 1／pass 1／fail 0）。
+- 生产调用点：`public/app.js:200` 视图工厂注入、`:3434` 一行转交壳、`:7755` boot 等待 `governanceViewsReady`、`:2946` 导航入口、`:9736` `setModuleEnabled`；`public/views/settingsViews.mjs:658` 整页接线、`:659` 旧 `moduleSettings` 重定向；`public/views/governanceViews.mjs:390` 整页渲染、`:440` 工厂、`:231` 工作台开关、`:356` 确认停用按钮。
+- 未执行任何 git 写操作；未启动/杀死 daemon；无临时脚本残留。
+
+LIMITATIONS:
+- 无。
+```

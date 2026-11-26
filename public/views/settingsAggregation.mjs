@@ -253,80 +253,9 @@ export function migrateLegacySettings(state, options = {}) {
   return { state: next, changed: true, applied, skipped, marker: version }
 }
 
-/* ---------- 渲染（纯字符串；esc 由调用方注入，不引 DOM） ---------- */
-
-function settingFieldHtml(module, setting, esc) {
-  const id = `mp-${module.id}-${setting.key}`.replace(/[^\w-]/gu, '-')
-  const disabled = module.editable ? '' : ' disabled'
-  const value = setting.value
-  const attrs = `data-action="plugin-module-setting" data-module-id="${esc(module.id)}" data-key="${esc(setting.key)}" data-type="${esc(setting.type)}"`
-  const label = esc(setting.label)
-  if (setting.type === 'boolean') {
-    return `<label class="cfg-switch"><input type="checkbox" id="${esc(id)}" ${attrs}${value === true ? ' checked' : ''}${disabled}><span>${label}</span></label>`
-  }
-  if (setting.type === 'select') {
-    const options = (setting.options ?? []).map((option) => `<option value="${esc(option)}"${text(option) === text(value) ? ' selected' : ''}>${esc(option)}</option>`).join('')
-    return `<div class="field"><label for="${esc(id)}">${label}</label>
-      <select class="select" id="${esc(id)}" ${attrs}${disabled}>${options}</select></div>`
-  }
-  const type = setting.type === 'number' ? 'number' : 'text'
-  const raw = value === undefined || value === null ? '' : text(value)
-  return `<div class="field"><label for="${esc(id)}">${label}</label>
-    <input class="uikit-input" type="${type}" id="${esc(id)}" ${attrs} value="${esc(raw)}"${disabled}></div>`
-}
-
-/**
- * 设置页「模块」组 HTML。
- * 每个模块：启停开关（写 ui-state modules.enabled.<id>）＋ 自报设置项（按 schema 渲染）。
- * 真配置在别处（manifest 给了 settingsHint）＝一行指路＋一个跳转按钮，不摆第二份输入框。
- * 停用：整卡压暗（.mp-off）、控件 disabled，值保留。
- *
- * @param {{groups:Array}} aggregation aggregateSettings 的输出
- * @param {{esc?:Function}} deps      转义函数（app.js 的 esc）
- */
-export function renderSettingsModules(aggregation, deps = {}) {
-  const esc = typeof deps.esc === 'function' ? deps.esc : (value) => text(value)
-  const group = (aggregation?.groups ?? []).find((item) => item.id === 'modules')
-  if (!group) return ''
-  const cards = (group.modules ?? []).map((module) => {
-    const toggle = `<label class="cfg-switch"><input type="checkbox" data-action="plugin-module-toggle" data-module-id="${esc(module.id)}"${module.enabled ? ' checked' : ''}><span>启用「${esc(module.name)}」</span></label>`
-    // 指路行（OS-146）：真配置在 agent-config / kb-config 之类的宿主位置，这里只说明去哪找
-    const pointer = text(module.settingsHint)
-      ? `<div class="row"><span class="cfg-note">${esc(module.settingsHint)}</span>${text(module.settingsJump)
-        ? `<button type="button" class="btn-ghost" data-settings-section="${esc(module.settingsJump)}">去配置 →</button>`
-        : ''}</div>`
-      : ''
-    const fields = module.settings.length
-      ? module.settings.map((setting) => settingFieldHtml(module, setting, esc)).join('')
-      : (text(module.settingsHint) ? '' : '<span class="cfg-note">这个模块没有自报设置项。</span>')
-    const offNote = module.enabled ? '' : '<span class="cfg-note">已停用：设置值保留，重新启用立刻恢复。</span>'
-    return `<div class="cfg-card mp-card${module.enabled ? '' : ' mp-off'}">
-      <div class="cfg-head"><h3>${esc(module.name)}</h3></div>
-      ${toggle}
-      ${pointer}
-      ${fields}
-      ${offNote}
-    </div>`
-  }).join('')
-  return `<div class="step">
-    <h3>模块<span class="sub">${esc(group.hint)}</span></h3>
-    <p class="sub">内核设置（daemon 端口、库路径、数据目录、凭据存储）归宿主，见「引擎与存储」，不随模块走。</p>
-    ${cards || '<p class="sub">还没有模块插件——模块把自己的设置写在 module.manifest.json 里就会出现在这里。</p>'}
-  </div>`
-}
-
-/**
- * 设置页「模块」组（OS-146：从 app.js 迁出——app.js 只留接线，渲染函数一律在 views/）。
- * app.js 传：modules（/api/plugins 的 modules）、enabledFor(id)、uiState（当前库 ui-state）、esc。
- * 还没有模块清单时（加载中）由调用方决定占位文案。
- */
-export function moduleSettingsSectionHtml({ modules = [], enabledFor = () => true, uiState = {}, esc } = {}) {
-  const list = Array.isArray(modules) ? modules : []
-  const enabled = Object.fromEntries(list.map((module) => [module.id, enabledFor(module.id) !== false]))
-  return renderSettingsModules(aggregateSettings({ modules: list, enabled, state: uiState }), { esc })
-}
-
 /* ---------- 设置页渲染器（OS-143「只出不进」：从 app.js 原样迁出） ----------
+ * OS-201：旧的设置页模块组渲染已退役，由 public/views/governanceViews.mjs 的卡片流接管；
+ * 聚合纯函数（aggregateSettings 及其值口径）保留，治理台卡片在用。
  * 这些函数原先内联在 app.js（OS-143 增量冻结后只许减不许增）。本体一字未改，
  * 只是把外部依赖（state / 工具函数）改为调用方注入，app.js 留一行转交壳。
  * 属设置页渲染，放本文件与聚合函数同处一处（同一个 ui-state 口径）。 */

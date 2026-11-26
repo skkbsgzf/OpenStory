@@ -1,6 +1,6 @@
 /** C6：从 public/app.js 逐字迁出的settingsViews渲染面。副作用仍由 app.js 持有。 */
 export function createSettingsViews(scope) {
-  const { state, agent, esc, text, uiKit, runtimeShelf, moduleOn, hiddenModules, WORKBENCH_MODULES, SETTINGS_GROUPS, scriptPrefs, dirWork, castColorOf, settingsScriptSectionHtml, settingRuntimeKind, probeBadgeLabel, comfyNodeMapText, typographyState, docPrefSlidersHtml, syncPolicy, syncProblemsFrom, warningsHtml, uiMemory, settingsAggregation, suitesSectionHtml, pluginsOverviewHtml, errorHtml, api, render, loadPlugins } = scope
+  const { state, agent, esc, text, uiKit, runtimeShelf, moduleOn, hiddenModules, WORKBENCH_MODULES, SETTINGS_GROUPS, scriptPrefs, dirWork, castColorOf, settingsScriptSectionHtml, settingRuntimeKind, probeBadgeLabel, comfyNodeMapText, typographyState, docPrefSlidersHtml, syncPolicy, syncProblemsFrom, warningsHtml, uiMemory, settingsAggregation, suitesSectionHtml, pluginsOverviewHtml, errorHtml, api, render, loadPlugins, governanceHtml } = scope
 
   // OS-196：本机模块区的临时视图态只在内存里；登记状态一律在 daemon 的机器级信任表。
   let localPath = ''
@@ -40,6 +40,7 @@ const SETTINGS_HELP = Object.freeze({
   kb: '知识库给 Agent 供弹药：技法配方、文风指纹、题材套路、读者信号、同型案例分库存放。写东西时 Agent 会自动取用，这里只看连接是否健康、每个库装了多少，不用做任何操作。',
   about: 'OpenStory 是给写小说用的本地工作台。稿件、草稿、会话与密钥都只留在本机，所有修改都有备份与日志，不上传也不联网同步。',
   suiteSettings: '这里的每一项都是这个套件自己的规则。停用它，规则会退回程序内置的默认值，但你现在填的内容会保留下来，重新启用就回到你设的样子。',
+  governance: '插件治理台逐件管 21 件模块：供给、依赖逐条（带谁供给与最低版本）、谁依赖我、设置指路、停用影响都在卡片里。内核件与宿主组合面只读，工作台停用先出确认条、库内数据保留；没开库时开关置灰。能力、依赖与状态全部来自 /api/plugins 投影，不在界面另存名单。',
   moduleSettings: '模块是工作面插件：分析、生图与识图、知识库。停用只是把入口和独占能力收起来，稿件、已存配置和卡片勾选都不会丢，重新启用就回来。生图/识图与知识库的真配置在「引擎与存储」里（本卡片只指路）；内核设置（端口、库路径、凭据）归宿主，不随模块走。',
   localModules: '本机模块是可以给 daemon 增加能力/工作台/端点的可执行代码——和 daemon 同进程、同权限。这里没有「扫描任意目录」：只有你亲自选定并确认过的模块根才会被读取。先预览清单，确认后才生效；移除即回到内置层。套件仍然只许放数据，不放可执行代码。'
 })
@@ -578,15 +579,6 @@ function settingsCombinedEnginesHtml() {
   ].join('')
 }
 
-function settingsModuleSettingsSectionHtml() {
-  return settingsAggregation()?.moduleSettingsSectionHtml({
-    modules: state.plugins?.modules ?? [],
-    enabledFor: moduleOn,
-    uiState: state.current ? uiMemory(state.current.path).values : {},
-    esc
-  }) ?? '<div class="step"><h3>模块</h3><p class="sub">正在读取模块清单…</p></div>'
-}
-
 function localStatusLabel(item) {
   if (item.status === 'loaded') return item.contentChanged ? '已生效 · 内容已变' : '已生效'
   if (item.status === 'invalid') return `${item.gate || 'identity'} 门拒绝：${item.reason || '未知原因'}`
@@ -662,7 +654,9 @@ function settingsHtml() {
     suites: suitesSectionHtml,
     // 旧 id 重定向到统一的套件主面
     pluginsOverview: pluginsOverviewHtml,
-    moduleSettings: settingsModuleSettingsSectionHtml,
+    // OS-201：治理台取代旧的「模块」节；旧深链 moduleSettings 重定向到同一张卡片流。
+    governance: () => governanceHtml?.() ?? '<div class="gov"><div class="gov-empty">拿不到插件清单：治理台视图没有接上</div></div>',
+    moduleSettings: () => governanceHtml?.() ?? '<div class="gov"><div class="gov-empty">拿不到插件清单：治理台视图没有接上</div></div>',
     // OS-196：本机模块根的信任入口（视图在 views 里，app.js 只负责接线）。
     localModules: settingsLocalModulesSectionHtml,
     suite: suitesSectionHtml,
@@ -724,7 +718,7 @@ function settingsHtml() {
       <b>本机模块</b><span>模块根 · 摘要 · 失败门</span>
     </button>
   </div>`
-  const help = SETTINGS_HELP[sectionId] || SETTINGS_HELP.plugins
+  const help = SETTINGS_HELP[sectionId === 'moduleSettings' ? 'governance' : sectionId] || SETTINGS_HELP.plugins
   const helpOpen = state.settings.helpOpen === true
   return `<div class="lib-wrap">
     <div class="page-head">
@@ -796,5 +790,5 @@ function settingsHtml() {
     })
   }
 
-  return { settingsModulesSectionHtml, SETTINGS_HELP, RUNTIME_STATUS_LABEL, runtimeCard, settingsRuntimeSectionHtml, dshDepthFieldHtml, cfgBadgeHtml, dshModelValue, dshModelOptionsHtml, dshModelFieldHtml, settingsModelsSectionHtml, skinCardsHtml, settingsAppearanceSectionHtml, settingsTypographySectionHtml, settingsWritingSectionHtml, settingsDiscoverSectionHtml, settingsCombinedDataSectionHtml, settingsSyncSectionHtml, settingsDataSectionHtml, settingsAboutSectionHtml, settingsKbSectionHtml, settingsCombinedAppearanceHtml, settingsCombinedEnginesHtml, settingsModuleSettingsSectionHtml, settingsLocalModulesSectionHtml, settingsHtml }
+  return { settingsModulesSectionHtml, SETTINGS_HELP, RUNTIME_STATUS_LABEL, runtimeCard, settingsRuntimeSectionHtml, dshDepthFieldHtml, cfgBadgeHtml, dshModelValue, dshModelOptionsHtml, dshModelFieldHtml, settingsModelsSectionHtml, skinCardsHtml, settingsAppearanceSectionHtml, settingsTypographySectionHtml, settingsWritingSectionHtml, settingsDiscoverSectionHtml, settingsCombinedDataSectionHtml, settingsSyncSectionHtml, settingsDataSectionHtml, settingsAboutSectionHtml, settingsKbSectionHtml, settingsCombinedAppearanceHtml, settingsCombinedEnginesHtml, settingsLocalModulesSectionHtml, settingsHtml }
 }

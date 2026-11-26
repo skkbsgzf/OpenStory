@@ -26,6 +26,8 @@
   --accent: #ff385c; --accent-hover: #e31c5f; --accent-active: #e00b41; --accent-soft: #fff1f3;
   --ok: #008a05; --danger: #c13515;
   --warn: #c48a00; --warn-ink: #a06a00; --warn-on-dark: #ffd7a8;
+  /* OS-201：治理台三类着色；浅底卡面用 color-mix(in srgb, var(--cat-*) 10%, var(--bg)) 派生 */
+  --cat-kernel: #8a63d2; --cat-workbench: #4f8fd0; --cat-host: #b08968;
   --on-accent: #ffffff;
   --scene-deep: #2b2a4a; --scene-mid: #4a3d6b; --scene-far: #6b4f6b; --scene-overlay: rgba(20,18,30,.55);
   --radius-sm: 6px; --radius: 10px; --radius-md: 14px; --radius-lg: 20px; --pill: 999px;
@@ -49,6 +51,8 @@
 /* 夜间皮阴影加深（浅色阴影在深底上不可见） */
 html[data-skin="night"] {
   --shadow-base: 0, 0, 0;
+  /* 夜皮：类别色提亮一档，色点/浅底在深底上仍看得清 */
+  --cat-kernel: #b79cf0; --cat-workbench: #8fc0f0; --cat-host: #d9b394;
   --shadow-card: 0 1px 2px rgba(var(--shadow-base), .38), 0 1px 3px rgba(var(--shadow-base), .3);
   --shadow-card-hover: 0 2px 8px rgba(var(--shadow-base), .46), 0 1px 3px rgba(var(--shadow-base), .32);
 }
@@ -1864,6 +1868,86 @@ html[data-doc-auto-gap="off"] .doc-block { margin-bottom: 0; }
 .sm-toggle.on .knob { background: var(--ok); }
 .sm-toggle.on .lab { color: var(--ok); }
 .sm-toggle:hover { border-color: var(--ink); }
+
+/* ── OS-201 插件治理台：卡片流与卡内确认条 ──────────────────────
+   颜色只走令牌（三类着色 --cat-*，浅底由 color-mix 派生）；字号 --ui-fs-*；
+   间距 --ui-gap-* 或 calc(Npx * var(--ui-scale))。展开卡通栏。 */
+.gov { display: flex; flex-direction: column; gap: var(--ui-gap-lg); min-width: 0; }
+.gov-head { display: flex; align-items: baseline; gap: var(--ui-gap-md); flex-wrap: wrap; }
+.gov-head h2 { font-size: var(--ui-fs-xl); margin: 0; }
+.gov-lead { font-size: var(--ui-fs-sm); color: var(--muted); margin: 0; line-height: var(--ui-lh-normal); }
+.gov-count { font-size: var(--ui-fs-xs); color: var(--meta); font-variant-numeric: tabular-nums; }
+.gov-empty, .gov-empty-group { font-size: var(--ui-fs-sm); color: var(--muted); padding: var(--ui-gap-lg); border: 1px dashed var(--line); border-radius: var(--radius); background: var(--surface-card); }
+.gov-group { display: flex; flex-direction: column; gap: var(--ui-gap-sm); }
+.gov-group-head { display: flex; align-items: center; gap: var(--ui-gap-sm); flex-wrap: wrap; }
+.gov-group-head h3 { font-size: var(--ui-fs-lg); margin: 0; }
+.gov-group-head .gov-desc { font-size: var(--ui-fs-xs); color: var(--meta); }
+.gov-dot { display: inline-block; flex: 0 0 auto; width: calc(8px * var(--ui-scale)); height: calc(8px * var(--ui-scale)); border-radius: 50%; background: var(--meta); }
+.gov-dot.cat-kernel { background: var(--cat-kernel); }
+.gov-dot.cat-workbench { background: var(--cat-workbench); }
+.gov-dot.cat-host { background: var(--cat-host); }
+.gov-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--ui-gap-md); align-items: start; }
+.gov-card { min-width: 0; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface-card); box-shadow: var(--shadow-card); overflow: hidden; }
+.gov-card.open { grid-column: 1 / -1; border-color: var(--accent); }
+.gov-card.gov-workbench:not(.off) .gov-row { background: color-mix(in srgb, var(--cat-workbench) 6%, var(--bg)); }
+.gov-card.gov-kernel .gov-row { background: color-mix(in srgb, var(--cat-kernel) 6%, var(--bg)); }
+.gov-card.gov-host .gov-row { background: color-mix(in srgb, var(--cat-host) 6%, var(--bg)); }
+.gov-card.off .gov-name, .gov-card.off .gov-sum { opacity: .6; }
+.gov-row { display: flex; align-items: center; gap: var(--ui-gap-sm); padding: var(--ui-gap-md); cursor: pointer; flex-wrap: wrap; }
+.gov-row:hover { box-shadow: var(--shadow-card-hover); }
+.gov-name { font-size: var(--ui-fs-base); font-weight: 600; white-space: nowrap; }
+.gov-ident { display: inline-flex; align-items: baseline; gap: var(--ui-gap-3xs); white-space: nowrap; }
+.gov-ident code { font-family: var(--mono); font-size: var(--ui-fs-xs); color: var(--muted); }
+.gov-ver { font-family: var(--mono); font-size: var(--ui-fs-2xs); color: var(--meta); }
+.gov-badge { font-size: var(--ui-fs-2xs); color: var(--muted); border: 1px solid var(--line); border-radius: var(--pill); padding: 0 var(--ui-gap-sm); white-space: nowrap; }
+.gov-badge-local { color: var(--accent); border-color: var(--accent); }
+.gov-sum { flex: 1 1 auto; min-width: calc(120px * var(--ui-scale)); font-size: var(--ui-fs-sm); color: var(--muted); }
+.gov-status { display: inline-block; flex: 0 0 auto; width: calc(8px * var(--ui-scale)); height: calc(8px * var(--ui-scale)); border-radius: 50%; background: var(--meta); }
+.gov-status.--ok { background: var(--ok); }
+.gov-status.--warn { background: var(--warn); }
+.gov-status.--meta { background: var(--meta); }
+.gov-chev { color: var(--meta); font-size: var(--ui-fs-lg); line-height: 1; transition: transform .15s ease; }
+.gov-card.open .gov-chev { transform: rotate(90deg); }
+.gov-lock { display: inline-flex; position: relative; flex: 0 0 auto; width: calc(14px * var(--ui-scale)); height: calc(12px * var(--ui-scale)); border: 1px solid var(--meta); border-radius: calc(3px * var(--ui-scale)); color: var(--meta); }
+.gov-lock i { position: absolute; left: calc(2px * var(--ui-scale)); top: calc(-5px * var(--ui-scale)); width: calc(7px * var(--ui-scale)); height: calc(6px * var(--ui-scale)); border: 1px solid currentColor; border-bottom: 0; border-radius: 999px 999px 0 0; }
+.gov-body { display: flex; flex-direction: column; gap: var(--ui-gap-sm); padding: var(--ui-gap-md); border-top: 1px solid var(--hair); }
+.gov-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--ui-gap-md); }
+.gov-col { display: flex; flex-direction: column; gap: var(--ui-gap-2xs); min-width: 0; }
+.gov-col h4, .gov-settings h4, .gov-confirm h4 { font-size: var(--ui-fs-sm); margin: 0 0 var(--ui-gap-2xs); color: var(--ink-2); }
+.gov-line { display: flex; align-items: baseline; gap: var(--ui-gap-2xs); flex-wrap: wrap; font-size: var(--ui-fs-xs); line-height: var(--ui-lh-normal); }
+.gov-line code { font-family: var(--mono); font-size: var(--ui-fs-xs); }
+.gov-mark { color: var(--muted); }
+.gov-mark.good { color: var(--ok); }
+.gov-mark.bad { color: var(--danger); }
+.gov-golden { font-size: var(--ui-fs-2xs); color: var(--warn-ink); }
+.gov-why { color: var(--danger); font-size: var(--ui-fs-2xs); }
+.gov-provider { color: var(--muted); }
+.gov-note { font-size: var(--ui-fs-xs); color: var(--meta); line-height: var(--ui-lh-normal); }
+.gov-deps { display: flex; flex-wrap: wrap; gap: var(--ui-gap-2xs); }
+.gov-dep { display: inline-flex; align-items: center; gap: var(--ui-gap-2xs); font-size: var(--ui-fs-xs); color: var(--ink-2); border: 1px solid var(--line); border-radius: var(--pill); padding: var(--ui-gap-3xs) var(--ui-gap-sm); }
+.gov-dep-tag { font-size: var(--ui-fs-2xs); color: var(--meta); }
+.gov-dep-tag.warn { color: var(--warn-ink); }
+.gov-impact, .gov-identity, .gov-recovery { font-size: var(--ui-fs-xs); color: var(--muted); line-height: var(--ui-lh-normal); padding: var(--ui-gap-sm); border-radius: var(--radius-sm); background: color-mix(in srgb, var(--cat-kernel) 10%, var(--bg)); }
+.gov-recovery { background: color-mix(in srgb, var(--warn) 10%, var(--bg)); }
+.gov-settings { display: flex; flex-direction: column; gap: var(--ui-gap-xs); padding-top: var(--ui-gap-sm); border-top: 1px dashed var(--hair); }
+.gov-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--ui-gap-sm); }
+.gov-field { display: flex; flex-direction: column; gap: var(--ui-gap-3xs); font-size: var(--ui-fs-xs); color: var(--muted); }
+.gov-field .uikit-input, .gov-field .select, .gov-field input, .gov-field select { border: 1px solid var(--line); border-radius: var(--radius); padding: var(--ui-row-py) var(--ui-ctl-px); font-size: var(--ui-fs-md); background: var(--bg); min-width: 0; }
+.gov-field .uikit-input:focus, .gov-field .select:focus, .gov-field input:focus, .gov-field select:focus { border-color: var(--accent); outline: none; }
+.gov-field.gov-check { flex-direction: row; align-items: center; gap: var(--ui-gap-sm); }
+.gov-pointer { display: flex; align-items: center; gap: var(--ui-gap-sm); flex-wrap: wrap; font-size: var(--ui-fs-xs); color: var(--muted); padding: var(--ui-gap-sm); border-radius: var(--radius-sm); background: var(--soft); }
+.gov-error { font-size: var(--ui-fs-xs); color: var(--danger); padding: var(--ui-gap-sm); border: 1px solid var(--danger); border-radius: var(--radius-sm); }
+.gov-confirm { display: flex; flex-direction: column; gap: var(--ui-gap-sm); border-top: 1px solid var(--danger); padding: var(--ui-gap-md); background: color-mix(in srgb, var(--danger) 6%, var(--bg)); }
+.gov-impact-list { display: flex; flex-direction: column; gap: var(--ui-gap-3xs); }
+.gov-impact-list p { font-size: var(--ui-fs-xs); color: var(--ink-2); margin: 0; line-height: var(--ui-lh-normal); }
+.gov-confirm-actions { display: flex; gap: var(--ui-gap-sm); align-items: center; }
+.gov-danger { font-size: var(--ui-fs-sm); color: var(--on-accent); background: var(--danger); border: 1px solid var(--danger); border-radius: var(--radius); padding: var(--ui-row-py) var(--ui-ctl-px); }
+@media (max-width: 720px) {
+  .gov-cards { grid-template-columns: minmax(0, 1fr); }
+  .gov-grid, .gov-fields { grid-template-columns: minmax(0, 1fr); }
+  .gov-card.open { grid-column: auto; }
+  .gov-sum { flex-basis: 100%; }
+}
 
 /* ── 选区浮窗＋Agent 上下文条（OS-24）────────────── */
 .sel-bar { position: fixed; z-index: 120; display: none; gap: var(--ui-gap-2xs); padding: var(--ui-gap-2xs); background: var(--bg); border: 1px solid var(--line); border-radius: var(--pill); box-shadow: var(--shadow); }
