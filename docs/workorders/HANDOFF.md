@@ -2,7 +2,8 @@
 
 > **已推送并过 CI（2026-11-26）**：`main` 推到 `6f4c66b`；GitHub Actions 在 `ubuntu-latest` **首次全绿**（run 45658464076：两轮测试 845／843 过／2 跳过／0 挂 → 验收门禁 29／0／0 → arch check）。
 > 首次接通暴露并修掉 4 类只在 Linux 现形的问题：①假 dsh shim 写死 Windows `.cmd`；②单实例用例假设 `child.kill()` 是硬杀（POSIX 的 SIGTERM 会走清理）；③`courtyardRoot()` 顺手建目录——假路径在 Linux 被当相对路径、把仓根建出 `C:`／`D:`／`X:\…`（S0.1 红），Windows 上则写到了 C 盘根；④两处平台差异让跳过数与文档锚对不上（`ARCHITECTURE.md` 按 CRLF 新克隆、会话目录用例 win32 专属），后者改为两平台都跑、按平台断言。
-> **当前阶段（2026-11-25 晚）：清账批已全部收口**——D 批验收有条件通过，作者裁定「遗留全部做完，不接受妥协」「待定里的 Pinax 业务必须全部退役」。12 张工单在 [`BOARD.md`](BOARD.md)「清账批」段，规划见 [`docs/plan/cleanup-batch-20261125.md`](../plan/cleanup-batch-20261125.md)，验收记录见 [`OS-185-188-batch-d-acceptance.md`](OS-185-188-batch-d-acceptance.md)。
+> **当前阶段（2026-11-26）：第四批「插件前端适配」开工**——作者交来规划书与原型（WorkBuddy 侧产出），监督线核实后立 6 张单，作者当日回「可以」。工单在 [`BOARD.md`](BOARD.md)「第四批」段；规划（含规划书原文、原型要点、裁定、监督线核出的实况）见 [`docs/plan/plugin-frontend-batch-20261126.md`](../plan/plugin-frontend-batch-20261126.md)。派发头部规则自本批起用 [`DISPATCH-RULES.md`](DISPATCH-RULES.md)（计划文件每批带 `rules`）。顺序：OS-200 后端投影 → OS-201 治理台卡片流 → OS-202 能力图 → OS-203 降级显形 → OS-204 设置页收敛 → OS-205 显示名迁入投影；逐张派、逐张验收。**不 push**。
+> **上一批（2026-11-25 晚）：清账批已全部收口**——D 批验收有条件通过，作者裁定「遗留全部做完，不接受妥协」「待定里的 Pinax 业务必须全部退役」。12 张工单在 [`BOARD.md`](BOARD.md)「清账批」段，规划见 [`docs/plan/cleanup-batch-20261125.md`](../plan/cleanup-batch-20261125.md)，验收记录见 [`OS-185-188-batch-d-acceptance.md`](OS-185-188-batch-d-acceptance.md)。
 > **派发方式**：CodeBuddy CLI（`.zcode/os-batch-runner.mjs`，模型 `hy4flash`），每轮由监督线验收后再开下一轮；提交由编排器做，**任何执行者不要自行 push**。
 > **e2e 口径（2026-11-25 起）**：一律走隔离脚本 `tools/verify/verify-os172-e2e.mjs`（临时 daemon＋临时 `LOCALAPPDATA`＋假上游）；编排器不重启也不连接 8807——常驻进程是作者在用的旧 daemon，新版「首次打开即升级真库」，碰它等于替作者升级真库。
 > **当前数字锚**：测试 845 例（843 过 / 0 挂 / 2 条件跳过）、门禁 29 过 / 0 挂 / 0 警、`app.js` 10,107 行（上限 10,500）、端点 108、41 个独占端点、宿主域端点 0、测试文件 109。机器真源见 `docs/number-anchors.json`。
