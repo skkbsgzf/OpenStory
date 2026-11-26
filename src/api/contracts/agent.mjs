@@ -181,7 +181,7 @@ export const agentEndpoints = {
     // 库级选择链（OS-70）：灯泡三级链的持久层——风格词条（单选）/方法论（多选）。
     // picks:null＋explicit:false ＝ 未做过显式选择（注入走体裁缺省裁剪）。
     request: { query: { root: 'string' } },
-    response: { ok: 'true', picks: 'object?', explicit: 'true|false' },
+    response: { ok: 'true', picks: 'object?', explicit: 'boolean' },
     errors: ['NO_LIBRARY', 'INVALID_ENTRY']
   },
 

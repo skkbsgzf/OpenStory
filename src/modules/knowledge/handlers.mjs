@@ -28,6 +28,7 @@ export function createHandlers({ host }) {
     return sendJson(res, 200, {
       ok: true,
       configPath,
+      masked: true,
       config: {
         backend: text(config.backend) || 'weknora',
         baseUrl: text(config.baseUrl) || 'http://127.0.0.1:8080',

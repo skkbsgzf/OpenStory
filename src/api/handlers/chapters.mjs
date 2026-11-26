@@ -8,7 +8,7 @@
 import { API_ERROR_CODES } from '../contracts.mjs'
 import { readFile } from 'node:fs/promises'
 import { sendError, sendJson, text } from '../../host/http.mjs'
-import { authorizeRoot } from '../../host/authorize.mjs'
+import { authorizeRoot, resolveInsideRoot } from '../../host/authorize.mjs'
 import { readChange, readLog, logSummary } from '../../protocol/changelog.mjs'
 import { resolveProseCapability } from '../../host/capabilityBindings.mjs'
 import { dropDraft, saveDraft } from '../../protocol/libState.mjs'
