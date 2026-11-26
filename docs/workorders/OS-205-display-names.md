@@ -74,3 +74,34 @@
 - 机器门禁全绿（门禁仍是 29 项，编号不变）；`app.js` 行数不增；`git diff --check` 干净。
 - 反证两则，都要贴输出后还原：(a) 把某个 manifest 的 `pages[].label` 改得与目录名不一致，S2.5 与 S2.9 都必须红；(b) 在表里某个模块行加回 `tab`，测试必须红。
 - 监督线另核：`git diff public/views/registry.mjs` 里 `DIR_LABELS` 等派生表的取值逐键未变。
+## 施工回报（编排器自动归档）
+
+> 模型 hy4flash · 第 1 轮 · 测试 绿（tests 900 · pass 898 · fail 0 · skip 2） · 门禁 绿 · e2e 水浒＋新建（隔离 daemon）绿 · 8807 未动
+
+```text
+CHANGED:
+- `public/views/registry.mjs`
+- `public/views/referencePageViews.mjs`
+- `public/app.js`
+- `tools/acceptance/acceptance.mjs`
+- `tools/verify/verify-os172-naming.mjs`
+- `test/naming.test.mjs`
+- `test/os172Naming.test.mjs`
+- `test/shellViewsC6.test.mjs`
+- `AGENTS.md`
+- `docs/UX-STRUCTURE.md`
+- `ARCHITECTURE.md`（`npm run arch:stats` 回写生成段）
+
+VERIFIED:
+- 命名派生表取值逐键未变（node 直读）：`DIR_LABELS {"正文":"正文","世界书":"世界书","剧本":"剧本","故事源":"故事源","日志":"日志"}`、`DIR_ORDER ["正文","世界书","剧本","日志"]`、`READONLY_DIRS ["日志"]`、`PAGE_TO_DIR_LOCAL {chapters:"正文",write:"正文",worldbook:"世界书",entries:"世界书",script:"剧本"}`、`LOG_MODULES` 十键一致；12 个模块行 `tab/panelLabel` 全为 null，`settings.tab === '设置'`。
+- 生产调用点：`public/app.js:198`（`pageLabel` 经 scope 注入，取 `state.plugins.slots.tab[].label`，回落「世界书」）→ `public/views/referencePageViews.mjs:3,72`（图例使用）；`public/views/registry.mjs:139`（`dirLabelOf` 回落目录名）；`tools/acceptance/acceptance.mjs:409,618`；`tools/verify/verify-os172-naming.mjs:60,96`。
+- `node --test test/naming.test.mjs test/os172Naming.test.mjs test/tabRegistry.test.mjs test/shellViewsC6.test.mjs` → tests 31 / pass 31 / fail 0；其中「八个工作台页签顺序与显示名只来自 manifest」「词表映射原样保真」原样通过。
+- `node --test test/shellViewsC6.test.mjs test/degradedSurfaces.test.mjs` → tests 20 / pass 20 / fail 0。
+- 反证 (a) 临时把 `worldbook` manifest 的 `pages[].label` 改为「世界书反证」后还原：`✗ [S2.5] … 页签层/命名表/日志层有名字没走真源：worldbook:worldbook`；`✗ [S2.9] … worldbook: 目录与 manifest 页面名/入口名不一致; … pages[].label「世界书反证」≠ manifest name「世界书」`。
+- 反证 (b) 临时在 `chapters` 行加回 `tab` 后还原：`✖ … AssertionError: 工作台 chapters 的 tab 列必须留空`（naming.test.mjs）、`… chapters 的 tab 列必须留空`（os172Naming.test.mjs）、`✗ [S2.5] … 模块行 tab 残留 1 … 命名表 chapters 仍存 tab/panelLabel 模块页签名`。
+- 收尾按序：`npm run arch:stats` 回写 → `node tools/number-anchors.mjs` 输出 `✓ 已回写 docs/number-anchors.json：900 例／端点 108／app.js 10044 行` → `node tools/acceptance/acceptance.mjs` → `验收门禁：29 过 / 0 挂 / 0 警`。
+- `npm test` → tests 900 / pass 898 / fail 0；`npm run arch:check` → `✓ ARCHITECTURE.md 生成段与实测一致（51 行数据）`。
+- `git diff --check` 无输出；`git diff --numstat public/app.js` = `1 1`（行数 10044 未增）；反证改动已还原，临时探针无残留；未执行任何 git 写操作，未启停 daemon。
+
+LIMITATIONS: 无
+```

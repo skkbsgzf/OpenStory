@@ -17,24 +17,29 @@
  * 验收门禁与测试。
  */
 
-/* ---------- OS-148（G8a/G8d）：五层命名单一真源表 ----------
+/* ---------- OS-148（G8a/G8d；OS-205 收口）：命名单一真源表 ----------
 
-   同一个概念在「磁盘目录 / UI 页签 / changelog 模块 / 契约域 / MCP 工具名」五层
-   各有一个名字。表就是这五层的对照表——**全仓只有这一份数据**：
+   同一个概念的「磁盘目录 / changelog 模块 / 契约域 / MCP 工具名」各有一个名字，
+   表就是这四层的对照表——**这四层全仓只有这一份数据**：
    DIR_LABELS / DIR_ORDER / READONLY_DIRS / PAGE_TO_DIR_LOCAL 与视图行为表的可见条件
    全部由它派生；后端经 src/protocol/naming.mjs 取用（只 re-export，不复制一个字面量）。
 
+   OS-205：模块显示名的权威只有 manifest 的 `name` 与 `pages[].label`，经 /api/plugins
+   投影下发；本表**不再保存模块页签名**，避免第二份。tab/panelLabel 两列只留给
+   宿主自有页面（settings）。三名一致改由门禁与测试拿 manifest 的显示名去对本表的
+   dir 列与 logModule 列（对照真源换了，口径不变）。
+
    为什么表落在本文件而不是独立的 public/naming.mjs：注册表有「零 import」纯度门禁
    （test/tabRegistry.test.mjs 钉死，且 registry 是浏览器侧 leaf 模块），独立成文件就必须
-   import，与门禁冲突；而注册表本来就是目录词表/页签名的唯一真源。
+   import，与门禁冲突；而注册表本来就是目录词表的唯一真源。
 
    列：
      id            概念 id（跨层稳定标识；视图行为条目用 id 与模块页面 id 对齐）
      dir           磁盘目录名（null＝没有对应目录）
      dirTab        该目录是否由页签条目的 dir 字段承载（缺省 true；false＝有目录但页签不按目录扫）
-     tab           页签显示名（null＝没有页签）
-     panelLabel    「＋增加页签」面板里的显示名（null＝同 tab）
-     dirLabel      DIR_LABELS 词表值（缺省＝tab；null＝不进 DIR_LABELS 词表）
+     tab           页签显示名（仅宿主自有页面用；模块页面取 manifest pages[].label；null＝没有页签）
+     panelLabel    「＋增加页签」面板里的显示名（仅宿主自有页面用；null＝同 tab）
+     dirLabel      DIR_LABELS 词表值（缺省＝dir；null＝不进 DIR_LABELS 词表）
      logModule     changelog 模块名（null＝不写变更日志）
      dirLogModule  按目录推断日志时的历史名（只给「目录名与模块名不一致」的既有实况留档，不迁移）
      contract      契约域文件名（src/api/contracts/<域>.mjs；null＝无独占端点）
@@ -43,24 +48,24 @@
    ------------------------------------------------------------------------ */
 
 export const NAMING_TABLE = Object.freeze([
-  { id: 'chapters', dir: '正文', tab: '正文', logModule: '正文', contract: 'chapters', mcpPrefix: 'openstory_novel_',
+  { id: 'chapters', dir: '正文', logModule: '正文', contract: 'chapters', mcpPrefix: 'openstory_novel_',
     note: '章节正文；写盘走 /api/chapter（chapters 域）' },
-  { id: 'worldbook', dir: '世界书', tab: '世界书', panelLabel: '世界书', logModule: '世界书', contract: 'reference', mcpPrefix: 'openstory_reference_',
-    note: '世界书显示名、页签名、磁盘目录名与日志模块名一致' },
-  { id: 'script', dir: '剧本', tab: '剧本', logModule: '剧本', contract: 'chapters',
+  { id: 'worldbook', dir: '世界书', logModule: '世界书', contract: 'reference', mcpPrefix: 'openstory_reference_',
+    note: '世界书显示名（manifest）、磁盘目录名与日志模块名一致' },
+  { id: 'script', dir: '剧本', logModule: '剧本', contract: 'chapters',
     note: '剧本就是 剧本/NNN-标题.md，写盘与正文同走 chapters 域；无独占 MCP 工具' },
-  { id: 'storysource', dir: '故事源', tab: '故事源', logModule: '故事源', contract: 'fact', mcpPrefix: 'openstory_fact_curve',
-    note: '故事源显示名、页签名、磁盘目录名与日志模块名一致' },
+  { id: 'storysource', dir: '故事源', logModule: '故事源', contract: 'fact', mcpPrefix: 'openstory_fact_curve',
+    note: '故事源显示名（manifest）、磁盘目录名与日志模块名一致' },
   // OS-86/100：扮演＝推演全形态同一壳；扮演/ 是会话与素材目录，页签不按目录扫描。
-  { id: 'roleplay', dir: '扮演', tab: '扮演', dirTab: false, dirLabel: null, logModule: '扮演', contract: 'fact', mcpPrefix: 'openstory_deduce_',
+  { id: 'roleplay', dir: '扮演', dirTab: false, dirLabel: null, logModule: '扮演', contract: 'fact', mcpPrefix: 'openstory_deduce_',
     note: '目录只存会话/导出/素材，页签「扮演」由视图驱动' },
   // OS-59：习惯——规则类内容归 habits.json，专页承载。
-  { id: 'habits', dir: '习惯', tab: '习惯', panelLabel: '习惯', dirLabel: null, logModule: '习惯', contract: 'system', mcpPrefix: 'openstory_habits_' },
+  { id: 'habits', dir: '习惯', dirLabel: null, logModule: '习惯', contract: 'system', mcpPrefix: 'openstory_habits_' },
   // OS-89：日志只读页签；/api/log* 端点在 chapters 域。
-  { id: 'log', dir: '日志', tab: '日志', readonly: true, contract: 'chapters',
+  { id: 'log', dir: '日志', readonly: true, contract: 'chapters',
     note: '只读页签；日志由 changelog 写入，自身不再写变更日志' },
   // OS-12：产物（产出物＋多版本＋历史）。
-  { id: 'artifacts', tab: '产物', contract: 'system', note: '产物：/api/artifacts 盘点＋/api/chapter 预览与恢复' },
+  { id: 'artifacts', contract: 'system', note: '产物：/api/artifacts 盘点＋/api/chapter 预览与恢复' },
   // OS-32：设置页签（主题字号/模块开关/凭据入口）。
   { id: 'settings', tab: '设置', contract: 'system', note: '/api/config 与 /api/ui-state' },
   { id: 'uiState', logModule: '界面状态', contract: 'system', note: '库内界面状态 .openstory/ui-state.json（页签/模块开关/字号档）' },
@@ -70,10 +75,10 @@ export const NAMING_TABLE = Object.freeze([
   { id: 'libraries', contract: 'library', mcpPrefix: 'openstory_libraries', note: '库管理（顶栏入口，非页签）' },
   { id: 'exchange', dir: '导入导出', dirTab: false, dirLabel: null, logModule: '导入导出', contract: 'exchange', note: '顶栏导入导出入口与导出文件的落盘目录同名' },
   { id: 'libraryUpgrade', logModule: '库升级', note: '旧库一次性升级的结构变更日志' },
-  { id: 'analysis', tab: '分析', contract: null, mcpPrefix: 'openstory_analysis_chapter', note: '右栏分析卡片＋MCP 本地计算，不经 daemon 端点' },
+  { id: 'analysis', contract: null, mcpPrefix: 'openstory_analysis_chapter', note: '右栏分析卡片＋MCP 本地计算，不经 daemon 端点' },
   { id: 'enrich', logModule: '故事源', contract: 'fact', mcpPrefix: 'openstory_enrich_', note: '语义增补写旁挂 wiki，变更记在「故事源」日志' },
-  { id: 'imagegen', tab: '生图与识图', contract: 'reference', mcpPrefix: 'openstory_image_generate', note: '生图与识图：生图落条目 assets/（/api/reference/image），识图 /api/vision/describe；vision 概念并入本节' },
-  { id: 'knowledge', tab: '知识库', contract: 'system', note: '知识库三件套（/api/kb/*；端点与 MCP 名不动）' },
+  { id: 'imagegen', contract: 'reference', mcpPrefix: 'openstory_image_generate', note: '生图与识图：生图落条目 assets/（/api/reference/image），识图 /api/vision/describe；vision 概念并入本节' },
+  { id: 'knowledge', contract: 'system', note: '知识库三件套（/api/kb/*；端点与 MCP 名不动）' },
   { id: 'shelf', contract: 'plugins', mcpPrefix: 'openstory_skills_', note: '风格/技能/体裁/套件货架' },
   { id: 'agent', contract: 'agent', note: 'Agent 对话与待确认卡；MCP 不开 agent 对话（硬约束 5）' }
 ].map(namingRow))
@@ -130,10 +135,10 @@ export const LOG_MODULES = Object.freeze(Object.fromEntries(
 
 /* ---------- 词表与退场表（由命名表逐键派生，唯一真源）---------- */
 
-/** 一行的 DIR_LABELS 值：显式 dirLabel 优先，null＝不进词表，缺省＝页签名。 */
+/** 一行的 DIR_LABELS 值：显式 dirLabel 优先，null＝不进词表，缺省＝目录名（OS-205：不再回落页签名）。 */
 function dirLabelOf(row) {
   if (row.dirLabel === null) return null
-  return row.dirLabel ?? row.tab ?? row.dir ?? null
+  return row.dirLabel ?? row.dir ?? null
 }
 
 /**

@@ -61,9 +61,9 @@ const LOG_MODULES_IN_USE = Object.freeze([
   '界面状态'  // 库内 ui-state（LOG_MODULES.uiState）
 ])
 
-/* ---------- ① 表覆盖页签 ---------- */
+/* ---------- ① manifest 显示名对表目录列一致，且表不再存模块页签名 ---------- */
 
-test('表覆盖页签：manifest 的 tab 显示名全部来自命名表，视图行为表不再存页签名', () => {
+test('manifest 显示名对表目录列一致，且表不再存模块页签名', () => {
   const tabPlacements = MODULE_MANIFESTS
     .filter((manifest) => manifest.class === 'workbench')
     .flatMap((manifest) => (manifest.slots ?? []).filter((placement) => placement.slot === 'tab').map((placement) => ({ manifest, placement })))
@@ -72,10 +72,18 @@ test('表覆盖页签：manifest 的 tab 显示名全部来自命名表，视图
     const page = (manifest.pages ?? []).find((item) => item.id === placement.page)
     const row = namingEntry(placement.page) ?? namingEntry(manifest.id)
     assert.ok(row, `页签 ${manifest.id}/${placement.page} 缺命名表行`)
-    assert.equal(page.label, row.tab, `页签 ${placement.page} 的显示名与命名表 tab 列不一致`)
+    assert.ok(page, `页签 ${manifest.id}/${placement.page} 缺 pages[] 条目`)
+    assert.equal(page.label, manifest.name, `页签 ${placement.page} 的显示名与 manifest name 不一致`)
+    if (row.dir) assert.equal(page.label, row.dir, `页签 ${placement.page} 的显示名与命名表目录列不一致`)
     if (row.dir && row.dirTab !== false) assert.equal(namingEntryForDir(row.dir)?.id, row.id, `目录 ${row.dir} 反查不到 ${row.id}`)
   }
-  // 宿主设置页仍在命名表里；视图行为表不许再带 label/dir/module/order。
+  // 工作台行不许回潮第二份页签名；宿主设置页的 tab 保留。
+  for (const manifest of MODULE_MANIFESTS.filter((item) => item.class === 'workbench')) {
+    const row = namingEntry(manifest.id)
+    assert.ok(row, `工作台 ${manifest.id} 缺命名表行`)
+    assert.equal(row.tab, null, `工作台 ${manifest.id} 的 tab 列必须留空`)
+    assert.equal(row.panelLabel, null, `工作台 ${manifest.id} 的 panelLabel 列必须留空`)
+  }
   assert.equal(namingEntry('settings')?.tab, '设置')
   for (const entry of TAB_REGISTRY) {
     for (const key of ['label', 'dir', 'module', 'order', 'panelLabel']) {
@@ -160,7 +168,7 @@ test('单一来源：DIR_LABELS/DIR_ORDER/READONLY_DIRS/PAGE_TO_DIR_LOCAL 全部
   for (const row of NAMING_TABLE) {
     if (!row.dir) continue
     if (row.dirLabel === null) continue
-    expectedLabels[row.dir] = row.dirLabel ?? row.tab ?? row.dir
+    expectedLabels[row.dir] = row.dirLabel ?? row.dir
   }
   assert.deepEqual({ ...DIR_LABELS }, expectedLabels, 'DIR_LABELS 必须由命名表派生（不许单独维护）')
   assert.deepEqual([...DIR_ORDER],
@@ -243,9 +251,11 @@ test('OS-172：有目录的模块显示名、入口名、目录名与日志模�
   for (const [moduleId, conceptId] of pairs) {
     const manifest = JSON.parse(readFileSync(join(REPO, 'src/modules', moduleId, 'module.manifest.json'), 'utf-8'))
     const row = namingEntry(conceptId)
+    const page = (manifest.pages ?? []).find((item) => item.id === moduleId)
     assert.ok(row?.dir, `${conceptId} 应声明唯一磁盘目录`)
-    assert.equal(manifest.name, row.tab ?? row.dir, `${moduleId} 模块显示名不一致`)
-    assert.equal(row.dir, row.tab ?? row.dir, `${conceptId} 目录与页签/入口名不一致`)
+    assert.equal(page?.label, manifest.name, `${moduleId} 页面显示名与模块显示名不一致`)
+    assert.equal(manifest.name, row.dir, `${moduleId} 模块显示名不一致`)
+    assert.equal(row.dir, page?.label, `${conceptId} 目录与 manifest 页面名不一致`)
     assert.equal(row.logModule, row.dir, `${conceptId} 日志模块与目录不一致`)
   }
   assert.equal(namingEntry('worldbook').dir, '世界书')

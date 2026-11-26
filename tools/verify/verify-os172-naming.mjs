@@ -48,21 +48,33 @@ function walk(dir, prefix, out = []) {
 export function auditNamingConsistency({ repo = REPO, naming = NAMING_TABLE, tabs = TAB_REGISTRY } = {}) {
   const violations = []
   const byId = new Map(naming.map((row) => [row.id, row]))
+  // OS-205：模块显示名的权威是 manifest 的 name/pages[].label；命名表只留目录名/
+  // 日志模块名/契约域/MCP 前缀。先把模块的 manifest 读到手，再逐行对照。
+  const manifests = new Map()
+  for (const [concept, moduleId] of Object.entries(CONCEPT_MODULES)) {
+    const rel = `src/modules/${moduleId}/module.manifest.json`
+    let manifest
+    try { manifest = JSON.parse(readFileSync(join(repo, rel), 'utf-8')) } catch { violations.push(`${rel}: 模块 manifest 缺失`); continue }
+    manifests.set(concept, { manifest, rel })
+  }
+  const pageLabelOf = (concept) => manifests.get(concept)?.manifest?.pages?.find((page) => page.id === concept)?.label ?? null
   const dirs = new Set()
   for (const row of naming) {
     if (!row.dir) continue
     if (dirs.has(row.dir)) violations.push(`命名表目录重复：${row.dir}`)
     dirs.add(row.dir)
-    if (row.dir !== (row.tab ?? row.dir)) violations.push(`${row.id}: 目录与页签/入口名不一致`)
+    // 模块概念对 manifest 的页面名；非模块概念仍对 tab（宿主自有页面）。
+    if (row.dir !== (pageLabelOf(row.id) ?? row.tab ?? row.dir)) violations.push(`${row.id}: 目录与 manifest 页面名/入口名不一致`)
     if (row.logModule && row.logModule !== row.dir) violations.push(`${row.id}: 日志模块与目录不一致`)
   }
   // OS-198：视图行为表只剩 id/view/渲染行为——不再核对页签名/目录/模块归属（这些只在 manifest）。
-  for (const [concept, moduleId] of Object.entries(CONCEPT_MODULES)) {
-    const rel = `src/modules/${moduleId}/module.manifest.json`
-    let manifest
-    try { manifest = JSON.parse(readFileSync(join(repo, rel), 'utf-8')) } catch { violations.push(`${rel}: 模块 manifest 缺失`); continue }
+  for (const [concept] of Object.entries(CONCEPT_MODULES)) {
+    const hit = manifests.get(concept)
+    if (!hit) continue
+    const { manifest, rel } = hit
     const row = byId.get(concept)
-    if (manifest.name !== (row?.tab ?? row?.dir)) violations.push(`${rel}: 模块显示名不一致`)
+    // OS-205：manifest 名对目录名或页面名（两者本就逐字相同）。
+    if (manifest.name !== (pageLabelOf(concept) ?? row?.dir)) violations.push(`${rel}: 模块显示名不一致`)
   }
   const storage = byId.get('libraryStorage')
   const expectedStorage = {
@@ -79,6 +91,10 @@ export function auditNamingConsistency({ repo = REPO, naming = NAMING_TABLE, tab
     try { manifest = JSON.parse(readFileSync(join(repo, rel), 'utf-8')) } catch { violations.push(`${rel}: 工作台 manifest 缺失`); continue }
     if (manifest.class !== 'workbench') violations.push(`${rel}: 应为 class=workbench`)
     if (manifest.name !== proper) violations.push(`${rel}: manifest name「${manifest.name}」≠ 正名「${proper}」`)
+    // OS-205：页面显示名的权威就在 manifest，pages[].label 必须与自己的 name 逐字一致。
+    for (const page of manifest.pages ?? []) {
+      if (page.label !== manifest.name) violations.push(`${rel}: pages[].label「${page.label}」≠ manifest name「${manifest.name}」`)
+    }
   }
   // OS-190 断言③：分类表 12 个工作台都有 manifest（上面逐项已读，这里统计数量兜底）
   const present = Object.keys(WORKBENCHES).filter((concept) => existsSync(join(repo, `src/modules/${concept}/module.manifest.json`)))

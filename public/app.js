@@ -195,7 +195,7 @@ const libraryFlowViewsReady = import('./views/libraryFlowViews.mjs').then((mod) 
 let syncViews = null
 const syncViewsReady = import('./views/syncViews.mjs').then((mod) => { syncViews = mod.createSyncViews({ state, esc, text, formatAt }); return syncViews })
 let referencePageViews = null
-const referencePageViewsReady = import('./views/referencePageViews.mjs').then((mod) => { referencePageViews = mod.createReferencePageViews({ state, esc, text, moduleOn, registryModule: () => registryModule, refNodeCardHtml, refModulesHtml, dirWork, scriptViews: () => scriptViews, moduleCard: (id) => governanceViews?.moduleCard?.(id), missingText: (...args) => governanceViews?.missingText?.(...args) }); return referencePageViews })
+const referencePageViewsReady = import('./views/referencePageViews.mjs').then((mod) => { referencePageViews = mod.createReferencePageViews({ state, esc, text, moduleOn, registryModule: () => registryModule, refNodeCardHtml, refModulesHtml, dirWork, scriptViews: () => scriptViews, moduleCard: (id) => governanceViews?.moduleCard?.(id), missingText: (...args) => governanceViews?.missingText?.(...args), pageLabel: (page) => (state.plugins?.slots?.tab ?? []).find((item) => item.page === page)?.label ?? '世界书' }); return referencePageViews })
 let governanceViews = null // OS-201：治理台视图只接线，渲染与委托都在 views/governanceViews.mjs
 const governanceViewsReady = import('./views/governanceViews.mjs').then((mod) => { governanceViews = mod.createGovernanceViews({ state, esc, text, uiKit: () => uiKit, loadPlugins, render, setModuleEnabled, uiSet, uiMemory, settingsAggregation: () => settingsAggregation, navLabel }); return mod }).catch((error) => { console.error('[governance] 治理台视图加载失败', error); return null })
 

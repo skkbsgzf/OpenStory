@@ -28,9 +28,16 @@ function lineageFixture() {
   return root
 }
 
-test('OS-172 当前命名表、页签与模块显示名四向一致', () => {
+test('OS-172/OS-205 当前命名表、manifest 页面名与模块显示名四向一致', () => {
   const result = auditNamingConsistency()
   assert.equal(result.ok, true, result.violations.join('; '))
+  // OS-205：模块页签名只从 manifest 取，12 个模块行不再存第二份 tab/panelLabel。
+  for (const id of ['chapters', 'worldbook', 'script', 'storysource', 'roleplay', 'habits', 'log',
+    'artifacts', 'analysis', 'imagegen', 'knowledge', 'exchange']) {
+    const row = NAMING_TABLE.find((item) => item.id === id)
+    assert.equal(row?.tab, null, `${id} 的 tab 列必须留空`)
+    assert.equal(row?.panelLabel, null, `${id} 的 panelLabel 列必须留空`)
+  }
   // OS-190 分类补齐：页面 id＝slug、12 工作台齐备、manifest name＝正名、Agent 栏三名一致
   const agent = auditAgentName()
   assert.equal(agent.ok, true, agent.violations.join('; '))
@@ -45,10 +52,11 @@ test('OS-172 当前命名表、页签与模块显示名四向一致', () => {
 })
 
 test('OS-172 目录名退回旧名时四名一致门禁必须报红', () => {
-  const naming = NAMING_TABLE.map((row) => row.id === 'worldbook' ? { ...row, tab: '参考' } : row)
+  // OS-205：页签名来自 manifest，反证改为撞目录列——旧名「参考」必须被目录对页面名拦下。
+  const naming = NAMING_TABLE.map((row) => row.id === 'worldbook' ? { ...row, dir: '参考' } : row)
   const result = auditNamingConsistency({ naming })
   assert.equal(result.ok, false)
-  assert.ok(result.violations.includes('worldbook: 目录与页签/入口名不一致'))
+  assert.ok(result.violations.includes('worldbook: 目录与 manifest 页面名/入口名不一致'))
 })
 
 test('OS-189 谱系门禁：整文件豁免已取消，出处逐行放行、一次性升级单独放行，其余旧名报红', () => {

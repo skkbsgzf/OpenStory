@@ -172,14 +172,15 @@ test('referencePageViews：章节分组、图片槽、图谱与剧本人物金�
   const state = { current: { path: 'D:/长夜' }, chapterFile: '正文/卷一/001-夜.md', write: { chapters: [{ file: '正文/卷一/001-夜.md', no: 1, title: '夜' }] }, refCol: { graph: null, summary: '', summaryBusy: false, summaryError: '' }, scriptModule: null }
   const views = createReferencePageViews({
     state, esc, text, moduleOn: () => false, registryModule: () => registry, refNodeCardHtml: () => '<div class="node-card"></div>',
-    refModulesHtml: () => '<div class="modules"></div>', dirWork: () => work, scriptViews: () => scriptViews
+    refModulesHtml: () => '<div class="modules"></div>', dirWork: () => work, scriptViews: () => scriptViews,
+    pageLabel: (page) => (page === 'worldbook' ? '世界书' : page)
   })
   assert.match(views.chapterTreeHtml(), /class="ct-vol">卷一/u)
   assert.match(views.chapterRowsHtml([]), /还没有章节/u)
   assert.match(views.refImagesSlotHtml({ title: '夜', images: ['世界书/夜.png'] }), /api\/reference\/asset/u)
   assert.match(views.refImagesSlotHtml({}), /class="ref-img-slot empty"/u)
   assert.match(views.graphModuleHtml(), /世界书图谱/u)
-  registry = { namingEntry: () => ({ tab: '世界书', graphLabel: '关系图谱' }) }
+  registry = { namingEntry: () => ({ graphLabel: '关系图谱' }) }
   state.refCol.graph = { nodes: [{ id: 'n1' }], edges: [], stats: { nodes: 1, edges: 0, byKind: { worldbook: 1 } } }
   state.refCol.pick = 'n1'
   assert.match(views.graphModuleHtml(), /关系图谱|世界书/u)

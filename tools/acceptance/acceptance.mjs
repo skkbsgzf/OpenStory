@@ -24,7 +24,7 @@ import { execFileSync } from 'node:child_process'
 import { join, dirname, relative, resolve as pathResolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
-  NAMING_TABLE, TAB_REGISTRY, BUILTIN_PAGE_IDS, LOG_MODULES, namingEntry,
+  NAMING_TABLE, TAB_REGISTRY, BUILTIN_PAGE_IDS, LOG_MODULES,
   projectedTabDefs, viewScope
 } from '../../public/views/registry.mjs'
 import { MODULE_MANIFESTS } from '../../src/protocol/modules.mjs'
@@ -384,23 +384,31 @@ check('S2.4', 'S2', `S2.4' 底座边界（${scanned.length} 个 src 源文件；
     ? `违规：${baseViolations.slice(0, 4).map((item) => `${item.from}→${item.to}`).join('; ')}——底座不得反向依赖模块，内核不得依赖协议，写实现只留内核`
     : '五个底座句柄齐备；内核管道件与模块/协议隔离，物理原子写只有内核一份实现')
 
-// S2.5 命名真源表一致（OS-148/G8a·G8d）：五层名字只从 public/views/registry.mjs 的
-// NAMING_TABLE 取。跑两条：① 页签条目逐条回表（dir/label/panelLabel 相等）；
-// ② 代码里实际写日志的模块名（LOG_MODULES 常量＋任何残留的 module: '中文名' 字面量）
+// S2.5 命名真源表一致（OS-148/G8a·G8d；OS-205 收口）：目录名/日志模块名/契约域/MCP 前缀
+// 只从 public/views/registry.mjs 的 NAMING_TABLE 取；模块显示名的权威是 manifest 的
+// `name` 与 `pages[].label`。跑三条：① 每条页签位置——表里有行、有目录的行 label===row.dir、
+// label===manifest.name；② 模块概念的行不许再写 tab/panelLabel（防第二份回潮），宿主设置页保留；
+// ③ 代码里实际写日志的模块名（LOG_MODULES 常量＋任何残留的 module: '中文名' 字面量）
 // 全部登在表的 logModule/dirLogModule 列上——漏登或另写一份＝红。
 const namingById = new Map(NAMING_TABLE.map((row) => [row.id, row]))
-// OS-198：页签名只从 manifest pages[].label ＋ 命名表回查，TAB_REGISTRY 只剩视图行为。
+// OS-198/OS-205：页签名只从 manifest pages[].label 取，TAB_REGISTRY 只剩视图行为。
 const tabPlacements = MODULE_MANIFESTS
   .filter((manifest) => manifest.class === 'workbench')
   .flatMap((manifest) => (manifest.slots ?? [])
     .filter((placement) => placement.slot === 'tab')
     .map((placement) => ({ manifest, placement })))
+const moduleIds = MODULE_MANIFESTS.filter((manifest) => manifest.class === 'workbench').map((manifest) => manifest.id)
 const tabNamingMiss = tabPlacements.filter(({ manifest, placement }) => {
   const page = (manifest.pages ?? []).find((item) => item.id === placement.page)
   const row = namingById.get(placement.page) ?? namingById.get(manifest.id)
   if (!page || !row) return true
-  return page.label !== row.tab
+  if (row.dir && page.label !== row.dir) return true
+  return page.label !== manifest.name
 }).map(({ manifest, placement }) => `${manifest.id}:${placement.page}`)
+// 模块行不许回潮第二份页签名；宿主自有页面（settings）的 tab 不在此列。
+const moduleTabLeftovers = moduleIds
+  .filter((id) => { const row = namingById.get(id); return row && (row.tab != null || row.panelLabel != null) })
+  .map((id) => `命名表 ${id} 仍存 tab/panelLabel 模块页签名`)
 const namingModules = new Set()
 for (const row of NAMING_TABLE) {
   if (row.logModule) namingModules.add(row.logModule)
@@ -414,17 +422,18 @@ const logModuleUse = new Set([...Object.values(LOG_MODULES), ...logModuleRaw.map
 const logModuleMiss = [...logModuleUse].filter((name) => !namingModules.has(name))
 const namingEvidence = [
   ...tabNamingMiss.slice(0, 3),
+  ...moduleTabLeftovers.slice(0, 3),
   ...logModuleMiss.slice(0, 3).map((name) => `日志模块「${name}」未登表`),
   ...logModuleRaw.slice(0, 2).map((item) => `${item.at} module: '${item.name}'（字面量，应走 LOG_MODULES）`),
   lineOf('public/views/registry.mjs', 'NAMING_TABLE = Object.freeze')
 ].filter(Boolean)
 check('S2.5', 'S2',
-  `命名真源表一致（${NAMING_TABLE.length} 概念；页签 ${tabPlacements.length} 条回表／日志模块 ${logModuleUse.size} 个登表）`,
-  tabNamingMiss.length === 0 && logModuleMiss.length === 0,
+  `命名真源表一致（${NAMING_TABLE.length} 概念；页签 ${tabPlacements.length} 条对 manifest/目录；模块行 tab 残留 ${moduleTabLeftovers.length}；日志模块 ${logModuleUse.size} 个登表）`,
+  tabNamingMiss.length === 0 && moduleTabLeftovers.length === 0 && logModuleMiss.length === 0,
   namingEvidence,
-  tabNamingMiss.length || logModuleMiss.length
-    ? `页签层/日志层有名字没走命名表：${[...tabNamingMiss, ...logModuleMiss].join(', ')}`
-    : '页签/日志两层都从 NAMING_TABLE 取名（后端经 src/protocol/naming.mjs 只 re-export）')
+  tabNamingMiss.length || moduleTabLeftovers.length || logModuleMiss.length
+    ? `页签层/命名表/日志层有名字没走真源：${[...tabNamingMiss, ...moduleTabLeftovers, ...logModuleMiss].join(', ')}`
+    : '模块页签名只从 manifest 取；目录/日志两层从 NAMING_TABLE 取名（后端经 src/protocol/naming.mjs 只 re-export）')
 
 // S2.12 OS-198：页签不再有前端第二份清单——TAB_REGISTRY 只存视图行为，
 // 顶栏条目与顺序一律来自 `/api/plugins.slots.tab` 投影（manifest slots + enabled）。
@@ -605,7 +614,11 @@ const appJs = readRepo('public/app.js')
 // OS-150a：分词前先剥注释——块里写一行 `// writeHtmlGone` 不许冒充已注册。
 const stripJsComments = (src) => src.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/\/\/[^\n]*/g, ' ')
 const coreEntries = TAB_REGISTRY.filter((entry) => entry.core === true && !entry.retired)
-const coreLabels = coreEntries.map((entry) => namingEntry(entry.id)?.tab ?? entry.id)
+// OS-205：核心页签名只从 manifest 的 pages[].label 取（命名表已退掉模块 tab 列）。
+const coreLabels = coreEntries.map((entry) => {
+  const manifest = MODULE_MANIFESTS.find((item) => item.id === entry.id)
+  return manifest?.pages?.[0]?.label ?? entry.id
+})
 const tabBarCtx = { current: { path: '验收锚点' }, libDirs: NAMING_TABLE.filter((entry) => entry.dir).map((entry) => entry.dir), brief: null, briefGenre: null, settingsOpen: true }
 const tabBarLabels = new Set(projectedTabDefs({ slots: tabProjection.slots, ctx: tabBarCtx }).map((def) => def.label))
 // app.js 的 VIEW_RENDERERS 是速记对象（键＝值）；只认块内的裸标识符 token

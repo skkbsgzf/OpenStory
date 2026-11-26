@@ -281,22 +281,26 @@ MCP 对外 24 工具（`src/host/mcp.mjs` 直跑；stdio 独立进程，数据�
       `package.json.version`），端点路径与 MCP 工具名不动。
 
 21. **命名单一真源（OS-148/G8a·G8d；OS-172 收口）：新增或改名一个概念，先改命名表再改代码。**
-    - 表＝`public/views/registry.mjs` 的 `NAMING_TABLE`（概念 id ＋ 六列：`dir` 磁盘目录 /
-      `tab` 页签名 / `panelLabel`「＋」面板名 / `logModule` changelog 模块名 /
-      `contract` 契约域 / `mcpPrefix` MCP 工具名前缀；`libraryStorage` 另登记
-      `metadataDir`/`projectSpec`/`carrierPrefix`/`wikiSchema`/`tempPrefix` 五个运行态与谱系字段，
-      `dirTab`/`readonly`/`note` 只作行为与说明）。**全仓只有这一份数据**——后端经
-      `src/protocol/naming.mjs` 只 re-export，不许再抄一份字面量。
+    - 表＝`public/views/registry.mjs` 的 `NAMING_TABLE`（概念 id ＋ 列：`dir` 磁盘目录 /
+      `logModule` changelog 模块名 / `contract` 契约域 / `mcpPrefix` MCP 工具名前缀；
+      `tab` 页签名 / `panelLabel`「＋」面板名**只留宿主自有页面（settings）**，模块行不再写值；
+      `libraryStorage` 另登记 `metadataDir`/`projectSpec`/`carrierPrefix`/`wikiSchema`/`tempPrefix`
+      五个运行态与谱系字段，`dirTab`/`readonly`/`note` 只作行为与说明）。目录/日志/契约/MCP
+      这四层**全仓只有这一份数据**——后端经 `src/protocol/naming.mjs` 只 re-export，不许再抄一份字面量。
     - 前端显示名、页签／入口名、库内目录名、日志模块名必须同名，一个概念只保留一个正名 slug。
       当前正名为 `世界书`、`故事源`、`扮演`、`导入导出`；`产物` 是页面名，不另设目录。
       历史别名只在 `libraryUpgrade.mjs` 作一次性迁移输入，不退回当前展示或双读。
-    - 名字只从表里取：页签名在 manifest `pages[].label` 与表 `tab` 列逐字一致（S2.5）；
+    - **OS-205 显示名权威迁移**：模块显示名的唯一真源是 manifest 的 `name` 与 `pages[].label`，
+      经 `/api/plugins` 投影下发；命名表不再保存模块页签名，杜绝第二份。三名一致改由门禁与测试
+      拿 manifest 显示名去对表的 `dir` 列与 `logModule` 列（对照真源换了，口径不变）。
       写日志用 `LOG_MODULES.<概念>`；按目录推断日志用 `logModuleForDir()`；
       前端「视图→日志模块」用 `logModuleForView()`。`DIR_LABELS`/`DIR_ORDER`/
       `READONLY_DIRS`/`PAGE_TO_DIR_LOCAL` 同样由表逐键派生，不得退回手写字面量。
-    - OS-172 已推翻 OS-48／OS-50 的目录名冻结与第二批 G8b 的 `参考/` 冻结。改名只改表的对应格，
-      跨层跟着变；**MCP 工具名不在表里改名**（表只登记前缀供核对，改名会破坏外部调用方）。
-      门禁：`test/naming.test.mjs` ＋ `node tools/acceptance/acceptance.mjs` 的 S2.5。
+    - OS-172 已推翻 OS-48／OS-50 的目录名冻结与第二批 G8b 的 `参考/` 冻结。改名只改表对应格或
+      manifest 显示名，跨层跟着变；**MCP 工具名不在表里改名**（表只登记前缀供核对，改名会破坏外部调用方）。
+      门禁：S2.5 拿 manifest 显示名对表目录列并禁模块行回潮 `tab`／`panelLabel`，S2.9 核四向一致；
+      `test/naming.test.mjs`／`test/os172Naming.test.mjs` 反证第二份回潮，
+      跑 `node tools/acceptance/acceptance.mjs`。
 
 ## 发布规范（推送前必读）
 

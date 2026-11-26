@@ -1,6 +1,6 @@
 /** C6：从 public/app.js 逐字迁出的referencePageViews渲染面。副作用仍由 app.js 持有。 */
 export function createReferencePageViews(scope) {
-  const { state, esc, text, moduleOn, registryModule, refNodeCardHtml, refModulesHtml, dirWork, scriptViews, moduleCard, missingText } = scope
+  const { state, esc, text, moduleOn, registryModule, refNodeCardHtml, refModulesHtml, dirWork, scriptViews, moduleCard, missingText, pageLabel } = scope
 
 function refImagesSlotHtml(note) {
   const images = Array.isArray(note?.images) ? note.images.filter(Boolean) : []
@@ -69,7 +69,7 @@ function graphModuleHtml() {
   if (!graph) return `<div class="empty">点「重新构图」生成${registryModule()?.namingEntry?.('worldbook')?.graphLabel || '世界书图谱'}。</div>`
   const byKind = graph.stats?.byKind || {}
   const legend = [
-    ['worldbook', registryModule().namingEntry('worldbook').tab, 'var(--accent)'],
+    ['worldbook', pageLabel('worldbook'), 'var(--accent)'],
     ['tag', '标签', 'var(--warn)'],
     ['artifact', '章节/产物', 'var(--ok)'],
     ['entry', '条目（只读）', 'var(--meta)']
