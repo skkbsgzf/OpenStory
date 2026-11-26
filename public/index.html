@@ -1904,6 +1904,11 @@ html[data-doc-auto-gap="off"] .doc-block { margin-bottom: 0; }
 .gov-card.off .gov-name, .gov-card.off .gov-sum { opacity: .6; }
 .gov-row { display: flex; align-items: center; gap: var(--ui-gap-sm); padding: var(--ui-gap-md); cursor: pointer; flex-wrap: wrap; }
 .gov-row:hover { box-shadow: var(--shadow-card-hover); }
+/* OS-205a：没开库时开关是 disabled，这里补上可见的置灰；颜色/透明度仍走令牌。 */
+.gov .sm-toggle:disabled { opacity: .5; cursor: not-allowed; border-color: var(--line); }
+.gov .sm-toggle:disabled:hover { border-color: var(--line); }
+.gov .sm-toggle:disabled .knob { background: var(--meta); }
+.gov .sm-toggle:disabled .lab { color: var(--meta); }
 .gov-name { font-size: var(--ui-fs-base); font-weight: 600; white-space: nowrap; }
 .gov-ident { display: inline-flex; align-items: baseline; gap: var(--ui-gap-3xs); white-space: nowrap; }
 .gov-ident code { font-family: var(--mono); font-size: var(--ui-fs-xs); color: var(--muted); }

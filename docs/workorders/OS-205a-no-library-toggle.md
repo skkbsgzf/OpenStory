@@ -56,3 +56,27 @@ OS-201 的探针没抓到，是因为它测的是 `governanceHtml({ ..., noLibra
 - 机器门禁全绿；`app.js` 行数不增（当前 10,044）；`git diff --check` 干净。
 - **浏览器实测必做**：不开库直接进设置 → 插件治理台，截图证明 12 个开关是灰的、卡片与能力图正常显示；再开一个库，截图证明开关可点。贴两张截图路径。
 - 反证：把 `canToggle` 改回 `opts.canToggle !== false`，新用例必须红；贴输出后还原。
+## 施工回报（编排器自动归档）
+
+> 模型 hy4flash · 第 1 轮 · 测试 绿（tests 902 · pass 900 · fail 0 · skip 2） · 门禁 绿 · e2e 水浒＋新建（隔离 daemon）绿 · 8807 未动
+
+```text
+CHANGED:
+- `public/views/governanceViews.mjs` — `canToggle` 改为只由 `state.current?.path` 决定（`:610`，装配 `:662`）；开关加 `aria-disabled="true"`（`:442`）；`renderPage` 去掉可由调用方传入的 `canToggle`（`:715`）。
+- `public/index.html` — 补 `.gov .sm-toggle:disabled` 令牌化置灰样式（`:1907-1911`），使 disabled 在视觉上真的变灰。
+- `test/governanceViews.test.mjs` — 新增 2 例：真实 69 条载荷 + `state.current:null` 不传 options → 12 开关全 disabled/aria-disabled/title、卡片 21、图节点 21、页头「未打开库」；开库载荷 → 12 开关不带 disabled。
+- `README.md`、`AGENTS.md`、`docs/number-anchors.json`、`ARCHITECTURE.md` — 按 `arch:stats`／`number-anchors` 回写测试数与行数锚。
+
+VERIFIED:
+- `node --test test/governanceViews.test.mjs` → 27 过 / 0 挂。
+- 反证：临时把 `canToggle` 改回 `opts.canToggle !== false` → 新用例红（`AssertionError [ERR_ASSERTION]: 没开库要 disabled`，`test/governanceViews.test.mjs:165`），原 OS-201 没库用例也红；已还原。
+- `npm test` → 902 例／900 过／2 跳过／0 挂；`node tools/number-anchors.mjs --check` → 一致；`npm run arch:check` → 一致。
+- 收尾按序 `npm run arch:stats` → `node tools/number-anchors.mjs` → `node tools/acceptance/acceptance.mjs` → `验收门禁：29 过 / 0 挂 / 0 警`。
+- `git diff --check` 干净；`public/app.js` 仍 10,044 行（未增）；未执行任何 git 写操作，未碰 8807。
+- 浏览器实测（临时 `startDaemon({port:0})`，临时 LOCALAPPDATA，用完即关）：
+  - 不开库 → `D:/tmp/os205a-no-library.png`。DOM 实测 `head="21 件 · 未打开库"`、`cards=21`、`nodes=21`，12 个开关全部 `disabled:true / aria="true" / title="先打开一个库——启停按库分别记"`，截图中 12 个开关置灰、卡片与能力图正常。
+  - 开库 → `D:/tmp/os205a-library-open.png`。`head="21 件 · 当前库：fixture-lib"`，12 个开关全部 `disabled:false`、无 `aria-disabled`/提示 title，截图中开关为绿色可点。
+- 生产调用点：`public/views/governanceViews.mjs:610`（判定）、`:662`（传卡片）、`:442`（渲染），壳接线 `public/app.js:3389` → `:716`。临时探针脚本已删除。
+
+LIMITATIONS: 无
+```

@@ -439,7 +439,7 @@ function cardHeadHtml(card, esc, options) {
   const status = statusClass(card.status)
   let control
   if (card.group === 'workbench' && card.toggleable !== false) {
-    const disabled = options.canToggle === false ? ' disabled title="先打开一个库——启停按库分别记"' : ''
+    const disabled = options.canToggle === false ? ' disabled title="先打开一个库——启停按库分别记" aria-disabled="true"' : ''
     control = `<button type="button" class="sm-toggle${card.enabled ? ' on' : ''}" role="switch" aria-checked="${card.enabled ? 'true' : 'false'}" data-gov-action="toggle" data-id="${id}"${disabled}><span class="knob"></span><span class="lab">${card.enabled ? '已启用' : '已停用'}</span></button>`
   } else {
     control = `<span class="gov-lock" title="不可停：${esc(lockReason(card))}" aria-label="不可停"><i></i></span>`
@@ -606,6 +606,8 @@ export function pluginCardHtml(card, options = {}) {
 function governanceHtml(view = {}, options = {}) {
   const ctx = isObj(view) ? view : {}
   const state = isObj(ctx.state) ? ctx.state : {}
+  // OS-205a：能不能启停只由当前库决定——不看调用方有没有传 options。
+  const canToggle = Boolean(state.current?.path)
   const esc = typeof ctx.esc === 'function' ? ctx.esc : escText
   const textOf = typeof ctx.text === 'function' ? ctx.text : text
   const uiMemory = typeof ctx.uiMemory === 'function' ? ctx.uiMemory : () => ({ values: {} })
@@ -657,7 +659,7 @@ function governanceHtml(view = {}, options = {}) {
         selectedId,
         confirming: confirming === card.id,
         error: error && error.id === card.id ? error : null,
-        canToggle: opts.canToggle !== false
+        canToggle
       })).join('')
       : '<p class="gov-empty-group">这一组暂时没有插件。</p>'
     return `<section class="gov-group">
@@ -712,7 +714,7 @@ export function createGovernanceViews(scope) {
 
   function renderPage() {
     return governanceHtml({ state, esc, text: textOf, uiMemory, navLabel, settingsAggregation, ui: { expanded, confirming, error } }, {
-      canToggle: Boolean(state.current?.path), selectedId: selected, graphCollapsed
+      selectedId: selected, graphCollapsed
     })
   }
 

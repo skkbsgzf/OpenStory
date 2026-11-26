@@ -141,6 +141,46 @@ test('OS-201·没开库：开关置灰并提示先开库；页头写未打开库
   assert.match(html, /右栏 · 依赖 1 项/u, '没开库时依赖照常可看')
 })
 
+/* ── OS-205a 没开库真实条件：canToggle 只由 state.current 决定，不看 options ── */
+// /api/plugins.modules[] 的真实形状：21 件模块 + 48 件货架（class:'suite'），共 69 条。
+const suiteFillers = Array.from({ length: 48 }, (_, index) => ({
+  id: `suite-filler-${String(index).padStart(2, '0')}`,
+  name: `货架${index}`,
+  class: 'suite', role: 'suite', version: '1.0.0', slots: []
+}))
+const fullPayload = buildPayload({ modules: [...payload.modules, ...suiteFillers] })
+const toggleButtons = (html) => [...html.matchAll(/<button\b[^>]*data-gov-action="toggle"[^>]*>/gu)].map((match) => match[0])
+const govView = (current) => ({ ...deps, state: { plugins: fullPayload, current }, uiMemory: () => ({ values: {} }) })
+
+test('OS-205a·没开库真实条件：不传 options 时 12 个开关全置灰，卡片/能力图 21/21 照常可看', () => {
+  assert.equal(fullPayload.modules.length, 69, '真实载荷是 21 件模块 + 48 件货架')
+  // 真实页面调用 governanceHtml() 不传第二个参数——这正是原缺陷漏掉的路径。
+  const html = governanceHtml(govView(null))
+  assert.match(html, /21 件 · 未打开库/u, '页头仍写未打开库')
+  assert.equal((html.match(/data-gov-id="/gu) ?? []).length, 21, '卡片数不变')
+  assert.equal(nodeTags(html).length, 21, '能力图节点数不变')
+  const toggles = toggleButtons(html)
+  assert.equal(toggles.length, 12, '12 个工作台开关')
+  for (const toggle of toggles) {
+    assert.match(toggle, /\bdisabled\b/u, '没开库要 disabled')
+    assert.match(toggle, /aria-disabled="true"/u, '没开库要 aria-disabled')
+    assert.match(toggle, /title="先打开一个库——启停按库分别记"/u, '提示先打开一个库')
+  }
+  assert.match(html, /供给 7 项 · 被 10 件依赖/u, '能力照常可看')
+  assert.match(html, /右栏 · 依赖 1 项/u, '依赖照常可看')
+})
+
+test('OS-205a·已开库真实条件：同一载荷不传 options 时 12 个开关可点，不带 disabled', () => {
+  const html = governanceHtml(govView({ path: '/lib', name: '测试库' }))
+  assert.match(html, /当前库：测试库/u)
+  const toggles = toggleButtons(html)
+  assert.equal(toggles.length, 12)
+  for (const toggle of toggles) {
+    assert.doesNotMatch(toggle, /\bdisabled\b/u, '开库后开关可点')
+    assert.doesNotMatch(toggle, /aria-disabled/u, '开库后不带 aria-disabled')
+  }
+})
+
 test('OS-201·自报设置项：表单值取 ui-state；停用整块只读且值保留', () => {
   const fixture = {
     modules: [{
