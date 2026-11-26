@@ -193,6 +193,37 @@
 
 **出口条件（六句）**见规划 §4；**不做**：不引 npm 浏览器框架、不做像素 diff、不连 8807、不写真实库。
 
+## OS-211～231 · MCP 构建、项目升级与独立知识库（作者 2026-11-26 裁定；workflow 双模型施工）
+
+> 作者优先级：①先修 MCP＋sample；②通用 build-project/update-project；③独立知识库插件，首版直接 HyperGraphRAG。
+> 顺序：**构建 → 升级 → 知识库**。规划见 [`mcp-build-upgrade-knowledge-20261126.md`](../plan/mcp-build-upgrade-knowledge-20261126.md)。
+
+| 阶段 | 工单 | 内容 | 依赖 | 状态 |
+|---|---|---|---|---|
+| A | OS-211 | 写边界与 fact 完整性 | 无 | 待施工 |
+| A | OS-212 | operate skill 协议 | 无 | 待施工 |
+| A | OS-213 | MCP 构建原语 I | 211 | 待施工 |
+| A | OS-214 | 剧本/扮演服务端原语 | 211 | 待施工 |
+| A | OS-215 | MCP 构建原语 II | 213、214 | 待施工 |
+| A | OS-216 | build-project skill | 212、213、215 | 待施工 |
+| A | OS-217 | MCP-only 水浒构建器 | 216 | 待施工 |
+| A | OS-218 | 新水浒样本落盘 | 217 | 待施工 |
+| A | OS-219 | MCP 文档/门禁/CI | 218 | 待施工 |
+| B | OS-220 | 只读升级诊断/计划 | 无 | 待施工 |
+| B | OS-221 | 迁移状态/备份 API | 220 | 待施工 |
+| B | OS-222 | 确认执行/MCP 升级工具 | 221 | 待施工 |
+| B | OS-223 | update-project skill | 222 | 待施工 |
+| B | OS-224 | 迁移 E2E/收口 | 223 | 待施工 |
+| C | OS-225 | 中性 wiki 呈现层 | 无 | 待施工 |
+| C | OS-226 | 多知识库/文档/定制模型 | 225 | 待施工 |
+| C | OS-227 | 独立知识库工作台 | 226 | 待施工 |
+| C | OS-228 | HyperGraphRAG kernel/sidecar | 226 | 待施工 |
+| C | OS-229 | API/MCP/Agent 统一检索 | 227、228 | 待施工 |
+| C | OS-230 | 真实 HyperGraphRAG 黄金语料验收 | 229 | 待施工 |
+| C | OS-231 | 知识库 E2E/总收口 | 230 | 待施工 |
+
+**Workflow**：dsv4flash＝`opencode-go-responses/deepseek-v4.1-flash`，hy4flash＝`opencode-go-responses/hy4-flash-free`；波次见规划 §3。施工不提交、不 push；监督线逐阶段验收后提交。
+
 ## 挂账（不排期，动工前先在此登记）
 
 | 事项 | 说明 |
