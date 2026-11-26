@@ -34,7 +34,8 @@ async function agentRuntimeOrError(res) {
   return resolved.capability
 }
 import { readUiState, writeUiState } from '../../protocol/libState.mjs'
-import { BASE_GRAPH, MODULE_MANIFESTS, deriveModuleStateChange } from '../../protocol/modules.mjs'
+import { deriveModuleStateChange } from '../../protocol/modules.mjs'
+import { graphInputsFor } from '../../host/moduleRuntime.mjs'
 import { defaultUiPreferencesPath, readUiPreferences, writeUiSkin } from '../../host/uiPreferences.mjs'
 
 /* OS-127 健康端点：免 root 授权（不碰库清单、不落任何库信息，只报进程事实），
@@ -176,14 +177,16 @@ export async function uiStateGet(ctx) {
 }
 
 export async function uiStatePut(ctx) {
-  const { res, request, allowlist } = ctx
+  const { res, request, context, allowlist } = ctx
   const authorized = authorizeRoot(allowlist, request.root)
   if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
-  const current = await readUiState(authorized.root)
+  // OS-200：闸与 /api/plugins 的推导、停用预检同源——有效清单＋该库 ui-state＋套件状态一次取齐。
+  const inputs = await graphInputsFor(authorized.root, context.env)
   const graphChange = deriveModuleStateChange({
-    manifests: MODULE_MANIFESTS,
-    base: BASE_GRAPH,
-    state: current.state,
+    manifests: inputs.manifests,
+    base: inputs.base,
+    state: inputs.state,
+    suiteState: inputs.suiteState,
     patch: request.state
   })
   if (!graphChange.ok) return sendError(res, graphChange.code, graphChange.message, graphChange.details)

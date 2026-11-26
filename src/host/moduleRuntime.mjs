@@ -476,25 +476,58 @@ function effectiveManifests(layer, excluded = []) {
   return { manifests, sources }
 }
 
-/** 当前层的候选 manifests（已含本机覆盖），按库 ui-state 再建快照。 */
-export async function snapshotFor(root, env = process.env) {
+/**
+ * OS-200：图投影、停用预检与启停闸的唯一取数口。
+ * 有效清单（本机覆盖＋迁移剔除）＋该库 ui-state＋该库套件状态＋底座能力一次取齐；
+ * snapshotFor、/api/plugins 的推导、uiStatePut 的闸都从这里取，不再各建一份图。
+ * 没开库（root 为空）时回当前层内置快照，状态为空——闸行为与旧路径一致。
+ */
+export async function graphInputsFor(root = '', env = process.env) {
   const layer = await ensureRuntime(env)
-  if (!root) return layer.snapshot
+  const fallback = {
+    manifests: layer.manifests,
+    sources: layer.sources,
+    state: {},
+    suiteState: readShelfSuiteState({}),
+    base: BASE_GRAPH,
+    snapshot: layer.snapshot,
+    warnings: layer.warnings,
+    migrations: null,
+    root: ''
+  }
+  if (!root) return fallback
   try {
     const migrations = await prepareLibraryMigrations(root, layer)
     const effective = effectiveManifests(layer, migrations.excluded)
     const { state } = await readUiState(root)
-    return buildCapabilitySnapshot({
+    const suiteState = readShelfSuiteState({ root })
+    const snapshot = buildCapabilitySnapshot({
       manifests: effective.manifests,
       sources: effective.sources,
       state,
-      suiteState: readShelfSuiteState({ root }),
+      suiteState,
       base: BASE_GRAPH,
       warnings: layer.warnings
     })
+    return {
+      manifests: effective.manifests,
+      sources: effective.sources,
+      state: state ?? {},
+      suiteState,
+      base: BASE_GRAPH,
+      snapshot,
+      warnings: layer.warnings,
+      migrations,
+      root
+    }
   } catch {
-    return layer.snapshot
+    return fallback
   }
+}
+
+/** 当前层的快照；图投影与闸同源于 graphInputsFor，避免两套取数。 */
+export async function snapshotFor(root, env = process.env) {
+  return (await graphInputsFor(root, env)).snapshot
 }
 
 /** OS-197：迁移执行状态（真实链路唯一取数口，/api/plugins 与 daemon 闸共用）。 */

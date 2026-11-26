@@ -272,6 +272,28 @@
 - `GET /api/plugins` 返回启动报告：当前 snapshot、loaded/degraded、断链、冲突、覆盖拒绝、warning。
 - health 继续只报进程事实，不把库路径、密钥或插件内部堆栈带回响应。
 
+### 5.6 治理台数据面（OS-200）
+
+`GET /api/plugins`（端点数不变）一次给齐治理台所需推导数据，零新增端点：
+
+- `modules[]` 在既有身份／指路字段之外，逐件新增 `requires`／`optionalRequires`
+  （`{id,min,maxExclusive,provider,version,golden?,builtin,ok,reason?}`，依快照 `routes` 判
+  `CAPABILITY_NOT_REGISTERED`／`CAPABILITY_VERSION_MISMATCH`／`CAPABILITY_CONFLICT`）、
+  `capabilities`（内核件的供给，工作台为 `[]`）、`enabled`、`status`、`statusReasons`、
+  `missing`、`optionalMissing`、`dependents`（直接反向依赖，含对方状态）、
+  `impact`（二跳及更远的连锁降级）、`toggleCheck`（停用预检）。
+- `moduleGraph`＝`{spec:'openstory-module-graph@1',snapshot,edges,base}`：每条依赖声明一条边
+  `{from,to,capability,min,maxExclusive,optional}`，`to` 是供给模块 id 或 `base`；`base`
+  列出底座能力及依赖它的模块。节点不另存，就是 `modules[]`。
+- `slots` 的降级位置照常下发并带 `degraded:true` 与 `missing:[{capability,min,maxExclusive}]`；
+  健康位置形状不变，停用位置照旧消失。
+- `suites`／`suiteOverrides`／`suiteUserDir`／`suiteWarnings` 把套件货架并入同一响应，
+  与 `GET /api/suites` 的 `suites` 逐条同源；`GET /api/suites` 原样保留。
+- 推导只在一处：`src/protocol/capabilityGraph.mjs` 的 `projectModuleGraph()`（纯函数）；
+  `snapshotFor`／`pluginsGet` 的预检／`uiStatePut` 的启停闸都从 `src/host/moduleRuntime.mjs`
+  的 `graphInputsFor()` 取同一份有效清单＋该库 ui-state＋套件状态。「事前解释」与「接口裁决」
+  因此同源；前端 `state.plugins` 整体保留响应，不再被局部覆盖。
+
 ---
 
 ## 6. 启停与两种「不可停」语义

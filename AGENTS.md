@@ -250,6 +250,9 @@ MCP 对外 24 工具（`src/host/mcp.mjs` 直跑；stdio 独立进程，数据�
     `public/app.js` 是消费壳。**「哪个工作面出现在哪里、什么顺序」只由 manifest 决定**：
     底座 `slotPlacements()`／`slotProjection()` 从 21 份 manifest 生成投影，`GET /api/plugins`
     下发 `slots`（每项 `{slot,page,module,label,view}`，iframe 另带 `entry`），前端照投影渲染。
+    OS-200 起同一响应还带 `modules[].requires/dependents/status/toggleCheck` 等推导字段、顶层
+    `moduleGraph` 与套件货架四键；槽位降级件带 `degraded:true`＋`missing`。启停闸、快照与投影
+    同源取 `graphInputsFor()`，推导只在 `projectModuleGraph()`，前端整体留一份 `state.plugins`。
     `public/views/registry.mjs` 的 `TAB_REGISTRY` **只是视图行为表**（页面 id → 渲染名/图标/
     作用域/可关闭/可见条件），不再有页签名、目录归属、模块归属或顺序。自此：
     - 新增内置页签＝manifest 加 `pages[]` 与 `slots[]` 位置，需要渲染时再在 `TAB_REGISTRY`
@@ -292,7 +295,7 @@ MCP 对外 24 工具（`src/host/mcp.mjs` 直跑；stdio 独立进程，数据�
 ## 改完必跑（验收线，详见 `docs/ACCEPTANCE.md`）
 
 ```bash
-node .zcode/run-gate.mjs                    # ① 全量单测（845 例）
+node .zcode/run-gate.mjs                    # ① 全量单测（853 例）
 node tools/acceptance/acceptance.mjs        # ② 交付标准 S0–S4 门禁（29 检查，Rea 式证据；S0=布局宪法）
 # ③ .ua/ 知识图谱增量（/understand，skill 在 ~/.zcode/skills/understand*）
 # ④ 前端批次给作者截图讲场景（对照 design-system/DESIGN.md + docs/UX-STRUCTURE.md）

@@ -99,3 +99,32 @@ moduleGraph: {
 - 机器门禁全绿；`app.js` 行数不增；`git diff --check` 干净。
 - 生产调用点贴出来（`文件:行`）：推导函数、`pluginsGet` 装配、`uiStatePut` 取数、`loadPlugins` 整体保留。
 - 反证一则：把 `uiStatePut` 临时改回只吃 `MODULE_MANIFESTS`，同源测试必须红；贴输出后还原。
+## 施工回报（编排器自动归档）
+
+> 模型 hy4flash · 第 1 轮 · 测试 绿（tests 853 · pass 851 · fail 0 · skip 2） · 门禁 绿 · e2e 水浒＋新建（隔离 daemon）绿 · 8807 未动
+
+```text
+CHANGED: 
+- src/host/moduleRuntime.mjs（新增 `graphInputsFor`，`snapshotFor` 复用同源取数）
+- src/protocol/capabilityGraph.mjs（新增纯函数 `projectModuleGraph`／`moduleStatusProjection`）
+- src/protocol/slots.mjs（`slotProjection` 接受 `statuses`，降级位带 `degraded`/`missing`）
+- src/api/handlers/plugins.mjs（装配新增字段、`moduleGraph`、slot 状态、货架四键）
+- src/api/handlers/system.mjs（`uiStatePut` 闸改从 `graphInputsFor` 取数）
+- src/api/contracts/plugins.mjs（`pluginsGet.response` 登记 5 个新键，端点仍 108）
+- public/app.js（`loadPlugins` 整体保留响应；`app.js` 10107→10097 行，只减不增）
+- public/views/settingsViews.mjs（删 `reloadLocalState`，改注入的 `loadPlugins`）
+- docs/protocol/module-manifest-2.md（§5.6 治理台数据面）
+- AGENTS.md、README.md、ARCHITECTURE.md、docs/number-anchors.json（文档/数字锚回写）
+- test/pluginGovernanceProjection.test.mjs（新建：纯函数 3 项＋daemon 5 项）
+- test/modulePlugins.test.mjs（既有断言等价加强：停用 `deduce` 的消费者从 `['imagegen','roleplay']` 改为含套件 `['deduce-rules','imagegen','roleplay']`；同源闸现在看见五类货架套件，比原断言覆盖更全，未删未放宽）
+
+VERIFIED:
+- `node --test test/pluginGovernanceProjection.test.mjs`：8/8 过（38 非底座边／11 底座边、fact 10 dependents 与 `['imagegen','log']` impact、逐件预检同源、slot 形状、daemon 降级与货架同源）。
+- `npm test`：853 例／851 过／0 挂／2 跳过（既有红线全绿，含 plugins/modulePlugins/coreModules/os198SlotsWiring/slots/tabRegistry/localModules196a/capabilityGraph/capabilityMigrationWiring）。
+- `node tools/acceptance/acceptance.mjs`：29 过／0 挂／0 警；`npm run arch:check`：生成段一致；`node tools/number-anchors.mjs --check`：数字锚一致（853 例／端点 108／app.js 10097≤10500）；`git diff --check`：干净。
+- 按序回写：`npm run arch:stats` → `node tools/number-anchors.mjs`。
+- 反证：临时把 `uiStatePut` 改回只吃 `MODULE_MANIFESTS` 后，`--test-name-pattern="同源端到端"` 红（`agent-runtime` 消费者实际仅 4 件内置模块，预检为 40 件含套件；`AssertionError` at test/pluginGovernanceProjection.test.mjs:204），输出后已逐字还原，还原后该测试绿。
+- 生产调用点：`src/protocol/capabilityGraph.mjs:458` 推导函数、`:447` 状态投影；`src/api/handlers/plugins.mjs:144` 同源取数、`:152` 装配、`:160` slot 状态、`:209` 货架并入；`src/api/handlers/system.mjs:184` 启停闸取数；`public/app.js:3524` 装载器、`:3531` 整体保留；`src/protocol/slots.mjs:77` 降级标记；`src/host/moduleRuntime.mjs:485` 单一取数口。
+
+LIMITATIONS: 无
+```

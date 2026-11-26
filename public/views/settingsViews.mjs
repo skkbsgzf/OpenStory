@@ -1,6 +1,6 @@
 /** C6：从 public/app.js 逐字迁出的settingsViews渲染面。副作用仍由 app.js 持有。 */
 export function createSettingsViews(scope) {
-  const { state, agent, esc, text, uiKit, runtimeShelf, moduleOn, hiddenModules, WORKBENCH_MODULES, SETTINGS_GROUPS, scriptPrefs, dirWork, castColorOf, settingsScriptSectionHtml, settingRuntimeKind, probeBadgeLabel, comfyNodeMapText, typographyState, docPrefSlidersHtml, syncPolicy, syncProblemsFrom, warningsHtml, uiMemory, settingsAggregation, suitesSectionHtml, pluginsOverviewHtml, errorHtml, api, render } = scope
+  const { state, agent, esc, text, uiKit, runtimeShelf, moduleOn, hiddenModules, WORKBENCH_MODULES, SETTINGS_GROUPS, scriptPrefs, dirWork, castColorOf, settingsScriptSectionHtml, settingRuntimeKind, probeBadgeLabel, comfyNodeMapText, typographyState, docPrefSlidersHtml, syncPolicy, syncProblemsFrom, warningsHtml, uiMemory, settingsAggregation, suitesSectionHtml, pluginsOverviewHtml, errorHtml, api, render, loadPlugins } = scope
 
   // OS-196：本机模块区的临时视图态只在内存里；登记状态一律在 daemon 的机器级信任表。
   let localPath = ''
@@ -744,19 +744,6 @@ function settingsHtml() {
 
   // OS-196：本机模块的交互只在这里接线——app.js 不新增动作分支（OS-143 增量冻结）。
   if (typeof document !== 'undefined' && typeof api === 'function' && typeof render === 'function') {
-    async function reloadLocalState() {
-      const root = state.current?.path || ''
-      const payload = await api(`/api/plugins${root ? `?root=${encodeURIComponent(root)}` : ''}`)
-      state.plugins = {
-        ...(state.plugins || {}),
-        loaded: true,
-        slots: payload.slots && typeof payload.slots === 'object' ? payload.slots : null,
-        slotWarnings: Array.isArray(payload.slotWarnings) ? payload.slotWarnings : [],
-        moduleRoots: Array.isArray(payload.moduleRoots) ? payload.moduleRoots : [],
-        localModules: Array.isArray(payload.localModules) ? payload.localModules : []
-      }
-      render()
-    }
     function readPath() {
       return document.querySelector('[data-local-root-path]')?.value?.trim() || localPath
     }
@@ -788,17 +775,17 @@ function settingsHtml() {
           localPreview = null
           localBrowse = null
           localNotice = '已登记，新快照生效。'
-          await reloadLocalState()
+          await loadPlugins(state.current?.path || '')
           return
         } else if (action === 'local-root-remove') {
           await api('/api/module-roots/remove', { method: 'POST', body: JSON.stringify({ path: target.dataset.path || '' }) })
           localNotice = '已移除，回到内置层。'
-          await reloadLocalState()
+          await loadPlugins(state.current?.path || '')
           return
         } else if (action === 'local-root-refresh') {
           const payload = await api('/api/module-roots/refresh', { method: 'POST', body: '{}' })
           localNotice = payload.blocked ? `${payload.blocked.gate} 门：${payload.blocked.reason}` : `快照 ${payload.id} 已生效。`
-          await reloadLocalState()
+          await loadPlugins(state.current?.path || '')
           return
         } else return
         render()

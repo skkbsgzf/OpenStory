@@ -433,10 +433,198 @@ export function moduleDegradation(snapshot, moduleId) {
   return {
     module: moduleId,
     reasons: [...status.reasons],
-    missing: snapshot.issues
-      .filter((item) => item.code === 'CAPABILITY_MISSING' && item.details.consumers.includes(moduleId))
-      .map((item) => ({ capability: item.details.capability, min: item.details.min, maxExclusive: item.details.maxExclusive }))
+    missing: missingFor(snapshot, moduleId)
   }
+}
+
+function missingFor(snapshot, moduleId) {
+  return list(snapshot?.issues)
+    .filter((item) => item.code === 'CAPABILITY_MISSING' && list(item.details?.consumers).includes(moduleId))
+    .map((item) => ({ capability: item.details.capability, min: item.details.min, maxExclusive: item.details.maxExclusive }))
+}
+
+/** 快照状态 → slot 投影所需的 `{status,active,reasons,missing}`（纯函数，handler 只装配）。 */
+export function moduleStatusProjection(snapshot = {}) {
+  return list(snapshot.statuses).map((item) => ({ ...item, missing: missingFor(snapshot, item.id) }))
+}
+
+/**
+ * OS-200：治理台的数据面——把一次快照投影成「逐件依赖解析 + 反向依赖 + 降级 + 停用预检」
+ * 和一张顶层能力图。纯函数：只读入参，不取文件、不发请求。
+ *
+ * `manifests` 必须是启用闸看到的同一份有效清单，`state/suiteState/base` 与快照同源；
+ * `toggleCheck` 直接调 `deriveModuleStateChange`，与 uiStatePut 的闸逐字同参。
+ */
+export function projectModuleGraph({
+  snapshot = {}, manifests = [], state = {}, suiteState = {}, base = {}
+} = {}) {
+  // 供给方真源：能力 id → 声明的供给者。路由优先（含本机覆盖），声明兜底（降级时路由会缺条目）。
+  const declared = new Map()
+  for (const capability of list(base.capabilities)) {
+    declared.set(capability.id, {
+      provider: 'base', version: capability.version, golden: capability.golden, builtin: true
+    })
+  }
+  for (const manifest of manifests) {
+    for (const capability of list(manifest.capabilities)) {
+      if (declared.has(capability.id)) continue
+      declared.set(capability.id, {
+        provider: manifest.id,
+        version: capability.version,
+        golden: capability.golden,
+        builtin: manifest.builtin === true
+      })
+    }
+  }
+  const providerOf = (capability) => snapshot?.routes?.[capability]?.provider ?? declared.get(capability)?.provider ?? ''
+  const versionOf = (capability) => snapshot?.routes?.[capability]?.version ?? declared.get(capability)?.version ?? 0
+  const reasonFor = (capability, requirement, route) => {
+    if (!route) {
+      const conflict = list(snapshot?.issues).find((item) => item.code === 'CAPABILITY_CONFLICT'
+        && (item.details?.capability === capability || item.details?.contribution === capability))
+      return conflict ? 'CAPABILITY_CONFLICT' : 'CAPABILITY_NOT_REGISTERED'
+    }
+    return route.version < requirement.min || route.version >= rangeMax(requirement)
+      ? 'CAPABILITY_VERSION_MISMATCH' : ''
+  }
+  const projectRequirement = (requirement, optional) => {
+    const capability = requirement.id
+    const route = snapshot?.routes?.[capability]
+    const source = declared.get(capability) ?? {}
+    const reason = reasonFor(capability, requirement, route)
+    return {
+      requirement: {
+        id: capability,
+        min: requirement.min,
+        maxExclusive: rangeMax(requirement),
+        provider: providerOf(capability),
+        version: versionOf(capability),
+        ...(source.golden !== undefined ? { golden: source.golden } : {}),
+        builtin: source.builtin === true,
+        ok: !reason,
+        ...(reason ? { reason } : {})
+      },
+      edge: {
+        from: '', to: providerOf(capability), capability,
+        min: requirement.min, maxExclusive: rangeMax(requirement), optional
+      }
+    }
+  }
+
+  const edges = []
+  const baseConsumers = new Map(list(base.capabilities).map((item) => [item.id, []]))
+  const hardByProvider = new Map()
+  const requirementsBy = new Map()
+  const optionalBy = new Map()
+  for (const manifest of manifests) {
+    const hard = []
+    const optional = []
+    for (const requirement of list(manifest.requires)) {
+      const { requirement: item, edge } = projectRequirement(requirement, false)
+      hard.push(item)
+      edges.push({ ...edge, from: manifest.id })
+      if (!hardByProvider.has(edge.to)) hardByProvider.set(edge.to, [])
+      hardByProvider.get(edge.to).push({ from: manifest.id, capability: edge.capability })
+    }
+    for (const requirement of list(manifest.optionalRequires)) {
+      const { requirement: item, edge } = projectRequirement(requirement, true)
+      optional.push(item)
+      edges.push({ ...edge, from: manifest.id })
+      if (baseConsumers.has(edge.capability)) baseConsumers.get(edge.capability).push(manifest.id)
+    }
+    for (const item of hard) if (baseConsumers.has(item.id)) baseConsumers.get(item.id).push(manifest.id)
+    requirementsBy.set(manifest.id, hard)
+    optionalBy.set(manifest.id, optional)
+  }
+
+  const statusById = new Map(list(snapshot?.statuses).map((item) => [item.id, item]))
+  const optionalMissingBy = new Map()
+  for (const item of list(snapshot?.optionalMissing)) {
+    if (!optionalMissingBy.has(item.plugin)) optionalMissingBy.set(item.plugin, [])
+    optionalMissingBy.get(item.plugin).push({
+      capability: item.capability, min: item.min, maxExclusive: item.maxExclusive
+    })
+  }
+  const nameById = new Map(manifests.map((manifest) => [manifest.id, manifest.name]))
+  const enabledIds = new Set(manifests.filter((manifest) => snapshot?.enabled?.[manifest.id] !== false).map((manifest) => manifest.id))
+  const dependentsBy = new Map()
+  for (const [provider, uses] of hardByProvider) {
+    const direct = new Map()
+    for (const use of uses) {
+      if (!direct.has(use.from)) direct.set(use.from, [])
+      direct.get(use.from).push(use.capability)
+    }
+    dependentsBy.set(provider, [...direct].map(([id, capabilities]) => {
+      const status = statusById.get(id)
+      return {
+        id,
+        name: nameById.get(id) ?? id,
+        enabled: enabledIds.has(id),
+        status: status?.status ?? 'loaded',
+        capabilities: [...new Set(capabilities)].sort()
+      }
+    }).sort((left, right) => left.id.localeCompare(right.id)))
+  }
+  const impactFor = (id, dependents) => {
+    const direct = new Set(dependents.map((item) => item.id))
+    const seen = new Set([id, ...direct])
+    const queue = [...direct]
+    const impact = new Set()
+    while (queue.length) {
+      const current = queue.shift()
+      for (const use of hardByProvider.get(current) ?? []) {
+        if (seen.has(use.from)) continue
+        seen.add(use.from)
+        if (enabledIds.has(use.from) && !direct.has(use.from)) impact.add(use.from)
+        queue.push(use.from)
+      }
+    }
+    return [...impact].sort()
+  }
+
+  const projections = new Map()
+  for (const manifest of manifests) {
+    const id = manifest.id
+    const status = statusById.get(id)
+    const dependents = dependentsBy.get(id) ?? []
+    const check = deriveModuleStateChange({
+      manifests, state, suiteState, base,
+      patch: { [`modules.enabled.${id}`]: false }
+    })
+    projections.set(id, {
+      requires: requirementsBy.get(id) ?? [],
+      optionalRequires: optionalBy.get(id) ?? [],
+      capabilities: list(manifest.capabilities).map((capability) => ({
+        id: capability.id,
+        version: capability.version,
+        ...(capability.golden !== undefined ? { golden: capability.golden } : {})
+      })),
+      enabled: snapshot?.enabled?.[id] !== false,
+      status: status?.status ?? 'loaded',
+      statusReasons: [...(status?.reasons ?? [])],
+      missing: missingFor(snapshot, id),
+      optionalMissing: optionalMissingBy.get(id) ?? [],
+      dependents,
+      impact: impactFor(id, dependents),
+      toggleCheck: check.ok ? { ok: true } : {
+        ok: false,
+        code: check.code,
+        message: check.message,
+        ...(list(check.details?.consumers).length ? { consumers: [...check.details.consumers] } : {})
+      }
+    })
+  }
+  const moduleGraph = {
+    spec: 'openstory-module-graph@1',
+    snapshot: snapshot?.id ?? '',
+    edges,
+    base: [...baseConsumers].map(([id, consumers]) => ({
+      id,
+      version: declared.get(id)?.version ?? 0,
+      consumers: [...new Set(consumers)].sort()
+    }))
+  }
+  return deepFreeze({ projections, moduleGraph })
 }
 
 function applyStatePatch(state, patch) {

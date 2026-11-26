@@ -19,9 +19,9 @@ import {
   moduleRole, moduleSource, slotProjection
 } from '../../protocol/modules.mjs'
 import { BUILTIN_PAGE_IDS } from '../../protocol/naming.mjs'
-import { capabilityStartupReport } from '../../protocol/capabilityGraph.mjs'
+import { capabilityStartupReport, moduleStatusProjection, projectModuleGraph } from '../../protocol/capabilityGraph.mjs'
 import {
-  moduleRootsReport, effectiveManifestsFor, sourcesFor, rebuildRuntime, snapshotFor, migrationStateFor
+  moduleRootsReport, sourcesFor, rebuildRuntime, graphInputsFor
 } from '../../host/moduleRuntime.mjs'
 import { previewRoot, addRoot, removeRoot, moduleRootsPath } from '../../host/moduleRoots.mjs'
 import {
@@ -140,13 +140,16 @@ export async function pluginsGet(ctx) {
     genresDirs: context.genresDirs,
     runtimesDirs: context.runtimesDirs
   })
-  // OS-196：模块清单与能力报告取当前层（本机同 id 覆盖内置，摘要如实上报）。
-  const manifests = await effectiveManifestsFor(auth.root, context.env)
+  // OS-200：清单、按库启停、套件状态、快照与停用预检从同一份输入推导（与 uiStatePut 的闸同源）。
+  const inputs = await graphInputsFor(auth.root, context.env)
+  const { manifests, snapshot, state, suiteState, base } = inputs
   const sources = new Map((await sourcesFor(context.env)).map((source) => [source.id, source]))
   const report = await moduleRootsReport(context.env)
-  const migrations = await migrationStateFor(auth.root, context.env)
-  const snapshot = await snapshotFor(auth.root, context.env)
+  const migrations = inputs.migrations ?? {
+    ok: true, ran: [], skipped: [], failures: [], excluded: [], migrations: [], dataVersions: [], fresh: false
+  }
   const sourceOf = (id) => sources.get(id) ?? moduleSource(id) ?? {}
+  const projected = projectModuleGraph({ snapshot, manifests, state, suiteState, base })
   // OS-198：当前库的 slot 投影——页签/右栏/设置区/宿主动作只照这份数据渲染。
   const orderHints = new Map()
   for (const manifest of MODULE_MANIFESTS) {
@@ -154,12 +157,17 @@ export async function pluginsGet(ctx) {
       if (Number.isInteger(placement.order)) orderHints.set(`${placement.slot}:${placement.page}`, placement.order)
     }
   }
+  const statuses = new Map(moduleStatusProjection(snapshot).map((item) => [item.id, item]))
   const localIds = new Set(report.localModules.filter((item) => item.status === 'loaded').map((item) => item.id))
   const projection = slotProjection(manifests, snapshot.enabled ?? {}, {
     builtinPages: new Set(BUILTIN_PAGE_IDS),
     localIds,
-    orderHints
+    orderHints,
+    statuses
   })
+  // OS-200：套件货架并入同一响应（与 GET /api/suites 同一份记录，端点原样保留）。
+  const suites = await listSuitesPublic(shelfOpts(context, auth.root))
+  const suitesUserDir = Array.isArray(context.suitesDirs) && context.suitesDirs[1] ? context.suitesDirs[1] : ''
   return sendJson(res, 200, {
     ok: true,
     plugins: listed.plugins,
@@ -188,12 +196,20 @@ export async function pluginsGet(ctx) {
       slots: manifest.slots,
       settings: manifest.settings,
       settingsHint: manifest.settingsHint,
-      settingsJump: manifest.settingsJump
+      settingsJump: manifest.settingsJump,
+      ...projected.projections.get(manifest.id)
     })),
     moduleManifestWarnings: MODULE_MANIFEST_WARNINGS,
     moduleManifestNotices: MODULE_MANIFEST_NOTICES,
     moduleSourceGroups: MODULE_SOURCE_GROUPS,
+    // OS-200：顶层能力图（节点就是 modules[] 本身，边按依赖声明逐条展开）。
+    moduleGraph: projected.moduleGraph,
     capabilityReport: capabilityStartupReport(snapshot),
+    // OS-200：套件货架并入同一响应（suites 与 GET /api/suites 逐条同源）。
+    suites: suites.suites,
+    suiteOverrides: suites.overrides,
+    suiteUserDir: suitesUserDir,
+    suiteWarnings: suites.warnings,
     // OS-197：能力迁移的执行／失败／已迁数据与回退保护（真实链路报告）。
     moduleMigrations: migrationReport(migrations, snapshot),
     // OS-196 G1/G2/G5：本机层报告（含每个模块的摘要、状态与失败门原因）。

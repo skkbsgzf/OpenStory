@@ -69,10 +69,17 @@ export function slotPlacements(manifests = [], enabled = {}, orderHints = new Ma
  *   `{ slot, page, module, label, view }`，iframe 页面另带 `entry`。
  * `view` 三态：builtin（前端有内置视图）／iframe（本机模块自带页面入口）／none（不可渲染）。
  * 页面 id → label 从 manifest 的 pages[] 取；不可渲染的位置进 warnings，不静默消失。
+ *
+ * OS-200：可选 `statuses`（模块 id → `{ status, active, missing }`）来自同一份能力快照。
+ * 已启用但不活跃的降级件位置照常下发，带 `degraded:true` 与 `missing`；健康位置一个字段都不加，
+ * 停用的位置照旧消失。不传 `statuses` 时输出形状与改前逐字相同。
  */
-export function slotProjection(manifests = [], enabled = {}, { builtinPages = new Set(), localIds = new Set(), orderHints = new Map() } = {}) {
+export function slotProjection(manifests = [], enabled = {}, {
+  builtinPages = new Set(), localIds = new Set(), orderHints = new Map(), statuses = null
+} = {}) {
   const placements = slotPlacements(manifests, enabled, orderHints)
   const byModule = new Map(manifests.map((manifest) => [manifest.id, manifest]))
+  const statusOf = (id) => statuses instanceof Map ? statuses.get(id) : statuses?.[id]
   const warnings = []
   const slots = {}
   for (const [slot, items] of Object.entries(placements)) {
@@ -92,13 +99,16 @@ export function slotProjection(manifests = [], enabled = {}, { builtinPages = ne
           message: `${item.module}/${item.page} 声明了 ${slot} 位置，但前端没有内置视图、也没有 iframe 入口`
         })
       }
+      const degraded = statusOf(item.module)
+      const mark = degraded?.status === 'degraded' && degraded.active !== true
       return {
         slot,
         page: item.page,
         module: item.module,
         label,
         view,
-        ...(view === 'iframe' ? { entry: page.entry } : {})
+        ...(view === 'iframe' ? { entry: page.entry } : {}),
+        ...(mark ? { degraded: true, missing: [...(degraded.missing ?? [])] } : {})
       }
     })
   }

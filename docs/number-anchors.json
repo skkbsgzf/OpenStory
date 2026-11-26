@@ -1,7 +1,7 @@
 {
   "schema": "openstory.number-anchors/v1",
   "appJs": {
-    "lines": 10107,
+    "lines": 10097,
     "maxLines": 10500,
     "convention": "physical-lines; CRLF/LF normalized; blank and comment lines included; trailing newline not counted"
   },
@@ -18,11 +18,11 @@
     "hostDomain": 0,
     "hostDomainIds": []
   },
-  "testFiles": 110,
+  "testFiles": 111,
   "gateCount": 29,
   "tests": {
-    "total": 845,
-    "pass": 843,
+    "total": 853,
+    "pass": 851,
     "fail": 0,
     "skipped": 2,
     "ok": true,

@@ -276,7 +276,9 @@ test('daemon 推演能力：活跃消费者拦住停用，存量断链端点回 
     const deniedPayload = await denied.json()
     assert.equal(deniedPayload.error.code, 'CAPABILITY_IN_USE')
     // OS-195a：imagegen 也经能力句柄消费 deduce.session（现并进 deduce.engine），不再是直接 import。
-    assert.deepEqual(deniedPayload.error.details.consumers, ['imagegen', 'roleplay'])
+    // OS-200：启停闸改吃与 /api/plugins 同源的有效清单（含五类货架套件），deduce-rules 套件
+    // 以 appliesTo 消费 deduce.engine，也计入活跃消费者——比原来只列两件工作台更全，断言不弱于原样。
+    assert.deepEqual(deniedPayload.error.details.consumers, ['deduce-rules', 'imagegen', 'roleplay'])
 
     await writeUiState(root, { 'modules.enabled.deduce': false })
     const present = await fetch(`${origin}/api/deduce/present`, {

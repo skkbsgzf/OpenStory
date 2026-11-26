@@ -185,7 +185,7 @@ const suiteShelfViewsReady = import('./views/suiteShelfViews.mjs').then((mod) =>
 
 /* C6：前端壳渲染面迁出——行为/API/事件仍留本文件，boot 首帧前await全部factory */
 let settingsViews = null
-const settingsViewsReady = import('./views/settingsViews.mjs').then((mod) => { settingsViews = mod.createSettingsViews({ state, agent, esc, text, uiKit: () => uiKit, runtimeShelf: () => runtimeShelf, moduleOn, hiddenModules, WORKBENCH_MODULES, SETTINGS_GROUPS, scriptPrefs, dirWork, castColorOf, settingsScriptSectionHtml, settingRuntimeKind, probeBadgeLabel, comfyNodeMapText, typographyState, docPrefSlidersHtml, syncPolicy, syncProblemsFrom, warningsHtml, uiMemory, settingsAggregation: () => settingsAggregation, suitesSectionHtml, pluginsOverviewHtml, errorHtml, api, render }); return settingsViews })
+const settingsViewsReady = import('./views/settingsViews.mjs').then((mod) => { settingsViews = mod.createSettingsViews({ state, agent, esc, text, uiKit: () => uiKit, runtimeShelf: () => runtimeShelf, moduleOn, hiddenModules, WORKBENCH_MODULES, SETTINGS_GROUPS, scriptPrefs, dirWork, castColorOf, settingsScriptSectionHtml, settingRuntimeKind, probeBadgeLabel, comfyNodeMapText, typographyState, docPrefSlidersHtml, syncPolicy, syncProblemsFrom, warningsHtml, uiMemory, settingsAggregation: () => settingsAggregation, suitesSectionHtml, pluginsOverviewHtml, errorHtml, api, render, loadPlugins }); return settingsViews })
 let analysisViews = null
 const analysisViewsReady = import('./views/analysisViews.mjs').then((mod) => { analysisViews = mod.createAnalysisViews({ state, esc, hiddenModules, chapterNoFromFile, analyzeEnabled, analyzeModulesFor, analyzeModuleById, chartsModule: () => chartsModule, analysisModules: () => analysisModules }); return analysisViews })
 let agentViews = null
@@ -3524,27 +3524,17 @@ async function loadSuites() {
 async function loadPlugins(root = state.current?.path || '') {
   try {
     const payload = await api(`/api/plugins${root ? `?root=${encodeURIComponent(root)}` : ''}`)
+    // OS-200：响应整体留一份（moduleGraph／推导字段／货架不再逐字段挑）；缺省值照旧，list 仍是 plugins 的别名。
     state.plugins = {
-      loaded: true,
-      // OS-198：当前库的 slot 投影是页签/右栏/设置区/宿主动作的唯一真源；null＝没拿到（不退回硬编码名单）。
-      slots: payload.slots && typeof payload.slots === 'object' ? payload.slots : {},
-      slotWarnings: Array.isArray(payload.slotWarnings) ? payload.slotWarnings : [],
-      list: Array.isArray(payload.plugins) ? payload.plugins : [],
-      byKind: payload.byKind && typeof payload.byKind === 'object' ? payload.byKind : {},
-      stats: payload.stats && typeof payload.stats === 'object' ? payload.stats : null,
-      modules: Array.isArray(payload.modules) ? payload.modules : [], moduleRoots: Array.isArray(payload.moduleRoots) ? payload.moduleRoots : [], localModules: Array.isArray(payload.localModules) ? payload.localModules : [],
-      warnings: Array.isArray(payload.warnings) ? payload.warnings : []
+      loaded: true, slots: {}, slotWarnings: [], list: [], byKind: {}, stats: null,
+      modules: [], moduleRoots: [], localModules: [], warnings: [],
+      ...payload,
+      list: Array.isArray(payload.plugins) ? payload.plugins : []
     }
   } catch (error) {
     state.plugins = {
-      loaded: true,
-      slots: null,
-      slotWarnings: [],
-      list: [],
-      byKind: {},
-      stats: null,
-      modules: [], moduleRoots: [], localModules: [],
-      warnings: [],
+      loaded: true, slots: null, slotWarnings: [], list: [], byKind: {}, stats: null,
+      modules: [], moduleRoots: [], localModules: [], warnings: [],
       error: (error && error.code ? error.code + ' · ' : '') + text((error && error.message) || error)
     }
   }
