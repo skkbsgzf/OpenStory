@@ -53,3 +53,25 @@
 - 机器门禁全绿；`app.js` 行数不增（当前 10,096）；`git diff --check` 干净。
 - 生产调用点贴出来（`文件:行`）：`isGovernanceModule` 在 `governanceModel` 里的过滤处。
 - 反证一则：把过滤临时去掉，新测试必须红（工作台组变 60）；贴输出后还原。
+## 施工回报（编排器自动归档）
+
+> 模型 hy4flash · 第 1 轮 · 测试 绿（tests 868 · pass 866 · fail 0 · skip 2） · 门禁 绿 · e2e 水浒＋新建（隔离 daemon）绿 · 8807 未动
+
+```text
+CHANGED:
+- `public/views/governanceViews.mjs`（新增 `isGovernanceModule`，`governanceModel` 过滤货架，`pluginCardHtml` 支持 `expandedId`，`governanceHtml` 透传）
+- `test/governanceViews.test.mjs`（新增 5 条测试，导入 `isGovernanceModule`）
+- `README.md` / `AGENTS.md`（测试数 863→868，数字锚要求）
+- `ARCHITECTURE.md` / `docs/number-anchors.json`（`npm run arch:stats`、`node tools/number-anchors.mjs` 回写）
+
+VERIFIED:
+- `node --test test/governanceViews.test.mjs` → 15/15 过（含新增 5 条）。
+- 反证：临时删掉 `.filter(isGovernanceModule)` 后重跑 → 3 条新测试红，`total` 断言 `25 !== 21`，工作台组被 4 件货架撑大；输出已贴在上文，随后还原并复跑 15/15 绿。
+- 生产调用点：`public/views/governanceViews.mjs:120`（`governanceModel` 内过滤）；链路 `public/app.js:200` → `public/app.js:3434` → `governanceViews.mjs:419/475`。
+- `node --test` 全量 → 868 例 / 866 过 / 2 跳过 / 0 挂。
+- `npm run arch:stats` → 已回写；`node tools/number-anchors.mjs` → `868 例／端点 108／app.js 10096 行`，`--check` 一致。
+- `node tools/acceptance/acceptance.mjs` → 29 过 / 0 挂 / 0 警。
+- `git diff --check` 干净；`public/app.js` 仍 10,096 行；未执行任何 git 写操作，无临时探针残留。
+
+LIMITATIONS: 无
+```

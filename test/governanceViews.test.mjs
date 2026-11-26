@@ -16,7 +16,7 @@ import { slotProjection } from '../src/protocol/slots.mjs'
 import { BUILTIN_PAGE_IDS } from '../src/protocol/naming.mjs'
 import * as settingsAggregation from '../public/views/settingsAggregation.mjs'
 import {
-  governanceModel, pluginCardHtml, confirmStripHtml, governanceHtml, createGovernanceViews
+  governanceModel, isGovernanceModule, pluginCardHtml, confirmStripHtml, governanceHtml, createGovernanceViews
 } from '../public/views/governanceViews.mjs'
 import { createSettingsViews } from '../public/views/settingsViews.mjs'
 
@@ -230,4 +230,76 @@ test('OS-201·导航：治理台入口就位、旧 moduleSettings 深链重定�
   assert.doesNotMatch(html, /data-settings-section="moduleSettings"/u)
   state.settings.section = 'moduleSettings'
   assert.match(views.settingsHtml(), /治理台已装载/u, '旧 id 深链仍渲染治理台')
+})
+
+// OS-201a：21 件模块 + 货架条目的真实混合载荷（货架来自五类货架清单，class:'suite'）。
+const suiteEntries = [
+  { id: 'suite-skill-zz1', name: '货架甲ZZZ', class: 'suite', role: 'suite', version: '1.0.0',
+    settings: [{ key: 'tone', label: '语气', type: 'string', default: '平实' }], settingsHint: '真配置在套件状态文件' },
+  { id: 'suite-style-zz2', name: '货架乙ZZZ', class: 'suite', role: 'suite', version: '1.0.0',
+    settingsHint: '真配置在套件状态文件' },
+  { id: 'suite-genre-zz3', name: '货架丙ZZZ', class: 'suite', role: 'suite', version: '1.0.0' },
+  { id: 'suite-forged-zz4', name: '伪装货架ZZZ', class: 'suite', role: 'suite', group: 'workbench', version: '1.0.0' }
+]
+const mixedPayload = buildPayload({ modules: [...payload.modules, ...suiteEntries] })
+
+test('OS-201a·治理台只出 21 件模块：total 是模块数，三组 7/12/2，货架一条都不出卡', () => {
+  const result = governanceModel(mixedPayload, {}, deps)
+  assert.equal(result.total, 21, 'total 是模块数，不是 modules[] 长度')
+  assert.deepEqual(result.groups.map((group) => group.cards.length), [7, 12, 2])
+  for (const suite of suiteEntries) {
+    for (const group of result.groups) {
+      assert.ok(!group.cards.some((card) => card.id === suite.id), `${group.id} 组混进了货架 ${suite.id}`)
+    }
+  }
+})
+
+test('OS-201a·货架带 settings／非空 settingsHint 也不进治理台 HTML（不出 id、不出名称）', () => {
+  const views = createGovernanceViews({
+    ...deps, state: { current: null, plugins: mixedPayload }, uiMemory: () => ({ values: {} }),
+    loadPlugins: async () => {}, render: () => {}, setModuleEnabled: async () => {}, uiSet: () => {}
+  })
+  const html = views.governanceHtml()
+  for (const suite of suiteEntries) {
+    assert.ok(!html.includes(suite.id), `治理台 HTML 出现货架 id：${suite.id}`)
+    assert.ok(!html.includes(suite.name), `治理台 HTML 出现货架名称：${suite.name}`)
+  }
+  assert.match(html, /21 件/u, '页头计数仍是模块数')
+})
+
+test('OS-201a·isGovernanceModule：kernel／workbench／host-composition 为真，suite／畸形／空载荷为假', () => {
+  assert.equal(isGovernanceModule({ class: 'kernel' }), true)
+  assert.equal(isGovernanceModule({ class: 'workbench' }), true)
+  assert.equal(isGovernanceModule({ role: 'host-composition' }), true)
+  assert.equal(isGovernanceModule({ class: 'suite', role: 'suite' }), false)
+  assert.equal(isGovernanceModule({ name: '没有归类' }), false)
+  assert.equal(isGovernanceModule({}), false)
+  assert.equal(isGovernanceModule(null), false)
+})
+
+test('OS-201a·回归护栏：货架伪造 group:"workbench" 也仍不出卡（判定看 class／role，不看 group）', () => {
+  const forged = suiteEntries.find((entry) => entry.group === 'workbench')
+  assert.ok(forged)
+  assert.equal(isGovernanceModule(forged), false)
+  const result = governanceModel(mixedPayload, {}, deps)
+  for (const group of result.groups) {
+    assert.ok(!group.cards.some((card) => card.id === forged.id), `${group.id} 组被伪造 group 骗到`)
+  }
+})
+
+test('OS-201a·展开入口：expandedId 命中卡片默认展开，未命中保持原行为', () => {
+  const view = { ...deps, state: { plugins: payload, current: null }, uiMemory: () => ({ values: {} }) }
+  const cardHtml = (html, id) => {
+    const at = html.indexOf(`data-gov-id="${id}"`)
+    assert.ok(at >= 0, `没找到卡片 ${id}`)
+    const start = html.lastIndexOf('<article', at)
+    const end = html.indexOf('</article>', at)
+    return html.slice(start, end + '</article>'.length)
+  }
+  const located = governanceHtml(view, { expandedId: 'roleplay' })
+  assert.match(cardHtml(located, 'roleplay'), /class="gov-card gov-workbench open"/u)
+  assert.match(cardHtml(located, 'roleplay'), /class="gov-body"/u)
+  assert.doesNotMatch(cardHtml(located, 'fact'), /class="gov-body"/u, '未命中的卡不展开')
+  const plain = governanceHtml(view)
+  assert.doesNotMatch(cardHtml(plain, 'roleplay'), /class="gov-body"/u, '没有 expandedId 时行为不变')
 })

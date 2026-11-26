@@ -28,6 +28,13 @@ const REASON_LABEL = Object.freeze({
 const text = (value) => String(value ?? '')
 function isObj(value) { return Boolean(value) && typeof value === 'object' && !Array.isArray(value) }
 function asArray(value) { return Array.isArray(value) ? value : [] }
+/** OS-201a：治理台只收 21 件模块——认 class 的 kernel/workbench 或 role 的 host-composition；货架（suite）出局。 */
+export function isGovernanceModule(module) {
+  if (!isObj(module)) return false
+  const klass = text(module.class)
+  const role = text(module.role)
+  return klass === 'kernel' || klass === 'workbench' || role === 'host-composition'
+}
 function escText(value) {
   return text(value).replace(/&/gu, '&amp;').replace(/</gu, '&lt;').replace(/>/gu, '&gt;').replace(/"/gu, '&quot;').replace(/'/gu, '&#39;')
 }
@@ -110,7 +117,7 @@ function settingsFor(module, group, enabled, uiState, agg) {
  */
 export function governanceModel(payload, uiState, deps = {}) {
   const source = isObj(payload) ? payload : {}
-  const modules = asArray(source.modules).filter(isObj)
+  const modules = asArray(source.modules).filter(isObj).filter(isGovernanceModule)
   const slots = isObj(source.slots) ? source.slots : {}
   const options = isObj(deps) ? deps : {}
   const navLabel = typeof options.navLabel === 'function' ? options.navLabel : () => ''
@@ -367,12 +374,14 @@ export function pluginCardHtml(card, options = {}) {
   const id = esc(text(source.id))
   const normalized = { ...source, group }
   const classes = ['gov-card', `gov-${group}`]
-  if (opts.expanded) classes.push('open')
+  // OS-201a：expanded === true 出卡体；expandedId 命中本卡也给默认展开（OS-202 点节点定位到卡）。
+  const isExpanded = opts.expanded === true || (opts.expandedId !== undefined && text(opts.expandedId) === text(source.id))
+  if (isExpanded) classes.push('open')
   if (source.status === 'disabled') classes.push('off')
   if (source.status === 'degraded') classes.push('degraded')
   const head = cardHeadHtml(normalized, esc, opts)
   let body = ''
-  if (opts.expanded) {
+  if (isExpanded) {
     const error = isObj(opts.error) ? opts.error : null
     body = `<div class="gov-body">
       <div class="gov-grid">${providesHtml(normalized, esc)}${requiresHtml(normalized, esc)}${dependentsHtml(normalized, esc)}</div>
@@ -419,6 +428,7 @@ function governanceHtml(view = {}, options = {}) {
       ? group.cards.map((card) => pluginCardHtml(card, {
         esc,
         expanded: expanded.has(card.id),
+        expandedId: opts.expandedId,
         confirming: confirming === card.id,
         error: error && error.id === card.id ? error : null,
         canToggle: opts.canToggle !== false
