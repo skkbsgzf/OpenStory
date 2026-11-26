@@ -1,6 +1,6 @@
 /** 校验页面 smoke 报告完整性：缺页、fail、manual、缺图、空图、脚本错误都非零退出。 */
-import { readFile, stat } from 'node:fs/promises'
-import { join, resolve } from 'node:path'
+import { open, readFile, stat } from 'node:fs/promises'
+import { isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { PAGE_MATRIX, PAGE_MATRIX_SPEC } from '../../test/helpers/pageMatrix.mjs'
 
 const root = resolve(process.argv[2] || '')
@@ -24,14 +24,35 @@ if (selectedId) {
 }
 const actual = new Set(steps.map((step) => step?.id))
 for (const id of expected) if (!actual.has(id)) errors.push(`缺页面：${id}`)
-for (const id of actual) if (!expected.has(id)) errors.push(`未知页面：${id}`)
+for (const id of actual) {
+  if (!expected.has(id)) errors.push(`未知页面：${id}`)
+  else if (steps.filter((step) => step?.id === id).length !== 1) errors.push(`页面重复：${id}`)
+}
+const source = await readFile(join(root, 'manifest.json'), 'utf-8')
+for (const disallowed of ['"manual"', '"skip"']) if (source.includes(disallowed)) errors.push(`报告含禁用状态：${disallowed}`)
 for (const step of steps) {
   if (!step || typeof step !== 'object') { errors.push('步骤不是对象'); continue }
   if (step.status !== 'pass') errors.push(`${step.id} 状态不是 pass：${step.status}`)
-  if (!step.screenshot) { errors.push(`${step.id} 缺截图路径`); continue }
+  for (const field of ['errors', 'consoleErrors', 'pageErrors', 'failedRequests', 'viewports', 'expectedHttpErrors']) {
+    if (!Array.isArray(step[field])) errors.push(`${step.id} 缺数组字段：${field}`)
+  }
+  if (!step.screenshot || typeof step.screenshot !== 'string') { errors.push(`${step.id} 缺截图路径`); continue }
+  const screenshotPath = resolve(root, step.screenshot)
+  const rel = relative(root, screenshotPath)
+  if (isAbsolute(step.screenshot) || rel.startsWith(`..${sep}`) || rel === '..') {
+    errors.push(`${step.id} 截图路径越出报告目录`)
+    continue
+  }
   try {
-    const info = await stat(join(root, step.screenshot))
-    if (info.size < 1024) errors.push(`${step.id} 截图过小：${info.size}`)
+    const info = await stat(screenshotPath)
+    if (!info.isFile()) errors.push(`${step.id} 截图不是文件`)
+    else if (info.size < 1024) errors.push(`${step.id} 截图过小：${info.size}`)
+    else {
+      const header = Buffer.alloc(8)
+      const handle = await open(screenshotPath, 'r')
+      try { await handle.read(header, 0, 8, 0) } finally { await handle.close() }
+      if (header.subarray(1, 4).toString('ascii') !== 'PNG') errors.push(`${step.id} 截图不是 PNG`)
+    }
   } catch { errors.push(`${step.id} 截图不存在：${step.screenshot}`) }
   if (step.errors?.length) errors.push(`${step.id} 有断言错误：${step.errors[0]}`)
   if (step.consoleErrors?.length) errors.push(`${step.id} 有 console.error`)
@@ -41,12 +62,13 @@ for (const step of steps) {
   if (!Array.isArray(step.viewports) || !step.viewports.length) errors.push(`${step.id} 无 viewport 记录`)
   for (const view of step.viewports ?? []) {
     if (!(view.width > 0 && view.height > 0)) errors.push(`${step.id} viewport 尺寸非法`)
-    if (view.scrollWidth > view.clientWidth + 2) errors.push(`${step.id} 横向溢出`)
+    if (!(view.scrollWidth > view.clientWidth + 2)) continue
+    errors.push(`${step.id} 横向溢出`)
   }
 }
 const pass = steps.filter((step) => step?.status === 'pass').length
 const fail = steps.length - pass
-if (manifest.total !== expected.size || manifest.pass !== pass || manifest.fail !== fail) errors.push('manifest 汇总数与实际步骤不一致')
+if (manifest.total !== expected.size || manifest.pass !== pass || manifest.fail !== fail || manifest.skipped !== 0) errors.push('manifest 汇总数与实际步骤不一致')
 if (errors.length) {
   console.error(`✗ 页面报告校验失败（${errors.length} 项）：\n${errors.slice(0, 30).map((line) => `  · ${line}`).join('\n')}`)
   process.exit(1)

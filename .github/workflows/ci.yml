@@ -48,6 +48,13 @@ jobs:
           LOG_DIR="${RUNNER_TEMP:-/tmp}/openstory-ci"; mkdir -p "$LOG_DIR"
           node tools/arch-stats.mjs --check 2>&1 | tee "$LOG_DIR/arch-check.log"
 
+      - name: Run isolated full-stack E2E
+        shell: bash
+        run: |
+          set -o pipefail
+          LOG_DIR="${RUNNER_TEMP:-/tmp}/openstory-ci"; mkdir -p "$LOG_DIR"
+          node tools/verify/verify-os172-e2e.mjs 2>&1 | tee "$LOG_DIR/e2e.log"
+
       # 失败时把失败行当注解发出来（公开仓免登录可查，不必下 artifact）。
       # GitHub 的 bash 默认带 -e -o pipefail：grep 没命中会让步骤自红，故显式 set +e。
       - name: Report failing tests as annotations
@@ -57,19 +64,19 @@ jobs:
           set +e
           cd "${RUNNER_TEMP:-/tmp}/openstory-ci" 2>/dev/null || exit 0
           # 只发失败项：✗ 行＋紧随其后的明细（· 行）；不要通过项的证据行（否则噪音淹没真因）。
-          for log in test-round-1.log test-round-2.log acceptance.log arch-check.log; do
+          for log in test-round-1.log test-round-2.log acceptance.log arch-check.log e2e.log; do
             [ -f "$log" ] || continue
             while IFS= read -r line; do
               [ -n "$line" ] || continue
               safe="${line//'%'/'%25'}"
               safe="${safe//$'\r'/}"
               echo "::error title=${log}::${safe}"
-            done < <(grep -E '^✗ |^✖ |^ +· |# SKIP' "$log" | awk '/^✗|^✖/{p=1; print; n=0; next} /^ +· /{if(p && n<5){print; n++}; next} /# SKIP/{print}' | head -n 40)
+            done < <(grep -E '^✗ |^✖ |^ +· |# SKIP' "$log" | awk '/^✗|^✖/{p=1; print; n=0; next} /^ +· /{if(p && n<5){print; n++}; next} /^# SKIP/{print}' | head -n 40)
           done
           {
             echo "### 失败摘要（$GITHUB_SHA）"
             echo '```'
-            grep -hE '^ℹ (tests|pass|fail|skipped)|^验收门禁' *.log 2>/dev/null | head -n 10
+            grep -hE '^ℹ (tests|pass|fail|skipped)|^验收门禁|^=== 汇总 ===|^[0-9]+/[0-9]+ 通过' *.log 2>/dev/null | head -n 10
             grep -hE '^✗ |^ +· |^✖ |# SKIP' *.log 2>/dev/null | head -n 30
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
@@ -81,4 +88,63 @@ jobs:
         with:
           name: ci-gate-logs
           path: ${{ runner.temp }}/openstory-ci
+          retention-days: 7
+
+  browser-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Install Chromium
+        run: |
+          set -o pipefail
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends chromium
+          chromium --version
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Run page browser smoke
+        shell: bash
+        run: |
+          set -o pipefail
+          REPORT_DIR="${RUNNER_TEMP:-/tmp}/openstory-browser-smoke"; mkdir -p "$REPORT_DIR"
+          status=0
+          node tools/verify/page-browser-smoke.mjs --out "$REPORT_DIR" 2>&1 | tee "$REPORT_DIR/run.log" || status=1
+          node tools/verify/verify-page-report.mjs "$REPORT_DIR" 2>&1 | tee "$REPORT_DIR/report-check.log" || status=1
+          exit "$status"
+
+      - name: Report browser failures
+        if: failure()
+        shell: bash
+        run: |
+          set +e
+          REPORT_DIR="${RUNNER_TEMP:-/tmp}/openstory-browser-smoke"
+          while IFS= read -r line; do
+            [ -n "$line" ] || continue
+            safe="${line//'%'/'%25'}"
+            safe="${safe//$'\r'/}"
+            echo "::error title=page-browser-smoke::${safe}"
+          done < <(grep -E '^✗ |^  · ' "$REPORT_DIR/run.log" "$REPORT_DIR/report-check.log" 2>/dev/null | head -n 50)
+          {
+            echo "### 页面浏览器 smoke（$GITHUB_SHA）"
+            echo '```'
+            grep -E '^页面浏览器 smoke|^✓ 页面报告|^✗ 页面报告' "$REPORT_DIR"/*.log 2>/dev/null
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit 0
+
+      - name: Upload page report and screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: openstory-page-smoke
+          path: ${{ runner.temp }}/openstory-browser-smoke
           retention-days: 7

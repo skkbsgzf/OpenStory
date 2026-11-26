@@ -13,10 +13,18 @@
 | `npm run arch:check` | 通过；生成段：底座 28 文件 4,308 行、契约 17 文件 3,887 行、协议 34 文件 5,852 行、内核件 59 文件 11,205 行、工作台 30 文件 3,556 行、前端 31 文件 20,981 行、`app.js` 10,110 行、端点 108、测试 109 文件 |
 | `node tools/verify/verify-os172-naming.mjs` | 四名一致 21 概念通过；产品目录扫描 205 文件，仅保留真实出处与迁移兼容 |
 | `node tools/verify/verify-os172-e2e.mjs` | 《水浒传》临时库 10/10＋新建/半成品库 13/13；不碰真库与真实院子 |
+| `node tools/verify/verify-ci-workflow.mjs` | CI YAML 子集与三层门禁结构通过；隔离 E2E、独立 Chromium job 与报告产物齐全 |
+| `node tools/verify/page-browser-smoke.mjs --out <目录>` | 页面矩阵真实 Chromium 全跑，逐页 DOM/布局/状态、错误收集与截图 |
+| `node tools/verify/verify-page-report.mjs <目录>` | 页面集合完整，无 fail/manual/skip，PNG 截图非空，无脚本/请求/溢出错误 |
 
-**C6／D 批当前审计快照**：全量单测 836 例（834 过／0 挂／2 条件跳过，测试全绿；
-`836 tests / 834 pass / 2 skip / 0 fail`）；验收门禁 29 项；
-契约端点 108；`app.js` 10,110 行（上限 10,500）；测试 109 文件。最终结果以本次任务回报与
+**三层发布门禁（OS-210 起）**：`gates`（两轮单测＋验收＋架构＋隔离全栈 E2E）与
+`browser-smoke`（完整页面矩阵＋报告完整性校验）都是 push/PR 硬门禁。所有 daemon、库、
+`LOCALAPPDATA`、上游与 Chromium profile 均为临时夹具；不连接 8807，不打开作者真库。
+失败日志、页面 manifest、console/pageerror 记录与截图上传为 artifact，保留 7 天。
+
+**C6／D 批当前审计快照**：全量单测 930 例（928 过／0 挂／2 条件跳过，测试全绿；
+`930 tests / 928 pass / 2 skip / 0 fail`）；验收门禁 29 项；
+契约端点 108；`app.js` 10,044 行（上限 10,500）；测试 122 文件。最终结果以本次任务回报与
 `docs/number-anchors.json` 为准，历史通过记录不得冒充当前通过。
 
 ## 一、推送前必过检查单

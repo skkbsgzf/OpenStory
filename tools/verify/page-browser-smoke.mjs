@@ -71,9 +71,13 @@ async function runPage(browser, item) {
   try {
     for (const action of item.before ?? []) await runAction(browser, action)
     try {
-      for (const viewport of item.viewports) {
-      await browser.setViewport(viewport.width, viewport.height)
-      await browser.goto(`${fixture.origin}/`)
+        for (const viewport of item.viewports) {
+          await browser.setViewport(viewport.width, viewport.height)
+          // 每个视口都重新装载，错误收集不跨视口残留；宽屏先跑，最后一视口执行关键交互与截图。
+          browser.consoleErrors.length = 0
+          browser.pageErrors.length = 0
+          browser.failedRequests.length = 0
+          await browser.goto(`${fixture.origin}/`)
       await browser.wait('#view', 10000)
       // 没开库场景必须保持 current=null；其它页面若没有自动开库，则显式打开临时库。
       if (item.setup !== 'no-default-library' && item.id !== 'libraries') {
@@ -109,9 +113,9 @@ async function runPage(browser, item) {
       if (viewport === item.viewports.at(-1)) {
         for (const action of item.actions ?? []) await runAction(browser, action)
         for (const action of item.checksAfter ?? []) await runAction(browser, action)
-      }
-      }
-    } finally {
+          }
+        }
+      } finally {
       for (const action of item.after ?? []) {
         try { await runAction(browser, action) } catch (error) { step.errors.push(`场景恢复失败：${error?.message ?? error}`); step.status = 'fail' }
       }
@@ -125,10 +129,13 @@ async function runPage(browser, item) {
   } catch (error) {
     step.errors.push(String(error?.message ?? error))
     try { await writeFile(join(out, step.screenshot), await browser.screenshot()) } catch { /* 截图失败也记 fail */ }
+  } finally {
+    // 页面请求可能晚于断言结束才报错；留一个事件回合，避免把上一页错误带到下一页。
+    await new Promise((done) => setTimeout(done, 250))
   }
-  step.consoleErrors = [...browser.consoleErrors]
-  step.pageErrors = [...browser.pageErrors]
-  step.failedRequests = [...browser.failedRequests]
+  step.consoleErrors = browser.consoleErrors.length ? [...browser.consoleErrors] : []
+  step.pageErrors = browser.pageErrors.length ? [...browser.pageErrors] : []
+  step.failedRequests = browser.failedRequests.length ? [...browser.failedRequests] : []
   const expected = [...(item.expectedHttpErrors ?? []), '/favicon.ico']
   const unexpectedRequests = step.failedRequests.filter((entry) => !expected.some((prefix) => String(entry.url ?? '').includes(prefix)))
   if (unexpectedRequests.length) {
@@ -168,13 +175,17 @@ try {
   if (browser) await browser.close().catch(() => {})
 }
 
-const failed = steps.filter((step) => step.status !== 'pass').length
+  const failed = steps.filter((step) => step.status !== 'pass').length
+  const unexpected = steps.filter((step) => step.failedRequests.some((entry) => {
+    const url = String(entry.url ?? '')
+    return !url.endsWith('/favicon.ico') && !(step.expectedHttpErrors ?? []).some((prefix) => url.includes(prefix))
+  })).length
 const missing = pages.filter((item) => !steps.some((step) => step.id === item.id)).map((item) => item.id)
 if (missing.length) browserError = `${browserError}；未执行页面：${missing.join(',')}`
 const manifest = {
   spec: PAGE_MATRIX_SPEC.replace('matrix', 'report'), startedAt,
   finishedAt: new Date().toISOString(), repo: REPO, origin: fixtureOrigin,
-  total: pages.length, pass: steps.length - failed, fail: failed,
+  total: pages.length, pass: steps.length - failed, fail: failed, skipped: 0, unexpectedRequests: unexpected,
   browserError, steps
 }
 await writeFile(join(out, 'manifest.json'), JSON.stringify(manifest, null, 2), 'utf-8')

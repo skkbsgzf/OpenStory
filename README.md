@@ -70,9 +70,9 @@ L1  磁盘库                     文件即真相（.openstory 运行态；旧�
 
 仓根零 `.mjs`（OS-159 布局宪法）：入口直跑 `src/host/daemon.mjs` / `src/host/mcp.mjs`，实现都在 `src/` 六目录。
 
-当前实测：21 份内置 manifest（12 workbench＋7 kernel＋2 宿主组合面）、108 个契约端点、929 例单测（927 过／2 跳过）、29 项验收检查、`app.js` 10,044 行。数字由 `ARCHITECTURE.md` 生成段与 `docs/number-anchors.json` 校验，不手写承诺。
+当前实测：21 份内置 manifest（12 workbench＋7 kernel＋2 宿主组合面）、108 个契约端点、930 例单测（928 过／2 跳过）、29 项验收检查、`app.js` 10,044 行。数字由 `ARCHITECTURE.md` 生成段与 `docs/number-anchors.json` 校验，不手写承诺。
 
-CI 是合入门禁：推送与合并请求在 Node 24 上跑 `npm test` 两轮、验收门禁与架构统计核对；本地先跑同样的三条命令。
+CI 是合入门禁：推送与合并请求在 Node 24 上跑两轮 `npm test`、验收与架构核对，再用临时 daemon/库/院子跑隔离全栈 E2E；独立 `browser-smoke` job 用 Chromium 跑完整页面矩阵并上传 manifest 与截图。本地等价命令见 [ACCEPTANCE.md](docs/ACCEPTANCE.md)，不连接 8807 或作者真库。
 
 数据优先级（fact-first）：**事实链 ① ＞ 正文 ② ＞ 派生物 ③**——读数据先问事实链，喂模型先问能不能只喂事实链。详见 [FACT-FIRST.md](docs/FACT-FIRST.md)。
 

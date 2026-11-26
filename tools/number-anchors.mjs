@@ -30,9 +30,8 @@ export const FROZEN_DOC_ANCHORS = Object.freeze({
 })
 
 const FROZEN_DOCS = new Set([
-  'docs/ACCEPTANCE.md', 'docs/PUBLISHING.md', 'docs/plan/final-audit.md',
-  'docs/plan/workorder-system-20261124.md', 'docs/LEGACY-ITEMS.md',
-  'docs/workorders/COMMON-RULES.md', 'docs/workorders/HANDOFF.md'
+  'docs/plan/final-audit.md', 'docs/plan/workorder-system-20261124.md',
+  'docs/workorders/HANDOFF.md'
 ])
 
 function fmt(value) {
@@ -152,7 +151,6 @@ function buildDocChecks(a) {
     { file: 'README.md', label: '门禁数', expected: `${a.gateCount} 项验收检查` },
     { file: 'README.md', label: 'app.js 行数', expected: `\`app.js\` ${fmt(a.appJs.lines)} 行` },
     { file: 'docs/LEGACY-ITEMS.md', label: '模块端点数', expected: `${a.endpoints.moduleOwned} 个模块独占端点` },
-    { file: 'docs/LEGACY-ITEMS.md', label: '门禁数', expected: `验收门禁（${a.gateCount} 项）` },
     { file: 'docs/workorders/COMMON-RULES.md', label: '门禁数', expected: `现有 ${a.gateCount} 项` },
     { file: 'docs/workorders/HANDOFF.md', label: '当前门禁结果', expected: `门禁 ${a.gateCount} 过 / 0 挂 / 0 警` },
     { file: 'docs/workorders/HANDOFF.md', label: '模块端点数', expected: `${a.endpoints.moduleOwned} 个独占端点` },

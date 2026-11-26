@@ -13,12 +13,12 @@
 | S2 可插拔 | S2.1–S2.10 | 能力路由边界（模块只经协议/能力句柄；显式兼容转供叶不得复制实现）· 前端模块隔离 · 契约驱动（endpointFor + validateResponse）· 底座边界（S2.4'：kernel 不反向依赖、host 不私接模块/前端、无 core/vendor 回潮、base.* 五项句柄齐全）· 来源防护闸常绿 · 命名真源表一致 · 豁免表无腐化 · 能力归属（S2.7：stage C、kernel 零端点/UI、workbench entry/requires/slots、端点唯一归属、能力图与独立进程 activate/贡献校验）· 数字锚一致（S2.8）· 四名一致（S2.9）· 产品谱系名与作者身份（S2.10） |
 | S3 前端一致性 | S3.1–S3.3 | 裸色值零容忍（:root 令牌单一真源）· 浮层宪法（OS-48 不挤压正文）· 组件约定类齐备 |
 | S4 UX 跳转层级 | S4.1–S4.3 | 核心页签顶栏可达（注册表 core:true 条目逐条验 label/render 注册名/scope；渲染块先剥注释，注释不许冒充已注册，OS-150a）· 关闭按钮两级约定（rm-x/page-close）· docs/UX-STRUCTURE.md 清单在 |
-| CI 合入门禁 | `.github/workflows/ci.yml` | Node 24；`npm test` 两轮＋验收门禁（含 S2.8 数字锚、S2.9 四名一致、S2.10 谱系名）＋架构统计核对；失败留测试/门禁日志产物 |
+| CI 合入门禁 | `.github/workflows/ci.yml` | Node 24；`gates`＝`npm test` 两轮＋验收门禁＋架构统计＋隔离全栈 E2E；`browser-smoke`＝完整页面矩阵＋报告完整性校验；失败留日志、manifest 与截图产物 |
 
 ## 落地前四步
 
 ```bash
-# ① 单测门禁（836 例，OS-148 起含 test/naming.test.mjs 命名单一真源，OS-172 起含迁移与四名/谱系门禁）
+# ① 单测门禁（930 例，OS-206～209 起含页面矩阵、MCP 隔离链路与本机运行期契约）
 node .zcode/run-gate.mjs
 
 # ② 交付标准门禁（S0–S4，Rea 式证据落盘）
@@ -35,8 +35,23 @@ node tools/acceptance/acceptance.mjs --json tools/acceptance/out/report-<日期>
 
 ①② 是硬门禁（挂了不合入）；③④ 是理解面与视觉面（图谱陈旧 = 影响面分析失真）。
 
-**CI 门槛＝测试两轮＋验收门禁＋数字锚；e2e 仍是本地门禁。** GitHub Actions 在每次 push 与 pull request
-用 Node 24 复跑同一组命令；水浒／新建两条 e2e 依赖 8807 常驻 daemon 与作者本机夹具，不进 CI。
+**CI 门槛＝三层隔离门禁（OS-206～210）。** `gates` job 跑两轮单测、验收与架构核对，再跑
+`tools/verify/verify-os172-e2e.mjs`；`browser-smoke` job 在 Ubuntu 安装 Chromium，跑完整页面矩阵。
+两条 E2E 都使用临时 daemon、临时库、临时 `LOCALAPPDATA` 与假上游，**不连接 8807、不读作者真库**。
+浏览器报告再经 `verify-page-report.mjs` 校验：页面集合必须等于矩阵，无 fail/manual/skip，截图为真实
+非空 PNG，无 console/pageerror、非预期 HTTP 错误或横向溢出；失败时日志、manifest 与截图作为 artifact 保留。
+
+本地等价命令：
+
+```bash
+node .zcode/run-gate.mjs
+node tools/acceptance/acceptance.mjs
+node tools/arch-stats.mjs --check
+node tools/verify/verify-ci-workflow.mjs
+node tools/verify/verify-os172-e2e.mjs
+node tools/verify/page-browser-smoke.mjs --out /tmp/openstory-page-smoke
+node tools/verify/verify-page-report.mjs /tmp/openstory-page-smoke
+```
 
 测试纪律（OS-169）：测试不许依赖本机环境——一律临时 `LOCALAPPDATA` 夹具、不读真实用户目录、
 不靠本机恰好装了某个 CLI 或下载过某个模型；环境不齐就显式 skip 并写明守卫理由，不许靠本机环境「假绿」。
@@ -77,7 +92,7 @@ node tools/acceptance/acceptance.mjs --json tools/acceptance/out/report-<日期>
 - S2.4' 底座边界：`src/kernel/**` 不得反向 import 协议/业务模块；host 只允许点名的能力绑定/院子转供；
   `src/**` 与仓根不得出现 `core/`/`vendor/` 路径说明符；`writeFileAtomic` 不得在 `src/kernel/` 外复制。
   `base.process/base.loader/base.contract/base.write/base.naming` 五项句柄必须存在。
-- S2.7 能力归属：20 份内置 manifest＝7 kernel＋11 workbench＋2 宿主组合面；生产 stage C。
+- S2.7 能力归属：21 份内置 manifest＝7 kernel＋12 workbench＋2 宿主组合面；生产 stage C。
   kernel 的 endpoints/pages/slots/settings/settingsHint/settingsJump 必须为空，workbench 必须有 entry/requires/slots；
   端点归属唯一，能力图无错误，独立进程真实 activate 并校验 capabilities/handlers/pages/settingsConsumers。
 - S4.2 关闭家族：模块卡 `rm-x`，整页 `page-close`。

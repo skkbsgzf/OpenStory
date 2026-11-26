@@ -310,14 +310,23 @@ MCP 对外 24 工具（`src/host/mcp.mjs` 直跑；stdio 独立进程，数据�
 ## 改完必跑（验收线，详见 `docs/ACCEPTANCE.md`）
 
 ```bash
-node .zcode/run-gate.mjs                    # ① 全量单测（929 例）
+node .zcode/run-gate.mjs                    # ① 全量单测（930 例）
 node tools/acceptance/acceptance.mjs        # ② 交付标准 S0–S4 门禁（29 检查，Rea 式证据；S0=布局宪法）
-# ③ .ua/ 知识图谱增量（/understand，skill 在 ~/.zcode/skills/understand*）
-# ④ 前端批次给作者截图讲场景（对照 design-system/DESIGN.md + docs/UX-STRUCTURE.md）
+node tools/arch-stats.mjs --check           # ③ 架构统计与生成段一致
+node tools/verify/verify-ci-workflow.mjs    # ④ CI 三层门禁结构
+node tools/verify/verify-os172-e2e.mjs      # ⑤ 隔离全栈 E2E（临时 daemon/库/院子/假上游）
+node tools/verify/page-browser-smoke.mjs --out /tmp/openstory-page-smoke
+                                             # ⑥ 完整页面真实 Chromium 矩阵＋截图
+node tools/verify/verify-page-report.mjs /tmp/openstory-page-smoke
+                                             # ⑦ 报告完整性（缺页/缺图/脚本错误即红）
+# ⑧ .ua/ 知识图谱增量（/understand，skill 在 ~/.zcode/skills/understand*）
+# ⑨ 前端批次给作者截图讲场景（对照 design-system/DESIGN.md + docs/UX-STRUCTURE.md）
 ```
 
-①② 全绿才合入。CI 是合入门禁：本地先跑同样的三条命令——`npm test` 两轮、`node tools/acceptance/acceptance.mjs`、`npm run arch:check`；水浒／新建 e2e 仍是本地门禁。MCP 工具增删必须同步：`docs/mcp/*.md`、`test/mcp.test.mjs` 的工具数、
-`DEMO.md`、`tools/acceptance/acceptance.mjs` 的 S1.1 覆盖面。
+①②③④⑤⑥⑦ 全绿才合入。CI 的 `gates` 跑两轮单测、验收、架构核对与隔离 E2E；独立 `browser-smoke`
+在 Ubuntu 安装 Chromium 跑完整页面矩阵，并上传 manifest、日志、console/pageerror 记录与截图。
+两条 E2E 均不连接或重启 8807，不读作者真库或真实 `%LOCALAPPDATA%`。MCP 工具增删必须同步：
+`docs/mcp/*.md`、`test/mcp.test.mjs` 的工具数、`DEMO.md`、`tools/acceptance/acceptance.mjs` 的 S1.1 覆盖面。
 
 测试纪律（OS-169）：测试不许依赖本机环境——夹具一律临时 `LOCALAPPDATA`，不读真实用户目录、不靠本机
 装了什么 CLI 或下载过什么模型；环境不齐就显式 skip 并注明守卫理由，禁止靠本机环境「假绿」。
