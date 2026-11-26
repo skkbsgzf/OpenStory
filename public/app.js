@@ -185,9 +185,9 @@ const suiteShelfViewsReady = import('./views/suiteShelfViews.mjs').then((mod) =>
 
 /* C6：前端壳渲染面迁出——行为/API/事件仍留本文件，boot 首帧前await全部factory */
 let settingsViews = null
-const settingsViewsReady = import('./views/settingsViews.mjs').then((mod) => { settingsViews = mod.createSettingsViews({ state, agent, esc, text, uiKit: () => uiKit, runtimeShelf: () => runtimeShelf, moduleOn, hiddenModules, WORKBENCH_MODULES, SETTINGS_GROUPS, scriptPrefs, dirWork, castColorOf, settingsScriptSectionHtml, settingRuntimeKind, probeBadgeLabel, comfyNodeMapText, typographyState, docPrefSlidersHtml, syncPolicy, syncProblemsFrom, warningsHtml, uiMemory, settingsAggregation: () => settingsAggregation, suitesSectionHtml, pluginsOverviewHtml, errorHtml, api, render, loadPlugins, governanceHtml }); return settingsViews })
+const settingsViewsReady = import('./views/settingsViews.mjs').then((mod) => { settingsViews = mod.createSettingsViews({ state, agent, esc, text, uiKit: () => uiKit, runtimeShelf: () => runtimeShelf, moduleOn, hiddenModules, WORKBENCH_MODULES, SETTINGS_GROUPS, scriptPrefs, dirWork, castColorOf, settingsScriptSectionHtml, settingRuntimeKind, probeBadgeLabel, comfyNodeMapText, typographyState, docPrefSlidersHtml, syncPolicy, syncProblemsFrom, warningsHtml, uiMemory, settingsAggregation: () => settingsAggregation, suitesSectionHtml, pluginsOverviewHtml, errorHtml, api, render, loadPlugins, governanceHtml, moduleCard: (id) => governanceViews?.moduleCard?.(id), missingText: (...args) => governanceViews?.missingText?.(...args) }); return settingsViews })
 let analysisViews = null
-const analysisViewsReady = import('./views/analysisViews.mjs').then((mod) => { analysisViews = mod.createAnalysisViews({ state, esc, hiddenModules, chapterNoFromFile, analyzeEnabled, analyzeModulesFor, analyzeModuleById, chartsModule: () => chartsModule, analysisModules: () => analysisModules }); return analysisViews })
+const analysisViewsReady = import('./views/analysisViews.mjs').then((mod) => { analysisViews = mod.createAnalysisViews({ state, esc, hiddenModules, chapterNoFromFile, analyzeEnabled, analyzeModulesFor, analyzeModuleById, chartsModule: () => chartsModule, analysisModules: () => analysisModules, moduleCard: (id) => governanceViews?.moduleCard?.(id), missingText: (...args) => governanceViews?.missingText?.(...args) }); return analysisViews })
 let agentViews = null
 const agentViewsReady = import('./views/agentViews.mjs').then((mod) => { agentViews = mod.createAgentViews({ state, agent, esc, text, formatAt, getTempSessionId, getTempMode, mdReady: () => mdReady, mdModule: () => mdModule, updateComposerState, updateAgentChip }); return agentViews })
 let libraryFlowViews = null
@@ -195,7 +195,7 @@ const libraryFlowViewsReady = import('./views/libraryFlowViews.mjs').then((mod) 
 let syncViews = null
 const syncViewsReady = import('./views/syncViews.mjs').then((mod) => { syncViews = mod.createSyncViews({ state, esc, text, formatAt }); return syncViews })
 let referencePageViews = null
-const referencePageViewsReady = import('./views/referencePageViews.mjs').then((mod) => { referencePageViews = mod.createReferencePageViews({ state, esc, text, moduleOn, registryModule: () => registryModule, refNodeCardHtml, refModulesHtml, dirWork, scriptViews: () => scriptViews }); return referencePageViews })
+const referencePageViewsReady = import('./views/referencePageViews.mjs').then((mod) => { referencePageViews = mod.createReferencePageViews({ state, esc, text, moduleOn, registryModule: () => registryModule, refNodeCardHtml, refModulesHtml, dirWork, scriptViews: () => scriptViews, moduleCard: (id) => governanceViews?.moduleCard?.(id), missingText: (...args) => governanceViews?.missingText?.(...args) }); return referencePageViews })
 let governanceViews = null // OS-201：治理台视图只接线，渲染与委托都在 views/governanceViews.mjs
 const governanceViewsReady = import('./views/governanceViews.mjs').then((mod) => { governanceViews = mod.createGovernanceViews({ state, esc, text, uiKit: () => uiKit, loadPlugins, render, setModuleEnabled, uiSet, uiMemory, settingsAggregation: () => settingsAggregation, navLabel }); return mod }).catch((error) => { console.error('[governance] 治理台视图加载失败', error); return null })
 
@@ -573,6 +573,8 @@ const VIEW_RENDERERS = {
 }
 /** 视图 → 渲染函数（注册表给注册名，这里取本体）；未注册＝装配错误，响亮失败。 */
 function viewHtml(view, ...args) {
+  const modId = registryModule?.registryEntry?.(view)?.id ?? registryModule?.parseModuleView?.(view)?.module ?? ''
+  if (modId) { const card = governanceViews?.moduleCard?.(modId); if (card?.status === 'degraded') return governanceViews?.degradedViewHtml?.(card) ?? '' }
   const name = registryModule ? registryModule.renderNameForView(view) : null
   const fn = name ? VIEW_RENDERERS[name] : null
   if (!fn) throw new Error(`viewHtml：视图 ${view} 的渲染器未注册（${name ?? '视图不在注册表'}）`)
@@ -1963,7 +1965,7 @@ function writeHtml() {
         <button class="doc-drawer-btn" data-action="refcol-toggle" title="世界书" aria-label="世界书">
           <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><rect x="2.5" y="2.5" width="11" height="11" rx="1.6" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M2.5 6h11M2.5 10h11" stroke="currentColor" stroke-width="1.4"/></svg>
         </button>
-        <button class="doc-drawer-btn" data-action="analyze-toggle" title="分析本章" aria-label="分析本章"${slotHas('right', 'analysis') ? '' : ' hidden'}><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><circle cx="8" cy="8" r="5.4" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M8 2.6A5.4 5.4 0 0 1 13.4 8H8z" fill="currentColor"/></svg></button>
+        <button class="doc-drawer-btn" data-action="analyze-toggle" aria-label="分析本章"${slotAction('right', 'analysis', '分析本章')}><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><circle cx="8" cy="8" r="5.4" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M8 2.6A5.4 5.4 0 0 1 13.4 8H8z" fill="currentColor"/></svg></button>
         <button class="doc-icon" data-action="doc-more" title="本章（版本历史 / 重命名 / 删除 / 显示设置）" aria-label="本章">
           <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><circle cx="3.4" cy="8" r="1.35" fill="currentColor"/><circle cx="8" cy="8" r="1.35" fill="currentColor"/><circle cx="12.6" cy="8" r="1.35" fill="currentColor"/></svg>
         </button>
@@ -5415,8 +5417,8 @@ function openTabAdd() {
     settingsOpen: state.settings.open
   }).map((item) => {
     const off = hidden.has(item.view)
-    return `<button class="tab-pick${off ? '' : ' on'}" data-action="tab-toggle-pick" data-tab-view="${esc(item.view)}">
-      <span class="tp-check">${off ? '' : '✓'}</span><b>${esc(item.label)}</b></button>`
+    return `<button class="tab-pick${off ? '' : ' on'}" data-action="tab-toggle-pick" data-tab-view="${esc(item.view)}"${item.degraded ? ` disabled data-degraded="1" aria-disabled="true" title="${esc(governanceViews?.missingText?.(item.missing) ?? '')}"` : ''}>
+      <span class="tp-check">${off ? '' : '✓'}</span><b>${esc(item.label)}</b>${item.degraded ? '<span class="tp-note">降级</span>' : ''}</button>`
   }).join('')
   openModal(`
     <h3>增加页签</h3>
@@ -5497,7 +5499,7 @@ function renderTabs() {
     }
   })
   const visible = registryModule.visibleTabDefs(defs, hidden)
-  const tabHtml = visible.map((def) => `<button class="tab${state.view === def.view ? ' on' : ''}" data-view="${esc(def.view)}"><span class="ic">${esc(def.ic)}</span>${esc(def.label)}${def.readonly ? '<span class="pill">只读</span>' : ''}${def.closable ? `<span class="tab-x" data-action="${def.view === 'settings' ? 'settings-close' : 'tab-hide'}" data-tab-view="${esc(def.view)}" title="收起这个页签（不动磁盘上的东西）">×</span>` : ''}</button>`).join('')
+  const tabHtml = visible.map((def) => registryModule.tabButtonHtml(def, { active: state.view === def.view, esc, missingText: (...args) => governanceViews?.missingText?.(...args) })).join('')
   // 末尾「＋」：把被收起的页签勾回来（只在投影内勾选，不另造名单）
   const addBtn = state.current ? '<button class="tab tab-add" data-action="tab-add-open" title="增加页签">＋</button>' : ''
   tabsEl.innerHTML = tabHtml + addBtn
@@ -5557,11 +5559,8 @@ ${JSON.stringify(payload.entries, null, 2).slice(0, 4000)}`
   }
 }
 
-/** OS-198：某个页面是否在当前库的某个 slot 投影里（宿主动作/右栏/设置区唯一判定）。 */
-function slotHas(slot, page) {
-  const items = state.plugins?.slots?.[slot]
-  return Array.isArray(items) && items.some((item) => item.page === page)
-}
+/** OS-203：入口三态——停用隐藏、降级置灰并带统一说明、健康照旧（slotState 唯一判定）。 */
+const slotAction = (slot, page, title) => { const s = registryModule.slotState(state.plugins?.slots, slot, page); return !s.present ? ' hidden' : s.degraded ? ` data-degraded="1" aria-disabled="true" title="${esc(governanceViews?.missingText?.(s.missing) ?? title)}"` : ` title="${esc(title)}"` }
 
 /* ---------- 顶栏库切换器（OS-12）---------- */
 
@@ -5581,7 +5580,7 @@ function renderLibSwitchPanel() {
          <button data-go="libraries">管理库</button>
          <button data-action="flow-create">＋新建库</button>
          <button data-action="flow-import">导入稿件</button>
-         ${slotHas('host-actions', 'exchange') ? '<button data-action="exchange-open">导入/导出</button>' : ''}
+         ${registryModule.slotState(state.plugins?.slots, 'host-actions', 'exchange').present ? `<button data-action="exchange-open"${slotAction('host-actions', 'exchange', '导入/导出')}>导入/导出</button>` : ''}
        </div>`
     : `<div class="empty">还没有库。<br>从建一个空库或导入一份稿子开始。</div>
        <div class="divider"></div>
@@ -6510,7 +6509,7 @@ function scriptViewHtml() {
     refModulesHtml,
     flowError,
     esc, formatAt, formatBytes,
-    analysisOn: slotHas('right', 'analysis')
+    analysisAttrs: slotAction('right', 'analysis', '分析本剧')
   })
 }
 
@@ -7428,7 +7427,7 @@ function deduceEngineHtml() {
         <button class="fl-btn${engine.bgmOn ? ' on' : ''}" data-action="deduce-bgm-toggle"${bgmAsset ? '' : ' disabled'}
           title="${bgmAsset ? `播放：${esc(bgmAsset.name)}（循环）` : '未配置 BGM——放 扮演/…/素材/bgm/<场景或情绪>.mp3 即可启用'}">♪ BGM</button>
         <i class="fl-bar-div"></i>
-        <button class="fl-btn" data-action="deduce-image" title="按本拍局面生成一张场景立绘（需在设置里配生图端点）"${engine.turnBusy ? ' disabled' : ''}${slotHas('settings', 'imagegen') ? '' : ' hidden'}>生图</button>
+        <button class="fl-btn" data-action="deduce-image"${slotAction('settings', 'imagegen', '按本拍局面生成一张场景立绘（需在设置里配生图端点）')}${engine.turnBusy ? ' disabled' : ''}>生图</button>
         <button class="fl-btn" data-action="deduce-archive"${engine.turnBusy || !bufferCount ? ' disabled' : ''} title="把本章缓冲的拍整理成 markdown 归档（不写正文文件）">归档</button>
         <button class="fl-btn" data-action="deduce-export"${engine.turnBusy ? ' disabled' : ''} title="整个会话导出成 markdown（每拍的决定＋正文），落 扮演/&lt;bookId&gt;/导出/">导出</button>
       ` : ''}
@@ -8240,7 +8239,7 @@ document.addEventListener('click', (event) => {
   // 点在菜单/按钮之外：收起输入区菜单（OS-51）——注意这不 return，
   // 后面消息内路径 code 的点击不携带任何 data-*，必须继续往下走
   if (!event.target.closest?.('.composer-pop, .c-tool')) closeComposerMenus()
-  if (!target) return
+  if (!target || target.getAttribute?.('aria-disabled') === 'true') return
 
   if (target.dataset.createGenre !== undefined) {
     state.create.genre = target.dataset.createGenre
@@ -8252,7 +8251,7 @@ document.addEventListener('click', (event) => {
   if (target.dataset.settingsSection) {
     state.settings.section = target.dataset.settingsSection
     state.settings.helpOpen = false
-    render()
+    if (state.view !== 'settings') openSettingsTab(); else render()
     return
   }
 

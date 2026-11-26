@@ -1,6 +1,6 @@
 /** C6：从 public/app.js 逐字迁出的analysisViews渲染面。副作用仍由 app.js 持有。 */
 export function createAnalysisViews(scope) {
-  const { state, esc, hiddenModules, chapterNoFromFile, analyzeEnabled, analyzeModulesFor, analyzeModuleById, chartsModule, analysisModules } = scope
+  const { state, esc, hiddenModules, chapterNoFromFile, analyzeEnabled, analyzeModulesFor, analyzeModuleById, chartsModule, analysisModules, moduleCard, missingText } = scope
 
 function sparkline(values, opts) {
   const options = opts || {}
@@ -76,6 +76,12 @@ function analyzeChapterView() {
 }
 
 function analyzePanelHtml() {
+  // OS-203：分析工作面降级时不渲染卡片与选择器，只出一条统一说明（判定由 app.js 注入）。
+  const card = typeof moduleCard === 'function' ? moduleCard('analysis') : null
+  if (card && card.status === 'degraded') {
+    const why = typeof missingText === 'function' ? missingText(card.missing, card.requires) : ''
+    return `<div class="analyze-body"><div class="analyze-degraded" data-degraded="1" title="${esc(why)}">${esc(why)}</div></div>`
+  }
   const enabled = analyzeEnabled()
   const parts = [analyzePickerHtml()]
   let cards = 0

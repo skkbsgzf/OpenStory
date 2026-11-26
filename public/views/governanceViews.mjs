@@ -39,6 +39,38 @@ function escText(value) {
   return text(value).replace(/&/gu, '&amp;').replace(/</gu, '&lt;').replace(/>/gu, '&gt;').replace(/"/gu, '&quot;').replace(/'/gu, '&#39;')
 }
 
+/**
+ * OS-203：降级说明的统一文案（纯函数、零 import，所有降级位置都调它）。
+ * 口径：缺少所需能力：<能力>@<最低版本>（供给方：<名称>）——该工作面暂不可用；
+ * 没人供给写「目前没有插件供给」；多项用分号连。
+ */
+export function missingText(missing, requires = []) {
+  const reqById = new Map(asArray(requires).filter(isObj).map((req) => [text(req.id), req]))
+  const parts = asArray(missing).map((item) => {
+    const cap = isObj(item) ? text(item.capability ?? item.id) : text(item)
+    const req = reqById.get(cap)
+    const min = isObj(item) && item.min !== undefined && item.min !== null && item.min !== ''
+      ? text(item.min) : (req && req.min !== undefined && req.min !== null ? text(req.min) : '')
+    const provider = req && req.provider && req.provider !== 'base'
+      ? (text(req.providerName) || text(req.provider)) : ''
+    return `${cap}${min ? `@${min}` : ''}（${provider ? `供给方：${provider}` : '目前没有插件供给'}）`
+  }).filter(Boolean)
+  return parts.length ? `缺少所需能力：${parts.join('；')}——该工作面暂不可用` : ''
+}
+
+/** OS-203：直接进到降级工作面时的整页说明（纯函数，app.js 经注入使用）。 */
+export function degradedViewHtml(card = {}) {
+  const source = isObj(card) ? card : {}
+  const name = escText(text(source.name || source.id || '这个工作面'))
+  const why = escText(text(source.text || missingText(source.missing, source.requires)))
+  return `<div class="gov-degraded-view">
+    <h2>${name} · 暂不可用</h2>
+    <p class="gov-degraded-why">${why}</p>
+    <p class="gov-degraded-fix">到「设置 · 插件治理台」恢复供给或重新启用相关模块后即可使用。</p>
+    <button type="button" class="uikit-btn uikit-btn-ghost" data-settings-section="governance">去插件治理台 →</button>
+  </div>`
+}
+
 function groupOf(module) {
   const role = text(module.role || module.class)
   if (role === 'kernel') return 'kernel'
@@ -789,7 +821,7 @@ export function createGovernanceViews(scope) {
     })
   }
 
-  return { governanceHtml: renderPage }
+  return { governanceHtml: renderPage, missingText, degradedViewHtml, moduleCard: findCard }
 }
 
 export { governanceHtml }

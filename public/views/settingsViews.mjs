@@ -1,6 +1,17 @@
 /** C6：从 public/app.js 逐字迁出的settingsViews渲染面。副作用仍由 app.js 持有。 */
 export function createSettingsViews(scope) {
-  const { state, agent, esc, text, uiKit, runtimeShelf, moduleOn, hiddenModules, WORKBENCH_MODULES, SETTINGS_GROUPS, scriptPrefs, dirWork, castColorOf, settingsScriptSectionHtml, settingRuntimeKind, probeBadgeLabel, comfyNodeMapText, typographyState, docPrefSlidersHtml, syncPolicy, syncProblemsFrom, warningsHtml, uiMemory, settingsAggregation, suitesSectionHtml, pluginsOverviewHtml, errorHtml, api, render, loadPlugins, governanceHtml } = scope
+  const { state, agent, esc, text, uiKit, runtimeShelf, moduleOn, hiddenModules, WORKBENCH_MODULES, SETTINGS_GROUPS, scriptPrefs, dirWork, castColorOf, settingsScriptSectionHtml, settingRuntimeKind, probeBadgeLabel, comfyNodeMapText, typographyState, docPrefSlidersHtml, syncPolicy, syncProblemsFrom, warningsHtml, uiMemory, settingsAggregation, suitesSectionHtml, pluginsOverviewHtml, errorHtml, api, render, loadPlugins, governanceHtml, moduleCard, missingText } = scope
+
+  // OS-203：降级判定与文案由 app.js 注入（views 之间不许互相 import）。
+  function degradedNoticeHtml(id) {
+    const card = typeof moduleCard === 'function' ? moduleCard(id) : null
+    if (!card || card.status !== 'degraded') return ''
+    const message = typeof missingText === 'function' ? missingText(card.missing, card.requires) : ''
+    return `<div class="cfg-note is-degraded" data-degraded="1" title="${esc(message)}">${esc(message)}</div>`
+  }
+  function degradedCardHtml(id, healthy) {
+    return degradedNoticeHtml(id) || healthy
+  }
 
   // OS-196：本机模块区的临时视图态只在内存里；登记状态一律在 daemon 的机器级信任表。
   let localPath = ''
@@ -226,6 +237,7 @@ function settingsModelsSectionHtml() {
       <div class="err" id="mcfg-text-err"></div>
     </div>
 
+    ${degradedCardHtml('imagegen', `
     <div class="cfg-card" data-cfg-card="image"${moduleOn('imagegen') ? '' : ' hidden'}>
       <div class="cfg-head"><h3>生图</h3>${cfgBadgeHtml('image')}</div>
       <div class="field">
@@ -273,8 +285,9 @@ function settingsModelsSectionHtml() {
       </div>
       <span class="cfg-note">测试会真生成一张 256×256 的小图（消耗额度），点按钮后还会再确认一次。</span>
       <div class="err" id="mcfg-image-err"></div>
-    </div>
+    </div>`)}
 
+    ${degradedCardHtml('imagegen', `
     <div class="cfg-card" data-cfg-card="vision"${moduleOn('imagegen') ? '' : ' hidden'}>
       <div class="cfg-head"><h3>识图</h3>${cfgBadgeHtml('vision')}</div>
       <div class="field">
@@ -298,7 +311,7 @@ function settingsModelsSectionHtml() {
         <span class="cfg-note">识图没有独立探测——随手生一张设定图后点「看这张图写白描」就能验。</span>
       </div>
       <div class="err" id="mcfg-vision-err"></div>
-    </div>
+    </div>`)}
 
     <div class="cfg-card" data-cfg-card="agent">
       <div class="cfg-head"><h3>Agent 默认档</h3></div>
@@ -574,7 +587,7 @@ function settingsCombinedEnginesHtml() {
   // 这里的顺序＝「接什么 → 查什么 → 存哪」。
   return [
     section('对话模型与运行时', 'Agent 走哪条通道、用哪个模型', strip(settingsModelsSectionHtml())),
-    ...(moduleOn('knowledge') ? [section('知识库', 'WeKnora 连接、分库与测试', strip(settingsKbSectionHtml()))] : []),
+    ...(moduleOn('knowledge') ? [section('知识库', 'WeKnora 连接、分库与测试', degradedNoticeHtml('knowledge') || strip(settingsKbSectionHtml()))] : []),
     section('本机路径与导入', '货架位置、库清单、导入稿件', strip(settingsCombinedDataSectionHtml()))
   ].join('')
 }

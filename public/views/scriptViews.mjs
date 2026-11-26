@@ -70,7 +70,7 @@ export function scriptCastHtml({ blocks, esc } = {}) {
 export function scriptViewHtml({
   currentName, dir = '剧本', label = dir, work = {}, stats = null, body = '',
   modules = [], refModulesHtml, flowError,
-  esc, formatAt, formatBytes, analysisOn = true
+  esc, formatAt, formatBytes, analysisOn = true, analysisAttrs = ''
 } = {}) {
   const html = esc ?? ((value) => String(value ?? ''))
   const bytes = formatBytes ?? ((value) => String(value ?? ''))
@@ -115,7 +115,7 @@ export function scriptViewHtml({
         <button class="doc-drawer-btn" data-action="refcol-toggle" title="左侧栏（文件/人物/图谱）" aria-label="左侧栏">
           <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><rect x="2.5" y="2.5" width="11" height="11" rx="1.6" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M2.5 6h11M2.5 10h11" stroke="currentColor" stroke-width="1.4"/></svg>
         </button>
-        <button class="doc-drawer-btn" data-action="analyze-toggle" title="分析本剧" aria-label="分析"${analysisOn ? '' : ' hidden'}><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><circle cx="8" cy="8" r="5.4" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M8 2.6A5.4 5.4 0 0 1 13.4 8H8z" fill="currentColor"/></svg></button>
+        <button class="doc-drawer-btn" data-action="analyze-toggle"${analysisAttrs ? `${analysisAttrs} aria-label="分析"` : ` title="分析本剧" aria-label="分析"${analysisOn ? '' : ' hidden'}`}><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><circle cx="8" cy="8" r="5.4" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M8 2.6A5.4 5.4 0 0 1 13.4 8H8z" fill="currentColor"/></svg></button>
         <button class="doc-icon" data-action="script-more" title="剧本设置（自动排版 / 角色配色 / 互转）" aria-label="剧本设置">
           <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><circle cx="3.4" cy="8" r="1.35" fill="currentColor"/><circle cx="8" cy="8" r="1.35" fill="currentColor"/><circle cx="12.6" cy="8" r="1.35" fill="currentColor"/></svg>
         </button>

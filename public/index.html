@@ -729,6 +729,15 @@ button.modlog-row:focus-visible { outline: 2px solid var(--accent); outline-offs
 .tabs .tab { padding: var(--ui-gap-md) var(--ui-gap-lg) var(--ui-gap-sm); border-radius: var(--radius) var(--radius) 0 0; color: var(--muted); white-space: nowrap; display: flex; gap: var(--ui-gap-xs); align-items: center; }
 .tabs .tab .ic { width: 16px; height: 16px; border-radius: 4px; background: var(--soft); display: inline-grid; place-items: center; font-size: var(--ui-fs-2xs); }
 .tabs .tab.on { color: var(--ink); border: 1px solid var(--hair); border-bottom-color: var(--bg); background: var(--bg); margin-bottom: -1px; }
+/* OS-203：降级显形——所有降级位置共用一套灰显语义（颜色/字号/间距全走令牌）。 */
+.tabs .tab.tab-degraded { opacity: .55; color: var(--warn-ink); cursor: not-allowed; }
+.tabs .tab.tab-degraded .ic { background: var(--warm); }
+[data-degraded="1"] { opacity: .58; color: var(--warn-ink); cursor: not-allowed; }
+.cfg-note.is-degraded, .analyze-degraded { font-size: var(--ui-fs-sm); color: var(--warn-ink); line-height: 1.6; border: 1px solid var(--line); border-radius: var(--radius); background: var(--warm); padding: var(--ui-gap-sm) var(--ui-gap-md); }
+.gov-degraded-view { max-width: 640px; margin: var(--ui-gap-xl) auto; padding: var(--ui-gap-lg); border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface-card); }
+.gov-degraded-view h2 { font-size: var(--ui-fs-xl); margin: 0 0 var(--ui-gap-md); color: var(--ink); }
+.gov-degraded-view p { font-size: var(--ui-fs-md); color: var(--muted); margin: var(--ui-gap-sm) 0; }
+.gov-degraded-view .uikit-btn { margin-top: var(--ui-gap-md); }
 .content { flex: 1; overflow-y: auto; padding: calc(26px * var(--ui-scale)) var(--content-px, 34px); }
 .doc-head .kick { font-size: var(--ui-fs-sm); color: var(--meta); margin-bottom: var(--ui-gap-2xs); }
 .doc-head h1 { font-family: var(--serif); font-size: var(--ui-fs-2xl); font-weight: 700; margin: 0 0 10px; line-height: 1.2; }

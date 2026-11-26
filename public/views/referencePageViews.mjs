@@ -1,6 +1,6 @@
 /** C6：从 public/app.js 逐字迁出的referencePageViews渲染面。副作用仍由 app.js 持有。 */
 export function createReferencePageViews(scope) {
-  const { state, esc, text, moduleOn, registryModule, refNodeCardHtml, refModulesHtml, dirWork, scriptViews } = scope
+  const { state, esc, text, moduleOn, registryModule, refNodeCardHtml, refModulesHtml, dirWork, scriptViews, moduleCard, missingText } = scope
 
 function refImagesSlotHtml(note) {
   const images = Array.isArray(note?.images) ? note.images.filter(Boolean) : []
@@ -8,7 +8,13 @@ function refImagesSlotHtml(note) {
   const urlOf = (rel) => /^https?:\/\//u.test(rel)
     ? rel
     : `/api/reference/asset?root=${encodeURIComponent(root)}&path=${encodeURIComponent(rel)}`
-  const genBtn = `<button class="ref-slot-gen" data-action="ref-gen-image" title="按这个条目生成设定图（后台任务，进度看右下角任务中心）"${moduleOn('imagegen') ? '' : ' hidden'}>✦ 生成设定图</button>`
+  // OS-203：生图降级时按钮置灰保留并带统一说明，不再假装可点。
+  const degCard = typeof moduleCard === 'function' ? moduleCard('imagegen') : null
+  const deg = degCard && degCard.status === 'degraded'
+  const degWhy = deg && typeof missingText === 'function' ? missingText(degCard.missing, degCard.requires) : ''
+  const genBtn = deg
+    ? `<button class="ref-slot-gen" data-action="ref-gen-image" data-degraded="1" aria-disabled="true" disabled title="${esc(degWhy)}">✦ 生成设定图</button>`
+    : `<button class="ref-slot-gen" data-action="ref-gen-image" title="按这个条目生成设定图（后台任务，进度看右下角任务中心）"${moduleOn('imagegen') ? '' : ' hidden'}>✦ 生成设定图</button>`
   if (!images.length) {
     return `<div class="ref-img-slot empty">
       <div class="ref-slot-head">参考图</div>

@@ -63,15 +63,15 @@
 | 服务 | `src/services/` | 7 | 1,737 |
 | 套件资源 | `suites/`＋`styles/`＋`runtimes/`＋`genres/`＋`skills/` | 58 | 2,785 |
 | 设计令牌 | `design-system/` | 3 | 138 |
-| 前端 | `public/` | 32 | 21,791 |
+| 前端 | `public/` | 32 | 21,893 |
 | 磁盘库 | 库＝文件夹（无代码） | — | — |
 
 | 附加指标 | 实测 |
 |---|---:|
-| `public/app.js` 行数 | 10,096 |
+| `public/app.js` 行数 | 10,095 |
 | `public/views/*.mjs` 文件数 | 17 |
 | 契约端点数（`ENDPOINTS` 键数） | 108 |
-| 测试文件数（`test/*.test.mjs`） | 112 |
+| 测试文件数（`test/*.test.mjs`） | 113 |
 
 **模块清单（由 `src/modules/*/module.manifest.json` 自动生成）**
 
@@ -101,7 +101,7 @@
 
 合计 21 份 manifest（7 kernel + 12 workbench + 2 host-composition）；41 个模块独占端点，67 个宿主自有端点，端点覆盖 108/108。
 kernel 能力声明：agent.runtime@1 / deduce.engine@1 / fact.store@3 / fact.pack@1 / fact.enrich@1 / fact.engine@1 / fact.books@1 / fact.write@1 / fact.domain@1 / media.generate@1 / media.describe@1 / prose.write@1 / storage.roots@1 / library.list@1 / storage.scaffold@1 / storage.inventory@1 / text.analyze@1。
-`app.js` 当前上限 10,500 行（只降不升），当前实测 10,096 行。
+`app.js` 当前上限 10,500 行（只降不升），当前实测 10,095 行。
 <!-- arch-stats:end -->
 
 ## 底座 `src/host/` ＋ `src/kernel/`

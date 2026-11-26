@@ -20,6 +20,7 @@ import {
   DIR_LABELS, DIR_ORDER, READONLY_DIRS, PAGE_TO_DIR_LOCAL,
   DEFAULT_HIDDEN_TABS, RETIRED_DIRS,
   projectedTabDefs, projectedPanelTabs, visibleTabDefs, moduleView, parseModuleView,
+  slotState, tabButtonHtml,
   viewKnown, viewScope, renderNameForView, modulePagePlacement, creatableDirNames, sanitizeHiddenTabs
 } from '../public/views/registry.mjs'
 import { MODULE_MANIFESTS, slotProjection } from '../src/protocol/modules.mjs'
@@ -56,6 +57,42 @@ test('停用工作台：投影里该页签消失，其余不动；重新启用�
   assert.ok(!views.includes('habits'))
   assert.deepEqual(views, ['artifacts', 'chapters', 'worldbook', 'dir:剧本', 'dir:日志', 'dir:故事源', 'roleplay'])
   assert.ok(viewsOf(slotsFor()).includes('habits'))
+})
+
+test('OS-203·降级投影：降级位置带标记与 missing，顺序不变；健康输出逐字不变', () => {
+  const slots = slotsFor()
+  const healthy = projectedTabDefs({ slots, ctx: ctx() })
+  assert.ok(healthy.every((def) => !('degraded' in def) && !('missing' in def)), '健康定义不新增字段')
+  const degradedSlots = {
+    ...slots,
+    tab: slots.tab.map((item) => item.module === 'roleplay'
+      ? { ...item, degraded: true, missing: [{ capability: 'text.analyze', min: 1, maxExclusive: 2 }] }
+      : item)
+  }
+  const defs = projectedTabDefs({ slots: degradedSlots, ctx: ctx() })
+  assert.deepEqual(defs.map((def) => def.view), healthy.map((def) => def.view), '顺序不变')
+  const roleplay = defs.find((def) => def.view === 'roleplay')
+  assert.equal(roleplay.degraded, true)
+  assert.deepEqual(roleplay.missing, [{ capability: 'text.analyze', min: 1, maxExclusive: 2 }])
+  assert.deepEqual(canon(defs), canon(healthy), '健康字段一个不变')
+  const panel = projectedPanelTabs(degradedSlots, TAB_REGISTRY, ctx())
+  assert.equal(panel.find((item) => item.view === 'roleplay').degraded, true)
+  assert.deepEqual(panel.find((item) => item.view === 'roleplay').missing, roleplay.missing)
+})
+
+test('OS-203·slotState 与页签标记：三态判定＋降级灰显＋健康 HTML 逐字不变', () => {
+  assert.deepEqual(slotState({ right: [{ page: 'analysis' }] }, 'right', 'analysis'), { present: true, degraded: false, missing: [] })
+  assert.deepEqual(slotState({ right: [] }, 'right', 'analysis'), { present: false, degraded: false, missing: [] })
+  assert.deepEqual(slotState({ right: [{ page: 'analysis', degraded: true, missing: ['text.analyze'] }] }, 'right', 'analysis'), { present: true, degraded: true, missing: ['text.analyze'] })
+  const esc = (value) => String(value ?? '')
+  const html = tabButtonHtml({ view: 'roleplay', label: '扮演', ic: '扮', closable: true, degraded: true, missing: ['text.analyze'] }, {
+    esc, missingText: (missing) => `缺少所需能力：${missing.join('、')}`
+  })
+  assert.match(html, /class="tab tab-degraded"/u)
+  assert.match(html, /aria-disabled="true"/u)
+  assert.match(html, /title="缺少所需能力：text\.analyze"/u)
+  assert.equal(tabButtonHtml({ view: 'chapters', label: '正文', ic: '章', closable: true }, { esc, active: true }),
+    '<button class="tab on" data-view="chapters"><span class="ic">章</span>正文<span class="tab-x" data-action="tab-hide" data-tab-view="chapters" title="收起这个页签（不动磁盘上的东西）">×</span></button>')
 })
 
 test('第三方 iframe 页面：投影给 iframe 视图，前端生成 module:<模块>/<页面> 与入口', () => {

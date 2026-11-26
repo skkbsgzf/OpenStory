@@ -240,6 +240,8 @@ export const BUILTIN_PAGE_IDS = Object.freeze(TAB_REGISTRY.map((entry) => entry.
 function listOf(value) {
   return Array.isArray(value) ? value : []
 }
+const objOf = (value) => value !== null && typeof value === 'object' && !Array.isArray(value) ? value : {}
+const strOf = (value) => String(value ?? '')
 
 /** 体裁 excludedPages（页签名）→ 库内目录名集合（OS-19 页签裁剪）。 */
 export function excludedDirSet(briefGenre) {
@@ -291,7 +293,8 @@ export function projectedTabDefs({ slots = {}, ctx = {}, registry = TAB_REGISTRY
         label: placement.label || placement.page,
         ic: (placement.label || placement.page).slice(0, 1),
         closable: true,
-        iframe: { module: placement.module, page: placement.page, entry: placement.entry }
+        iframe: { module: placement.module, page: placement.page, entry: placement.entry },
+        ...(placement.degraded === true ? { degraded: true, missing: listOf(placement.missing) } : {})
       })
       continue
     }
@@ -301,7 +304,8 @@ export function projectedTabDefs({ slots = {}, ctx = {}, registry = TAB_REGISTRY
       label: placement.label || entry.id,
       ic: entry.icon ?? (placement.label || entry.id).slice(0, 1),
       readonly: entry.readonly === true,
-      closable: entry.closable !== false
+      closable: entry.closable !== false,
+      ...(placement.degraded === true ? { degraded: true, missing: listOf(placement.missing) } : {})
     })
   }
   const settings = byId.get('settings')
@@ -315,6 +319,38 @@ export function projectedTabDefs({ slots = {}, ctx = {}, registry = TAB_REGISTRY
 export function visibleTabDefs(defs, hidden) {
   const hiddenSet = hidden instanceof Set ? hidden : new Set(listOf(hidden))
   return listOf(defs).filter((def) => !hiddenSet.has(def.view))
+}
+
+/**
+ * OS-203：某页面在某 slot 的三态（在不在投影里／是否降级／缺什么）。
+ * 停用＝present:false；降级＝present:true＋degraded:true＋missing 数组；健康＝只有 present:true。
+ */
+export function slotState(slots, slot, page) {
+  const items = listOf(slots?.[slot]).filter((item) => objOf(item).page === page)
+  const hit = items.find((item) => item.degraded === true) ?? items[0] ?? null
+  return {
+    present: Boolean(hit),
+    degraded: Boolean(hit && hit.degraded === true),
+    missing: hit && hit.degraded === true ? listOf(hit.missing) : []
+  }
+}
+
+/**
+ * OS-203：页签按钮 HTML 纯函数（renderTabs 调它，app.js 不再拼页签字符串）。
+ * 降级项带 tab-degraded／aria-disabled／title（文案由调用方注入 missingText，registry 不 import）。
+ */
+export function tabButtonHtml(def, options = {}) {
+  const opts = objOf(options)
+  const esc = typeof opts.esc === 'function' ? opts.esc : strOf
+  const item = objOf(def)
+  const degraded = item.degraded === true
+  const classes = ['tab', ...(opts.active === true ? ['on'] : []), ...(degraded ? ['tab-degraded'] : [])]
+  const fallback = `缺少所需能力：${listOf(item.missing).map((entry) => strOf(objOf(entry).capability ?? entry)).join('、')}`
+  const title = degraded ? (typeof opts.missingText === 'function' ? opts.missingText(item.missing, item.requires) : fallback) : ''
+  const close = item.closable !== false
+    ? `<span class="tab-x" data-action="${item.view === 'settings' ? 'settings-close' : 'tab-hide'}" data-tab-view="${esc(item.view)}" title="收起这个页签（不动磁盘上的东西）">×</span>`
+    : ''
+  return `<button class="${classes.join(' ')}" data-view="${esc(item.view)}"${degraded ? ' aria-disabled="true"' : ''}${title ? ` title="${esc(title)}"` : ''}><span class="ic">${esc(item.ic)}</span>${esc(item.label)}${item.readonly === true ? '<span class="pill">只读</span>' : ''}${close}</button>`
 }
 
 /** 投影里的模块页面条目（iframe 用），找不到＝null。 */
@@ -375,7 +411,8 @@ export function projectedPanelTabs(slots = {}, registry = TAB_REGISTRY, ctx = {}
       view: def.view,
       label: def.label,
       panel: byView.get(def.view)?.panel === true,
-      ...(def.iframe ? { iframe: def.iframe } : {})
+      ...(def.iframe ? { iframe: def.iframe } : {}),
+      ...(def.degraded === true ? { degraded: true, missing: def.missing } : {})
     }))
 }
 
