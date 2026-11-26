@@ -71,7 +71,7 @@
 | `public/app.js` 行数 | 10,044 |
 | `public/views/*.mjs` 文件数 | 17 |
 | 契约端点数（`ENDPOINTS` 键数） | 108 |
-| 测试文件数（`test/*.test.mjs`） | 114 |
+| 测试文件数（`test/*.test.mjs`） | 116 |
 
 **模块清单（由 `src/modules/*/module.manifest.json` 自动生成）**
 

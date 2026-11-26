@@ -18,11 +18,11 @@
     "hostDomain": 0,
     "hostDomainIds": []
   },
-  "testFiles": 114,
+  "testFiles": 116,
   "gateCount": 29,
   "tests": {
-    "total": 902,
-    "pass": 900,
+    "total": 908,
+    "pass": 906,
     "fail": 0,
     "skipped": 2,
     "ok": true,
