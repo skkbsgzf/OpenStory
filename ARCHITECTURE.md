@@ -63,7 +63,7 @@
 | 服务 | `src/services/` | 7 | 1,737 |
 | 套件资源 | `suites/`＋`styles/`＋`runtimes/`＋`genres/`＋`skills/` | 58 | 2,785 |
 | 设计令牌 | `design-system/` | 3 | 138 |
-| 前端 | `public/` | 32 | 21,893 |
+| 前端 | `public/` | 32 | 21,940 |
 | 磁盘库 | 库＝文件夹（无代码） | — | — |
 
 | 附加指标 | 实测 |

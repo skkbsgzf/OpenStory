@@ -1,13 +1,43 @@
 /** C6：从 public/app.js 逐字迁出的settingsViews渲染面。副作用仍由 app.js 持有。 */
-export function createSettingsViews(scope) {
-  const { state, agent, esc, text, uiKit, runtimeShelf, moduleOn, hiddenModules, WORKBENCH_MODULES, SETTINGS_GROUPS, scriptPrefs, dirWork, castColorOf, settingsScriptSectionHtml, settingRuntimeKind, probeBadgeLabel, comfyNodeMapText, typographyState, docPrefSlidersHtml, syncPolicy, syncProblemsFrom, warningsHtml, uiMemory, settingsAggregation, suitesSectionHtml, pluginsOverviewHtml, errorHtml, api, render, loadPlugins, governanceHtml, moduleCard, missingText } = scope
+const escHtml = (value) => String(value ?? '').replace(/&/gu, '&amp;').replace(/</gu, '&lt;').replace(/>/gu, '&gt;').replace(/"/gu, '&quot;')
 
-  // OS-203：降级判定与文案由 app.js 注入（views 之间不许互相 import）。
+/**
+ * OS-203a：设置区卡片三态纯函数。数据源只有 /api/plugins 的 payload.modules，
+ * 不读 ui-state 影子字段、也不依赖治理台视图是否已加载；文案由 missingText 注入。
+ */
+export function settingsCardState(payload, id, missingText = null) {
+  const modules = Array.isArray(payload?.modules) ? payload.modules : []
+  const entry = modules.find((item) => item && typeof item === 'object' && item.id === id) ?? null
+  const status = entry?.status === 'degraded' || entry?.status === 'disabled' ? entry.status : 'loaded'
+  const name = String(entry?.name || id || '')
+  const missing = Array.isArray(entry?.missing) ? entry.missing : []
+  const rawRequires = Array.isArray(entry?.requires) ? entry.requires : []
+  // 供给方友好名也从同一份 payload.modules 取——不回治理台卡片，不另抄一份名字表。
+  const nameById = new Map(modules.filter((item) => item && typeof item === 'object' && item.id).map((item) => [item.id, String(item.name || item.id)]))
+  const requires = rawRequires.map((req) => {
+    if (!req || typeof req !== 'object') return req
+    const provider = String(req.provider || '')
+    const providerName = String(req.providerName || (provider === 'base' ? '底座' : (nameById.get(provider) || provider)))
+    return { ...req, providerName }
+  })
+  const degraded = status === 'degraded'
+  const why = degraded
+    ? (typeof missingText === 'function'
+      ? String(missingText(missing, requires) || '')
+      : `缺少所需能力：${missing.map((item) => escHtml((item && item.capability) || item)).join('、')}`)
+    : ''
+  const notice = degraded
+    ? `<div class="cfg-note is-degraded" data-degraded="1" data-module="${escHtml(id)}" title="${escHtml(why)}"><b>${escHtml(name)} · 暂不可用</b>：${escHtml(why)} 到「插件治理台」恢复供给，或到「引擎与存储」核对配置。<button type="button" class="uikit-btn uikit-btn-ghost" data-settings-section="governance">去插件治理台 →</button></div>`
+    : ''
+  return { id, name, status, degraded, missing, requires, why, notice }
+}
+
+export function createSettingsViews(scope) {
+  const { state, agent, esc, text, uiKit, runtimeShelf, moduleOn, hiddenModules, WORKBENCH_MODULES, SETTINGS_GROUPS, scriptPrefs, dirWork, castColorOf, settingsScriptSectionHtml, settingRuntimeKind, probeBadgeLabel, comfyNodeMapText, typographyState, docPrefSlidersHtml, syncPolicy, syncProblemsFrom, warningsHtml, uiMemory, settingsAggregation, suitesSectionHtml, pluginsOverviewHtml, errorHtml, api, render, loadPlugins, governanceHtml, missingText } = scope
+
+  // OS-203a：降级判定直接取 state.plugins.modules（经纯函数），不再绕治理台卡片或 ui-state。
   function degradedNoticeHtml(id) {
-    const card = typeof moduleCard === 'function' ? moduleCard(id) : null
-    if (!card || card.status !== 'degraded') return ''
-    const message = typeof missingText === 'function' ? missingText(card.missing, card.requires) : ''
-    return `<div class="cfg-note is-degraded" data-degraded="1" title="${esc(message)}">${esc(message)}</div>`
+    return settingsCardState(state.plugins, id, missingText).notice
   }
   function degradedCardHtml(id, healthy) {
     return degradedNoticeHtml(id) || healthy

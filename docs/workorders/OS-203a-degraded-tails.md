@@ -68,3 +68,26 @@
 - 机器门禁全绿；`app.js` 行数不增（当前 10,095）；`git diff --check` 干净。
 - **浏览器实测必做**（这是缺陷的发现方式）：造出降级后——(a) 正文页「分析本章」按钮可见但灰显且悬停有说明；(b) 「引擎与存储」里生图／识图不再是可编辑表单、出降级说明。两条各贴一张截图与 DOM 断言（`disabled`／无 `config-save`）。
 - 反证：把 `slotAction` 的降级分支改回 `hidden`，右栏三态测试必须红；把 `degradedNoticeHtml` 改回空串，设置区用例必须红。贴输出后还原。
+## 施工回报（编排器自动归档）
+
+> 模型 hy4flash · 第 1 轮 · 测试 绿（tests 893 · pass 891 · fail 0 · skip 2） · 门禁 绿 · e2e 水浒＋新建（隔离 daemon）绿 · 8807 未动
+
+```text
+CHANGED:
+- `public/views/registry.mjs` — 新增导出纯函数 `slotActionAttrs(state, title, options)`：停用→`hidden`、降级→可见＋原生 `disabled`＋`aria-disabled="true"`＋注入的 `title`、健康→只带 `title`。
+- `public/app.js` — 仅替换 `slotAction` 一行（10,095 行不增），转交 `registryModule.slotActionAttrs(...)`；四处调用点（分析本章／剧本分析／推演生图／顶栏导入导出）保持，三态统一生效。
+- `public/views/settingsViews.mjs` — 新增导出纯函数 `settingsCardState(payload, id, missingText)`，只读 `state.plugins.modules`（含从同一 payload 派生供给方友好名），产出模块名／缺什么／谁供给／去治理台指引；`degradedNoticeHtml` 改走它，生图／识图／知识库降级时整块表单被说明替换。
+- `test/degradedSurfaces.test.mjs` — 新增 4 例（右栏三态／设置区命中／`settingsCardState` 三态／源码门禁，含友好名断言）；原 OS-203 设置区用例仅把夹具 `plugins.modules` 由空数组补成 `[imagegen卡, knowledge卡]`（数据源变更后的等价夹具改写，断言一条未减）。
+- `README.md`、`AGENTS.md`、`ARCHITECTURE.md`、`docs/number-anchors.json` — 收尾按序回写测试数 893／前端行数 21,940 等机器锚。
+
+VERIFIED:
+- `node --test test/degradedSurfaces.test.mjs` → 13/13 过。
+- `node .zcode/run-gate.mjs` → 893 例／891 过／0 挂／2 跳过。
+- `node tools/acceptance/acceptance.mjs` → 29 过／0 挂／0 警。
+- `node tools/number-anchors.mjs` → 回写 893 例；`--check` → 一致。
+- 收尾顺序：`npm run arch:stats` → `node tools/number-anchors.mjs` → `node tools/acceptance/acceptance.mjs`（全绿）；`git diff --check` 干净；未执行任何 git 写操作；临时探针脚本已删。
+- 反证（临时改回坏实现后跑测试，再还原）：把 `slotActionAttrs` 降级分支改成 `hidden` → 右栏三态用例红（pass 12/fail 1）；把 `degradedNoticeHtml` 改成空串 → 原设置区用例、新设置区用例、源码门禁三条红（pass 10/fail 3）。还原后 13/13 过，无残留反证代码。
+- 浏览器实测（`startDaemon({ port: 0 })` 临时进程，未碰 8807）：(a) 正文页 `analyze-toggle` DOM = `{hidden:false, disabled:true, aria:"true", degraded:"1", title:"缺少所需能力：text.analyze@1…"}`，截图 `d:/tmp/os203a-right.png`；(b) 设置·引擎与存储 DOM = `imageEndpoint:false, imageProbe:false, imageSave:false, visionSave:false, kbUrl:false, kbSave:false`，两条降级说明含 `media.generate@1/media.describe@1（供给方：媒体引擎）` 与「去插件治理台」按钮，截图 `d:/tmp/os203a-settings.png`。`agent-browser close` 已执行。
+
+LIMITATIONS: 无
+```

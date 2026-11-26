@@ -336,6 +336,23 @@ export function slotState(slots, slot, page) {
 }
 
 /**
+ * OS-203a：入口三态属性纯函数。app.js 的 slotAction 只做接线，判定与属性全在这里。
+ * 停用（不在投影里）→ hidden；降级（在投影里且 degraded）→ 可见＋原生 disabled＋
+ * aria-disabled＋统一 title（文案由调用方注入 missingText）；健康 → 只带 title。
+ */
+export function slotActionAttrs(state, title = '', options = {}) {
+  if (!state || state.present !== true) return ' hidden'
+  const opts = objOf(options)
+  const esc = typeof opts.esc === 'function' ? opts.esc : strOf
+  if (state.degraded === true) {
+    const fallback = `缺少所需能力：${listOf(state.missing).map((entry) => strOf(objOf(entry).capability ?? entry)).join('、')}`
+    const message = typeof opts.missingText === 'function' ? opts.missingText(state.missing) : fallback
+    return ` data-degraded="1" disabled aria-disabled="true" title="${esc(message || title)}"`
+  }
+  return ` title="${esc(title)}"`
+}
+
+/**
  * OS-203：页签按钮 HTML 纯函数（renderTabs 调它，app.js 不再拼页签字符串）。
  * 降级项带 tab-degraded／aria-disabled／title（文案由调用方注入 missingText，registry 不 import）。
  */

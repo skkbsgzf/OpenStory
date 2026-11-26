@@ -5560,7 +5560,7 @@ ${JSON.stringify(payload.entries, null, 2).slice(0, 4000)}`
 }
 
 /** OS-203：入口三态——停用隐藏、降级置灰并带统一说明、健康照旧（slotState 唯一判定）。 */
-const slotAction = (slot, page, title) => { const s = registryModule.slotState(state.plugins?.slots, slot, page); return !s.present ? ' hidden' : s.degraded ? ` data-degraded="1" aria-disabled="true" title="${esc(governanceViews?.missingText?.(s.missing) ?? title)}"` : ` title="${esc(title)}"` }
+const slotAction = (slot, page, title) => registryModule.slotActionAttrs(registryModule.slotState(state.plugins?.slots, slot, page), title, { esc, missingText: (...args) => governanceViews?.missingText?.(...args) })
 
 /* ---------- 顶栏库切换器（OS-12）---------- */
 

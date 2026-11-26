@@ -12,9 +12,9 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { BUILTIN_PAGE_IDS, projectedTabDefs, slotState, tabButtonHtml } from '../public/views/registry.mjs'
+import { BUILTIN_PAGE_IDS, projectedTabDefs, slotState, tabButtonHtml, slotActionAttrs } from '../public/views/registry.mjs'
 import { missingText, degradedViewHtml } from '../public/views/governanceViews.mjs'
-import { createSettingsViews } from '../public/views/settingsViews.mjs'
+import { createSettingsViews, settingsCardState } from '../public/views/settingsViews.mjs'
 import { createAnalysisViews } from '../public/views/analysisViews.mjs'
 import { createReferencePageViews } from '../public/views/referencePageViews.mjs'
 import { countPhysicalLines } from '../tools/arch-stats.mjs'
@@ -138,7 +138,8 @@ test('OS-203·设置区：生图/识图/知识库降级出说明，不出可编�
     current: { name: '夹具库' }, preferencesPath: '', warnings: [], settings: { section: 'about', suiteId: '', helpOpen: false },
     styles: [], skin: 'coral', stylesDirs: [], kbStatus: null,
     kbConfig: { baseUrl: 'http://127.0.0.1:8080', collections: { style: 'c1' }, configPath: 'kb.json' },
-    kbMsg: '', sync: { data: null }, suites: [], plugins: { modules: [] }, analyze: {}
+    // OS-203a：降级数据源改为 state.plugins.modules（不再走 moduleCard 注入），夹具同步到位。
+    kbMsg: '', sync: { data: null }, suites: [], plugins: { modules: [card, kbCard] }, analyze: {}
   }
   const agent = {
     runtime: '', runtimeList: [], endpoint: '', model: '', apiKeyMasked: '',
@@ -260,5 +261,142 @@ test('OS-203·源码：slotHas 清零、四处入口经 slotState、viewHtml 分
   assert.match(viewHtml, /moduleCard\?\.\(modId\)/u)
   assert.match(viewHtml, /card\?\.status === 'degraded'/u)
   assert.match(viewHtml, /degradedViewHtml/u)
+  assert.ok(countPhysicalLines(app) <= 10096, `app.js ${countPhysicalLines(app)} 行超过 10096`)
+})
+
+/* ---------- OS-203a 返工：右栏三态／设置区命中 ---------- */
+
+test('OS-203a·右栏三态：停用 hidden／降级可见+原生 disabled+aria-disabled+title／健康只带 title', () => {
+  const opts = {
+    esc,
+    missingText: (missing) => missingText(missing, [{ id: 'text.analyze', min: 1, provider: 'text', providerName: '文本内核', ok: false }])
+  }
+  assert.equal(slotActionAttrs({ present: false, degraded: false, missing: [] }, '分析本章', opts), ' hidden')
+
+  const degraded = slotActionAttrs({ present: true, degraded: true, missing: [{ capability: 'text.analyze', min: 1 }] }, '分析本章', opts)
+  assert.match(degraded, / data-degraded="1"/u)
+  assert.match(degraded, /\sdisabled(?:\s|>)/u, '降级必须是原生 disabled，不能只靠 aria')
+  assert.match(degraded, /aria-disabled="true"/u)
+  assert.match(degraded, /text\.analyze@1/u)
+  assert.match(degraded, /供给方：文本内核/u)
+  assert.doesNotMatch(degraded, /hidden/u, '降级件必须可见，不许消失')
+
+  const healthy = slotActionAttrs({ present: true, degraded: false, missing: [] }, '分析本章', opts)
+  assert.equal(healthy, ' title="分析本章"')
+  assert.doesNotMatch(healthy, /disabled|hidden|data-degraded/u)
+})
+
+function settingsFixtureFromPayload(payload) {
+  const state = {
+    current: { name: '夹具库' }, preferencesPath: '', warnings: [], settings: { section: 'about', suiteId: '', helpOpen: false },
+    styles: [], skin: 'coral', stylesDirs: [], kbStatus: null,
+    kbConfig: { baseUrl: 'http://127.0.0.1:8080', collections: { style: 'c1' }, configPath: 'kb.json' },
+    kbMsg: '', sync: { data: null }, suites: [], plugins: payload, analyze: {}
+  }
+  const agent = {
+    runtime: '', runtimeList: [], endpoint: '', model: '', apiKeyMasked: '',
+    config: { text: {}, image: {}, vision: {}, agent: {} }, dshModels: [], probes: {}, configPath: '', dshReasoningOptions: []
+  }
+  // 故意注入 moduleCard:()=>null：设置区必须只读 state.plugins.modules，绕过治理台也能命中。
+  return createSettingsViews({
+    state, agent, esc, text,
+    uiKit: () => ({
+      field: ({ label, hint, control }) => `<div class="field"><label>${esc(label)}</label>${control}${hint ? `<span class="cfg-note">${esc(hint)}</span>` : ''}</div>`,
+      textInput: ({ id, value, placeholder }) => `<input id="${esc(id)}" value="${esc(value)}" placeholder="${esc(placeholder)}">`
+    }),
+    runtimeShelf: () => ({ selectableRuntimeKits: () => [] }), moduleOn: () => true,
+    hiddenModules: () => new Set(), WORKBENCH_MODULES: [], SETTINGS_GROUPS: [
+      { id: 'app', label: '本体设置', hint: '', sections: [] },
+      { id: 'plugins', label: '插件中心', hint: '', sections: [{ id: 'governance', label: '插件治理台', hint: '' }] }
+    ],
+    scriptPrefs: () => ({}), dirWork: () => null, castColorOf: () => ({}), settingsScriptSectionHtml: noop,
+    settingRuntimeKind: () => 'pi', probeBadgeLabel: () => '未测试', comfyNodeMapText: () => '',
+    typographyState: () => ({ ui: 'comfortable', doc: 'm' }), docPrefSlidersHtml: noop,
+    syncPolicy: () => ({ checkOn: 'enter', action: 'remind' }), syncProblemsFrom: () => [], warningsHtml: noop,
+    uiMemory: () => ({ values: {} }), settingsAggregation: () => null, suitesSectionHtml: noop,
+    pluginsOverviewHtml: noop, errorHtml: noop, api: async () => {}, render: noop, loadPlugins: async () => {},
+    governanceHtml: noop, moduleCard: () => null, missingText
+  })
+}
+
+test('OS-203a·设置区命中：modules 降级→生图/识图/知识库不出表单，健康→表单照常', () => {
+  const payload = { modules: [
+    { id: 'imagegen', name: '生图与识图', status: 'degraded',
+      missing: [{ capability: 'media.generate', min: 1 }, { capability: 'media.describe', min: 1 }],
+      requires: [
+        { id: 'media.generate', min: 1, provider: 'media', providerName: '媒体引擎', ok: false },
+        { id: 'media.describe', min: 1, provider: 'media', providerName: '媒体引擎', ok: false }
+      ] },
+    { id: 'knowledge', name: '知识库', status: 'degraded',
+      missing: [{ capability: 'agent.runtime', min: 1 }],
+      requires: [{ id: 'agent.runtime', min: 1, provider: 'agent-runtime', providerName: 'Agent 运行时', ok: false }] }
+  ] }
+  const degraded = settingsFixtureFromPayload(payload)
+  const models = degraded.settingsModelsSectionHtml()
+  assert.match(models, /data-degraded="1"/u)
+  assert.match(models, /生图与识图 · 暂不可用/u)
+  assert.match(models, /media\.generate@1/u)
+  assert.match(models, /供给方：媒体引擎/u)
+  assert.match(models, /data-settings-section="governance"/u)
+  assert.doesNotMatch(models, /id="mcfg-image-endpoint"/u, '生图 Endpoint 表单不出现')
+  assert.doesNotMatch(models, /id="mcfg-vision-model"/u, '识图模型表单不出现')
+  assert.doesNotMatch(models, /data-block="image"/u, '生图保存按钮不出现')
+  assert.doesNotMatch(models, /data-block="vision"/u, '识图保存按钮不出现')
+  assert.doesNotMatch(models, /data-probe-kind="image"/u, '生图测试连接按钮不出现')
+
+  const engines = degraded.settingsCombinedEnginesHtml()
+  assert.match(engines, /知识库 · 暂不可用/u)
+  assert.doesNotMatch(engines, /id="knowledge-base-url"/u, '知识库表单不出现')
+  assert.doesNotMatch(engines, /data-action="knowledge-save"/u, '知识库保存按钮不出现')
+  assert.doesNotMatch(engines, /data-action="knowledge-test"/u, '知识库测试按钮不出现')
+
+  const healthy = settingsFixtureFromPayload({ modules: [
+    { id: 'imagegen', name: '生图与识图', status: 'loaded', missing: [], requires: [] },
+    { id: 'knowledge', name: '知识库', status: 'loaded', missing: [], requires: [] }
+  ] })
+  assert.match(healthy.settingsModelsSectionHtml(), /id="mcfg-image-endpoint"/u)
+  assert.match(healthy.settingsModelsSectionHtml(), /data-probe-kind="image"/u)
+  assert.match(healthy.settingsCombinedEnginesHtml(), /id="knowledge-base-url"/u)
+  assert.doesNotMatch(healthy.settingsModelsSectionHtml(), /data-degraded="1"/u)
+})
+
+test('OS-203a·settingsCardState：健康／降级／停用三态（纯函数，Node 直调）', () => {
+  const req = [{ id: 'text.analyze', min: 1, provider: 'text', providerName: '文本内核', ok: false }]
+  const payload = { modules: [
+    { id: 'analysis', name: '分析', status: 'loaded', missing: [], requires: [] },
+    { id: 'roleplay', name: '扮演', status: 'degraded', missing: [{ capability: 'text.analyze', min: 1 }], requires: req },
+    { id: 'habits', name: '习惯', status: 'disabled', missing: [], requires: [] }
+  ] }
+  const healthy = settingsCardState(payload, 'analysis', missingText)
+  assert.equal(healthy.status, 'loaded')
+  assert.equal(healthy.degraded, false)
+  assert.equal(healthy.notice, '')
+  const degraded = settingsCardState(payload, 'roleplay', missingText)
+  assert.equal(degraded.status, 'degraded')
+  assert.equal(degraded.degraded, true)
+  assert.match(degraded.notice, /扮演 · 暂不可用/u)
+  assert.match(degraded.notice, /text\.analyze@1/u)
+  assert.match(degraded.notice, /供给方：文本内核/u)
+  const disabled = settingsCardState(payload, 'habits', missingText)
+  assert.equal(disabled.status, 'disabled')
+  assert.equal(disabled.degraded, false)
+  assert.equal(disabled.notice, '')
+  assert.match(settingsCardState(payload, 'roleplay').notice, /缺少所需能力：text\.analyze/u, '没注入文案时也有兜底')
+  assert.equal(settingsCardState(null, 'x', missingText).degraded, false)
+  // 供给方友好名也从同一份 payload.modules 派生，不回治理台卡片取。
+  const rawPayload = { modules: [
+    { id: 'imagegen', name: '生图与识图', status: 'degraded', missing: [{ capability: 'media.generate', min: 1 }],
+      requires: [{ id: 'media.generate', min: 1, provider: 'media' }] },
+    { id: 'media', name: '媒体引擎' }
+  ] }
+  assert.match(settingsCardState(rawPayload, 'imagegen', missingText).notice, /供给方：媒体引擎/u)
+})
+
+test('OS-203a·源码门禁：app.js 转交纯函数、设置区只读 payload.modules', () => {
+  const app = readFileSync(join(REPO, 'public', 'app.js'), 'utf8')
+  assert.match(app, /registryModule\.slotActionAttrs\(/u, 'slotAction 必须转交纯函数，不许另写一份三态判定')
+  const settings = readFileSync(join(REPO, 'public', 'views', 'settingsViews.mjs'), 'utf8')
+  assert.match(settings, /settingsCardState\(state\.plugins, id, missingText\)/u)
+  assert.doesNotMatch(settings, /card\.status !== 'degraded'/u, '降级判定不许再靠 moduleCard 影子公司')
   assert.ok(countPhysicalLines(app) <= 10096, `app.js ${countPhysicalLines(app)} 行超过 10096`)
 })
