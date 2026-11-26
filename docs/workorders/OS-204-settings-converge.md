@@ -5,7 +5,7 @@
 | 批次 | 第四批第 5 张；规划见 [`plugin-frontend-batch-20261126.md`](../plan/plugin-frontend-batch-20261126.md) §5 |
 | 对应 | 规划书 §三-3「三处取数统一」、§三-5「旧分区收敛」、§四-4.4「三个概念各归其位」、§五 第 2、4 步；规划 §3 裁定 |
 | 依赖 | OS-201～203 |
-| 允许改动 | `src/api/contracts/system.mjs`、`src/api/handlers/system.mjs`、`public/**`、`test/**`、`tools/**`、`docs/**`、`ARCHITECTURE.md`、`AGENTS.md`、`README.md` |
+| 允许改动 | `src/api/contracts/system.mjs`、`src/api/handlers/system.mjs`、`src/host/daemon.mjs`（只为把 appVersion 传进 health 上下文；实现尽量放 handler）、`public/**`、`test/**`、`tools/**`、`docs/**`、`ARCHITECTURE.md`、`AGENTS.md`、`README.md`、`docs/number-anchors.json` |
 | 风险 | 中——动设置页导航与套件货架的取数；`/api/health` 加一个字段 |
 | 状态 | 待派（等 OS-203 验收） |
 
