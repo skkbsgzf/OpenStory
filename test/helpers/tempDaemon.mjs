@@ -63,8 +63,14 @@ export async function makeTestLibrary(base, { name = '水浒传（测试副本�
   return root
 }
 
+function originForDaemon(daemon) { return `http://127.0.0.1:${daemon.port}` }
+async function fixturePost(origin, path, body) {
+  const response = await fetch(`${origin}${path}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
+  return { status: response.status, payload: await response.json().catch(() => null) }
+}
+
 /** 起一个隔离 daemon。defaultRoot=false 时首页停在库管理，便于覆盖全局页。 */
-export async function makeTempDaemon({ defaultRoot = true, clearUi = true, sample = true, upstream = false } = {}) {
+export async function makeTempDaemon({ defaultRoot = true, clearUi = true, sample = true, upstream = false, localModule = false } = {}) {
   const base = await mkdtemp(join(tmpdir(), 'openstory-page-test-'))
   const appData = join(base, 'appdata')
   const env = { ...process.env, LOCALAPPDATA: appData, APPDATA: appData }
@@ -106,8 +112,28 @@ export async function makeTempDaemon({ defaultRoot = true, clearUi = true, sampl
     env,
     logger: { log() {} }
   })
+  let moduleRoot = ''
+  if (localModule) {
+    moduleRoot = join(base, 'local-module-root')
+    const dir = join(moduleRoot, 'page-test-ext')
+    await mkdir(dir, { recursive: true })
+    await writeFile(join(dir, 'module.manifest.json'), JSON.stringify({
+      spec: 'openstory-module@2', id: 'page-test-ext', name: '第三方检视页', version: '0.1.0',
+      class: 'workbench', entry: 'index.mjs',
+      requires: [{ id: 'base.write', min: 1 }],
+      pages: [{ id: 'ext-page', label: '第三方页', kind: 'iframe', entry: 'page.html' }],
+      slots: [{ slot: 'tab', page: 'ext-page', order: 900 }], endpoints: []
+    }, null, 2), 'utf-8')
+    await writeFile(join(dir, 'index.mjs'), `export async function activate(context) {
+  context.resolve('base.write', { min: 1 })
+  return { pages: { 'ext-page': { id: 'ext-page', label: '第三方页' } } }
+}`, 'utf-8')
+    await writeFile(join(dir, 'page.html'), '<!doctype html><meta charset="utf-8"><title>第三方检视页</title><h1>IFRAME-OK</h1>', 'utf-8')
+    const added = await fixturePost(originForDaemon(daemon), '/api/module-roots/add', { path: moduleRoot, confirm: true })
+    if (added.status !== 200) throw new Error(`登记临时模块根失败：${added.status} ${JSON.stringify(added.payload)}`)
+  }
   const fixture = {
-    base, appData, root, preferencesPath, env, daemon,
+    base, appData, root, preferencesPath, env, daemon, moduleRoot,
     origin: `http://127.0.0.1:${daemon.port}`,
     upstreamRequests: () => upstreamRequests,
     json: async (path, options) => {

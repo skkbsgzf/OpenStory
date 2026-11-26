@@ -36,7 +36,8 @@ for (const step of steps) {
   if (step.errors?.length) errors.push(`${step.id} 有断言错误：${step.errors[0]}`)
   if (step.consoleErrors?.length) errors.push(`${step.id} 有 console.error`)
   if (step.pageErrors?.length) errors.push(`${step.id} 有 pageerror`)
-  if (step.failedRequests?.some((item) => !String(item.url ?? '').endsWith('/favicon.ico'))) errors.push(`${step.id} 有请求错误`)
+  if (step.failedRequests?.some((item) => !String(item.url ?? '').endsWith('/favicon.ico')
+    && !(step.expectedHttpErrors ?? []).some((prefix) => String(item.url ?? '').includes(prefix)))) errors.push(`${step.id} 有非预期请求错误`)
   if (!Array.isArray(step.viewports) || !step.viewports.length) errors.push(`${step.id} 无 viewport 记录`)
   for (const view of step.viewports ?? []) {
     if (!(view.width > 0 && view.height > 0)) errors.push(`${step.id} viewport 尺寸非法`)
