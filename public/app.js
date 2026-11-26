@@ -178,14 +178,14 @@ const runtimeShelfReady = import('./views/runtimeShelf.mjs').then((mod) => { run
 /* OS-192：五类货架统一设置面（views/suiteShelfViews.mjs）——app.js 只接线，不持渲染本体 */
 let suiteShelfViews = null
 const suiteShelfViewsReady = import('./views/suiteShelfViews.mjs').then((mod) => {
-  suiteShelfViews = mod.createSuiteShelfViews({ state, esc, text, isDarkSurface, settingsModulesSectionHtml })
+  suiteShelfViews = mod.createSuiteShelfViews({ state, esc, text, isDarkSurface })
   return mod
 }).catch((error) => { console.error('[shelves] 统一货架视图加载失败', error); return null })
 
 
 /* C6：前端壳渲染面迁出——行为/API/事件仍留本文件，boot 首帧前await全部factory */
 let settingsViews = null
-const settingsViewsReady = import('./views/settingsViews.mjs').then((mod) => { settingsViews = mod.createSettingsViews({ state, agent, esc, text, uiKit: () => uiKit, runtimeShelf: () => runtimeShelf, moduleOn, hiddenModules, WORKBENCH_MODULES, SETTINGS_GROUPS, scriptPrefs, dirWork, castColorOf, settingsScriptSectionHtml, settingRuntimeKind, probeBadgeLabel, comfyNodeMapText, typographyState, docPrefSlidersHtml, syncPolicy, syncProblemsFrom, warningsHtml, uiMemory, settingsAggregation: () => settingsAggregation, suitesSectionHtml, pluginsOverviewHtml, errorHtml, api, render, loadPlugins, governanceHtml, moduleCard: (id) => governanceViews?.moduleCard?.(id), missingText: (...args) => governanceViews?.missingText?.(...args) }); return settingsViews })
+const settingsViewsReady = import('./views/settingsViews.mjs').then((mod) => { settingsViews = mod.createSettingsViews({ state, agent, esc, text, uiKit: () => uiKit, runtimeShelf: () => runtimeShelf, moduleOn, hiddenModules, WORKBENCH_MODULES, scriptPrefs, dirWork, castColorOf, settingsScriptSectionHtml, settingRuntimeKind, probeBadgeLabel, comfyNodeMapText, typographyState, docPrefSlidersHtml, syncPolicy, syncProblemsFrom, warningsHtml, uiMemory, settingsAggregation: () => settingsAggregation, suitesSectionHtml, pluginsOverviewHtml, errorHtml, api, render, loadPlugins, governanceHtml, moduleCard: (id) => governanceViews?.moduleCard?.(id), missingText: (...args) => governanceViews?.missingText?.(...args) }); return settingsViews })
 let analysisViews = null
 const analysisViewsReady = import('./views/analysisViews.mjs').then((mod) => { analysisViews = mod.createAnalysisViews({ state, esc, hiddenModules, chapterNoFromFile, analyzeEnabled, analyzeModulesFor, analyzeModuleById, chartsModule: () => chartsModule, analysisModules: () => analysisModules, moduleCard: (id) => governanceViews?.moduleCard?.(id), missingText: (...args) => governanceViews?.missingText?.(...args) }); return analysisViews })
 let agentViews = null
@@ -1850,7 +1850,7 @@ function fixIssueWithAgent(issueId) {
 
 async function createChapterFlow() {
   const input = document.getElementById('chapter-new-title')
-  await loadSuites() // 写作套件的默认标题要新鲜
+  await loadPlugins() // 写作套件的默认标题要新鲜（单一装载）
   let title = text(input?.value).trim()
   if (!title) title = text(suiteValue('newChapterTitle', 'writing', '')).trim()
   if (!title) {
@@ -2910,53 +2910,9 @@ function closeModal() {
 
 /* ---------- 设置页签（OS-32：组件页面，可关闭；说明文字收进右上角「!」）---------- */
 
-/**
- * 设置分节（OS-97 重构）。
- *
- * 作者口径：「设置这一块排得很乱，没有形成逻辑性。有些是我们的，有些是插件的，混在一起。
- * 参照 DSH：软件本体的前端比较简单；插件有一个管理中心，管理中心下面就是用户自己接进来的插件，
- * 单独给它留一列——小说是小说，剧本是剧本，谁是谁。」
- *
- * 所以分成**两组**，组之间语义清晰：
- *   【本体设置】软件自己的东西：外观、模型、行为
- *   【插件中心】用户接进来的东西：业务套件（小说/剧本/漫剧…）、Agent 运行时
- *
- * 「剧本」不再平铺——它属于写作套件的领域设置，进「插件中心 → 写作套件 → 领域设置」。
- * 「发现与导入」「数据与目录」合并进「本机与数据」（同属「文件在哪」这一件事）。
- */
-const SETTINGS_GROUPS = Object.freeze([
-  {
-    id: 'app',
-    label: '本体设置',
-    hint: '软件自己的外观、模型与行为',
-    sections: [
-      // OS-98：相关概念合并——外观（皮肤+字号）；模型/知识库/路径都是「接什么、存哪」
-      { id: 'appearance', label: '外观', hint: '皮肤主题与字号档位' },
-      { id: 'engines', label: '引擎与存储', hint: 'Agent 运行时 / 模型 / 知识库 / 路径' },
-      { id: 'about', label: '关于', hint: '版本与定位' }
-    ]
-  },
-  {
-    id: 'plugins',
-    label: '插件中心',
-    hint: '每个套件是一行，点开看它自己的设置',
-    // OS-101：作者口径「插件中心就是很多套件排列，不是内部排列」
-    // → 这里不再是「插件中心 → 业务套件」两级，而是插件中心直接列出全部套件。
-    // 套件清单在渲染时动态展开（见 settingsNavHtml）。
-    sections: [
-      // OS-145：模块插件（分析 / 生图识图 / 知识库）的启停与自报设置——排在总览之后
-      { id: 'governance', label: '插件治理台', hint: '能力图 · 启停 · 依赖 · 设置指路' },
-      { id: 'suites', label: '全部套件', hint: '小说 / 剧本 / 漫剧…' }
-    ]
-  }
-])
-
-/** 扁平索引（渲染与查找用）。 */
-const SETTINGS_SECTIONS = Object.freeze(
-  SETTINGS_GROUPS.flatMap((group) => group.sections.map((section) => ({ ...section, group: group.id })))
-)
-
-function navLabel(id) { return SETTINGS_SECTIONS.find((section) => section.id === id)?.label || '' } // OS-201：治理台跳转区块名只取导航定义
+/* OS-204：设置导航两大域七项只定义在 views/settingsViews.mjs（SETTINGS_NAV）；
+   旧 id 收敛表 SETTINGS_REDIRECT 也在那里。app.js 只留治理台跳转标签的晚绑定取表。 */
+function navLabel(id) { return settingsViews?.navLabel?.(id) || '' } // OS-201/204：治理台跳转区块名只取导航定义
 
 /**
  * 工作台模块清单（OS-44）：左栏三个 + 右栏分析模块。
@@ -3147,9 +3103,6 @@ function castColorOf(name) {
     bar: `hsl(${hue} 55% 62%)`
   }
 }
-
-/** 套件内部的工作台模块设置（OS-101）：只列这个套件自己的模块。 */
-function settingsModulesSectionHtml({ suiteId = '' } = {}) { return settingsViews?.settingsModulesSectionHtml({ suiteId }) }
 
 /**
  * 每个分节的一段自然语言说明——只说「这对你意味着什么」，不写实现细节。
@@ -3506,18 +3459,6 @@ async function selectRuntime(id) {
 
 /* ---------- 套件（插件）设置（OS-15：版本/归属/启停/独立设置页）---------- */
 
-async function loadSuites() {
-  try {
-    const payload = await api(`/api/suites?root=${encodeURIComponent(state.current?.path || '')}`)
-    state.suites = Array.isArray(payload.suites) ? payload.suites : []
-    state.settings.suiteOverrides = Array.isArray(payload.overrides) ? payload.overrides : []
-    state.settings.suitesUserDir = text(payload.userDir)
-  } catch {
-    state.suites = []
-    state.settings.suiteOverrides = []
-  }
-}
-
 /**
  * OS-120：三套插件的统一清单（套件 / 技能 / Agent 运行时）。
  *
@@ -3525,6 +3466,7 @@ async function loadSuites() {
  * DSH 最值得抄的一条是「一份声明」：用户不该为了回答「我装了什么」翻三个地方。
  *
  * 这里只读聚合，失败不阻断设置页（其余两套照常显示）。
+ * OS-204：插件相关只此一个装载函数——/api/plugins 已带货架四键，不再单发套件端点。
  */
 async function loadPlugins(root = state.current?.path || '') {
   try {
@@ -3536,12 +3478,20 @@ async function loadPlugins(root = state.current?.path || '') {
       ...payload,
       list: Array.isArray(payload.plugins) ? payload.plugins : []
     }
+    // OS-204：套件货架与统一清单端点同源，写进原来的位置。
+    state.suites = Array.isArray(payload.suites) ? payload.suites : []
+    state.settings.suiteOverrides = Array.isArray(payload.suiteOverrides) ? payload.suiteOverrides : []
+    state.settings.suitesUserDir = text(payload.suiteUserDir)
+    state.settings.suiteWarnings = Array.isArray(payload.suiteWarnings) ? payload.suiteWarnings : []
   } catch (error) {
     state.plugins = {
       loaded: true, slots: null, slotWarnings: [], list: [], byKind: {}, stats: null,
       modules: [], moduleRoots: [], localModules: [], warnings: [],
       error: (error && error.code ? error.code + ' · ' : '') + text((error && error.message) || error)
     }
+    state.suites = []
+    state.settings.suiteOverrides = []
+    state.settings.suiteWarnings = []
   }
 }
 
@@ -3612,9 +3562,8 @@ async function saveSuiteValues(id) {
     }
   }
   try {
-    const payload = await api('/api/suite/settings', { method: 'PUT', body: JSON.stringify({ id, values, root: state.current?.path || '' }) })
-    const suite2 = suiteById(id)
-    if (suite2) suite2.values = payload.values
+    await api('/api/suite/settings', { method: 'PUT', body: JSON.stringify({ id, values, root: state.current?.path || '' }) })
+    await loadPlugins() // OS-204：写完统一回载，值从同一份清单来
     if (errEl) errEl.textContent = ''
     render()
   } catch (error) {
@@ -3626,7 +3575,7 @@ async function toggleSuite(id) {
   const suite = suiteById(id)
   try {
     await api('/api/suite/state', { method: 'PUT', body: JSON.stringify({ id, enabled: !(suite?.enabled !== false), root: state.current?.path || '' }) })
-    await loadSuites()
+    await loadPlugins()
     render()
   } catch (error) {
     state.error = `${error?.code ? `${error.code} · ` : ''}${text(error?.message || error)}`
@@ -7757,7 +7706,7 @@ async function boot() {
   // 运行时清单与 config 一起拉：chip 要能显示「DSH 原生」这类具体名字，不能等进设置页才加载
   await Promise.all([bootAgentConfig(), loadGlobalConfig(), loadAgentRuntimes()])
   updateAgentChip()
-  loadSuites()
+  loadPlugins()
   try {
     const payload = await api('/api/libraries')
     state.libraries = Array.isArray(payload.libraries) ? payload.libraries : []
@@ -8135,7 +8084,7 @@ function go(view) {
   render()
   if (view === 'settings') {
     // 先并行拉数据，全部回来再渲染一次（否则先完成的 render 会用旧 state 覆盖）
-    Promise.all([loadGlobalConfig(), loadAgentRuntimes(), loadStyles(), loadSuites(), loadPlugins(), loadKbStatus(), loadDshReasoningOptions()])
+    Promise.all([loadGlobalConfig(), loadAgentRuntimes(), loadStyles(), loadPlugins(), loadKbStatus(), loadDshReasoningOptions(), api('/api/health').then((payload) => { state.appVersion = text(payload?.appVersion) || '' }).catch(() => { state.appVersion = '' })])
       .then(() => { if (state.view === 'settings') render() })
       .catch(() => render())
     return

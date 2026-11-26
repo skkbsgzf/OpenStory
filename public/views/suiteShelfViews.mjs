@@ -1,11 +1,11 @@
 /**
  * OS-192 · 插件中心：五类货架按供给类型六组呈现，一个地方启停与设置。
  *
- * 真源是 /api/suites（统一清单，含 kind/group/values/overrides）；这里只做纯渲染。
+ * 真源是统一套件清单（含 kind/group/values/overrides，由 loadPlugins 取回）；这里只做纯渲染。
  * app.js 只留接线（本文件由 app.js 动态 import 后委托），不持有渲染函数本体。
  */
 export function createSuiteShelfViews(scope) {
-  const { state, esc, text, isDarkSurface, settingsModulesSectionHtml } = scope
+  const { state, esc, text, isDarkSurface } = scope
   const GROUPS = ['技能包', '文风包', '体裁包', '运行时套件', '业务套装', '推演规则包']
   const GROUP_HINT = {
     技能包: 'SKILL.md 手艺配方，由 Agent 执行',
@@ -78,14 +78,11 @@ export function createSuiteShelfViews(scope) {
       settingsBody = '<p class="sub">这一项没有宿主代管的设置项——它只提供规则、技能或资源。</p>'
     }
     state.settings.draftValues = { ...(suite.values ?? {}) }
-    const modules = settingsModulesSectionHtml({ suiteId: suite.id })
+    // OS-204：左右栏面板开关已独立成「面板」节，套件详情不再嵌面板小节。
     return `${header}${paused}
       <div class="suite-detail-body">
         <div class="suite-detail-section"><h5>来源与身份</h5>${sourceBlock}${capsBlock}</div>
         <div class="suite-detail-section"><h5>设置</h5>${settingsBody}</div>
-        ${modules ? `<div class="suite-detail-section"><h5>工作台模块<span class="h5-sub">这一项启用时，左/右栏出现哪些模块</span></h5>
-          ${modules.replace(/<div class="step"><h3>/g, '<div class="suite-mod-group"><h6>')
-            .replace(/<\/h3>/g, '</h6>').replace(/<p class="sub">[^<]*<\/p>/g, '')}</div>` : ''}
       </div>`
   }
 

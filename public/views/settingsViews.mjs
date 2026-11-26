@@ -2,6 +2,47 @@
 const escHtml = (value) => String(value ?? '').replace(/&/gu, '&amp;').replace(/</gu, '&lt;').replace(/>/gu, '&gt;').replace(/"/gu, '&quot;')
 
 /**
+ * OS-204：设置页导航的唯一真源——两大域七项。纯数据，供 Node 测试直接导入。
+ * 具名导出；app.js 不再持有 SETTINGS_GROUPS/SETTINGS_SECTIONS。
+ */
+export const SETTINGS_NAV = Object.freeze([
+  Object.freeze({
+    id: 'app', label: '本体设置', hint: '软件自己的外观、模型与行为',
+    sections: Object.freeze([
+      Object.freeze({ id: 'appearance', label: '外观', hint: '皮肤主题与字号档位' }),
+      Object.freeze({ id: 'engines', label: '引擎与存储', hint: 'Agent 运行时 / 模型 / 知识库 / 路径' }),
+      Object.freeze({ id: 'about', label: '关于', hint: '版本与定位' })
+    ])
+  }),
+  Object.freeze({
+    id: 'plugins', label: '插件中心', hint: '治理、面板与货架',
+    sections: Object.freeze([
+      Object.freeze({ id: 'governance', label: '插件治理台', hint: '能力图 · 启停 · 依赖 · 设置指路' }),
+      Object.freeze({ id: 'panels', label: '面板', hint: '左右栏面板插拔' }),
+      Object.freeze({ id: 'suites', label: '全部套件', hint: '技能包 / 文风包 / 体裁包 …' }),
+      Object.freeze({ id: 'localModules', label: '本机模块', hint: '模块根登记 · 预览 · 摘要' })
+    ])
+  })
+])
+
+/** OS-204：旧分区 id → 正名分区。深链兼容只写这一处。 */
+export const SETTINGS_REDIRECT = Object.freeze({
+  moduleSettings: 'governance',
+  pluginsOverview: 'suites', plugins: 'suites', suite: 'suites', suiteSettings: 'suites', suiteDetail: 'suites',
+  typography: 'appearance',
+  models: 'engines', kb: 'engines', data: 'engines', runtimes: 'engines', runtime: 'engines', discover: 'engines'
+})
+
+/** OS-204：取表函数——治理台跳转标签与测试都从这一份拿，不另抄名单。 */
+export function settingsNavLabel(id) {
+  for (const group of SETTINGS_NAV) {
+    const section = group.sections.find((item) => item.id === id)
+    if (section) return section.label
+  }
+  return ''
+}
+
+/**
  * OS-203a：设置区卡片三态纯函数。数据源只有 /api/plugins 的 payload.modules，
  * 不读 ui-state 影子字段、也不依赖治理台视图是否已加载；文案由 missingText 注入。
  */
@@ -33,7 +74,7 @@ export function settingsCardState(payload, id, missingText = null) {
 }
 
 export function createSettingsViews(scope) {
-  const { state, agent, esc, text, uiKit, runtimeShelf, moduleOn, hiddenModules, WORKBENCH_MODULES, SETTINGS_GROUPS, scriptPrefs, dirWork, castColorOf, settingsScriptSectionHtml, settingRuntimeKind, probeBadgeLabel, comfyNodeMapText, typographyState, docPrefSlidersHtml, syncPolicy, syncProblemsFrom, warningsHtml, uiMemory, settingsAggregation, suitesSectionHtml, pluginsOverviewHtml, errorHtml, api, render, loadPlugins, governanceHtml, missingText } = scope
+  const { state, agent, esc, text, uiKit, runtimeShelf, moduleOn, hiddenModules, WORKBENCH_MODULES, scriptPrefs, dirWork, castColorOf, settingsScriptSectionHtml, settingRuntimeKind, probeBadgeLabel, comfyNodeMapText, typographyState, docPrefSlidersHtml, syncPolicy, syncProblemsFrom, warningsHtml, uiMemory, settingsAggregation, suitesSectionHtml, pluginsOverviewHtml, errorHtml, api, render, loadPlugins, governanceHtml, missingText } = scope
 
   // OS-203a：降级判定直接取 state.plugins.modules（经纯函数），不再绕治理台卡片或 ui-state。
   function degradedNoticeHtml(id) {
@@ -49,9 +90,10 @@ export function createSettingsViews(scope) {
   let localPreview = null
   let localNotice = ''
 
-function settingsModulesSectionHtml({ suiteId = '' } = {}) {
+// OS-204：面板节——8 个左右栏面板的开关从套件详情迁出，独立成节；仍写库内 ui-state moduleHidden。
+function settingsModulesSectionHtml() {
   const hidden = hiddenModules()
-  const owned = suiteId ? WORKBENCH_MODULES.filter((mod) => mod.suite === suiteId) : WORKBENCH_MODULES
+  const owned = WORKBENCH_MODULES
   if (!owned.length) return ''
   const groups = ['左栏', '右栏']
   const rows = groups.map((slot) => {
@@ -73,16 +115,14 @@ function settingsModulesSectionHtml({ suiteId = '' } = {}) {
   return `${rows}<div class="step"><h3>当前库</h3><p class="sub">${state.current ? esc(state.current.name) : '还没选库'}——模块开关按库分别记，换库不串。</p></div>`
 }
 
+// OS-204：帮助文案只按七项正名索引；旧分区 id 经 SETTINGS_REDIRECT 收敛后共用同一份。
 const SETTINGS_HELP = Object.freeze({
-  plugins: '插件分成两类：一类给写作能力（比如写作套件、编剧套件），一类给 Agent 一条能对话的模型通道。它们都可以随时启用或停用，停用只是让效果回到默认，你设过的值不会丢。点「设置 →」进各自的设置页。',
-  models: '这里配四样东西：对话模型（Agent 平时用的那条通道）、生图、识图、以及 Agent 的默认档。填完可以先点「测试连接」——它会真的发一个最小请求试连，没保存的值也能测。生图的测试会真生成一张小图、消耗额度，所以会先问你一次。',
-  discover: '插件不用安装：往本机的这几个文件夹里丢一个目录或一个 JSON 文件，刷新就出现在列表里。同名时你本机放的那份优先，内置的退到后面。文件坏掉只会跳过它，不会影响别的。',
-  data: '你的稿子始终是磁盘上的文件夹，这个工作台不另建数据库，删掉这个软件稿子也还在。下面是各项配置存在哪儿——都只在这台机器上。',
-  kb: '知识库给 Agent 供弹药：技法配方、文风指纹、题材套路、读者信号、同型案例分库存放。写东西时 Agent 会自动取用，这里只看连接是否健康、每个库装了多少，不用做任何操作。',
-  about: 'OpenStory 是给写小说用的本地工作台。稿件、草稿、会话与密钥都只留在本机，所有修改都有备份与日志，不上传也不联网同步。',
-  suiteSettings: '这里的每一项都是这个套件自己的规则。停用它，规则会退回程序内置的默认值，但你现在填的内容会保留下来，重新启用就回到你设的样子。',
+  appearance: '皮肤只管配色与明暗，字号分两轨：界面字号影响按钮、表单、卡片、标签与表格，正文字号只管阅读纸面。档位是项目级的，存在当前库的 .openstory/ui-state.json——换机器、清缓存也保持一致。',
+  engines: '这里配四样东西：对话模型（Agent 平时用的那条通道）、生图、识图、以及 Agent 的默认档。填完可以先点「测试连接」——它会真的发一个最小请求试连，没保存的值也能测。生图的测试会真生成一张小图、消耗额度，所以会先问你一次。知识库给 Agent 供弹药（技法、文风、题材、读者信号、同型案例），这里只看连接是否健康。你的稿子始终是磁盘上的文件夹，不另建数据库；下面是各项配置存在哪儿——都只在这台机器上。',
+  about: 'OpenStory 是给写小说用的本地工作台。稿件、草稿、会话与密钥都只留在本机，所有修改都有备份与日志，不上传也不联网同步。版本号取自 daemon 的 /api/health，取不到就显示「未知」。',
   governance: '插件治理台逐件管 21 件模块：供给、依赖逐条（带谁供给与最低版本）、谁依赖我、设置指路、停用影响都在卡片里。内核件与宿主组合面只读，工作台停用先出确认条、库内数据保留；没开库时开关置灰。能力、依赖与状态全部来自 /api/plugins 投影，不在界面另存名单。',
-  moduleSettings: '模块是工作面插件：分析、生图与识图、知识库。停用只是把入口和独占能力收起来，稿件、已存配置和卡片勾选都不会丢，重新启用就回来。生图/识图与知识库的真配置在「引擎与存储」里（本卡片只指路）；内核设置（端口、库路径、凭据）归宿主，不随模块走。',
+  panels: '左右栏的面板可以随时插拔：关掉的模块不再出现在左栏或分析面板里，其余照常；左栏三个都关掉，左栏整体收起来，正文更宽。开关写进库内 ui-state 的 moduleHidden，按库分别记，换库不串。',
+  suites: '插件分成两类：一类给写作能力（比如写作套件、编剧套件），一类给 Agent 一条能对话的模型通道，都可以随时启用或停用。往本机货架目录丢一个目录或 JSON 文件，刷新就出现在列表里；同名时你本机那份优先，坏文件只跳过它。停用一个套件，规则退回内置默认，填过的值不会丢。',
   localModules: '本机模块是可以给 daemon 增加能力/工作台/端点的可执行代码——和 daemon 同进程、同权限。这里没有「扫描任意目录」：只有你亲自选定并确认过的模块根才会被读取。先预览清单，确认后才生效；移除即回到内置层。套件仍然只许放数据，不放可执行代码。'
 })
 
@@ -505,9 +545,11 @@ function settingsDataSectionHtml() {
 }
 
 function settingsAboutSectionHtml() {
+  // OS-204：版本号由 app.js 进设置页时取一次 /api/health 回填；取不到如实写「未知」。
+  const version = text(state.appVersion).trim() || '未知'
   return `<div class="step">
     <h3>OpenStory</h3>
-    <div class="kv-line"><span class="k">版本</span><span class="v">0.1.0</span></div>
+    <div class="kv-line"><span class="k">版本</span><span class="v">${esc(version)}</span></div>
   </div>`
 }
 
@@ -682,86 +724,35 @@ function settingsLocalModulesSectionHtml() {
 }
 
 function settingsHtml() {
+  const governanceRenderer = () => governanceHtml?.() ?? '<div class="gov"><div class="gov-empty">拿不到插件清单：治理台视图没有接上</div></div>'
   const sectionRenderers = {
-    // —— 本体设置（OS-98 合并：相关概念归一处）——
+    // —— 两大域七项（OS-204：导航真源见 SETTINGS_NAV）——
     appearance: settingsCombinedAppearanceHtml,
     engines: settingsCombinedEnginesHtml,
-    modules: settingsModulesSectionHtml,
     about: settingsAboutSectionHtml,
-    // 旧 id 重定向（深链兼容）
-    typography: settingsCombinedAppearanceHtml,
-    models: settingsCombinedEnginesHtml,
-    kb: settingsCombinedEnginesHtml,
-    data: settingsCombinedEnginesHtml,
-    // —— 插件中心 ——
+    governance: governanceRenderer,
+    panels: settingsModulesSectionHtml,
     suites: suitesSectionHtml,
-    // 旧 id 重定向到统一的套件主面
-    pluginsOverview: pluginsOverviewHtml,
-    // OS-201：治理台取代旧的「模块」节；旧深链 moduleSettings 重定向到同一张卡片流。
-    governance: () => governanceHtml?.() ?? '<div class="gov"><div class="gov-empty">拿不到插件清单：治理台视图没有接上</div></div>',
-    moduleSettings: () => governanceHtml?.() ?? '<div class="gov"><div class="gov-empty">拿不到插件清单：治理台视图没有接上</div></div>',
-    // OS-196：本机模块根的信任入口（视图在 views 里，app.js 只负责接线）。
     localModules: settingsLocalModulesSectionHtml,
-    suite: suitesSectionHtml,
-    suiteSettings: suitesSectionHtml,
-    suiteDetail: suitesSectionHtml,
-    runtimes: settingsRuntimeSectionHtml,
-    // —— 兼容旧入口（老链接/深链）——
-    plugins: suitesSectionHtml,
-    runtime: settingsRuntimeSectionHtml,
-    script: settingsScriptSectionHtml,
-    discover: settingsDiscoverSectionHtml
+    // 仅深链可达的兼容渲染器（不在导航里）
+    script: settingsScriptSectionHtml
   }
-  const sectionId = sectionRenderers[state.settings.section] ? state.settings.section : 'appearance'
-  // 套件详情页在导航上高亮所属组（业务套件）
-  const navOn = sectionId === 'suite' || sectionId === 'suiteSettings' || sectionId === 'suiteDetail'
-    ? 'suites'
-    : (sectionId === 'runtime' ? 'runtimes' : sectionId)
-  const sectionHtml = (sectionRenderers[sectionId] ?? settingsAppearanceSectionHtml)()
-  // OS-101：左导航按组渲染——本体设置 / 插件中心。
-  // 插件中心不再是二级壳：它直接把**每个套件**列成一行（作者：「插件中心就是很多套件排列」）。
-  let nav = SETTINGS_GROUPS.map((group) => {
-    const isPluginGroup = group.id === 'plugins'
-    // OS-192：插件组固定节（模块启停）在前；其后五类货架按供给类型六组排列。
-    const fixedEntries = isPluginGroup
-      ? group.sections.filter((section) => section.id !== 'suites').map((section) => `
-        <button class="settings-nav-item${section.id === navOn ? ' on' : ''}" data-settings-section="${esc(section.id)}">
-          <b>${esc(section.label)}</b>
-          <span>${esc(section.hint)}</span>
-        </button>`).join('')
-      : ''
-    const shelfGroups = ['技能包', '文风包', '体裁包', '运行时套件', '业务套装', '推演规则包']
-    const items = isPluginGroup
-      ? fixedEntries + (shelfGroups.map((shelfGroup) => {
-        const list = (Array.isArray(state.suites) ? state.suites : []).filter((suite) => (suite.group || '业务套装') === shelfGroup)
-        if (!list.length) return ''
-        return `<div class="settings-nav-sub">${esc(shelfGroup)}</div>` + list.map((suite) => {
-          const on = suite.enabled !== false
-          const active = state.settings.section === 'suites' && state.settings.suiteId === suite.id
-          return `<button class="settings-nav-item${active ? ' on' : ''}" data-action="suite-select" data-id="${esc(suite.id)}">
-            <b>${esc(suite.name)}${on ? '' : '<i class="nav-off-tag">停用</i>'}</b>
-            <span>${esc((suite.domains ?? []).join('／') || suite.description || '')}</span>
-          </button>`
-        }).join('')
-      }).join('') || '<p class="nav-empty">还没有货架条目</p>')
-      : group.sections.map((section) => `
-        <button class="settings-nav-item${section.id === navOn ? ' on' : ''}" data-settings-section="${esc(section.id)}">
-          <b>${esc(section.label)}</b>
-          <span>${esc(section.hint)}</span>
-        </button>`).join('')
-    return `<div class="settings-nav-group">
+  // OS-204：旧 id 经唯一的表收敛；每个旧 id 仍可达，不再散落重定向分支。
+  const requested = state.settings.section
+  const resolved = SETTINGS_REDIRECT[requested] ?? requested
+  const sectionId = sectionRenderers[resolved] ? resolved : 'appearance'
+  const sectionHtml = sectionRenderers[sectionId]()
+  // OS-204：只照 SETTINGS_NAV 渲染——不再逐套件铺行、不再追加「本机模块」组。
+  // 每项 <b>标签</b> 与 <span>提示</span> 是上下两行（.settings-nav-item 为 flex column）。
+  const nav = SETTINGS_NAV.map((group) => `<div class="settings-nav-group">
       <div class="settings-nav-grouphead">${esc(group.label)}<span>${esc(group.hint)}</span></div>
-      ${items}
-    </div>`
-  }).join('')
-  // OS-196：导航项由本视图追加（app.js 的 SETTINGS_GROUPS 冻结，增长只许在 views 里）。
-  nav += `<div class="settings-nav-group">
-    <div class="settings-nav-grouphead">本机模块<span>登记即信任，预览后确认</span></div>
-    <button class="settings-nav-item${sectionId === 'localModules' ? ' on' : ''}" data-settings-section="localModules">
-      <b>本机模块</b><span>模块根 · 摘要 · 失败门</span>
-    </button>
-  </div>`
-  const help = SETTINGS_HELP[sectionId === 'moduleSettings' ? 'governance' : sectionId] || SETTINGS_HELP.plugins
+      ${group.sections.map((section) => `
+        <button class="settings-nav-item${section.id === sectionId ? ' on' : ''}" data-settings-section="${esc(section.id)}">
+          <b>${esc(section.label)}</b>
+          <span>${esc(section.hint)}</span>
+        </button>`).join('')}
+    </div>`).join('')
+  const help = SETTINGS_HELP[sectionId] || ''
   const helpOpen = state.settings.helpOpen === true
   return `<div class="lib-wrap">
     <div class="page-head">
@@ -833,5 +824,5 @@ function settingsHtml() {
     })
   }
 
-  return { settingsModulesSectionHtml, SETTINGS_HELP, RUNTIME_STATUS_LABEL, runtimeCard, settingsRuntimeSectionHtml, dshDepthFieldHtml, cfgBadgeHtml, dshModelValue, dshModelOptionsHtml, dshModelFieldHtml, settingsModelsSectionHtml, skinCardsHtml, settingsAppearanceSectionHtml, settingsTypographySectionHtml, settingsWritingSectionHtml, settingsDiscoverSectionHtml, settingsCombinedDataSectionHtml, settingsSyncSectionHtml, settingsDataSectionHtml, settingsAboutSectionHtml, settingsKbSectionHtml, settingsCombinedAppearanceHtml, settingsCombinedEnginesHtml, settingsLocalModulesSectionHtml, settingsHtml }
+  return { settingsModulesSectionHtml, SETTINGS_HELP, navLabel: settingsNavLabel, RUNTIME_STATUS_LABEL, runtimeCard, settingsRuntimeSectionHtml, dshDepthFieldHtml, cfgBadgeHtml, dshModelValue, dshModelOptionsHtml, dshModelFieldHtml, settingsModelsSectionHtml, skinCardsHtml, settingsAppearanceSectionHtml, settingsTypographySectionHtml, settingsWritingSectionHtml, settingsDiscoverSectionHtml, settingsCombinedDataSectionHtml, settingsSyncSectionHtml, settingsDataSectionHtml, settingsAboutSectionHtml, settingsKbSectionHtml, settingsCombinedAppearanceHtml, settingsCombinedEnginesHtml, settingsLocalModulesSectionHtml, settingsHtml }
 }

@@ -211,14 +211,11 @@ test('OS-201·视图源码与 app.js 接线：零 import、无动态代码/存�
 })
 
 test('OS-201·导航：治理台入口就位、旧 moduleSettings 深链重定向', () => {
-  const SETTINGS_GROUPS = [
-    { id: 'app', label: '本体设置', hint: '', sections: [{ id: 'appearance', label: '外观', hint: '皮肤' }] },
-    { id: 'plugins', label: '插件中心', hint: '', sections: [{ id: 'governance', label: '插件治理台', hint: '能力图 · 启停 · 依赖 · 设置指路' }] }
-  ]
+  // OS-204：导航定义与重定向表已收敛到 views/settingsViews.mjs，夹具不再注入 SETTINGS_GROUPS。
   const state = { settings: { section: 'governance', helpOpen: false }, suites: [], plugins: payload, current: null }
   const views = createSettingsViews({
     state, esc, text, uiKit: () => ({}), runtimeShelf: () => ({}), moduleOn: () => true,
-    hiddenModules: () => new Set(), WORKBENCH_MODULES: [], SETTINGS_GROUPS,
+    hiddenModules: () => new Set(), WORKBENCH_MODULES: [],
     scriptPrefs: () => ({}), dirWork: () => null, castColorOf: () => ({}), settingsScriptSectionHtml: () => '',
     settingRuntimeKind: () => '', probeBadgeLabel: () => '', comfyNodeMapText: () => '', typographyState: () => ({}),
     docPrefSlidersHtml: () => '', syncPolicy: () => ({}), syncProblemsFrom: () => [], warningsHtml: () => '',

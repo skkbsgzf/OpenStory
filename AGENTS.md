@@ -87,6 +87,12 @@ MCP 对外 24 工具（`src/host/mcp.mjs` 直跑；stdio 独立进程，数据�
    > 输入框；真配置在别处的模块只写 `settingsHint`（一句指路）＋`settingsJump`（设置页区块 id），
    > 渲染成一行说明＋跳转按钮。守卫 `test/moduleSettingsConsumers.test.mjs`（键→消费者文件:符号 表，
    > 新键不在表里＝红）。
+   > **OS-204 设置页收敛**：导航两大域七项（本体设置：外观／引擎与存储／关于；插件中心：插件治理台／
+   > 面板／全部套件／本机模块）只在 `public/views/settingsViews.mjs` 的 `SETTINGS_NAV` 定义；旧分区深链
+   > 经同文件 `SETTINGS_REDIRECT` 一张表收敛，`app.js` 不再持有第二份导航名单。左右栏 8 个面板开关
+   > 独立成「面板」一节，仍写库内 `moduleHidden`；套件详情不再嵌面板小节。治理台、全部套件、本机模块
+   > 三处只经 `loadPlugins()` 一个装载函数取数（`/api/plugins` 已带货架四键），前端不再请求套件端点；
+   > `/api/health.appVersion` 供「关于」页显示真实版本，取不到写「未知」。
 7. **布局宪法（OS-140）**：仓根只允许「入口、包描述、文档」——OS-159 起仓根零 `.mjs`，
    daemon 与 MCP 均由 `src/host/` 实现文件直跑；实现文件不得再放仓根。自持模块全部收进
    `src/` 六目录，新模块一律入对应子目录：
@@ -268,6 +274,11 @@ MCP 对外 24 工具（`src/host/mcp.mjs` 直跑；stdio 独立进程，数据�
       投影消失、页签/卡片/动作位跟着消失，重新启用即回来。
     - 判据：改页签行为时 `git diff public/app.js` 必须为零行增长；页签顺序只 diff manifest，
       视图行为只 diff `public/views/registry.mjs`；门禁 S2.12 钉死前端无第二份页签清单。
+    - **OS-204 补钉**：设置页导航与旧 id 重定向只在 `views/settingsViews.mjs`（`SETTINGS_NAV`／
+      `SETTINGS_REDIRECT`）；治理台、全部套件、本机模块三处共用 `loadPlugins()` 单一装载——
+      `/api/plugins` 已带货架四键，前端不再请求套件端点，套件写端点完成后也统一回载再渲染。
+      `app.js` 行数只减不增；`/api/health` 只新增 `appVersion` 一个字段（来源是启动时读一次的
+      `package.json.version`），端点路径与 MCP 工具名不动。
 
 21. **命名单一真源（OS-148/G8a·G8d；OS-172 收口）：新增或改名一个概念，先改命名表再改代码。**
     - 表＝`public/views/registry.mjs` 的 `NAMING_TABLE`（概念 id ＋ 六列：`dir` 磁盘目录 /
@@ -295,7 +306,7 @@ MCP 对外 24 工具（`src/host/mcp.mjs` 直跑；stdio 独立进程，数据�
 ## 改完必跑（验收线，详见 `docs/ACCEPTANCE.md`）
 
 ```bash
-node .zcode/run-gate.mjs                    # ① 全量单测（893 例）
+node .zcode/run-gate.mjs                    # ① 全量单测（900 例）
 node tools/acceptance/acceptance.mjs        # ② 交付标准 S0–S4 门禁（29 检查，Rea 式证据；S0=布局宪法）
 # ③ .ua/ 知识图谱增量（/understand，skill 在 ~/.zcode/skills/understand*）
 # ④ 前端批次给作者截图讲场景（对照 design-system/DESIGN.md + docs/UX-STRUCTURE.md）

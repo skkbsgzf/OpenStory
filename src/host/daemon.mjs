@@ -82,6 +82,10 @@ const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO_ROOT = join(HERE, '..', '..')
 export { DEFAULT_PORT }
 export const DEFAULT_PUBLIC_DIR = join(REPO_ROOT, 'public')
+/** OS-204：/api/health 的 appVersion——daemon 启动时读一次 package.json，之后只读这份常量。 */
+const APP_VERSION = (() => {
+  try { return String(JSON.parse(readFileSync(join(REPO_ROOT, 'package.json'), 'utf8')).version ?? '') } catch { return '' }
+})()
 /** C5b：浏览器兼容叶只精确转供这一份 src 纯引擎，不开放整个 src/ 静态树。 */
 const TEXT_ENGINE_URL = '/src/modules/text/analysis.mjs'
 const TEXT_ENGINE_FILE = join(REPO_ROOT, 'src', 'modules', 'text', 'analysis.mjs')
@@ -602,6 +606,7 @@ export function createOpenStoryHandler({
           env,
           // 进程事实（OS-127 healthGet 与 reference 异步生图回环用）：代际/启动时刻＋真实端口
           runtime: DAEMON_RUNTIME,
+          appVersion: APP_VERSION,
           currentPort
         })
       }

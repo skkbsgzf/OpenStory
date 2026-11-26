@@ -50,7 +50,8 @@ export async function healthGet(ctx) {
     port: context.port ?? context.currentPort(),
     generation: runtime.generation,
     startedAt: runtime.startedAt,
-    uptimeMs: Math.round(process.uptime() * 1000)
+    uptimeMs: Math.round(process.uptime() * 1000),
+    appVersion: text(context.appVersion)
   }
   const healthChecked = validateResponse('healthGet', payload)
   if (!healthChecked.ok) {

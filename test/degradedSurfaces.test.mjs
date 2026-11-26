@@ -113,13 +113,10 @@ function settingsFixture(card) {
     runtime: '', runtimeList: [], endpoint: '', model: '', apiKeyMasked: '',
     config: { text: {}, image: {}, vision: {}, agent: {} }, dshModels: [], probes: {}, configPath: '', dshReasoningOptions: []
   }
-  const SETTINGS_GROUPS = [
-    { id: 'app', label: '本体设置', hint: '', sections: [{ id: 'appearance', label: '外观', hint: '' }] },
-    { id: 'plugins', label: '插件中心', hint: '', sections: [{ id: 'governance', label: '插件治理台', hint: '' }] }
-  ]
+  // OS-204：导航定义收敛到 views/settingsViews.mjs，夹具不再注入 SETTINGS_GROUPS。
   const views = createSettingsViews({
     state, agent, esc, text, uiKit: () => ({}), runtimeShelf: () => ({ selectableRuntimeKits: () => [] }), moduleOn: () => true,
-    hiddenModules: () => new Set(), WORKBENCH_MODULES: [], SETTINGS_GROUPS, scriptPrefs: () => ({}),
+    hiddenModules: () => new Set(), WORKBENCH_MODULES: [], scriptPrefs: () => ({}),
     dirWork: () => null, castColorOf: () => ({}), settingsScriptSectionHtml: noop, settingRuntimeKind: () => 'pi',
     probeBadgeLabel: () => '未测试', comfyNodeMapText: () => '', typographyState: () => ({ ui: 'comfortable', doc: 'm' }),
     docPrefSlidersHtml: noop, syncPolicy: () => ({ checkOn: 'enter', action: 'remind' }),
@@ -148,10 +145,7 @@ test('OS-203·设置区：生图/识图/知识库降级出说明，不出可编�
   const byId = { imagegen: card, knowledge: kbCard }
   const degraded = createSettingsViews({
     state, agent, esc, text, uiKit: () => ({}), runtimeShelf: () => ({ selectableRuntimeKits: () => [] }), moduleOn: () => true,
-    hiddenModules: () => new Set(), WORKBENCH_MODULES: [], SETTINGS_GROUPS: [
-      { id: 'app', label: '本体设置', hint: '', sections: [] },
-      { id: 'plugins', label: '插件中心', hint: '', sections: [{ id: 'governance', label: '插件治理台', hint: '' }] }
-    ],
+    hiddenModules: () => new Set(), WORKBENCH_MODULES: [],
     scriptPrefs: () => ({}), dirWork: () => null, castColorOf: () => ({}), settingsScriptSectionHtml: noop,
     settingRuntimeKind: () => 'pi', probeBadgeLabel: () => '未测试', comfyNodeMapText: () => '',
     typographyState: () => ({ ui: 'comfortable', doc: 'm' }), docPrefSlidersHtml: noop,
@@ -305,10 +299,7 @@ function settingsFixtureFromPayload(payload) {
       textInput: ({ id, value, placeholder }) => `<input id="${esc(id)}" value="${esc(value)}" placeholder="${esc(placeholder)}">`
     }),
     runtimeShelf: () => ({ selectableRuntimeKits: () => [] }), moduleOn: () => true,
-    hiddenModules: () => new Set(), WORKBENCH_MODULES: [], SETTINGS_GROUPS: [
-      { id: 'app', label: '本体设置', hint: '', sections: [] },
-      { id: 'plugins', label: '插件中心', hint: '', sections: [{ id: 'governance', label: '插件治理台', hint: '' }] }
-    ],
+    hiddenModules: () => new Set(), WORKBENCH_MODULES: [],
     scriptPrefs: () => ({}), dirWork: () => null, castColorOf: () => ({}), settingsScriptSectionHtml: noop,
     settingRuntimeKind: () => 'pi', probeBadgeLabel: () => '未测试', comfyNodeMapText: () => '',
     typographyState: () => ({ ui: 'comfortable', doc: 'm' }), docPrefSlidersHtml: noop,

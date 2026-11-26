@@ -85,3 +85,28 @@
 - 机器门禁全绿；`app.js` 行数不增；端点数仍为 108；`git diff --check` 干净。
 - 生产调用点贴出来（`文件:行`）：导航定义与渲染、重定向表、`loadPlugins` 的货架写位、`appVersion` 的来源与显示。
 - 反证一则：在 `public/app.js` 里临时加回一句对 `/api/suites` 的请求，对应用例必须红；贴输出后还原。
+## 施工回报（编排器自动归档）
+
+> 模型 hy4flash · 第 1 轮 · 测试 绿（tests 900 · pass 898 · fail 0 · skip 2） · 门禁 绿 · e2e 水浒＋新建（隔离 daemon）绿 · 8807 未动
+
+```text
+CHANGED:
+- `public/views/settingsViews.mjs` — 新增导航真源 `SETTINGS_NAV`／重定向表 `SETTINGS_REDIRECT`／取表函数 `settingsNavLabel`；`settingsHtml()` 只照表渲染（去掉逐套件铺行与追加组）；面板节承载 8 个开关；关于页版本取 `state.appVersion`；SETTINGS_HELP 按七项重整
+- `public/app.js` — 删 `SETTINGS_GROUPS`／`SETTINGS_SECTIONS`／`settingsModulesSectionHtml` 壳／`loadSuites` 及全部调用；`loadPlugins()` 写货架四键；进设置页取 `/api/health` 回填版本（10095→10044 行）
+- `public/views/suiteShelfViews.mjs` — 套件详情移除「工作台模块」小节
+- `src/api/contracts/system.mjs` — `healthGet.response` 加 `appVersion: 'string'`
+- `src/api/handlers/system.mjs` — health 回包带 `appVersion`
+- `src/host/daemon.mjs` — 启动时读一次 package.json version，注入 health 上下文
+- `test/settingsNav.test.mjs`（新建）— 导航/重定向/面板/单一装载/版本/行数守卫
+- `test/shellViewsC6.test.mjs`、`test/governanceViews.test.mjs`、`test/degradedSurfaces.test.mjs` — 按合法改写删去 `SETTINGS_GROUPS` 入参，其余断言保留
+- `docs/UX-STRUCTURE.md`、`AGENTS.md`、`docs/UI-KIT.md`、`README.md`、`ARCHITECTURE.md`、`docs/number-anchors.json` — 文档与数字锚回写
+
+VERIFIED:
+- `npm test`：900 例 / 898 pass / 2 skip / 0 fail
+- `node tools/acceptance/acceptance.mjs`：29 过 / 0 挂 / 0 警
+- `node tools/arch-stats.mjs --check`、`node tools/number-anchors.mjs --check`（900 例／端点 108／app.js 10044≤10500）、`git diff --check`：均 OK
+- 反证：临时在 `public/app.js` 加回 `await api('/api/suites')` → `node --test test/settingsNav.test.mjs` 报 `AssertionError: app.js 不再请求套件端点`（`test/settingsNav.test.mjs:141`），7 例中 1 挂；随后还原并复跑 7/7 绿
+- 生产调用点：导航定义 `public/views/settingsViews.mjs:8`、渲染 `:747`、重定向表 `:29`／`:742`；单一装载写位 `public/app.js:3482`、health 取数 `:8087`；`appVersion` 来源 `src/host/daemon.mjs:86`／`:609` → `src/api/handlers/system.mjs:54` → 显示 `public/views/settingsViews.mjs:549`；面板开关写回 `public/app.js:9164`→`:4487`
+
+LIMITATIONS: 无
+```

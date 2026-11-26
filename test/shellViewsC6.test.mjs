@@ -29,13 +29,10 @@ function settingsFixture() {
   let shelf = null
   let aggregation = null
   let governance = null
-  const SETTINGS_GROUPS = [
-    { id: 'app', label: '本体设置', hint: '', sections: [{ id: 'appearance', label: '外观', hint: '皮肤' }, { id: 'about', label: '关于', hint: '版本' }] },
-    { id: 'plugins', label: '插件中心', hint: '', sections: [{ id: 'governance', label: '插件治理台', hint: '能力图 · 启停 · 依赖 · 设置指路' }] }
-  ]
+  // OS-204：SETTINGS_GROUPS 入参随 scope 收敛删除；导航真源在 views/settingsViews.mjs。
   const views = createSettingsViews({
     state, agent, esc, text, uiKit: () => kit, runtimeShelf: () => shelf, moduleOn: () => true,
-    hiddenModules: () => new Set(), WORKBENCH_MODULES: [], SETTINGS_GROUPS, scriptPrefs: () => ({}),
+    hiddenModules: () => new Set(), WORKBENCH_MODULES: [], scriptPrefs: () => ({}),
     dirWork: () => null, castColorOf: () => ({}), settingsScriptSectionHtml: noop, settingRuntimeKind: () => 'pi',
     probeBadgeLabel: () => '未测试', comfyNodeMapText: () => '', typographyState: () => ({ ui: 'comfortable', doc: 'm' }),
     docPrefSlidersHtml: () => '<div class="sliders"></div>', syncPolicy: () => ({ checkOn: 'enter', action: 'remind' }),

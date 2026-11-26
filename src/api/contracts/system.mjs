@@ -270,7 +270,8 @@ export const systemEndpoints = {
     // 也不回库路径——前端与外部探针同源探测「daemon 活着＋连的是第几代」
     // （OS-93 事故：多 daemon 竞听 8807，页面拿到混合包；generation 让旧代可被识别）。
     request: { query: {} },
-    response: { ok: 'true', pid: 'integer', port: 'integer', generation: 'integer', startedAt: 'string', uptimeMs: 'integer' },
+    // OS-204：appVersion 取自 package.json，daemon 启动时读一次；其余进程事实字段不动。
+    response: { ok: 'true', pid: 'integer', port: 'integer', generation: 'integer', startedAt: 'string', uptimeMs: 'integer', appVersion: 'string' },
     errors: []
   }
 }
