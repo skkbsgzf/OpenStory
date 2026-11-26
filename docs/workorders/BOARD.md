@@ -189,6 +189,8 @@
 | 4 | [OS-209](OS-209-write-governance-mcp-tests.md) | 写入/治理/恢复/迁移/41 模块端点停用恢复/MCP 隔离数据工具矩阵 | 高 | **已验收** `5993357`（[记录](OS-209-acceptance.md)） |
 | 5 | [OS-210](OS-210-ci-report-docs.md) | CI 隔离 e2e＋browser job、报告完整性门禁、文档与数字锚收口 | 中 | **已验收**（[记录](OS-210-acceptance.md)） |
 
+**第五批已收口（2026-11-26）**：OS-206～210 五张单全部验收；真实 Chromium 34/34（47 viewport／34 截图）、页面必需 API 22 项、41 模块端点停用恢复、MCP 24 工具隔离链路全绿；全量 930 例／928 过／2 跳过／0 挂、门禁 29/0/0、隔离 E2E 23/23。五张实施提交未 push。总验收见 [batch5-final-acceptance.md](batch5-final-acceptance.md)。
+
 **出口条件（六句）**见规划 §4；**不做**：不引 npm 浏览器框架、不做像素 diff、不连 8807、不写真实库。
 
 ## 挂账（不排期，动工前先在此登记）
