@@ -559,7 +559,7 @@ const tools = [
   {
     name: 'openstory_skills_list',
     title: '技能清单',
-    description: '列出本机技能货架的全部配方（32 个内置＋2 套件捆绑：技法 craft/审阅 review/改写 transform/抽取 extract/操作说明书 operate 五类，含文风包）。返回 name/description/category/genres/stage/version/vendor。开工前先看清单，再用 openstory_skills_read 读全文——选技能靠 description，别凭名字猜。可按体裁过滤。operate 是只读说明书，不自动注入 prompt，写操作只按其声明的官方 MCP 工具＋确认级别执行。',
+    description: '列出本机技能货架的全部配方（33 个内置＋2 套件捆绑：技法 craft/审阅 review/改写 transform/抽取 extract/操作说明书 operate 五类，含文风包）。返回 name/description/category/genres/stage/version/vendor。开工前先看清单，再用 openstory_skills_read 读全文——选技能靠 description，别凭名字猜。可按体裁过滤。operate 是只读说明书，不自动注入 prompt，写操作只按其声明的官方 MCP 工具＋确认级别执行。',
     inputSchema: {
       type: 'object',
       properties: {
@@ -717,6 +717,104 @@ const tools = [
         body: cleanBody({ root, primaryCarrier: args.primaryCarrier.trim(), expectedRevision: args.expectedRevision })
       })
       return { document: payload.document, enabled: payload.enabled ?? [] }
+    }
+  },
+
+  /* ---------- OS-222：升级确认链（diagnose→plan→confirm→apply→status/backup verify） ---------- */
+  {
+    name: 'openstory_upgrade_diagnose',
+    title: '只读升级诊断',
+    description: '诊断一个库的旧布局/能力迁移现状（会动哪些文件、冲突、备份范围、风险）。**零写入**：不升级、不建备份、不写 journal。',
+    inputSchema: {
+      type: 'object',
+      properties: { root: { type: 'string', description: '库根目录绝对路径' } },
+      required: ['root'],
+      additionalProperties: false
+    },
+    async run(args) {
+      const root = requireRoot(args)
+      const payload = await daemon('/api/library/upgrade-diagnose', { query: { root } })
+      return { spec: payload.spec, root: payload.root, section: payload.section, writes: payload.writes }
+    }
+  },
+  {
+    name: 'openstory_upgrade_plan',
+    title: '只读升级计划',
+    description: '产出整库升级计划（planId ＋ 文件/迁移器摘要绑定），零写入；planId 供 openstory_upgrade_apply 复核。文件一变 planId 即失效，需重新出计划。',
+    inputSchema: {
+      type: 'object',
+      properties: { root: { type: 'string', description: '库根目录绝对路径' } },
+      required: ['root'],
+      additionalProperties: false
+    },
+    async run(args) {
+      const root = requireRoot(args)
+      const payload = await daemon('/api/library/upgrade-plan', { method: 'POST', body: { root } })
+      return { plan: payload.plan, planId: payload.planId, writes: payload.writes }
+    }
+  },
+  {
+    name: 'openstory_upgrade_apply',
+    title: '确认执行升级',
+    description: '按已预览的 planId 执行升级/能力迁移。必须 planId + confirm:\'migrate\'；服务端复核 root/文件/迁移器摘要，复用既有备份/journal/回滚；确认后零写入豁免失效。失败如实报 rolledBack。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        root: { type: 'string', description: '库根目录绝对路径' },
+        planId: { type: 'string', description: 'openstory_upgrade_plan 产出的 planId' },
+        operationId: { type: 'string', description: '可选：调用方标识，仅原样回填进返回结果，服务端不据此判重；planId 一次性，重放需重新 plan' }
+      },
+      required: ['root', 'planId'],
+      additionalProperties: false
+    },
+    async run(args) {
+      const root = requireRoot(args)
+      if (typeof args.planId !== 'string' || !args.planId.trim()) throw invalidArgs('planId')
+      // MCP 级确认闸已在 callTool 用注册表门槛（migrate）验过 confirm 实参；
+      // 这里转成 daemon apply 契约要求的布尔 confirm:true（confirm 不转发给 daemon）。
+      const body = cleanBody({ root, planId: args.planId.trim(), operationId: args.operationId, confirm: true })
+      const payload = await daemon('/api/library/upgrade-apply', { method: 'POST', body })
+      return {
+        spec: payload.spec, outcome: payload.outcome, planId: payload.planId,
+        libraryUpgrade: payload.libraryUpgrade ?? null, capabilityMigrations: payload.capabilityMigrations ?? [],
+        journals: payload.journals, backups: payload.backups, rolledBack: payload.rolledBack,
+        rollbackErrors: payload.rollbackErrors, message: payload.message
+      }
+    }
+  },
+  {
+    name: 'openstory_upgrade_status',
+    title: '升级/迁移状态',
+    description: '只读查升级标记、能力 journal、dataVersions、DATA_VERSION_AHEAD、失败/回滚与备份路径。不写盘、不跑迁移；坏档以 issues 如实报出。',
+    inputSchema: {
+      type: 'object',
+      properties: { root: { type: 'string', description: '库根目录绝对路径' } },
+      required: ['root'],
+      additionalProperties: false
+    },
+    async run(args) {
+      const root = requireRoot(args)
+      const payload = await daemon('/api/library/migration-status', { query: { root } })
+      return { status: payload }
+    }
+  },
+  {
+    name: 'openstory_upgrade_backup_verify',
+    title: '备份校验',
+    description: '只读校验 .history 下升级/能力备份：逐文件 sha256/大小，与 journal 写前哈希核对，缺备份/哈希不符如实报 issues。可给 backup 只看一份（库内相对路径）。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        root: { type: 'string', description: '库根目录绝对路径' },
+        backup: { type: 'string', description: '可选：库内 .history/… 相对路径，只校验这一份备份' }
+      },
+      required: ['root'],
+      additionalProperties: false
+    },
+    async run(args) {
+      const root = requireRoot(args)
+      const payload = await daemon('/api/library/migration-backups', { query: { root, backup: args.backup } })
+      return { healthy: payload.healthy, backups: payload.backups, issues: payload.issues, writes: payload.writes }
     }
   },
 
@@ -1514,6 +1612,7 @@ const INSTRUCTIONS = [
   '世界书只单向链小说：世界书可 [[正文/...]]，正文不要回挂世界书。',
   '技能货架用 openstory_skills_list/read 按需读取：craft 可注入 prompt；operate 是只读操作说明书，不注入、不执行代码，写操作只准调用其声明的官方 MCP 工具并按 confirm 级别经作者确认。',
   '从空目录建项目先 openstory_skills_read {name:"build-project"}：它是基于当前 tools/list 的官方构建说明书，含 60 工具速查表、写红线、幂等与失败恢复。',
+  '升级/迁移既有项目先 openstory_skills_read {name:"update-project"}：只读诊断→计划→作者确认→apply→状态/备份核对；只声明升级五工具，apply 需 confirm:"migrate"，禁止 shell/fs 改稿、跳过确认或自动降级。',
   '模块级使用说明见仓 docs/mcp/*.md；工具参数、确认与错误语义以 tools/list 为准。'
 ].join('\n')
 

@@ -3,11 +3,11 @@
 | 项 | 值 |
 |---|---|
 | 批次 | OS-211～231；阶段 B |
-| 执行 | workflow 施工；dsv4flash / hy4flash 交替，对方模型评审 |
+| 执行 | workflow 方案 C；dsv4flash / hy4flash 交替施工，波末由对方模型汇总独立评审 |
 | 依赖 | OS-220 |
-| 允许改动 | `src/api/contracts/**`、`src/api/handlers/**`、`src/host/libraryMigrations.mjs`、`src/host/moduleRuntime.mjs`、`src/protocol/capabilityMigration.mjs`、`src/protocol/libraryUpgrade.mjs`、`test/**`、相关文档与数字锚 |
+| 允许改动 | `src/api/contracts/**`、`src/api/contracts.mjs`（仅追加迁移状态错误码）、`src/api/handlers/**`、`src/host/libraryMigrations.mjs`、`src/host/moduleRuntime.mjs`、`src/host/daemon.mjs`（仅两个只读迁移观测端点跳过自动升级/迁移失败/data-ahead 前置闸，其它路由不变）、`src/host/http.mjs`（仅新错误码 HTTP 映射）、`src/protocol/capabilityMigration.mjs`、`src/protocol/libraryUpgrade.mjs`、`tools/acceptance/moduleCoverage.mjs`（仅新增宿主端点分组与理由，不改判定逻辑）、`test/**`、相关文档与数字锚 |
 | 风险 | 高——迁移状态与备份读取 |
-| 状态 | 待施工 |
+| 状态 | 已完成（监督线直做；2026-11-27） |
 
 ## 目标
 

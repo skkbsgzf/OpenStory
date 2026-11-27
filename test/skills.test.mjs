@@ -143,22 +143,36 @@ domain: 第3章#tag
   assert.equal(parsed.skill.domain, '第3章#tag', '值内的 # 不是注释（前面无空白）')
 })
 
-test('内置货架：32 个技能全部合规，五类齐全（含 build-project operate 正片）', () => {
+test('内置货架：33 个技能全部合规，五类齐全（含 build-project / update-project 两份 operate 正片）', () => {
   const { skills, warnings } = loadSkills([builtinSkillsDir()])
   assert.equal(warnings.length, 0, `不应有 warning：${JSON.stringify(warnings)}`)
-  assert.equal(skills.length, 32)
+  assert.equal(skills.length, 33)
   const byCat = {}
   for (const skill of skills) (byCat[skill.category] ||= []).push(skill.name)
   assert.equal(byCat.craft.length, 21, 'craft：剧本/分镜/去AI/信息投放/文风延续/冷感短句/番茄套路/需求铁律/套路设计法/文风×11（彭湃+女频短篇×3+长篇头部×7）')
   assert.equal(byCat.transform.length, 5, 'transform：改写/大纲/世界书/场景扩写/humanizer（OS-212 归位）')
   assert.equal(byCat.review.length, 3, 'review：连续性/一致性/爽文自检')
   assert.equal(byCat.extract.length, 2, 'extract：fact 抽取/采集质量守则')
-  assert.equal(byCat.operate?.length ?? 0, 1, 'OS-216：build-project 是第一个 operate 正片')
+  assert.equal(byCat.operate?.length ?? 0, 2, 'OS-216/223：build-project 与 update-project 两份 operate 正片')
   const buildProject = skills.find((skill) => skill.name === 'build-project')
   assert.equal(buildProject.category, 'operate')
   assert.equal(buildProject.confirm, 'restore')
-  assert.equal(buildProject.tools.length, MCP_TOOL_NAMES.length, 'build-project 必须声明全部构建工具')
-  assert.deepEqual(buildProject.tools.slice().sort(), MCP_TOOL_NAMES.slice().sort(), '声明工具必须与真实 tools/list 逐名一致')
+  // OS-222：升级五工具归 OS-223 的 update-project 说明书，不属于构建域；
+  // build-project 仍必须逐名声明全部**非升级**工具（不是子集/数量比较）。
+  const buildToolNames = MCP_TOOL_NAMES.filter((name) => !name.startsWith('openstory_upgrade_'))
+  assert.equal(buildProject.tools.length, buildToolNames.length, 'build-project 必须声明全部构建工具')
+  assert.deepEqual(buildProject.tools.slice().sort(), buildToolNames.slice().sort(), '声明工具必须与真实非升级 tools/list 逐名一致')
+  // OS-223：update-project 只声明升级五工具，confirm 必须为 migrate（apply 门槛）。
+  const upgradeToolNames = MCP_TOOL_NAMES.filter((name) => name.startsWith('openstory_upgrade_'))
+  assert.equal(upgradeToolNames.length, 5, '真实注册表须恰好五把升级工具')
+  const updateProject = skills.find((skill) => skill.name === 'update-project')
+  assert.ok(updateProject, 'OS-223：update-project 必须可装载')
+  assert.equal(updateProject.category, 'operate')
+  assert.equal(updateProject.confirm, 'migrate', 'apply 门槛 migrate，声明确认级别必须达到')
+  assert.equal(updateProject.tools.length, upgradeToolNames.length, 'update-project 必须声明全部升级工具')
+  assert.deepEqual(updateProject.tools.slice().sort(), upgradeToolNames.slice().sort(), 'update-project 声明工具必须与真实升级 tools/list 逐名一致')
+  assert.ok(!updateProject.tools.some((name) => !name.startsWith('openstory_upgrade_')), 'update-project 不得夹带非升级工具')
+  for (const tool of updateProject.tools) assert.ok(MCP_TOOL_NAMES.includes(tool), `update-project 声明的 ${tool} 不在 MCP 注册表`)
   for (const expected of ['screenplay-craft', 'storyboard-craft', 'de-ai-writing', 'humanizer', 'shuangwen-chapter-check', 'info-reveal-budget', 'rule-horror-cold-prose', 'prose-continuity-rules', 'fanqie-pattern-playbook', 'reader-needs-ironrules', 'pattern-design-method', 'style-yishou-micheng', 'fact-extraction-quality', 'style-wangbuliao-baiyue', 'style-nianshang-yinshi', 'style-moshi-danmu', 'style-rejinzhi', 'style-fengpi-fanpai', 'style-huanqin-baofu', 'style-chixie-rusong', 'style-da-qin-yaoren', 'style-shangan-guanchang', 'style-shangjiao-guojia']) {
     assert.ok(skills.some((skill) => skill.name === expected), `缺 ${expected}`)
   }
@@ -175,6 +189,77 @@ test('内置货架：32 个技能全部合规，五类齐全（含 build-project
   assert.ok(categoryLine, 'PROTOCOL frontmatter 示例缺 category 行')
   const documented = categoryLine.slice(categoryLine.indexOf('# ') + 2).split('｜').map((item) => item.trim())
   assert.deepEqual(documented, [...SKILL_CATEGORIES], 'PROTOCOL category 表必须与 SKILL_CATEGORIES 逐项一致（数量、顺序）')
+})
+
+test('OS-223：update-project 说明书覆盖流程/结果语义/禁止/故障，且不复制迁移实现', () => {
+  const { skills } = loadSkills([builtinSkillsDir()])
+  const skill = skills.find((item) => item.name === 'update-project')
+  assert.ok(skill, 'update-project 必须可装载')
+  const body = skill.body
+  // 标准流程五工具顺序齐全，且 apply 前必须等作者确认。
+  for (const tool of ['openstory_upgrade_diagnose', 'openstory_upgrade_plan', 'openstory_upgrade_apply',
+    'openstory_upgrade_status', 'openstory_upgrade_backup_verify']) {
+    assert.ok(body.includes(tool), `说明书正文缺工具 ${tool}`)
+  }
+  assert.ok(body.includes('作者确认'), '必须声明 apply 前等待作者确认')
+  assert.ok(/等作者明确同意/u.test(body), '必须明确"未确认不 apply"')
+  // OS-223 评审修正：结果语义必须与服务端真实 outcome 取值对账，不能只点字面量。
+  const impl = readFileSync(new URL('../src/host/libraryMigrations.mjs', import.meta.url), 'utf-8')
+  const serverOutcomes = new Set()
+  for (const line of impl.split('\n')) {
+    if (/^\s*(\/\/|\*|\/\*)/u.test(line)) continue // 跳过注释行（JSDoc 里也列了这些值）
+    if (!/\.outcome\s*=|\boutcome\s*:/u.test(line)) continue
+    for (const match of line.matchAll(/'([a-z][a-z-]*)'/gu)) serverOutcomes.add(match[1])
+  }
+  assert.deepEqual([...serverOutcomes].sort(),
+    ['conflict', 'idempotent', 'rollback-incomplete', 'rolled-back', 'success'],
+    '服务端 outcome 取值集合漂移，说明书须同步核对')
+  // 说明书「结果语义」表首列（反引号取值）必须与服务端逐项一致。
+  const section = body.split('## 3. 结果语义')[1]?.split('\n## ')[0] ?? ''
+  const documentedOutcomes = new Set([...section.matchAll(/^\|\s*`([a-z][a-z-]*)`\s*\|/gmu)].map((match) => match[1]))
+  assert.deepEqual([...documentedOutcomes].sort(), [...serverOutcomes].sort(),
+    '说明书 outcome 表必须与服务端实现逐项一致')
+  for (const value of serverOutcomes) assert.ok(body.includes(value), `说明书正文缺 outcome ${value}`)
+  // 三个不存在的取值不得被当成 outcome（服务端从不产出，说明书也不得列为结果取值）。
+  for (const fake of ['applied', 'up-to-date', 'duplicate']) {
+    assert.ok(!documentedOutcomes.has(fake), `${fake} 不是服务端 outcome，不得列为结果取值`)
+  }
+  // 一次性 planId 与 operationId 非判重：文档声明必须与实际实现一致。
+  assert.match(body, /planId 是一次性的/u, '必须声明 planId 一次性')
+  assert.match(body.replace(/\*/gu, ''), /服务端不据此判重/u, '必须声明 operationId 不判重')
+  assert.match(impl, /plansById\.delete\(plan\.planId\)/u, '服务端须确实一次性作废 planId')
+  assert.doesNotMatch(impl, /outcome\s*[:=]\s*'duplicate'/u, '服务端不得产出 duplicate outcome')
+  // 五类禁止与四类故障上报齐全。
+  for (const term of ['shell', '.history', 'skipped', 'down migration', 'DATA_VERSION_AHEAD',
+    'MIGRATION_RECOVERY_FAILED', 'rolledBack:false', '备份缺失']) {
+    assert.ok(body.includes(term), `禁止/故障条缺 ${term}`)
+  }
+  // 说明书不复制迁移变换/恢复实现：正文不得声称自带实现或执行代码。
+  assert.match(body, /复制迁移\/恢复实现/u, '必须声明不复制实现')
+  assert.doesNotMatch(body, /function\s+\w+|=>\s*\{/u, '说明书不得夹带可执行代码')
+  // 速查表存在且只列五把升级工具。
+  const cheat = readFileSync(new URL('../skills/update-project/references/tool-cheatsheet.md', import.meta.url), 'utf-8')
+  const cheatTools = [...cheat.matchAll(/openstory_upgrade_[a-z_]+/gu)].map((m) => m[0])
+  for (const tool of cheatTools) assert.ok(skill.tools.includes(tool), `速查表出现未声明工具 ${tool}`)
+  assert.equal(new Set(cheatTools).size, 5, '速查表只列五把升级工具')
+})
+
+test('OS-223 反例：未声明/危险工具与不足确认按 fail-closed 拒绝', () => {
+  const mk = (body) => `---\n${body}\n---\n\n正文`
+  const rejected = (raw, code, label) => {
+    const parsed = parseSkillMarkdown(raw, { source: '探针', dir: 'x' })
+    assert.equal(parsed.ok, false, `${label} 必须拒绝装载`)
+    assert.equal(parsed.warning.code, code, `${label} 拒绝码`)
+  }
+  // 声明非升级工具但 confirm 不足 → 写工具门槛不满足，拒绝。
+  rejected(mk('name: x\ndescription: d\ncategory: operate\ntools: [openstory_upgrade_apply]\nconfirm: create'),
+    'SKILL_WRITE_WITHOUT_CONFIRM', 'apply 声明 confirm:create（门槛 migrate）')
+  // 未声明的 shell/fs 伪装 → 非 MCP 工具名，拒绝。
+  rejected(mk('name: x\ndescription: d\ncategory: operate\ntools: [Bash, openstory_upgrade_plan]\nconfirm: migrate'),
+    'SKILL_TOOLS_NOT_MCP', 'shell 伪装 Bash')
+  // 未声明的真实 MCP 工具也不许出现在 operate 白名单之外（只读工具可读，但这里用未知名验证分类闸）。
+  rejected(mk('name: x\ndescription: d\ncategory: operate\ntools: [openstory_ghost_tool]\nconfirm: migrate'),
+    'SKILL_TOOL_UNCLASSIFIED', '未知工具未在注册表分类')
 })
 
 test('OS-172：产品作者身份与依赖声明', () => {
@@ -224,7 +309,7 @@ test('装载：本机覆盖内置；目录名与 name 不一致的拒收', async
     assert.equal(demo.description, '本机改写版')
     assert.ok(warnings.some((warning) => warning.code === 'SKILL_NAME_MISMATCH'))
 
-    // OS-212：临时 operate fixture 验证工具白名单与确认级别（正片 OS-216/OS-223 未建，先用夹具）。
+    // OS-212：临时 operate fixture 验证工具白名单与确认级别（正片 build-project/OS-223 update-project 已建；夹具保留作 fail-closed 边界探针）。
     // 夹具按 fail-closed 口径写成**合法形状**：写工具 openstory_novel_write_chapter 的
     // requiredConfirm=create，故 confirm 至少 create；不是靠放宽校验迁就旧夹具。
     const fixture = `---
@@ -452,7 +537,7 @@ test('daemon 端到端：列技能（体裁过滤）→ 取全文 → 未知技�
   try {
     const all = await (await fetch(`${origin}/api/skills`)).json()
     assert.equal(all.ok, true)
-    assert.equal(all.skills.length, 34) // 32 内置（含 build-project）＋写作/编剧套件捆绑 2（OS-68）
+    assert.equal(all.skills.length, 35) // 33 内置（含 build-project/OS-223 update-project）＋写作/编剧套件捆绑 2（OS-68）
     assert.ok(all.skills.every((skill) => skill.body === undefined), '清单不带正文')
     // OS-212：确认级别与工具声明必须随唯一读路径（/api/skills 清单）抵达调用方，
     // 否则 Agent 拿到清单却不知道 operate 说明书的写权限边界。
@@ -466,7 +551,7 @@ test('daemon 端到端：列技能（体裁过滤）→ 取全文 → 未知技�
     assert.ok(drama.skills.some((skill) => skill.name === 'storyboard-craft'), '分镜在短剧体裁可用')
     const featureOnly = all.skills.filter((skill) => skill.genres.length && !skill.genres.includes('*'))
     assert.ok(featureOnly.length >= 2, '有技能声明了具体体裁')
-    assert.equal(drama.skills.length, 19, '短剧：排除长篇/短篇专属 13 个，其余 18 个兼容（含套件捆绑 2＋visual-describe）')
+    assert.equal(drama.skills.length, 20, '短剧：排除长篇/短篇专属 13 个，其余 19 个兼容（含套件捆绑 2＋visual-describe＋OS-223 update-project）')
     assert.ok(!drama.skills.some((skill) => skill.name === 'rule-horror-cold-prose'), '长篇专属技能在短剧下被过滤')
 
     const one = await (await fetch(`${origin}/api/skill?name=screenplay-craft`)).json()

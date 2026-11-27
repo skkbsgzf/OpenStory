@@ -12,17 +12,17 @@
     "hostComposition": 2
   },
   "endpoints": {
-    "total": 112,
+    "total": 117,
     "moduleOwned": 45,
-    "hostOwned": 67,
+    "hostOwned": 72,
     "hostDomain": 0,
     "hostDomainIds": []
   },
-  "testFiles": 130,
+  "testFiles": 131,
   "gateCount": 29,
   "tests": {
-    "total": 983,
-    "pass": 981,
+    "total": 1017,
+    "pass": 1015,
     "fail": 0,
     "skipped": 2,
     "ok": true,

@@ -82,7 +82,7 @@
 2. 不执行 git 写操作、不 push/tag、不碰 `.zcode/`、不连/不重启 8807；只用临时库、临时 `LOCALAPPDATA`、port:0 daemon。
 3. 零新增 npm 依赖、零构建；`package.json` 版本/依赖不动；`public/app.js` 只减不增，新渲染进 views/modules。
 4. 既有端点与 MCP 工具名不改，只新增；写操作遵守备份、授权、模块闸与错误信封。
-5. 每波跑全量 `npm test`；数字锚由指定 agent 单独维护后再跑全量。阶段末跑验收、arch、number anchors、CI 结构与对应 E2E；阶段 C 跑完整浏览器矩阵。
+5. 施工与波末只跑定向检查；数字锚在阶段收口统一维护。阶段末跑全量测试、验收、arch、number anchors、CI 结构与对应 E2E；阶段 C 跑完整浏览器矩阵。
 6. Workflow 只施工、评审、跑门禁、产出报告，不提交；监督线独立复核后提交。
 
 ## 5. 出口条件

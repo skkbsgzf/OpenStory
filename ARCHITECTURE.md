@@ -53,15 +53,15 @@
 <!-- arch-stats:start -->
 | 分工 | 范围 | 文件数 | 行数 |
 |---|---|---:|---:|
-| 底座 | `src/host/`＋`src/kernel/` | 28 | 5,332 |
-| 契约 | `src/api/` | 18 | 3,995 |
-| 协议 | `src/protocol/` | 35 | 6,372 |
+| 底座 | `src/host/`＋`src/kernel/` | 28 | 6,429 |
+| 契约 | `src/api/` | 18 | 4,237 |
+| 协议 | `src/protocol/` | 36 | 7,241 |
 | 内核件（class: kernel，7） | `src/modules/agent-runtime/`＋`src/modules/deduce/`＋`src/modules/fact/`＋`src/modules/media/`＋`src/modules/prose/`＋`src/modules/storage/`＋`src/modules/text/` | 59 | 11,315 |
 | 工作台（class: workbench，12） | `src/modules/analysis/`＋`src/modules/artifacts/`＋`src/modules/chapters/`＋`src/modules/exchange/`＋`src/modules/habits/`＋`src/modules/imagegen/`＋`src/modules/knowledge/`＋`src/modules/log/`＋`src/modules/roleplay/`＋`src/modules/script/`＋`src/modules/storysource/`＋`src/modules/worldbook/` | 33 | 4,248 |
 | 宿主组合面（恒启） | `src/modules/agentbar/`＋`src/modules/library/` | 5 | 1,172 |
 | 套件模块（class: suite） | `src/modules/` | 0 | 0 |
 | 服务 | `src/services/` | 7 | 1,908 |
-| 套件资源 | `suites/`＋`styles/`＋`runtimes/`＋`genres/`＋`skills/` | 60 | 3,159 |
+| 套件资源 | `suites/`＋`styles/`＋`runtimes/`＋`genres/`＋`skills/` | 62 | 3,284 |
 | 设计令牌 | `design-system/` | 3 | 138 |
 | 前端 | `public/` | 32 | 21,542 |
 | 磁盘库 | 库＝文件夹（无代码） | — | — |
@@ -70,8 +70,8 @@
 |---|---:|
 | `public/app.js` 行数 | 10,044 |
 | `public/views/*.mjs` 文件数 | 17 |
-| 契约端点数（`ENDPOINTS` 键数） | 112 |
-| 测试文件数（`test/*.test.mjs`） | 130 |
+| 契约端点数（`ENDPOINTS` 键数） | 117 |
+| 测试文件数（`test/*.test.mjs`） | 131 |
 
 **模块清单（由 `src/modules/*/module.manifest.json` 自动生成）**
 
@@ -99,7 +99,7 @@
 | text | kernel | 0 | — | 0 |
 | worldbook | workbench | 7 | worldbook | 0 |
 
-合计 21 份 manifest（7 kernel + 12 workbench + 2 host-composition）；45 个模块独占端点，67 个宿主自有端点，端点覆盖 112/112。
+合计 21 份 manifest（7 kernel + 12 workbench + 2 host-composition）；45 个模块独占端点，72 个宿主自有端点，端点覆盖 117/117。
 kernel 能力声明：agent.runtime@1 / deduce.engine@1 / fact.store@3 / fact.pack@1 / fact.enrich@1 / fact.engine@1 / fact.books@1 / fact.write@1 / fact.domain@1 / media.generate@1 / media.describe@1 / prose.write@1 / storage.roots@1 / library.list@1 / storage.scaffold@1 / storage.inventory@1 / text.analyze@1。
 `app.js` 当前上限 10,500 行（只降不升），当前实测 10,044 行。
 <!-- arch-stats:end -->

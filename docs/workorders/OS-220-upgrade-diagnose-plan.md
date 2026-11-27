@@ -3,11 +3,11 @@
 | 项 | 值 |
 |---|---|
 | 批次 | OS-211～231；阶段 B |
-| 执行 | workflow 施工；dsv4flash / hy4flash 交替，对方模型评审 |
+| 执行 | workflow 方案 C；dsv4flash / hy4flash 交替施工，波末由对方模型汇总独立评审 |
 | 依赖 | 无 |
 | 允许改动 | `src/protocol/libraryUpgrade.mjs`、`src/protocol/capabilityMigration.mjs`、`src/host/libraryMigrations.mjs`、`src/host/moduleRuntime.mjs`、新升级计划模块、`test/libraryUpgrade.test.mjs`、`test/capabilityMigration*.test.mjs`、相关文档与数字锚 |
 | 风险 | 高——升级前预览必须零写入 |
-| 状态 | 待施工 |
+| 状态 | 已完成（监督线直做；2026-11-27） |
 
 ## 目标
 

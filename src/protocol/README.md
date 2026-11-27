@@ -52,7 +52,7 @@
 | `capabilityGraph.mjs` | 不可变能力快照与三检查＋候选启停事务，覆盖冲突不能由被覆盖方裁决。 |
 | `capabilityResolver.mjs` | 按区间解析 provider 的冻结薄代理，句柄绑定不可变快照。 |
 | `capabilityImplementations.mjs` | 内核实现的唯一静态入口登记表（R-a 的唯一例外）。 |
-| `capabilityMigration.mjs` | 覆盖迁移器的失败安全阀与 journal（I/O 例外），升级失败必须如实回滚。 |
+| `capabilityMigration.mjs` | 覆盖迁移器的失败安全阀与 journal（I/O 例外），升级失败必须如实回滚；OS-221 起同文件提供只读 `readMigrationJournalFile`（坏 journal 与缺失分开报）。 |
 | `baseCapabilities.mjs` | `base.process/loader/contract/write/naming` 五项底座句柄的装配处。 |
 | `dependencyGraph.mjs` | 套件依赖闭包，装载前解析依赖而不在执行时猜。 |
 | `plugins.mjs` | 插件/货架只读聚合与来源投影，插件系统自身不能被插件管理。 |
@@ -60,7 +60,8 @@
 | `shelfManifests.mjs` | 五类货架投影成同一份 `module@2` 清单；`loadRuntimeKitFacts` 是 runtime kit 清单的底座只读口，sidecar 生命周期不在本层。 |
 | `slots.mjs` | slot 注册表，页面嵌入点只有一处声明。 |
 | `naming.mjs` | 命名单一真源取表口（`public/views/registry.mjs` 只读 re-export），四层同名。 |
-| `libraryUpgrade.mjs` | 旧库一次性升级（I/O 例外：备份/迁移/退役留档/回滚），旧名只允许在这里出现。 |
+| `libraryUpgrade.mjs` | 旧库一次性升级（I/O 例外：备份/迁移/退役留档/回滚），旧名只允许在这里出现；OS-220 起同文件提供只读 `diagnoseLibraryUpgrade`（零写入预览，共用同一套判定），OS-221 起提供只读 `readUpgradeStatus`（marker/备份状态，零写入）。 |
+| `upgradePlan.mjs` | 升级计划纯核心（OS-220）：planId 绑定受影响文件/迁移器摘要、时间派生命名归一、执行前漂移比对；零 I/O、零写盘。 |
 
 ### 与工作台无关的格式/路径纯函数（OS-195 由模块下沉，OS-195a 保留在底座的两件）
 

@@ -46,6 +46,11 @@ export const HOST_OWNED_ENDPOINTS = Object.freeze({
   '插件系统自身（插件货架/套件状态不能被插件自己管）': [
     'pluginsGet', 'suitesGet', 'suiteSettingsPut', 'suiteStatePut'
   ],
+  '库升级与能力迁移（跨模块数据版本治理，宿主 journal/备份/回滚真源直管，不属于单一工作面）': [
+    'libraryMigrationStatusGet', 'libraryMigrationBackupsGet',
+    // OS-222：预览零写入、apply 显式确认后复用宿主 journal/备份/回滚，不归任何工作面。
+    'libraryUpgradeDiagnose', 'libraryUpgradePlan', 'libraryUpgradeApply'
+  ],
   '本机模块根信任表（OS-196：机器级授权，未登记不扫描；只能由宿主治理）': [
     'moduleRootsGet', 'moduleRootsPreview', 'moduleRootsAdd', 'moduleRootsRemove', 'moduleRootsRefresh'
   ],

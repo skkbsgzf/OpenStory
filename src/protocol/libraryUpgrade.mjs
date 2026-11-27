@@ -4,6 +4,8 @@ import { basename, extname, join, relative, resolve, sep } from 'node:path'
 import { atomicWriteFile } from './hostWrite.mjs'
 import { LOG_MODULES, namingEntry } from './naming.mjs'
 import { logFilePath, recordChange } from './changelog.mjs'
+import { sha256 } from './upgradePlan.mjs'
+import { buildPlan } from './upgradePlan.mjs'
 
 const STORAGE = namingEntry('libraryStorage')
 export const LIBRARY_UPGRADE_SPEC = 'openstory.library-upgrade/v1'
@@ -351,7 +353,7 @@ async function mergeTree(root, source, target, journal, io, operation, conflicts
         continue
       }
       to = uniquePath(wanted, stamp)
-      conflicts.push({ from: relPath(root, from), to: relPath(root, to), reason: '同名冲突，旧文件加后缀保留' })
+      conflicts.push({ kind: 'name-conflict', from: relPath(root, from), to: relPath(root, to), reason: '同名冲突，旧文件加后缀保留', blocking: false })
     }
     journal.push({ kind: 'move', from, to })
     operation(`move:${relPath(root, from)}`)
@@ -515,6 +517,18 @@ async function runUpgrade(root, options = {}) {
     const legacy = await inspectLegacy(root, io)
     if (!legacy.needed) return { ok: true, upgraded: false, alreadyUpgraded: legacy.alreadyUpgraded === true, report: null }
 
+    // OS-220：动笔之前先出只读计划（同一套 inspect/改写判定，零写入）。
+    // 这是真实请求路径上的调用点（daemon 首次打开旧库 → ensureLibraryUpgraded →
+    // upgradeLibrary；以及 /api/library/diagnose → diagnoseLibrary → upgradeLibrary）：
+    // 作者在看到任何副作用之前就能拿到「会动哪些文件、有什么冲突、备份在哪」。
+    // 计划失败绝不放宽升级本身：拿不到就如实 plan:null，升级按原路径继续。
+    let plan = null
+    try {
+      plan = buildSelfPlan(root, await diagnoseLibraryUpgrade(root, { now }), now)
+    } catch {
+      plan = null
+    }
+
     phase = 'backup'
     const historyPath = join(root, '.history')
     historyExisted = await exists(historyPath)
@@ -604,7 +618,7 @@ async function runUpgrade(root, options = {}) {
       }
     })
     if (!logged.ok) throw new Error(`升级变更日志写入失败：${logged.message}`)
-    return { ok: true, upgraded: true, report }
+    return { ok: true, upgraded: true, report, plan }
   } catch (error) {
     if (phase === 'backup') {
       await rm(backup, { recursive: true, force: true }).catch(() => {})
@@ -622,6 +636,502 @@ async function runUpgrade(root, options = {}) {
         ? `库升级在「${phase}」阶段失败，已原样回滚：${text(error?.message || error)}`
         : `库升级在「${phase}」阶段失败，回滚也未完成：${text(error?.message || error)}`
     }
+  }
+}
+
+/**
+ * OS-220：只读升级诊断。与 `runUpgrade` 共用同一套判定（`inspectLegacy`、
+ * `transformStoredJson`、目录改名表），但**零写入**：只用 lstat/readdir/readFile，
+ * 不 mkdir、不 rename、不写 marker、不建 `.history`。
+ *
+ * 预览把「迁移后会落在哪里」算成虚拟树：先按 `copyTree`/`mergeTree` 的同一规则
+ * 规划每个文件的去向，再在这份虚拟树上跑与真实升级相同的改写判定
+ * （项目标记、wiki 谱系、存储路径键、frontmatter），因此计划里的文件与真实升级
+ * 逐一对应。`now` 只影响时间派生命名与 `updatedAt` 预测，不参与 planId 语义。
+ */
+export async function diagnoseLibraryUpgrade(root, options = {}) {
+  const target = resolve(text(root))
+  const now = options.now instanceof Date ? options.now : new Date()
+  const stamp = stampOf(now)
+  const io = {
+    readdir: options.deps?.readdir ?? readdir,
+    readFile: options.deps?.readFile ?? readFile,
+    lstat: options.deps?.lstat ?? lstat
+  }
+  const section = {
+    needed: false,
+    alreadyUpgraded: false,
+    blocking: null,
+    oldDirs: [],
+    operations: [],
+    movedFiles: [],
+    rewrites: [],
+    conflicts: [],
+    skipped: [],
+    backup: { scope: [], predictedPath: '' },
+    // 旧库升级的 journal 是进程内逆序回滚表（runUpgrade 的 `journal` 数组），
+    // 唯一持久化产物是 `.openstory/upgrade.json` 升级标记，失败时不留 journal 文件。
+    markerPath: relPath(target, join(target, STORAGE.metadataDir, 'upgrade.json')),
+    journalPath: null,
+    journalKind: 'in-memory',
+    journalPersistedAs: '',
+    risks: []
+  }
+  let legacy
+  try {
+    legacy = await inspectLegacy(target, io)
+  } catch (error) {
+    section.blocking = text(error?.message || error)
+    section.risks.push('升级标记仍在而旧目录/旧谱系名再次出现：重复迁移被拒绝，需人工检查 .openstory/upgrade.json')
+    return section
+  }
+  section.oldDirs = legacy.oldDirs ?? []
+  if (!legacy.needed) {
+    section.alreadyUpgraded = legacy.alreadyUpgraded === true || await hasUpgradeMarker(target, io)
+    if (!section.alreadyUpgraded) section.risks.push('库已是新布局：升级计划为空')
+    return section
+  }
+  section.needed = true
+  section.backup.predictedPath = relPath(target, join(target, '.history', `upgrade-${stamp}`))
+  section.journalPersistedAs = section.markerPath
+  section.backup.scope = [
+    '.pinax', STORAGE.metadataDir,
+    ...Object.keys(DIR_RENAMES).flatMap((name) => [name, DIR_RENAMES[name]])
+  ].filter((rel) => existsSync(join(target, rel)))
+
+  // 虚拟树：把升级会碰到的目录读进内存，按 runUpgrade 的同一顺序与规则演练一遍。
+  let model
+  try {
+    model = await loadVirtualTree(target, io)
+  } catch (error) {
+    section.blocking = text(error?.message || error)
+    section.skipped.push({ file: '.', reason: 'VIRTUAL_TREE_UNREADABLE', blocking: true })
+    section.risks.push('预览无法完整读取受影响目录：已阻断，避免带漏项执行')
+    return section
+  }
+  const ctx = { root: target, io, stamp, model }
+  const out = { operations: section.operations, movedFiles: section.movedFiles, conflicts: section.conflicts }
+  ctx.out = out
+  await copyTreeModel(ctx, '.pinax', STORAGE.metadataDir)
+  if (!model.has(STORAGE.metadataDir)) {
+    // 与 runUpgrade 的 ensureDirectory 对应：没有 .pinax 可搬、.openstory 也还不存在时补建。
+    model.set(STORAGE.metadataDir, { kind: 'dir' })
+    out.operations.push({ kind: 'mkdir', path: STORAGE.metadataDir })
+  }
+  // 真实升级的 migrateLegacyDirectory 复制后必退役 `.pinax`（与业务目录同一规则）。
+  retireModel(ctx, '.pinax', out)
+  for (const [oldName, newName] of Object.entries(DIR_RENAMES)) {
+    await copyTreeModel(ctx, oldName, newName)
+    retireModel(ctx, oldName, out)
+  }
+  await planModuleStateMigration(ctx, 'log', out)
+  await planModuleStateMigration(ctx, 'drafts', out)
+  await planTmpResidue(ctx, section.backup.predictedPath, out)
+
+  // 改写判定：在虚拟树的最终形状上跑与真实升级相同的判定（顺序也一致）。
+  const projectRel = `${STORAGE.metadataDir}/project.json`
+  const projectEntry = model.get(projectRel)
+  if (projectEntry?.kind === 'file') {
+    const parsed = await readJsonPreview(projectEntry.abs, io, section.skipped, projectRel)
+    if (parsed.bad) section.blocking = `项目标记不是合法 JSON：${projectRel}`
+    else {
+      // 真实升级必写 marker（updatedAt 取 now、spec 抬到 @4），计划照实预测一笔。
+      const carriers = parsed.value?.carriers && typeof parsed.value.carriers === 'object' ? parsed.value.carriers : {}
+      section.project = {
+        // 旧侧原样（旧 spec／旧 carrier 谱系名），新侧是升级后要落的值。
+        from: {
+          spec: text(parsed.value?.spec),
+          schemaVersion: parsed.value?.schemaVersion ?? null,
+          primary: carriers.primary ?? null,
+          enabled: Array.isArray(carriers.enabled) ? carriers.enabled : []
+        },
+        to: {
+          spec: STORAGE.projectSpec,
+          schemaVersion: 4,
+          primary: normalizeCarrierId(carriers.primary ?? null),
+          enabled: Array.isArray(carriers.enabled) ? carriers.enabled.map(normalizeCarrierId) : []
+        }
+      }
+      section.rewrites.push({ file: projectRel, kind: 'project-marker' })
+    }
+  } else {
+    section.risks.push('库没有 .openstory/project.json：升级不会补造项目标记')
+  }
+  for (const dir of ['世界书', '故事源', '扮演']) {
+    for (const [rel, entry] of modelEntries(model, dir)) {
+      if (!rel.endsWith('.wiki.json')) continue
+      const parsed = await readJsonPreview(entry.abs, io, section.skipped, rel)
+      if (!parsed.bad && parsed.value?.derivedFrom?.schema === LEGACY_WIKI_SCHEMA) {
+        section.rewrites.push({ file: rel, kind: 'wiki-schema' })
+      }
+    }
+  }
+  for (const dir of [STORAGE.metadataDir, '世界书', '故事源', '扮演']) {
+    for (const [rel, entry] of modelEntries(model, dir)) {
+      if (rel.endsWith('.jsonl')) {
+        const before = await io.readFile(entry.abs, 'utf-8')
+        let changed = false
+        before.split('\n').forEach((line, index) => {
+          if (!line.trim()) return
+          let document
+          try { document = JSON.parse(line) } catch (error) {
+            section.skipped.push({ file: rel, line: index + 1, reason: text(error?.message || error) })
+            return
+          }
+          try {
+            if (JSON.stringify(transformStoredJson(document)) !== JSON.stringify(document)) changed = true
+          } catch (error) {
+            section.conflicts.push({ kind: 'key-conflict', file: rel, line: index + 1, reason: text(error?.message || error), blocking: true })
+          }
+        })
+        if (changed) section.rewrites.push({ file: rel, kind: 'jsonl' })
+      } else if (rel.endsWith('.json') && rel !== projectRel && !rel.endsWith('.wiki.json')) {
+        const parsed = await readJsonPreview(entry.abs, io, section.skipped, rel)
+        if (parsed.bad) continue
+        try {
+          if (JSON.stringify(transformStoredJson(parsed.value)) !== JSON.stringify(parsed.value)) {
+            section.rewrites.push({ file: rel, kind: 'json' })
+          }
+        } catch (error) {
+          section.conflicts.push({ kind: 'key-conflict', file: rel, reason: text(error?.message || error), blocking: true })
+        }
+      }
+    }
+  }
+  const worldbookDir = namingEntry('worldbook').dir
+  for (const [rel, entry] of modelEntries(model, worldbookDir)) {
+    if (!rel.endsWith('.md')) continue
+    const before = await io.readFile(entry.abs, 'utf-8')
+    if ((before.match(/^pinaxRelationExtensions(\s*:)/gmu) ?? []).length > 0) {
+      section.rewrites.push({ file: rel, kind: 'frontmatter' })
+    }
+  }
+  if (section.conflicts.some((item) => item.blocking)) {
+    section.risks.push('存在状态键合并冲突：真实升级会在 stored-paths 阶段失败并整库回滚，必须先人工消解，否则不可执行')
+  }
+  if (section.skipped.length) {
+    section.risks.push(`有 ${section.skipped.length} 处坏 JSON/JSONL：升级会跳过这些位置（原字节保留），升级后仍需人工修复`)
+  }
+  if (section.oldDirs.length) {
+    section.risks.push(`旧业务目录将改名留档：${section.oldDirs.map((name) => `${name}→${DIR_RENAMES[name]}.retired-${stamp}`).join('、')}`)
+  }
+  section.bindings = await collectAffectedBindings(target, section, io)
+  return section
+}
+
+/** 库已在新布局且带本产品的升级标记＝一次性升级早已完成（读侧只认标记，不猜）。 */
+async function hasUpgradeMarker(root, io) {
+  const marker = join(root, STORAGE.metadataDir, 'upgrade.json')
+  let source
+  try { source = await io.readFile(marker, 'utf-8') } catch { return false }
+  try { return JSON.parse(source)?.spec === LIBRARY_UPGRADE_SPEC } catch { return false }
+}
+
+/**
+ * OS-221：升级标记的只读观测（**零写入**）。与 `inspectLegacy` 共用同一套旧库判定，
+ * 但不抛错、不建目录：把「标记缺失/损坏/已升级/重复迁移被拒」分开回报，
+ * 供迁移状态端点如实呈现。报告里只保留计数与备份路径，不携带任何稿件正文。
+ */
+export async function readUpgradeStatus(root) {
+  const target = resolve(text(root))
+  const markerPath = join(target, STORAGE.metadataDir, 'upgrade.json')
+  const out = {
+    markerPath: relPath(target, markerPath),
+    markerState: 'absent',
+    spec: '',
+    at: '',
+    backupPath: '',
+    report: null,
+    needed: false,
+    alreadyUpgraded: false,
+    repeatBlocked: false,
+    blocking: '',
+    oldDirs: []
+  }
+  let source = null
+  try {
+    source = await readFile(markerPath, 'utf-8')
+  } catch (error) {
+    if (error?.code !== 'ENOENT' && error?.code !== 'ENOTDIR') {
+      out.markerState = 'unreadable'
+      out.blocking = text(error?.message || error)
+    }
+  }
+  if (source !== null) {
+    let marker = null
+    try { marker = JSON.parse(source) } catch { marker = null }
+    if (!marker || typeof marker !== 'object' || Array.isArray(marker)) {
+      out.markerState = 'corrupt'
+    } else if (marker.spec !== LIBRARY_UPGRADE_SPEC) {
+      out.markerState = 'foreign-spec'
+      out.spec = text(marker.spec)
+    } else {
+      out.markerState = 'ok'
+      out.spec = text(marker.spec)
+      out.at = text(marker.at)
+      out.backupPath = text(marker.backup)
+      out.report = {
+        backup: text(marker.backup),
+        conflicts: Array.isArray(marker.conflicts) ? marker.conflicts.length : 0,
+        rewritten: Array.isArray(marker.rewritten) ? marker.rewritten.length : 0,
+        skipped: Array.isArray(marker.skipped) ? marker.skipped.length : 0,
+        frontmatter: Array.isArray(marker.frontmatter) ? marker.frontmatter.length : 0,
+        tmpResidue: Array.isArray(marker.tmpResidue) ? marker.tmpResidue.length : 0
+      }
+    }
+  }
+  const io = { readdir, readFile, lstat }
+  try {
+    const legacy = await inspectLegacy(target, io)
+    out.needed = legacy.needed === true
+    // 与 `diagnoseLibraryUpgrade` 同口径：标记在且无旧目录/旧谱系名也算已升级。
+    out.alreadyUpgraded = legacy.alreadyUpgraded === true || out.markerState === 'ok'
+    out.oldDirs = legacy.oldDirs ?? []
+  } catch (error) {
+    // 标记还在而旧目录/旧谱系名又出现：重复迁移被拒绝——状态必须点名，不冒充健康。
+    out.repeatBlocked = true
+    out.blocking = text(error?.message || error)
+    out.alreadyUpgraded = false
+    out.oldDirs = Object.keys(DIR_RENAMES).filter((name) => existsSync(join(target, name)))
+  }
+  return out
+}
+
+/**
+ * 受影响文件的摘要绑定（OS-220 任务 3）：键用**执行前**的库内相对路径，
+ * 值是该文件当前字节的 sha256。执行前重算即可发现「预览后有人动过稿」。
+ */
+async function collectAffectedBindings(root, section, io) {
+  const affected = new Set([
+    ...section.movedFiles.filter((item) => item.from !== item.to).map((item) => item.to),
+    ...section.rewrites.map((item) => item.file)
+  ])
+  const originalOf = new Map(section.movedFiles.map((item) => [item.to, item.from]))
+  // 一次升级可能把同一文件搬两次（.pinax/log/参考 → .openstory/log/参考 →
+  // .openstory/log/世界书）。绑定必须一路追到执行前的真实原路径，不能只取最后一段。
+  const sourceOf = (rel) => {
+    const seen = new Set()
+    let current = rel
+    while (originalOf.has(current) && !seen.has(current)) {
+      seen.add(current)
+      current = originalOf.get(current)
+    }
+    return current
+  }
+  const bindings = []
+  for (const rel of [...affected].sort()) {
+    // 计划里的路径是升级后的路径；绑定用执行前的**原路径**，执行前重算才对得上。
+    const sourceRel = sourceOf(rel)
+    let bytes
+    try { bytes = await io.readFile(join(root, sourceRel)) } catch (error) {
+      if (error?.code === 'EISDIR') {
+        // 目录退役只搬动目录项，没有「原文件字节」可绑定；目录内文件已由 movedFiles 覆盖。
+        // 不能把目录读失败当文件漂移，否则旧库的推演/等空目录会被误判阻断。
+        const info = await io.lstat(join(root, sourceRel)).catch(() => null)
+        if (info?.isDirectory()) continue
+      }
+      // 预览已判定该文件受影响却读不到：不能静默漏掉漂移绑定。
+      section.skipped.push({ file: sourceRel, reason: 'AFFECTED_FILE_UNREADABLE', blocking: true })
+      section.blocking = `受影响文件读不到：${sourceRel}`
+      continue
+    }
+    bindings.push({ id: `file:${sourceRel}`, path: sourceRel, sha256: sha256(bytes) })
+  }
+  return bindings
+}
+
+/* ---------- OS-220 虚拟树：把升级演练在内存里走一遍 ---------- */
+
+/**
+ * 虚拟树里的条目：`dir` / `file`。文件记住真实磁盘路径（`abs`，改写判定从这里读字节），
+ * 目录不记路径。键是**库内相对路径（posix）**，与 report/journalk 同一口径。
+ */
+async function loadVirtualTree(root, io) {
+  const model = new Map()
+  async function walk(rel) {
+    let entries = []
+    try { entries = await io.readdir(join(root, rel), { withFileTypes: true }) } catch (error) {
+      if (error?.code === 'ENOENT' || error?.code === 'ENOTDIR') return
+      throw new Error(`预览无法读取目录 ${rel || '.'}：${text(error?.message || error)}`)
+    }
+    for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+      const childRel = `${rel}/${entry.name}`
+      if (entry.isDirectory()) {
+        if (SKIP_DIRS.has(entry.name) || entry.name.startsWith('.retired-') || /\.retired-/u.test(entry.name)) continue
+        model.set(childRel, { kind: 'dir' })
+        await walk(childRel)
+      } else if (entry.isFile() && !entry.name.startsWith('.openstory-tmp-') && !entry.name.startsWith('.pinax-tmp-')) {
+        model.set(childRel, { kind: 'file', abs: join(root, childRel) })
+      }
+    }
+  }
+  for (const dir of ['.pinax', STORAGE.metadataDir, ...Object.keys(DIR_RENAMES), ...Object.values(DIR_RENAMES)]) {
+    if (model.has(dir) || !await isDirectory(join(root, dir))) continue
+    model.set(dir, { kind: 'dir' })
+    await walk(dir)
+  }
+  return model
+}
+
+/** 目录下的全部条目（目录在前、文件在后，按字典序），`[相对路径, 条目]`。 */
+function modelEntries(model, dirRel) {
+  const prefix = `${dirRel}/`
+  return [...model]
+    .filter(([rel, entry]) => entry.kind === 'file' && rel.startsWith(prefix))
+    .sort(([left], [right]) => left.localeCompare(right))
+}
+
+/** 目录子树（含目录自身之下的目录条目），搬移时用；父目录先于子路径出现。 */
+function modelSubtree(model, dirRel) {
+  const prefix = `${dirRel}/`
+  return [...model]
+    .filter(([rel]) => rel.startsWith(prefix))
+    .sort(([left], [right]) => left.localeCompare(right))
+}
+
+function moveModel(ctx, fromRel, toRel, out) {
+  const entry = ctx.model.get(fromRel)
+  if (!entry) return
+  ctx.model.delete(fromRel)
+  ctx.model.set(toRel, entry.kind === 'dir' ? { kind: 'dir' } : entry)
+  if (entry.kind === 'file') out.movedFiles.push({ from: fromRel, to: toRel })
+}
+
+/**
+ * 与 `copyTree`/`mergeTree` 同规则：目标不存在＝整树复制；目标已存在＝逐项合并、
+ * 同名文件加 `.upgrade-<stamp>` 后缀。差别只在虚拟树里做，不碰磁盘。
+ * `migrateModuleState` 依赖「复制出的目录条目真的在树里」——目录与文件一起搬。
+ */
+async function copyTreeModel(ctx, sourceRel, targetRel) {
+  const { model, out } = ctx
+  const source = model.get(sourceRel)
+  if (!source || source.kind !== 'dir') return
+  if (!model.has(targetRel)) {
+    model.set(targetRel, { kind: 'dir' })
+    out.operations.push({ kind: 'copy-tree', from: sourceRel, to: targetRel, action: 'copy' })
+    for (const [rel] of modelSubtree(model, sourceRel)) {
+      moveModel(ctx, rel, `${targetRel}/${rel.slice(sourceRel.length + 1)}`, out)
+    }
+    return
+  }
+  out.operations.push({ kind: 'copy-tree', from: sourceRel, to: targetRel, action: 'merge' })
+  await mergeTreeModel(ctx, sourceRel, targetRel)
+}
+
+async function mergeTreeModel(ctx, sourceRel, targetRel) {
+  const { model, stamp, out } = ctx
+  const children = [...model]
+    .filter(([rel]) => rel.startsWith(`${sourceRel}/`))
+    .map(([rel]) => rel.slice(sourceRel.length + 1))
+    .filter((tail) => !tail.includes('/'))
+    .sort()
+  for (const name of children) {
+    const fromRel = `${sourceRel}/${name}`
+    const entry = model.get(fromRel)
+    let toRel = `${targetRel}/${name}`
+    if (model.has(toRel)) {
+      if (entry.kind === 'dir' && model.get(toRel)?.kind === 'dir') {
+        await mergeTreeModel(ctx, fromRel, toRel)
+        continue
+      }
+      toRel = uniqueModelPath(model, toRel, stamp)
+      out.conflicts.push({ kind: 'name-conflict', from: fromRel, to: toRel, reason: '同名冲突，旧文件加后缀保留', blocking: false })
+    }
+    if (entry.kind === 'dir') {
+      model.set(toRel, { kind: 'dir' })
+      out.operations.push({ kind: 'copy-tree', from: fromRel, to: toRel, action: 'copy' })
+      for (const [rel] of modelSubtree(model, fromRel)) {
+        moveModel(ctx, rel, `${toRel}/${rel.slice(fromRel.length + 1)}`, out)
+      }
+    } else {
+      moveModel(ctx, fromRel, toRel, out)
+    }
+  }
+}
+
+/** 承载目录改名（退役）：`.retired-<stamp>` 与真实升级同名规则。 */
+function retireModel(ctx, sourceRel, out) {
+  if (!ctx.model.has(sourceRel)) return
+  let retired = `${sourceRel}.retired-${ctx.stamp}`
+  let index = 2
+  while (ctx.model.has(retired)) retired = `${sourceRel}.retired-${ctx.stamp}-${index++}`
+  ctx.model.set(retired, ctx.model.get(sourceRel))
+  ctx.model.delete(sourceRel)
+  out.operations.push({ kind: 'retire', from: sourceRel, to: retired })
+}
+
+function uniqueModelPath(model, targetRel, stamp) {
+  const ext = extname(targetRel)
+  const stem = ext ? targetRel.slice(0, -ext.length) : targetRel
+  let candidate = `${stem}.upgrade-${stamp}${ext}`
+  let index = 2
+  while (model.has(candidate)) {
+    candidate = `${stem}.upgrade-${stamp}-${index}${ext}`
+    index += 1
+  }
+  return candidate
+}
+
+/** 运行态模块目录改名（`.openstory/log|drafts/<旧模块>` → 新模块名），同 `migrateModuleState`。 */
+async function planModuleStateMigration(ctx, parentName, out) {
+  const baseRel = `${STORAGE.metadataDir}/${parentName}`
+  if (!ctx.model.has(baseRel)) return
+  for (const [oldName, newName] of Object.entries(MODULE_RENAMES)) {
+    if (oldName === newName) continue
+    const sourceRel = `${baseRel}/${oldName}`
+    if (!ctx.model.has(sourceRel)) continue
+    await copyTreeModel(ctx, sourceRel, `${baseRel}/${newName}`)
+    retireModel(ctx, sourceRel, out)
+  }
+}
+
+/** `.pinax-tmp-*` 残留迁进备份 tmp-residue/（不删除），与 `archiveTmpResidue` 同遍历规则。 */
+async function planTmpResidue(ctx, backupRel, out) {
+  const { root, io } = ctx
+  async function walk(dirRel) {
+    let entries = []
+    try { entries = await io.readdir(join(root, dirRel), { withFileTypes: true }) } catch { return }
+    for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+      const childRel = dirRel ? `${dirRel}/${entry.name}` : entry.name
+      if (entry.isDirectory()) {
+        if (SKIP_DIRS.has(entry.name) || entry.name.startsWith('.retired-') || /\.retired-/u.test(entry.name)) continue
+        await walk(childRel)
+      } else if (entry.isFile() && entry.name.startsWith('.pinax-tmp-')) {
+        out.operations.push({ kind: 'archive-tmp-residue', from: childRel, to: `${backupRel}/tmp-residue/${childRel}` })
+      }
+    }
+  }
+  await walk('')
+}
+
+/**
+ * OS-220：把诊断分节包成计划（planId 绑定受影响文件与判定依据）。
+ * 本函数与 `upgradeLibrary` 的动笔前预览共用（真实请求路径上的调用点）。
+ */
+export function buildSelfPlan(root, section, now = new Date()) {
+  const risks = [...(section.risks ?? [])]
+  if (section.blocking) risks.unshift(`升级被阻断：${section.blocking}`)
+  return buildPlan({
+    kind: 'library-upgrade',
+    rootPath: root,
+    sections: { libraryUpgrade: section },
+    risks,
+    bindings: section.bindings ?? [],
+    now
+  })
+}
+
+async function readJsonPreview(abs, io, skipped, rel) {
+  let source
+  try { source = await io.readFile(abs, 'utf-8') } catch (error) {
+    skipped.push({ file: rel, line: 1, reason: text(error?.message || error) })
+    return { bad: true }
+  }
+  try {
+    return { bad: false, value: JSON.parse(source) }
+  } catch (error) {
+    skipped.push({ file: rel, line: jsonErrorLine(text(error?.message || error), source), reason: text(error?.message || error) })
+    return { bad: true }
   }
 }
 

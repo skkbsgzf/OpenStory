@@ -3,11 +3,11 @@
 | 项 | 值 |
 |---|---|
 | 批次 | OS-211～231；阶段 B |
-| 执行 | workflow 施工；dsv4flash / hy4flash 交替，对方模型评审 |
+| 执行 | workflow 方案 C；dsv4flash / hy4flash 交替施工，波末由对方模型汇总独立评审 |
 | 依赖 | OS-221 |
-| 允许改动 | `src/api/contracts/**`、`src/api/handlers/**`、`src/protocol/libraryUpgrade.mjs`、`src/protocol/capabilityMigration.mjs`、`src/host/libraryMigrations.mjs`、`src/host/mcp.mjs`、`test/mcpDaemon.test.mjs`、`test/libraryUpgrade.test.mjs`、`test/capabilityMigration*.test.mjs`、`docs/mcp/**`、相关数字锚 |
+| 允许改动 | `src/api/contracts/**`、`src/api/contracts.mjs`（仅追加升级计划/确认错误码）、`src/api/handlers/**`、`src/protocol/libraryUpgrade.mjs`、`src/protocol/capabilityMigration.mjs`、`src/protocol/mcpToolSemantics.mjs`（仅追加升级五工具语义）、`src/host/libraryMigrations.mjs`、`src/host/daemon.mjs`（仅将 `libraryUpgradeDiagnose`/`libraryUpgradePlan` 加入既有 `MIGRATION_READONLY_ENDPOINTS`，其它路由不变）、`src/host/http.mjs`（仅新错误码 HTTP 映射）、`src/host/mcp.mjs`、`tools/acceptance/moduleCoverage.mjs`（仅新增库升级宿主端点分组与理由）、`test/skills.test.mjs`（仅 build-project 断言排除 `openstory_upgrade_*`，升级工具归 OS-223）、`test/mcpDaemon.test.mjs`、`test/libraryUpgrade.test.mjs`、`test/capabilityMigration*.test.mjs`、`docs/mcp/**`、相关数字锚 |
 | 风险 | 高——显式动稿 |
-| 状态 | 待施工 |
+| 状态 | 已完成（监督线直做；2026-11-27） |
 
 ## 目标
 

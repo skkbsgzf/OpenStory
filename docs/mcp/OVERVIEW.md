@@ -1,6 +1,6 @@
 # OpenStory 本地 MCP · 总览（对外分发材料）
 
-OpenStory 是跑在本机的小说工作台。MCP 当前对外提供 **60 个工具**：覆盖小说与剧本载体、世界书、习惯、故事源事实与富化、确定性推演、多角色扮演、多局会话、素材、建库与套件、导入导出、技能、分析和插件投影。工具名、参数与描述以 `src/host/mcp.mjs` 导出的 `MCP_TOOL_NAMES` 和运行时 `tools/list` 为唯一真源；本目录只讲能力边界与使用顺序。
+OpenStory 是跑在本机的小说工作台。MCP 当前对外提供 **65 个工具**：覆盖小说与剧本载体、世界书、习惯、故事源事实与富化、确定性推演、多角色扮演、多局会话、素材、建库与套件、升级确认链、导入导出、技能、分析和插件投影。工具名、参数与描述以 `src/host/mcp.mjs` 导出的 `MCP_TOOL_NAMES` 和运行时 `tools/list` 为唯一真源；本目录只讲能力边界与使用顺序。
 
 ## 连接
 
@@ -44,14 +44,15 @@ OpenStory 是跑在本机的小说工作台。MCP 当前对外提供 **60 个工
 3. openstory_library_diagnose {root}           → 建库/升级前确认库形状
 4. openstory_habits_read {root}                → 写作任务先读作者规矩
 5. openstory_skills_read {name:"build-project"} → 构建项目时读官方操作说明书
-6. 按任务进入上表对应域
+6. openstory_skills_read {name:"update-project"} → 升级/迁移既有项目时读操作说明书
+7. 按任务进入上表对应域
 ```
 
 `root` 是库的绝对路径，不是正文文件路径。只有确实没有库时才在作者指定的绝对路径调用 `openstory_library_create`。
 
 ## 技能货架
 
-用 `openstory_skills_list` / `openstory_skills_read` 按需发现与读取。技能货架包含 32 个内置配方＋2 个套件捆绑，分 `craft` 技法、`review` 审阅、`transform` 改写、`extract` 抽取、`operate` 操作说明书五类。`review` 只出问题清单，`transform` 产提案，`extract` 产数据；`operate` **不自动注入 prompt、不产出小说内容、不执行代码**，写操作只能调用其声明的官方 MCP 工具。
+用 `openstory_skills_list` / `openstory_skills_read` 按需发现与读取。技能货架包含 33 个内置配方＋2 个套件捆绑，分 `craft` 技法、`review` 审阅、`transform` 改写、`extract` 抽取、`operate` 操作说明书五类。`review` 只出问题清单，`transform` 产提案，`extract` 产数据；`operate` **不自动注入 prompt、不产出小说内容、不执行代码**，写操作只能调用其声明的官方 MCP 工具。两份 `operate` 正片：`build-project`（建库/内容构建）与 `update-project`（升级/迁移/版本冲突）；后者只声明升级五工具，`apply` 必须 `confirm:'migrate'` 且等作者明确确认，详见 `docs/mcp/library.md`。
 
 ## 确认与写入红线
 
@@ -62,7 +63,7 @@ OpenStory 是跑在本机的小说工作台。MCP 当前对外提供 **60 个工
 5. **世界书专用端点**：世界书写入只走 `PUT /api/reference/note`（MCP 工具为 `openstory_reference_write_note`）；通用章节端点不再承担世界书写入。
 6. **事实合法写入链**：`openstory_fact_books` → `openstory_fact_entries` → `openstory_fact_entries_import`。导入是**整份替换**，不是合并；`openstory_enrich_run` 只做旁挂 wiki 富化，不能替代 fact 主档写入。
 7. **世界书单向链小说**：世界书笔记可以 `[[正文/001-xxx.md|别名]]`；正文不要回挂世界书，避免污染纯净写作面。
-8. **absorb 不开 MCP**：旧库升级是显式动稿操作，只走界面；MCP 导入工具只处理其声明支持的导入计划，不替代升级。
+8. **absorb 不开 MCP**：旧目录迁入世界书是显式动稿操作，只走界面；MCP 导入工具只处理其声明支持的导入计划，不替代升级。旧库升级走下方「升级确认链」五工具（`openstory_skills_read {name:"update-project"}` 读说明书），不是 absorb。
 9. **Agent 对话与待确认卡不在 MCP 里**：`openstory_roleplay_pending` 只结算已存在的卡，不创建卡；外部 agent 自己承担写前自查。
 10. **enrich 是长任务**：启动后保存 jobId，用 `openstory_enrich_status` 轮询，不同步等待。
 

@@ -3,11 +3,11 @@
 | 项 | 值 |
 |---|---|
 | 批次 | OS-211～231；阶段 B |
-| 执行 | workflow 施工；dsv4flash / hy4flash 交替，对方模型评审 |
+| 执行 | workflow 方案 C；dsv4flash / hy4flash 交替施工，波末由对方模型汇总独立评审 |
 | 依赖 | OS-222 |
 | 允许改动 | `skills/update-project/**`、`src/services/skills.mjs`（如必须）、`src/host/mcp.mjs`（instructions/说明）、`test/skills.test.mjs`、`test/mcpDaemon.test.mjs`、`docs/mcp/**`、相关门禁与数字锚 |
 | 风险 | 高——升级操作说明书 |
-| 状态 | 待施工 |
+| 状态 | 已完成（监督线直做；2026-11-27） |
 
 ## 目标
 

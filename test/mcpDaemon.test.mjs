@@ -167,3 +167,86 @@ test('OS-209 MCP：模块停用沿 daemon 错误信封透传；EOF 退出且 std
     })
   })
 })
+
+test('OS-222 MCP：升级五工具注册；读工具免确认，apply 缺/低确认被拒且 planId 参数校验', async () => {
+  await withTempDaemon(async (fx) => {
+    await withMcp(fx, async (mcp) => {
+      const list = await mcp.request('tools/list')
+      const names = list.result.tools.map((tool) => tool.name)
+      for (const name of ['openstory_upgrade_diagnose', 'openstory_upgrade_plan', 'openstory_upgrade_apply',
+        'openstory_upgrade_status', 'openstory_upgrade_backup_verify']) {
+        assert.ok(names.includes(name), `OS-222 工具应已注册：${name}`)
+      }
+      const applySchema = list.result.tools.find((tool) => tool.name === 'openstory_upgrade_apply').inputSchema
+      assert.deepEqual(applySchema.required, ['root', 'planId'])
+
+      // 读工具：无需 confirm，走 daemon 只读端点（新布局库，零写入）。
+      const diagnose = payload(await call(mcp, 'openstory_upgrade_diagnose', { root: fx.root }))
+      assert.equal(diagnose.writes, false)
+      const status = payload(await call(mcp, 'openstory_upgrade_status', { root: fx.root }))
+      assert.equal(status.status.writes, false)
+      const backups = payload(await call(mcp, 'openstory_upgrade_backup_verify', { root: fx.root }))
+      assert.equal(backups.writes, false)
+      const planned = payload(await call(mcp, 'openstory_upgrade_plan', { root: fx.root }))
+      assert.ok(planned.planId && planned.plan)
+
+      // apply 缺确认级别 → MCP 级 CONFIRM_REQUIRED（业务参数 confirm:true 不能替代级别闸）。
+      const unconfirmed = await call(mcp, 'openstory_upgrade_apply', { root: fx.root, planId: planned.planId })
+      assert.equal(unconfirmed.isError, true)
+      assert.match(unconfirmed.content[0].text, /^CONFIRM_REQUIRED · /u)
+      const lowConfirm = await call(mcp, 'openstory_upgrade_apply', { root: fx.root, planId: planned.planId, confirm: 'create' })
+      assert.equal(lowConfirm.isError, true)
+      assert.match(lowConfirm.content[0].text, /^CONFIRM_REQUIRED · /u)
+
+      // 错类型/额外参数：协议层 -32602。
+      for (const args of [
+        { root: fx.root, planId: 42 },
+        { root: fx.root, planId: planned.planId, extra: true }
+      ]) {
+        const reply = await mcp.request('tools/call', { name: 'openstory_upgrade_apply', arguments: args })
+        assert.equal(reply.error?.code, -32602, JSON.stringify(reply))
+      }
+    })
+  })
+})
+
+test('OS-223 评审修正：apply 的 operationId 只回填不判重，planId 一次性', async () => {
+  await withTempDaemon(async (fx) => {
+    await withMcp(fx, async (mcp) => {
+      const idDesc = (await mcp.request('tools/list')).result.tools
+        .find((tool) => tool.name === 'openstory_upgrade_apply').inputSchema.properties.operationId.description
+      assert.match(idDesc, /不据.*判重|不判重/u, 'operationId 描述不得宣称幂等判重')
+      // daemon 层直接验证 operationId 只被原样回填（MCP 薄适配不透传该字段）。
+      const planReply = await fx.json('/api/library/upgrade-plan', {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ root: fx.root })
+      })
+      const daemonPlanId = planReply.payload.planId
+      const daemonApply = await fx.json('/api/library/upgrade-apply', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ root: fx.root, planId: daemonPlanId, operationId: 'os223-once', confirm: true })
+      })
+      assert.equal(daemonApply.status, 200)
+      assert.equal(daemonApply.payload.operationId, 'os223-once', 'daemon 原样回填 operationId')
+      assert.ok(['success', 'idempotent'].includes(daemonApply.payload.outcome), `意外 outcome：${daemonApply.payload.outcome}`)
+      assert.ok(!['applied', 'up-to-date', 'duplicate'].includes(daemonApply.payload.outcome), 'outcome 不得是说明书未声明的取值')
+      // 同一 planId 重放：daemon 一次性作废 planId → PLAN_NOT_FOUND，不是幂等成功。
+      const daemonReplay = await fx.json('/api/library/upgrade-apply', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ root: fx.root, planId: daemonPlanId, operationId: 'os223-once', confirm: true })
+      })
+      assert.equal(daemonReplay.status, 404)
+      assert.match(JSON.stringify(daemonReplay.payload), /PLAN_NOT_FOUND/u, '重放应报 PLAN_NOT_FOUND')
+      // MCP 层同样拒绝重放（业务错误信封，不是幂等成功）。
+      const planned = payload(await call(mcp, 'openstory_upgrade_plan', { root: fx.root }))
+      const first = payload(await call(mcp, 'openstory_upgrade_apply', {
+        root: fx.root, planId: planned.planId, operationId: 'os223-once', confirm: 'migrate'
+      }))
+      assert.ok(['success', 'idempotent'].includes(first.outcome), `意外 outcome：${first.outcome}`)
+      const replay = await call(mcp, 'openstory_upgrade_apply', {
+        root: fx.root, planId: planned.planId, operationId: 'os223-once', confirm: 'migrate'
+      })
+      assert.equal(replay.isError, true, '同 planId 重放必须失败，不得当成幂等成功')
+      assert.match(replay.content[0].text, /PLAN_NOT_FOUND/u, '重放应报 PLAN_NOT_FOUND')
+    })
+  })
+})

@@ -31,6 +31,7 @@ export const MIGRATION_JOURNAL_STATE = Object.freeze({ running: 'running', done:
 const hashOf = (contents) => createHash('sha256').update(contents).digest('hex')
 const stampOf = (now) => now.toISOString().replace(/[:.]/gu, '-')
 const posix = (value) => String(value).replaceAll('\\', '/')
+const text = (value) => String(value ?? '')
 
 /**
  * 迁移路径解析：迁移与模块代码同级可信，`readFile/listFiles` 与提交落盘放开
@@ -80,6 +81,63 @@ export async function readMigrationJournal(root, migration) {
   } catch {
     return null
   }
+}
+
+/**
+ * OS-221：journal 的类型化读（**只读**）。`readMigrationJournal` 把「不存在」与
+ * 「坏 journal」都折成 null——迁移执行路径可以这样宽松重跑，但状态诊断不能把坏档
+ * 当健康。这里分开回报：`absent` / `corrupt`（含 parse 或形状错误）/ `ok`。
+ * 不建目录、不写文件，纯 readFile。
+ */
+export async function readMigrationJournalFile(path) {
+  let source
+  try {
+    source = await readFile(path, 'utf8')
+  } catch (error) {
+    if (error?.code === 'ENOENT' || error?.code === 'ENOTDIR') return { state: 'absent', path }
+    if (error?.code === 'EISDIR') return { state: 'corrupt', path, message: 'journal 路径是目录，不是文件' }
+    return { state: 'corrupt', path, message: text(error?.message || error) }
+  }
+  let parsed
+  try {
+    parsed = JSON.parse(source)
+  } catch (error) {
+    return { state: 'corrupt', path, message: `journal 不是合法 JSON：${text(error?.message || error)}` }
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return { state: 'corrupt', path, message: 'journal 必须是对象' }
+  }
+  if (parsed.spec !== undefined && parsed.spec !== MIGRATION_SPEC) {
+    return { state: 'corrupt', path, message: `journal spec 不是 ${MIGRATION_SPEC}：${text(parsed.spec)}` }
+  }
+  // OS-221：状态面不能只看「合法 JSON」。结构损坏也必须报 corrupt，
+  // 否则 files:'not-an-array' 会被静默折成 []，数据版本被误判为健康。
+  if (!Object.hasOwn(parsed, 'state') || !Object.values(MIGRATION_JOURNAL_STATE).includes(parsed.state)) {
+    return { state: 'corrupt', path, message: `journal state 非法：${text(parsed.state)}` }
+  }
+  if (!Number.isInteger(parsed.from) || parsed.from < 1 || parsed.to !== parsed.from + 1) {
+    return { state: 'corrupt', path, message: 'journal from/to 必须是相邻正整数版本' }
+  }
+  if (!Array.isArray(parsed.files)) {
+    return { state: 'corrupt', path, message: 'journal files 必须是数组' }
+  }
+  for (const [index, file] of parsed.files.entries()) {
+    if (!file || typeof file !== 'object' || Array.isArray(file)
+      || typeof file.path !== 'string' || !file.path.trim()
+      || typeof file.committed !== 'boolean') {
+      return { state: 'corrupt', path, message: `journal files[${index}] 必须是 {path,committed,...}` }
+    }
+    if (file.beforeHash !== null && typeof file.beforeHash !== 'string') {
+      return { state: 'corrupt', path, message: `journal files[${index}].beforeHash 必须是字符串或 null` }
+    }
+    if (file.afterHash !== null && typeof file.afterHash !== 'string') {
+      return { state: 'corrupt', path, message: `journal files[${index}].afterHash 必须是字符串或 null` }
+    }
+  }
+  if (parsed.rollbackErrors !== undefined && !Array.isArray(parsed.rollbackErrors)) {
+    return { state: 'corrupt', path, message: 'journal rollbackErrors 必须是数组' }
+  }
+  return { state: 'ok', path, journal: parsed }
 }
 
 export function validateCapabilityMigration(migration, { packageDir } = {}) {
@@ -472,5 +530,127 @@ export function declaredCapabilityMigrations(manifests = [], packageDirFor = () 
       packageDir: packageDirFor(manifest.id),
       ...migration
     }))
+  })
+}
+
+/* ================================================================
+ * OS-220：只读计划（dry-run）。零写入：不建备份目录、不写 journal、不落任何文件。
+ * ================================================================ */
+
+/**
+ * 规划一条能力迁移：校验声明 → 读 journal → 以**只读上下文**跑一次迁移器拿产出
+ * （迁移器的契约本来就是「只读当前数据、返回待写文件」）→ 逐文件算写前/写后哈希
+ * 与备份范围。任何落盘动作都不发生；真正执行仍归 `runCapabilityMigrations`。
+ *
+ * `routes` 是当前能力快照的 `routes`（`{capability:{provider,version}}`），只用于报 dataAhead。
+ */
+export async function planCapabilityMigration(root, migration, { now = () => new Date(), routes = {} } = {}) {
+  const at = new Date(now())
+  const stamp = stampOf(at)
+  const base = {
+    plugin: text(migration?.plugin),
+    capability: text(migration?.capability),
+    from: Number.isInteger(migration?.from) ? migration.from : null,
+    to: Number.isInteger(migration?.to) ? migration.to : null,
+    entry: text(migration?.entry),
+    status: 'invalid',
+    entrySha256: null,
+    journal: null,
+    backup: { scope: [], predictedDir: '' },
+    operations: [],
+    conflicts: [],
+    skipped: [],
+    risks: []
+  }
+  const validation = validateCapabilityMigration(migration, { packageDir: migration?.packageDir })
+  if (!validation.ok) {
+    return { ...base, status: 'invalid', reason: validation.reason, message: validation.message }
+  }
+  base.entry = validation.entry
+  const entryBytes = await readFile(validation.entryPath).catch(() => null)
+  if (entryBytes === null) {
+    return { ...base, status: 'invalid', reason: 'MIGRATION_ENTRY_INVALID', message: `迁移入口读不到：${validation.entry}` }
+  }
+  base.entrySha256 = hashOf(entryBytes)
+  const journalPath = migrationJournalPath(root, migration)
+  const journalRel = posix(relative(canonicalRoot(root), journalPath))
+  const journal = await readMigrationJournal(root, migration)
+  base.journal = journal
+    ? { path: journalRel, state: text(journal.state), entrySha256: text(journal.entrySha256), backupPath: text(journal.backupPath) }
+    : { path: journalRel, state: 'absent', entrySha256: '', backupPath: '' }
+  base.backup.predictedDir = posix(relative(canonicalRoot(root), migrationBackupDir(root, migration, stamp)))
+  if (journal?.state === MIGRATION_JOURNAL_STATE.done) {
+    base.status = 'done'
+    base.risks.push('该能力已迁移完成：再次执行会被 journal 直接跳过（幂等）')
+    if (base.journal.entrySha256 && base.journal.entrySha256 !== base.entrySha256) {
+      base.risks.push('迁移器在 done 之后被修改过：journal 的 entrySha256 与当前入口不一致，跳过判定仍成立但需核对改动')
+    }
+    return base
+  }
+  if (journal && [MIGRATION_JOURNAL_STATE.running, MIGRATION_JOURNAL_STATE.failed, MIGRATION_JOURNAL_STATE.recovered].includes(journal.state)) {
+    base.status = 'recover'
+    base.risks.push(`journal 状态为 ${journal.state}：执行时会先按备份恢复已提交文件（${(journal.files ?? []).length} 条记录），再重新迁移`)
+  } else {
+    base.status = 'pending'
+  }
+  let files
+  try {
+    const migrate = await loadMigrator(validation.entryPath)
+    const backupRelative = base.backup.predictedDir
+    files = normalizePlan(await migrate(migrationContext(root, migration, { backupRelative })))
+  } catch (error) {
+    base.status = 'invalid'
+    base.reason = 'MIGRATION_FAILED'
+    base.message = `迁移器无法产出计划（只读 dry-run 失败）：${text(error?.message || error)}`
+    base.risks.push('迁移器在只读上下文里抛错：现在执行同样会失败，先修迁移器')
+    return base
+  }
+  const seen = new Set()
+  for (const file of files) {
+    const resolved = resolveMigrationPath(root, file.path, { backupRelative: base.backup.predictedDir })
+    if (!resolved.ok) {
+      base.conflicts.push({ path: file.path, reason: resolved.message, blocking: true })
+      continue
+    }
+    if (seen.has(file.path)) {
+      base.conflicts.push({ path: file.path, reason: '迁移器对同一文件产出了多条记录（后写覆盖先写）', blocking: true })
+      continue
+    }
+    seen.add(file.path)
+    const before = (await exists(resolved.path)) ? await readFile(resolved.path) : null
+    if (before !== null) base.backup.scope.push(file.path)
+    const afterBytes = Buffer.isBuffer(file.content) ? file.content : Buffer.from(file.content)
+    base.operations.push({
+      kind: before === null ? 'create' : 'update',
+      path: file.path,
+      beforeHash: before === null ? null : hashOf(before),
+      afterHash: hashOf(afterBytes)
+    })
+  }
+  base.backup.scope.sort()
+  if (base.conflicts.some((item) => item.blocking)) {
+    base.risks.push('存在阻断冲突：执行会在提交前失败，必须先处理')
+  }
+  const route = routes?.[base.capability]
+  if (route && Number.isInteger(route.version) && Number.isInteger(base.to) && base.to > route.version) {
+    base.risks.push(`迁移后数据为 ${base.capability}@${base.to}，当前路由供给者 ${text(route.provider)}@${route.version} 会误读`)
+  }
+  return base
+}
+
+/** 数据超前（只报告，不自动降级）：journal 已 done 的 to 高于当前供给者版本。 */
+export function dataAheadFrom(routes = {}, dataVersions = []) {  return (Array.isArray(dataVersions) ? dataVersions : []).flatMap((data) => {
+    const route = routes?.[data?.capability]
+    if (!route || !Number.isInteger(route.version) || !Number.isInteger(data.to)) return []
+    if (route.version >= data.to) return []
+    return {
+      capability: data.capability,
+      dataVersion: data.to,
+      provider: text(route.provider),
+      providerVersion: route.version,
+      journalPath: text(data.journalPath),
+      action: 'manual-downgrade-not-automatic',
+      message: `库数据已是 ${data.capability}@${data.to}，当前供给者 ${route.provider}@${route.version} 会误读；不自动降级，请恢复更高版本供给者或人工处置`
+    }
   })
 }

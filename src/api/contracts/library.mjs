@@ -73,4 +73,93 @@ export const libraryEndpoints = {
     response: { ok: 'true', document: 'object', enabled: 'array?' },
     errors: ['NO_LIBRARY', 'INVALID_ENTRY', 'NOT_FOUND', 'REVISION_MISMATCH', 'WRITE_PROTOCOL_IO_FAILED']
   },
+
+  // OS-221：迁移状态与备份的**专用只读**观测（不再拿整个 /api/plugins 代替）。
+  // 两个端点都不接受任何写入参数：状态里 DATA_VERSION_AHEAD 只作为 dataAhead 字段报告，
+  // 不返回 409；坏 journal/缺备份/哈希不符/回滚未完成作为类型化 issues 如实呈现。
+  // 备份端点只列库内相对路径与哈希，不提供任意路径下载。
+  libraryMigrationStatusGet: {
+    method: 'GET',
+    path: '/api/library/migration-status',
+    request: { query: { root: 'string' } },
+    response: {
+      ok: 'true',
+      spec: 'string',
+      root: 'string',
+      checkedAt: 'string',
+      status: 'string',
+      healthy: 'boolean',
+      upgrade: 'object',
+      legacyPresent: 'boolean',
+      journals: 'array',
+      dataVersions: 'array',
+      dataAhead: 'array',
+      failures: 'array',
+      rolledBack: 'array',
+      rollbackErrors: 'array',
+      running: 'array',
+      pending: 'array',
+      backupPaths: 'array',
+      issues: 'array',
+      writes: 'boolean'
+    },
+    errors: ['NO_LIBRARY', 'INVALID_ENTRY']
+  },
+
+  libraryMigrationBackupsGet: {
+    method: 'GET',
+    path: '/api/library/migration-backups',
+    // 只读：列升级/能力备份目录、逐文件 sha256/大小、与 journal 记录哈希的核对结果。
+    // 可选 backup 只接受库内相对路径（.history/…）用于「只看一份」，永远不做磁盘任意读。
+    request: { query: { root: 'string', backup: 'string?' } },
+    response: {
+      ok: 'true',
+      spec: 'string',
+      root: 'string',
+      checkedAt: 'string',
+      healthy: 'boolean',
+      historyDir: 'string',
+      backups: 'array',
+      issues: 'array',
+      writes: 'boolean'
+    },
+    errors: ['NO_LIBRARY', 'INVALID_ENTRY', 'MIGRATION_BACKUP_PATH_INVALID']
+  },
+
+  /* ===== OS-222：diagnose→plan→confirm→apply→status/backup verify ===== */
+
+  libraryUpgradeDiagnose: {
+    method: 'GET',
+    path: '/api/library/upgrade-diagnose',
+    // 只读诊断：旧库升级＋能力迁移的只读判定，零写入、不跑迁移、不建备份。
+    request: { query: { root: 'string' } },
+    response: { ok: 'true', spec: 'string', root: 'string', section: 'object', writes: 'boolean' },
+    errors: ['NO_LIBRARY', 'INVALID_ENTRY']
+  },
+
+  libraryUpgradePlan: {
+    method: 'POST',
+    path: '/api/library/upgrade-plan',
+    // 只读计划：登记内存中的 planId 供 apply 复核；零写入、不跑迁移/备份。
+    request: { body: { root: 'string' } },
+    response: { ok: 'true', plan: 'object', planId: 'string', writes: 'boolean' },
+    errors: ['NO_LIBRARY', 'INVALID_ENTRY']
+  },
+
+  libraryUpgradeApply: {
+    method: 'POST',
+    path: '/api/library/upgrade-apply',
+    // 显式动稿：必须 planId + confirm:true；服务端重算计划核对 root/文件/迁移器摘要，
+    // 复用既有 journal/备份/回滚，绝不提供 shell/fs 直写捷径。
+    request: { body: { root: 'string', planId: 'string', confirm: 'boolean', operationId: 'string?' } },
+    response: {
+      ok: 'true', spec: 'string', root: 'string', planId: 'string', outcome: 'string',
+      libraryUpgrade: 'object?', capabilityMigrations: 'array?', journals: 'array', backups: 'array',
+      rolledBack: 'boolean', rollbackErrors: 'array', message: 'string'
+    },
+    errors: [
+      'NO_LIBRARY', 'INVALID_ENTRY', 'CONFIRM_REQUIRED', 'PLAN_REQUIRED', 'PLAN_NOT_FOUND',
+      'PLAN_ROOT_MISMATCH', 'PLAN_STALE', 'DATA_VERSION_AHEAD', 'MIGRATION_FAILED', 'LIBRARY_UPGRADE_FAILED'
+    ]
+  },
 }

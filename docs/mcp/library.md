@@ -38,8 +38,25 @@
 
 `openstory_library_primary` 修改项目标记，不是重命名文件。传入当前 `project.json` 的 `revision` 作为 `expectedRevision` 可避免覆盖并发修改；版本不符时拒绝写入。切换后用 `openstory_library_diagnose` 和 `openstory_plugins` 回读项目与模块投影。
 
+## 升级确认链（OS-222/223）
+
+操作说明书见 `openstory_skills_read {name:"update-project"}`（仓 `skills/update-project/SKILL.md`＋速查表）。旧库一次性升级与能力迁移改走「诊断 → 计划 → 作者确认 → 执行 → 核对」的闭环，导入工具不替代它：
+
+```text
+1. openstory_upgrade_diagnose {root}           # 只读诊断；零写入
+2. openstory_upgrade_plan {root}               # 只读计划，产出 planId（绑定文件/迁移器摘要）
+3. openstory_upgrade_apply {root,planId,confirm:"migrate"}  # 显式动稿；必须 migrate 级确认
+4. openstory_upgrade_status {root}             # 只读：journal/dataVersions/回滚状态
+5. openstory_upgrade_backup_verify {root,backup?} # 只读：逐文件哈希核对备份
+```
+
+- `openstory_upgrade_diagnose` / `openstory_upgrade_plan` / `openstory_upgrade_status` / `openstory_upgrade_backup_verify` 都是只读，无需确认；预览前后整库字节不变。
+- `openstory_upgrade_apply` 必须带有效 `planId` 且满足 `migrate` 级确认。服务端复核 root、文件哈希与迁移器摘要；预览后文件一变 planId 即失效，须重新出计划。确认参数 `confirm:'migrate'` 不能被布尔业务参数替代。
+- 执行复用现有 journal/备份/原子写/回滚；失败如实报 `rolledBack`/`rollbackErrors`，不自动重试。`DATA_VERSION_AHEAD` 在计划/状态里如实呈现，不静默改写。
+- 结果含 `journals` 与 `backups` 相对路径供核对；区分成功、幂等、冲突、已回滚与回滚未完成。
+
 ## 边界
 
 - `openstory_library_diagnose` 与 `openstory_library_scan` 只诊断/产计划，不执行旧库升级。
-- 旧库一次性升级是显式动稿操作，只走 OpenStory 界面；不要用 MCP 导入工具绕过升级。
+- 旧库升级/迁移不得用 shell/fs 改稿或复制备份覆盖；只走上面的确认链。
 - 建库后继续用 `openstory_suites` 配置写作/编剧套件，用 `openstory_plugins` 检查模块与能力图。

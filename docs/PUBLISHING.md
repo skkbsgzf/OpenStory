@@ -23,8 +23,8 @@
 失败日志、页面 manifest、console/pageerror 记录与截图上传为 artifact，保留 7 天。
 
 **C6／D 批当前审计快照（与 `docs/number-anchors.json` 同源）**：全量单测
-`983 tests / 981 pass / 2 skip / 0 fail`）；验收门禁 29 项；
-契约端点 112；`app.js` 10,044 行（上限 10,500）；测试 130 文件。最终结果以本次任务回报与
+`1017 tests / 1015 pass / 2 skip / 0 fail`）；验收门禁 29 项；
+契约端点 117；`app.js` 10,044 行（上限 10,500）；测试 131 文件。最终结果以本次任务回报与
 `docs/number-anchors.json` 为准，上面 OS-170 历史记录不得冒充当前通过。
 
 ## 一、推送前必过检查单

@@ -4,11 +4,14 @@ import { mkdtemp, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
+  dataAheadFrom,
   declaredCapabilityMigrations,
   migrationJournalPath,
+  planCapabilityMigration,
   runCapabilityMigrations,
   validateCapabilityMigration
 } from '../src/protocol/capabilityMigration.mjs'
+import { diffPlanBindings } from '../src/protocol/upgradePlan.mjs'
 
 const migrator = (body) => `export default async function migrate(ctx) {\n${body}\n}\n`
 const migrationOf = (packageDir, overrides = {}) => ({
@@ -71,6 +74,8 @@ test('迁移成功：物理写盘、journal 记 done、备份留 .history、chan
     assert.equal(again.skipped[0].entryChanged, false)
     // 运行态：迁移上下文与提交落盘放开 .openstory/，.history 非本人备份目录仍禁止
     await assertRuntimeState()
+    // OS-220：只读计划零写入、条目齐全、planId 绑定迁移器与文件摘要
+    await assertOs220ReadonlyPlan()
   } finally {
     await rm(base, { recursive: true, force: true })
   }
@@ -303,6 +308,84 @@ async function assertRuntimeState() {
     })
     const backup = await readFile(join(root, '.history', 'capability-fact.store-3-to-4-2026-01-02T03-04-05-000Z', '.openstory', 'state.json'), 'utf8')
     assert.equal(backup, '{"schema":"v3"}')
+  } finally {
+    await rm(base, { recursive: true, force: true })
+  }
+}
+
+/**
+ * OS-220：能力迁移的只读计划——不建 journal、不建备份、不改数据；
+ * 计划条目含 entrySha256、写前/写后哈希、备份范围、预计 journal/备份路径；
+ * planId 绑定迁移器与受影响文件摘要，改文件即漂移。
+ */
+async function assertOs220ReadonlyPlan() {
+  const { base, root, pkg } = await makeFixture()
+  try {
+    await writeFile(join(pkg, 'migrations', 'v3-to-v4.mjs'), migrator(`
+      const current = JSON.parse(await ctx.readFile('故事源/book.json'))
+      return { files: [
+        { path: '故事源/book.json', content: JSON.stringify({ schema: 'fact.data/v4' }) },
+        { path: '故事源/new.json', content: '{"created":true}' }
+      ] }`))
+    const migration = migrationOf(pkg)
+    const before = await readFile(join(root, '故事源', 'book.json'), 'utf8')
+    const plan = await planCapabilityMigration(root, migration, { now: () => new Date('2026-06-07T08:09:10.011Z') })
+
+    // ① 零写入：数据没变、journal 没建、.history 没建。
+    assert.equal(await readFile(join(root, '故事源', 'book.json'), 'utf8'), before)
+    await assert.rejects(stat(migrationJournalPath(root, migration)), { code: 'ENOENT' })
+    await assert.rejects(stat(join(root, '.history')), { code: 'ENOENT' })
+    await assert.rejects(stat(join(root, '.openstory', 'migrations')), { code: 'ENOENT' })
+
+    // ② 计划条目：状态、迁移器摘要、逐文件前后哈希、备份范围、预计路径。
+    assert.equal(plan.status, 'pending')
+    assert.equal(plan.entry, 'migrations/v3-to-v4.mjs')
+    assert.match(plan.entrySha256, /^[0-9a-f]{64}$/u)
+    assert.deepEqual(plan.backup.scope, ['故事源/book.json'])
+    assert.equal(plan.backup.predictedDir, '.history/capability-fact.store-3-to-4-2026-06-07T08-09-10-011Z')
+    assert.deepEqual(plan.operations.map((item) => [item.kind, item.path]), [
+      ['update', '故事源/book.json'],
+      ['create', '故事源/new.json']
+    ])
+    assert.equal(plan.operations[0].beforeHash.length, 64)
+    assert.equal(plan.operations[0].afterHash.length, 64)
+    assert.notEqual(plan.operations[0].beforeHash, plan.operations[0].afterHash)
+    assert.equal(plan.operations[1].beforeHash, null)
+    assert.deepEqual(plan.conflicts, [])
+    assert.equal(plan.journal.state, 'absent')
+    assert.equal(plan.journal.path, '.openstory/migrations/fact.store/3-to-4.json')
+
+    // ③ 迁移摘要绑定：改迁移器 → 摘要变；改已存在的数据文件 → 文件绑定漂移。
+    // 只有「执行前就存在」的文件才有文件绑定（新建文件不绑，靠 planId 的迁移器摘要区分）。
+    const bindings = [
+      { id: 'migrator', path: plan.entry, sha256: plan.entrySha256 },
+      ...plan.operations
+        .filter((item) => item.beforeHash)
+        .map((item) => ({ id: `file:${item.path}`, path: item.path, sha256: item.beforeHash }))
+    ]
+    assert.deepEqual(bindings.map((item) => item.id), ['migrator', 'file:故事源/book.json'])
+    assert.deepEqual(diffPlanBindings({ bindings }, Object.fromEntries(bindings.map((item) => [item.id, item.sha256]))), [])
+    await writeFile(join(pkg, 'migrations', 'v3-to-v4.mjs'), migrator('return { files: [] }'))
+    const changedEntry = await planCapabilityMigration(root, migration, { now: () => new Date('2026-06-07T08:09:10.011Z') })
+    assert.notEqual(changedEntry.entrySha256, plan.entrySha256, '迁移器改动必须改变摘要')
+    assert.deepEqual(changedEntry.operations, [])
+    assert.deepEqual(diffPlanBindings({ bindings }, {
+      migrator: changedEntry.entrySha256,
+      'file:故事源/book.json': plan.operations[0].beforeHash
+    }).map((item) => item.id), ['migrator'])
+
+    // ④ 数据超前只报告、不跑降级。
+    assert.deepEqual(dataAheadFrom({ 'fact.store': { provider: 'base', version: 3 } }, [{ capability: 'fact.store', to: 4, journalPath: 'j' }]), [{
+      capability: 'fact.store', dataVersion: 4, provider: 'base', providerVersion: 3, journalPath: 'j',
+      action: 'manual-downgrade-not-automatic',
+      message: '库数据已是 fact.store@4，当前供给者 base@3 会误读；不自动降级，请恢复更高版本供给者或人工处置'
+    }])
+
+    // ⑤ 迁移器越界/无效声明不加载、不落盘。
+    const invalid = await planCapabilityMigration(root, migrationOf(pkg, { entry: '../evil.mjs' }))
+    assert.equal(invalid.status, 'invalid')
+    assert.equal(invalid.reason, 'MIGRATION_ENTRY_INVALID')
+    await assert.rejects(stat(migrationJournalPath(root, migration)), { code: 'ENOENT' })
   } finally {
     await rm(base, { recursive: true, force: true })
   }

@@ -417,6 +417,35 @@ const MIGRATION_SAFE_ENDPOINTS = new Set([
   'moduleRootsRefresh', 'uiStateGet', 'uiStatePut', 'suitesGet', 'suiteSettingsPut', 'suiteStatePut'
 ])
 
+/**
+ * OS-221/OS-222：只读迁移观测与升级预览端点。它们不是 `MIGRATION_SAFE_ENDPOINTS` 的成员——
+ * 那组仍会先跑 `migrationStateFor`（= `prepareLibraryMigrations`，首次调用会真实执行
+ * 迁移并写 journal/备份）。这些端点跳过 `ensureLibraryUpgraded`／`migrationGateFail`／
+ * `dataVersionAheadFor` 三道前置，只保留 root 授权、契约校验、模块闸与错误信封；
+ * DATA_VERSION_AHEAD 由响应体 `dataAhead` 字段如实报告，不再升级成 409。
+ * OS-222：diagnose/plan 必须零写入（预览不改库）；apply 绝不加入此集合。
+ * 集合刻意只含这四个 id：新增成员＝重新打开「观测端点写库/绕过闸」的口子。
+ */
+const MIGRATION_READONLY_ENDPOINTS = new Set([
+  'libraryMigrationStatusGet', 'libraryMigrationBackupsGet',
+  // OS-222：预览必须零写入——diagnose/plan 与状态/备份观测同属只读豁免。
+  // 精确集合：不得加入 apply/status/backup write 或任何业务端点。
+  'libraryUpgradeDiagnose', 'libraryUpgradePlan'
+])
+
+/**
+ * OS-222 P0：apply 自己拥有完整的升级/迁移闸链（handler 内 confirm + planId +
+ * root/文件/迁移器摘要复核，随后调用 upgradeLibrary / runCapabilityMigrations 并汇总
+ * rolledBack）。若仍走 daemon 的三道前置闸，任何 apply 请求——包括 confirm:false、
+ * 无 plan、planId 不存在这类**必须零写入的拒绝路径**——都会先被 ensureLibraryUpgraded
+ * 真升级、被 migrationGateFail/dataVersionAheadFor 真跑迁移，拒绝即动稿。
+ *
+ * 因此 apply 也跳过这三道前置闸，但**不加入** MIGRATION_READONLY_ENDPOINTS：
+ * 它仍是写端点，所有确认与漂移校验都在 handler/applyUpgradePlan 内 fail-closed 完成。
+ * 集合只含这一个 id；新增成员＝重新打开「写端点绕过前置闸」的口子。
+ */
+const MIGRATION_SELF_GATED_ENDPOINTS = new Set(['libraryUpgradeApply'])
+
 async function migrationGateFail(endpointId, root, env) {
   const state = await migrationStateFor(root, env)
   if (!state.failures?.length) return null
@@ -502,7 +531,11 @@ async function handleApi(req, res, url, context) {
   // 只迁移请求显式指定且已授权的 root，不顺手碰默认库或清单里的其它库。
   const requestedRoot = typeof checked.value?.root === 'string' ? allowlist.resolve(checked.value.root.trim()) : null
   let libraryUpgrade = null
-  if (requestedRoot) {
+  // OS-221/OS-222：只读观测与自管闸端点跳过一次性升级——「读状态」不得改库；
+  // apply 的确认/漂移/执行/汇总都在自己的 handler 里完成，拒绝路径必须零写入。
+  const readonlyObservation = MIGRATION_READONLY_ENDPOINTS.has(endpointId)
+  const selfGated = MIGRATION_SELF_GATED_ENDPOINTS.has(endpointId)
+  if (requestedRoot && !readonlyObservation && !selfGated) {
     libraryUpgrade = await ensureLibraryUpgraded(requestedRoot)
     if (!libraryUpgrade.ok) {
       return sendError(res, API_ERROR_CODES.LIBRARY_UPGRADE_FAILED, libraryUpgrade.message, {
@@ -515,7 +548,8 @@ async function handleApi(req, res, url, context) {
   // 启动默认库/库清单第一条只是没带 root 时的兜底，不是语义。一个库都没有时无法判定，按启用处理。
   const gateRoot = moduleGateRoot(checked.value, context, allowlist)
   // OS-197：覆盖者声明的迁移先于路由生效；失败者已被剔除，本次请求按失败门报错。
-  if (gateRoot) {
+  // OS-221/222：只读观测与自管闸端点跳过错配闸与 DATA_VERSION_AHEAD 闸（原因见集合定义处）。
+  if (gateRoot && !readonlyObservation && !selfGated) {
     const migrationFail = await migrationGateFail(endpointId, gateRoot, context.env)
     if (migrationFail) {
       return sendError(res, migrationFail.code, migrationFail.message, migrationFail.details)

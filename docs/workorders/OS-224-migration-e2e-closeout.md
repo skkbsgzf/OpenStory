@@ -3,11 +3,11 @@
 | 项 | 值 |
 |---|---|
 | 批次 | OS-211～231；阶段 B 收口 |
-| 执行 | workflow 施工；dsv4flash；hy4flash 评审 |
+| 执行 | workflow 方案 C；dsv4flash 施工，hy4flash 波末独立评审 |
 | 依赖 | OS-223 |
 | 允许改动 | `test/libraryUpgrade*.test.mjs`、`test/capabilityMigration*.test.mjs`、`test/mcpDaemon.test.mjs`、`tools/verify/**`、`.github/workflows/ci.yml`、`docs/ACCEPTANCE.md`、`docs/PUBLISHING.md`、`docs/mcp/**`、`AGENTS.md`、`ARCHITECTURE.md`、`docs/number-anchors.json` |
 | 风险 | 高——迁移安全证据 |
-| 状态 | 待施工 |
+| 状态 | 已完成（监督线直做；2026-11-27） |
 
 ## 目标
 

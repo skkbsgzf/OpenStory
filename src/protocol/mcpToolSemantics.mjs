@@ -151,7 +151,17 @@ export const MCP_TOOL_SEMANTICS = Object.freeze({
 
   /* ===== OS-218 样本运行态补齐 ===== */
   // ui-state 写会改模块/界面状态；走宿主图事务与备份，按写工具处理。
-  openstory_ui_state: write()
+  openstory_ui_state: write(),
+
+  /* ===== OS-222 升级确认链 ===== */
+  // diagnose/plan/status/backup_verify 只读：零写入、不跑迁移，读工具可自动调用。
+  openstory_upgrade_diagnose: read,
+  openstory_upgrade_plan: read,
+  openstory_upgrade_status: read,
+  openstory_upgrade_backup_verify: read,
+  // apply 是整库迁移/覆盖写：必须满足 migrate 级确认；boolean confirm 只是业务闸，
+  // 不能替代 MCP 的 confirm 级别闸（两者都要过）。
+  openstory_upgrade_apply: write({ requiredConfirm: 'migrate' })
 })
 
 /** 取一个工具的语义；未分类/未知一律 null（调用方必须 fail-closed，不许回落成 read）。 */

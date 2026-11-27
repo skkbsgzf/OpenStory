@@ -43,6 +43,19 @@ const STATUS_BY_CODE = Object.freeze({
   OVERRIDE_REJECTED: 400,
   PLUGIN_DEGRADED: 503,
   MIGRATION_FAILED: 500,
+  // 迁移观测（OS-221）：坏 journal／缺备份／哈希不符／备份路径非法／回滚未完成
+  // 都是数据面故障（读侧能读，但内容不可信），不是客户端错——500 并带类型化 code。
+  MIGRATION_JOURNAL_CORRUPT: 500,
+  MIGRATION_BACKUP_MISSING: 500,
+  MIGRATION_BACKUP_HASH_MISMATCH: 500,
+  MIGRATION_BACKUP_PATH_INVALID: 400,
+  MIGRATION_ROLLBACK_INCOMPLETE: 500,
+  // OS-222：确认执行闸——确认/计划缺失是坏请求(400)，root/内容漂移是冲突(409)。
+  CONFIRM_REQUIRED: 400,
+  PLAN_REQUIRED: 400,
+  PLAN_NOT_FOUND: 404,
+  PLAN_ROOT_MISMATCH: 409,
+  PLAN_STALE: 409,
   // 回退保护（OS-197）：数据已是新格式，旧供给者/消费者不可静默读——冲突而非坏请求
   DATA_VERSION_AHEAD: 409,
   // 故事源空库（OS-150a）：还没有故事源条目＝可预期的空态（不是坏档），404 让调用方走空态分支

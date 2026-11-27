@@ -25,7 +25,7 @@ import { baseCapabilities } from './baseCapabilities.mjs'
 import { HOST_TOOLS } from './hostTools.mjs'
 import { MODULE_BOUNDARY_VIOLATION, boundaryHooksStatus, syncModuleBoundaryRoots } from './moduleBoundaryHooks.mjs'
 import { activateLocalModule } from './moduleLoader.mjs'
-import { prepareLibraryMigrations } from './libraryMigrations.mjs'
+import { prepareLibraryMigrations, buildLibraryUpgradePlan, readMigrationStatus, readMigrationBackups } from './libraryMigrations.mjs'
 import { readRootsTable, inspectRoot } from './moduleRoots.mjs'
 
 const layers = new Map()
@@ -543,6 +543,37 @@ export async function effectiveManifestsFor(root, env = process.env) {
   if (!root) return layer.manifests
   const migrations = await prepareLibraryMigrations(root, layer)
   return effectiveManifests(layer, migrations.excluded).manifests
+}
+
+/**
+ * OS-220：整库只读升级计划（旧库一次性升级 ＋ 能力迁移分节）。
+ * 与迁移执行共用当前层与同一套只读判定，但**零写入**：不跑迁移、不写 journal、
+ * 不建备份。OS-221/222 的 diagnose/plan 端点在这里取数，不再各建一份计划。
+ */
+export async function upgradePlanFor(root, env = process.env, options = {}) {
+  if (!root) return null
+  const layer = await ensureRuntime(env)
+  return buildLibraryUpgradePlan(root, layer, options)
+}
+
+/**
+ * OS-221：迁移状态与备份的只读取数口（专用状态/备份端点的唯一真源）。
+ *
+ * 与 `migrationStateFor` 的分界：那条口调 `prepareLibraryMigrations`，**首次调用会
+ * 真实执行能力迁移并写 journal/备份**；状态与备份读取必须零写入，因此这里只取当前层
+ * （`ensureRuntime` 只读模块清单与信任表），再走 `libraryMigrations` 里的纯读收集器。
+ * 状态里 DATA_VERSION_AHEAD 只作 `dataAhead` 字段报告，不升级成错误。
+ */
+export async function migrationStatusFor(root, env = process.env, options = {}) {
+  if (!root) return null
+  const layer = await ensureRuntime(env)
+  return readMigrationStatus(root, layer, options)
+}
+
+/** OS-221：备份清单与校验（零写入；只列库内相对路径，不做任意路径读）。 */
+export async function migrationBackupsFor(root, env = process.env, options = {}) {
+  if (!root) return null
+  return readMigrationBackups(root, options)
 }
 
 /** OS-197 回退保护：数据已是 N+1 格式、路由却落在旧供给者时，拒绝静默误读。 */
