@@ -29,9 +29,10 @@ const ONLY = args.includes('--only') ? args[args.indexOf('--only') + 1].split(',
 
 /* ---------- LLM 客户端（opencode zen · DeepSeek v4.1-flash，关推理） ---------- */
 const LLM = {
-  key: 'REDACTED-ROTATED-KEY',
-  url: 'https://opencode.ai/zen/go/v1/chat/completions',
-  model: 'deepseek-v4.1-flash'
+  // 凭据只从环境变量读：脚本本身绝不落盘、不入库、不打印。
+  key: String(process.env.OPENCODE_ZEN_API_KEY ?? '').trim(),
+  url: String(process.env.OPENCODE_ZEN_URL ?? 'https://opencode.ai/zen/go/v1/chat/completions').trim(),
+  model: String(process.env.OPENCODE_ZEN_MODEL ?? 'deepseek-v4.1-flash').trim()
 }
 async function llm(prompt, maxTokens = 4000) {
   const r = await fetch(LLM.url, {

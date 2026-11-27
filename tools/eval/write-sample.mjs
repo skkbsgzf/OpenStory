@@ -26,9 +26,10 @@ const OUT = argOf('--out', join(ROOT, 'docs', 'samples', `sample-${PACK.replace(
 const TASK = argOf('--task', '写一篇番茄短篇小说的一章，3000-4000 字，要有完整的起承转合与收束拍。设定：婚后五年，丈夫的记事本里夹着一张陌生女人的电影票根；我的抽屉深处，也压着同一场次的票根。')
 
 const LLM = {
-  key: 'REDACTED-ROTATED-KEY',
-  url: 'https://opencode.ai/zen/go/v1/chat/completions',
-  model: 'deepseek-v4.1-flash'
+  // 凭据只从环境变量读：脚本本身绝不落盘、不入库、不打印。
+  key: String(process.env.OPENCODE_ZEN_API_KEY ?? '').trim(),
+  url: String(process.env.OPENCODE_ZEN_URL ?? 'https://opencode.ai/zen/go/v1/chat/completions').trim(),
+  model: String(process.env.OPENCODE_ZEN_MODEL ?? 'deepseek-v4.1-flash').trim()
 }
 async function llm(prompt, maxTokens) {
   const r = await fetch(LLM.url, {

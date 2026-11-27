@@ -1482,6 +1482,41 @@ const tools = [
       if (!args.state || typeof args.state !== 'object' || Array.isArray(args.state)) throw invalidArgs('state')
       return await daemon('/api/ui-state', { method: 'PUT', body: { root, state: args.state } })
     }
+  },
+  {
+    name: 'openstory_knowledge_libraries',
+    title: '列知识库',
+    description: '列出跨项目知识库资产与当前激活库；源路径与凭据不返回。',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+    async run() { return await daemon('/api/knowledge/libraries') }
+  },
+  {
+    name: 'openstory_knowledge_search',
+    title: '搜索知识库',
+    description: '通过统一 KnowledgeSearchService 检索激活或指定知识库，返回同源 hits 与 provenance。',
+    inputSchema: {
+      type: 'object',
+      properties: { libraryId: { type: 'string' }, query: { type: 'string' }, topK: { type: 'integer' }, minScore: { type: 'number' }, budgetChars: { type: 'integer' } },
+      required: ['query'], additionalProperties: false
+    },
+    async run(args) {
+      if (!text(args.query).trim()) throw invalidArgs('query')
+      return await daemon('/api/knowledge/search', { method: 'POST', body: cleanBody(args) })
+    }
+  },
+  {
+    name: 'openstory_knowledge_read',
+    title: '读知识库文档',
+    description: '按 libraryId/documentRef 读取已登记知识库源文档与反链；源文件只读。',
+    inputSchema: {
+      type: 'object',
+      properties: { libraryId: { type: 'string' }, documentRef: { type: 'string' } },
+      required: ['libraryId', 'documentRef'], additionalProperties: false
+    },
+    async run(args) {
+      if (!args.libraryId || !args.documentRef) throw invalidArgs('libraryId/documentRef')
+      return await daemon('/api/knowledge/document', { query: { libraryId: args.libraryId, documentRef: args.documentRef } })
+    }
   }
 ]
 
@@ -1492,6 +1527,7 @@ function invalidArgs(what) {
   err.code = 'E_INVALID_ARGS'
   return err
 }
+const text = (value) => String(value ?? '')
 
 /** JSON Schema 子集：required、type、enum、additionalProperties。 */
 function validateToolArgs(schema, args) {
@@ -1607,7 +1643,7 @@ async function callTool(name, args) {
 
 const SERVER_INFO = { name: 'openstory-local', version: '0.1.0' }
 const INSTRUCTIONS = [
-  'OpenStory 本地 MCP：小说（正文/剧本读写，写有 .history 备份）/ 世界书（Obsidian 式标签双链笔记，定位＝本项目的创作型条目管理知识库）/ 建库与套件 / fact 与 exchange / 多局与推演 / 数据分析。',
+  'OpenStory 本地 MCP：小说（正文/剧本读写，写有 .history 备份）/ 世界书（Obsidian 式标签双链笔记，定位＝本项目的创作型条目管理知识库）/ 独立知识库（跨项目储备知识，openstory_knowledge_libraries/search/read）/ 建库与套件 / fact 与 exchange / 多局与推演 / 数据分析。',
   '先 openstory_libraries 拿 root；空目录用 openstory_library_create；读自由，写有备份，absorb 不开（显式动稿）。',
   '世界书只单向链小说：世界书可 [[正文/...]]，正文不要回挂世界书。',
   '技能货架用 openstory_skills_list/read 按需读取：craft 可注入 prompt；operate 是只读操作说明书，不注入、不执行代码，写操作只准调用其声明的官方 MCP 工具并按 confirm 级别经作者确认。',

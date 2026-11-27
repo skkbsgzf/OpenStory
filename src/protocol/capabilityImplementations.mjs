@@ -5,6 +5,7 @@ import { textCapability } from '../modules/text/index.mjs'
 import { agentRuntimeCapability } from '../modules/agent-runtime/index.mjs'
 import { mediaCapability } from '../modules/media/index.mjs'
 import { deduceCapabilities } from '../modules/deduce/deduceCapability.mjs'
+import { knowledgeRuntimeCapability } from '../modules/knowledge-runtime/index.mjs'
 
 export const MODULE_IMPLEMENTATIONS = Object.freeze({
   fact: factCapability,
@@ -13,7 +14,8 @@ export const MODULE_IMPLEMENTATIONS = Object.freeze({
   text: textCapability,
   'agent-runtime': agentRuntimeCapability,
   media: mediaCapability,
-  deduce: deduceCapabilities
+  deduce: deduceCapabilities,
+  'knowledge-runtime': knowledgeRuntimeCapability
 })
 
 /**
@@ -38,5 +40,6 @@ export const KERNEL_CAPABILITIES = Object.freeze({
   agentRuntime: agentRuntimeCapability['agent.runtime'],
   mediaGenerate: mediaCapability['media.generate'],
   mediaDescribe: mediaCapability['media.describe'],
-  deduceEngine: deduceCapabilities['deduce.engine']
+  deduceEngine: deduceCapabilities['deduce.engine'],
+  knowledgeRetrieval: knowledgeRuntimeCapability['knowledge.retrieval']
 })

@@ -77,7 +77,7 @@ export async function ensureEmbedding({ repoRoot, embedUrl = 'http://127.0.0.1:8
     kbServiceState.autoStarted = true
     logger(`[kbHealth] embedding 未响应，已自动拉起（pid ${child.pid}）`)
   } catch (error) {
-    logger(`[kbHealth] embedding 拉起失败：${error.message}`)
+    logger(`[kbHealth] embedding 拉起失败（${error?.code ?? 'UNKNOWN'}）`)
     return false
   }
   const deadline = Date.now() + readyMs

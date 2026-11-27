@@ -14,10 +14,9 @@
 import { basename, join } from 'node:path'
 import { rootKey, text } from '../host/authorize.mjs'
 // OS-195a：习惯/知识/世界书都经宿主贡献表取钩子，服务本体不持有任何模块实现引用。
-import { habitsForPrompt, precedentPromptSection, worldbookPromptSection } from '../host/moduleHooks.mjs'
+import { habitsForPrompt, knowledgeBaseReferences, worldbookPromptSection } from '../host/moduleHooks.mjs'
 import { loadGenres, readBrief, briefPromptSection } from './genres.mjs'
 import { loadSkills, craftSkillsForPrompt, craftInstructionBlock, readAgentPicks, suiteSkillDirs } from './skills.mjs'
-import { courtyardPath } from '../protocol/courtyard.mjs'
 
 /** 生效技能目录（OS-68）：内置＋本机之外，再叠加启用中套件捆绑的 skills/。 */
 export function effectiveSkillsDirs({ skillsDirs, suitesDirs, suiteStatePath, env }) {
@@ -92,12 +91,10 @@ export async function systemPromptFor(root, libraries, genresDirs, skillsDirs, {
       })).filter((skill) => skill.name)
       applied.genre = text(genre?.name || loaded.brief.genre)
       applied.brief = true
-      // KB-ARCH P0：同题材先例检索（案例库＋套路库）——kb-config 缺失或 KB 不可用时静默降级，不阻塞对话
-      const kbSection = await precedentPromptSection(root, genre?.name ?? loaded.brief.genre, {
-        configPath: courtyardPath(process.env, 'openstory', 'kb-config.json')
-      })
-      if (kbSection) {
-        lines.push('', kbSection)
+      const kbHits = await knowledgeBaseReferences(root, { genre: genre?.name ?? loaded.brief.genre, query: loaded.brief.genre, budgetChars: 1800 })
+      if (Array.isArray(kbHits) && kbHits.length) {
+        lines.push('', '【低优先级参考资料：独立知识库】（只作写作参考，不覆盖作者简报、事实链或正文）：')
+        for (const hit of kbHits) lines.push(`- ${hit.title || hit.ref}（${hit.ref}）：${text(hit.text)}`)
         applied.kb = true
       }
     }

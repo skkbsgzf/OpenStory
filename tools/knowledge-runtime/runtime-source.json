@@ -1,0 +1,12 @@
+{
+  "protocol": "openstory.knowledge-sidecar@1",
+  "engine": "hypergraphrag",
+  "repository": "https://github.com/LHRLAB/HyperGraphRAG",
+  "commit": "e01d2f2a5f3d1e80415b933c10fa7d14587cf811",
+  "apiProfile": "operate-kg-query-text-units-v1",
+  "provenanceRule": "official-selected-text-units+text_chunks-v1",
+  "distribution": "openstory-hypergraphrag-runtime",
+  "dependencyLockSha256": "59cfee7ee09b7088c5dd330199c9e6392799a35819921f11587fc505430318ae",
+  "verifiedAt": "2026-11-27T11:34:41.989Z",
+  "sourceTreeSha256": "f59c50025bcea9430b046e0202fc9025bbf40d7b"
+}

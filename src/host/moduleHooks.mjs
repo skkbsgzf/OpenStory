@@ -32,6 +32,12 @@ export async function precedentPromptSection(root, genre, options) {
   return typeof hooks.knowledge === 'function' ? (await hooks.knowledge(root, genre, options)) ?? null : null
 }
 
+/** 独立知识库检索：knowledge-base 停用＝不注入；失败由宿主降级为不注入。 */
+export async function knowledgeBaseReferences(root, options = {}) {
+  const hooks = await hooksFor(root, 'promptContext')
+  return typeof hooks.knowledgeBase === 'function' ? (await hooks.knowledgeBase(root, options.genre, options)) ?? null : null
+}
+
 /** 世界书索引段（OS-45）：世界书模块停用 → 不注入；只给路径不给全文的口径在模块内。 */
 export async function worldbookPromptSection(root, options) {
   const hooks = await hooksFor(root, 'promptContext')

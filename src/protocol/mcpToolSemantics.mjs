@@ -161,7 +161,12 @@ export const MCP_TOOL_SEMANTICS = Object.freeze({
   openstory_upgrade_backup_verify: read,
   // apply 是整库迁移/覆盖写：必须满足 migrate 级确认；boolean confirm 只是业务闸，
   // 不能替代 MCP 的 confirm 级别闸（两者都要过）。
-  openstory_upgrade_apply: write({ requiredConfirm: 'migrate' })
+  openstory_upgrade_apply: write({ requiredConfirm: 'migrate' }),
+
+  /* ===== OS-229 独立知识库只读消费 ===== */
+  openstory_knowledge_libraries: read,
+  openstory_knowledge_search: read,
+  openstory_knowledge_read: read
 })
 
 /** 取一个工具的语义；未分类/未知一律 null（调用方必须 fail-closed，不许回落成 read）。 */

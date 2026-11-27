@@ -81,9 +81,23 @@ export async function readUiState(root) {
 
 /**
  * 浅合并写界面状态。只写变化的键，未给的键保持原值。
+ * 同一库的写入串行化：Windows 上两次并发原子替换同一文件会偶发 EPERM/EBUSY，
+ * 而界面状态本来就该「后写覆盖先写」，排队的语义与用户操作顺序一致。
  * @returns {Promise<{ok:boolean, state?:object, backup?:string, code?:string, message?:string}>}
  */
-export async function writeUiState(root, patch) {
+const uiStateWriteTails = new Map()
+
+export function writeUiState(root, patch) {
+  const key = String(root ?? '')
+  const previous = uiStateWriteTails.get(key) ?? Promise.resolve()
+  const run = previous.then(() => writeUiStateNow(root, patch), () => writeUiStateNow(root, patch))
+  const tail = run.then(() => {}, () => {})
+  uiStateWriteTails.set(key, tail)
+  tail.then(() => { if (uiStateWriteTails.get(key) === tail) uiStateWriteTails.delete(key) })
+  return run
+}
+
+async function writeUiStateNow(root, patch) {
   if (!patch || typeof patch !== 'object' || Array.isArray(patch)) {
     return { ok: false, code: 'INVALID_ENTRY', message: 'state 必须是对象' }
   }

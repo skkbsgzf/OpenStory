@@ -18,6 +18,8 @@ export async function writeFileAtomic(absPath, contents, deps = {}) {
   const openFile = deps.open || open
   const move = deps.rename || rename
   const remove = deps.unlink || unlink
+  const wait = deps.wait || ((ms) => new Promise((done) => setTimeout(done, ms)))
+  const platform = deps.platform || process.platform
   let handle
   try {
     handle = await openFile(tmpPath, 'w')
@@ -25,7 +27,7 @@ export async function writeFileAtomic(absPath, contents, deps = {}) {
     await handle.sync()
     await handle.close()
     handle = null
-    await move(tmpPath, absPath)
+    await renameWithRetry(move, tmpPath, absPath, { platform, wait })
     await syncDirectory(directory, { open: openFile })
   } catch (error) {
     if (handle) await handle.close().catch(() => {})
@@ -33,6 +35,25 @@ export async function writeFileAtomic(absPath, contents, deps = {}) {
     throw error
   }
   return absPath
+}
+
+/**
+ * Windows 上「目标文件正被别的句柄短暂持有」时，rename 覆盖会偶发 EPERM/EBUSY/EACCES；
+ * 这不是数据错误，重试几次即可（编辑器/杀毒/索引器持有句柄是常态）。
+ * 只对这三类可重试错误重试，其它错误立刻抛出，失败清场语义不变。
+ */
+const RETRYABLE_RENAME_CODES = new Set(['EPERM', 'EBUSY', 'EACCES'])
+
+async function renameWithRetry(move, from, to, { platform, wait }) {
+  const maxAttempts = platform === 'win32' ? 5 : 1
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      return await move(from, to)
+    } catch (error) {
+      if (attempt >= maxAttempts || !RETRYABLE_RENAME_CODES.has(error?.code)) throw error
+      await wait(attempt * 25)
+    }
+  }
 }
 
 /** 崩溃恢复：清掉同目录遗留的 TMP_PREFIX 半成品，绝不误删正文。 */

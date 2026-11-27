@@ -1,0 +1,15 @@
+{
+  "spec": "openstory-module@2",
+  "id": "knowledge-runtime",
+  "name": "知识检索运行时内核",
+  "version": "1.0.0",
+  "builtin": true,
+  "description": "HyperGraphRAG 固定提交运行时、JSONL sidecar 与知识库索引原子发布。",
+  "class": "kernel",
+  "entry": "index.mjs",
+  "requires": [],
+  "capabilities": [
+    { "id": "knowledge.retrieval", "version": 1 }
+  ],
+  "endpoints": []
+}

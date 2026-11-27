@@ -35,36 +35,59 @@ export function defaultKbConfigPath(env = process.env) {
 }
 
 /**
- * 读 KB 配置：{ backend:'weknora'|'mock', baseUrl, apiKey, spaceId?, collections?:{别名→真实id} }
- * 缺档＝未配置（不是错误——没接知识库也能用工作台）。
+ * 本机凭据的尾号掩码。与 agent-runtime 的 maskApiKey 保持同一纯函数口径；
+ * 工作台不得跨模块静态 import 内核实现，因此本模块持等价定义并由定向测试钉死。
+ */
+export function maskApiKey(key) {
+  const raw = String(key ?? '').trim()
+  if (!raw) return ''
+  if (raw.length <= 8) return '••••'
+  return `••••${raw.slice(-4)}`
+}
+
+/** 文件故障不回显原始内容/底层消息，避免配置片段或密钥进入日志与错误信封。 */
+function configFailureMessage() {
+  return 'KB 配置不是合法 JSON 或不可读；请先修复原文件，未做任何覆盖'
+}
+
+/**
+ * 读取并校验磁盘配置。坏 JSON、非对象形状与任何读取失败统一报 KB_CONFIG_CORRUPT；
+ * 缺失文件仍是合法的未配置状态。调用方（尤其 PUT）必须在写盘前检查 ok。
  */
 export async function loadKbConfig(configPath) {
   const target = text(configPath).trim()
-  if (!target) return { config: { backend: 'none' }, warnings: [] }
+  if (!target) return { ok: false, code: 'KB_CONFIG_CORRUPT', message: configFailureMessage(), config: { backend: 'none' }, warnings: [] }
   let raw
   try {
     raw = await readFile(target, 'utf-8')
   } catch (error) {
-    if (error?.code === 'ENOENT') return { config: { backend: 'none' }, warnings: [] }
-    return { config: { backend: 'none' }, warnings: [{ code: 'KB_CONFIG_UNREADABLE', message: `KB 配置读不了：${text(error?.message || error)}` }] }
+    if (error?.code === 'ENOENT') return { ok: true, exists: false, config: { backend: 'none' }, warnings: [] }
+    return { ok: false, code: 'KB_CONFIG_CORRUPT', message: configFailureMessage(), config: { backend: 'none' }, warnings: [] }
   }
   let parsed
   try {
     parsed = JSON.parse(raw)
-  } catch (error) {
-    return { config: { backend: 'none' }, warnings: [{ code: 'KB_CONFIG_CORRUPT', message: `KB 配置不是 JSON：${text(error?.message || error)}` }] }
+  } catch {
+    return { ok: false, code: 'KB_CONFIG_CORRUPT', message: configFailureMessage(), config: { backend: 'none' }, warnings: [] }
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return { ok: false, code: 'KB_CONFIG_CORRUPT', message: configFailureMessage(), config: { backend: 'none' }, warnings: [] }
   }
   const backend = text(parsed?.backend).trim()
+  if (!backend) return { ok: true, exists: true, config: parsed, warnings: [] }
   if (backend !== 'weknora' && backend !== 'mock') {
-    return { config: { backend: 'none' }, warnings: [{ code: 'KB_CONFIG_BACKEND', message: `backend 只收 weknora/mock：${backend}` }] }
+    return { ok: false, code: 'KB_CONFIG_BACKEND', message: 'KB 配置 backend 只支持 weknora/mock', config: { backend: 'none' }, warnings: [] }
   }
   return {
+    ok: true,
+    exists: true,
     config: {
+      ...parsed,
       backend,
       baseUrl: text(parsed.baseUrl).trim().replace(/\/+$/u, ''),
       apiKey: text(parsed.apiKey).trim(),
       spaceId: text(parsed.spaceId).trim(),
-      collections: parsed.collections && typeof parsed.collections === 'object' ? parsed.collections : {}
+      collections: parsed.collections && typeof parsed.collections === 'object' && !Array.isArray(parsed.collections) ? parsed.collections : {}
     },
     warnings: []
   }
@@ -100,18 +123,26 @@ export function normalizeHits(payload) {
       : Array.isArray(inner?.hits) ? inner.hits
         : Array.isArray(payload?.results) ? payload.results
           : []
-  return list.map((item, index) => ({
-    id: text(item?.id ?? item?.chunk_id ?? item?.knowledge_id),
-    text: text(item?.content ?? item?.text ?? item?.chunk ?? item?.snippet),
-    score: Number(item?.score ?? item?.similarity ?? item?.rerank_score ?? 0) || 0,
-    source: text(item?.knowledge_title ?? item?.title ?? item?.knowledge_id ?? item?.knowledge_base_id),
-    meta: {
-      ...(item?.meta && typeof item.meta === 'object' ? item.meta : {}),
-      knowledgeId: text(item?.knowledge_id),
-      knowledgeBaseId: text(item?.knowledge_base_id),
-      chunkIndex: Number.isSafeInteger(item?.chunk_index) ? item.chunk_index : index
+  return list.map((item) => {
+    const meta = item?.meta && typeof item.meta === 'object' ? item.meta : {}
+    const chunkIndex = Number.isSafeInteger(item?.chunk_index) ? item.chunk_index
+      : Number.isSafeInteger(meta.chunkIndex) ? meta.chunkIndex : undefined
+    return {
+      id: text(item?.id ?? item?.chunk_id ?? item?.knowledge_id),
+      text: text(item?.content ?? item?.text ?? item?.chunk ?? item?.snippet),
+      score: Number(item?.score ?? item?.similarity ?? item?.rerank_score ?? 0) || 0,
+      source: text(item?.knowledge_title ?? item?.title ?? item?.knowledge_id ?? item?.knowledge_base_id),
+      knowledgeId: text(item?.knowledge_id ?? meta.knowledgeId),
+      knowledgeBaseId: text(item?.knowledge_base_id ?? meta.knowledgeBaseId),
+      ...(chunkIndex !== undefined ? { chunkIndex } : {}),
+      meta: {
+        ...meta,
+        knowledgeId: text(item?.knowledge_id ?? meta.knowledgeId),
+        knowledgeBaseId: text(item?.knowledge_base_id ?? meta.knowledgeBaseId),
+        ...(chunkIndex !== undefined ? { chunkIndex } : {})
+      }
     }
-  })).filter((hit) => hit.text)
+  }).filter((hit) => hit.text)
 }
 
 /* ---------- 适配器 ---------- */
@@ -151,7 +182,7 @@ function createWeKnoraClient(config, fetchImpl) {
         signal: AbortSignal.timeout(20000)
       })
     } catch (error) {
-      return fail(KB_ERROR_CODES.KB_UNAVAILABLE, `知识库连不上（${baseUrl}）：${text(error?.message || error)}`)
+      return fail(KB_ERROR_CODES.KB_UNAVAILABLE, `知识库连不上（${baseUrl}）`)
     }
     if (response.status === 401 || response.status === 403) {
       return fail(KB_ERROR_CODES.KB_UNAUTHORIZED, `知识库拒绝访问（${response.status}）：检查 apiKey`)

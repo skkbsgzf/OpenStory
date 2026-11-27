@@ -26,6 +26,7 @@ import { pluginsEndpoints } from './contracts/plugins.mjs'
 import { systemEndpoints } from './contracts/system.mjs'
 import { exchangeEndpoints } from './contracts/exchange.mjs'
 import { scriptEndpoints } from './contracts/script.mjs'
+import { knowledgeBaseEndpoints } from './contracts/knowledgeBase.mjs'
 
 /** 错误码词表（daemon 只从这里取码；测试按这里校验）。 */
 export const API_ERROR_CODES = Object.freeze({
@@ -76,7 +77,18 @@ export const API_ERROR_CODES = Object.freeze({
   // 故事源（OS-150b）：故事源/ 下有档，但一本都读不出来——坏档不是空态，别让页面摆「还没有」
   FACT_UNREADABLE: 'FACT_UNREADABLE',
   // 运行时套件（OS-150b）：fixture 套件是测试夹具/骨架模板，不许被设为激活运行时
-  AGENT_RUNTIME_FIXTURE: 'AGENT_RUNTIME_FIXTURE'
+  AGENT_RUNTIME_FIXTURE: 'AGENT_RUNTIME_FIXTURE',
+  // 独立知识库（OS-226～229）：坏档/预览确认/runtime 与索引状态必须类型化。
+  KNOWLEDGE_LIBRARY_CORRUPT: 'KNOWLEDGE_LIBRARY_CORRUPT',
+  KB_CONFIG_CORRUPT: 'KB_CONFIG_CORRUPT',
+  RUNTIME_MISSING: 'RUNTIME_MISSING',
+  RUNTIME_VERSION_MISMATCH: 'RUNTIME_VERSION_MISMATCH',
+  INDEX_NOT_READY: 'INDEX_NOT_READY',
+  STALE_INDEX: 'STALE_INDEX',
+  QUERY_TIMEOUT: 'QUERY_TIMEOUT',
+  INDEX_BUILD_TIMEOUT: 'INDEX_BUILD_TIMEOUT',
+  REQUEST_CANCELLED: 'REQUEST_CANCELLED',
+  RUNTIME_CRASHED: 'RUNTIME_CRASHED'
 })
 
 /** 当前端点的形状合同（OS-130 起按域分片，这里聚合；`path` 不含 query，query 字段在 request.query 里单列）。 */
@@ -89,7 +101,8 @@ export const ENDPOINTS = Object.freeze({
   ...pluginsEndpoints,
   ...systemEndpoints,
   ...exchangeEndpoints,
-  ...scriptEndpoints
+  ...scriptEndpoints,
+  ...knowledgeBaseEndpoints
 })
 
 export const ENDPOINT_LIST = Object.freeze(Object.values(ENDPOINTS))

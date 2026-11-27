@@ -63,7 +63,18 @@ const STATUS_BY_CODE = Object.freeze({
   // 故事源坏档（OS-150b）：有档但全部读不出来＝数据面故障，不是客户端的错
   FACT_UNREADABLE: 500,
   // 运行时套件（OS-150b）：请求的套件是测试夹具，不是可选产品运行时
-  AGENT_RUNTIME_FIXTURE: 400
+  AGENT_RUNTIME_FIXTURE: 400,
+  // 独立知识库：资产/配置坏档是数据面故障；runtime 缺失/降级/超时分别映射。
+  KNOWLEDGE_LIBRARY_CORRUPT: 500,
+  KB_CONFIG_CORRUPT: 500,
+  RUNTIME_MISSING: 503,
+  RUNTIME_VERSION_MISMATCH: 503,
+  INDEX_NOT_READY: 409,
+  STALE_INDEX: 409,
+  QUERY_TIMEOUT: 504,
+  INDEX_BUILD_TIMEOUT: 504,
+  REQUEST_CANCELLED: 499,
+  RUNTIME_CRASHED: 502
 })
 
 function statusFor(code) {
