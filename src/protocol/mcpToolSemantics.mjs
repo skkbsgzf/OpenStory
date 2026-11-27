@@ -81,7 +81,42 @@ export const MCP_TOOL_SEMANTICS = Object.freeze({
 
   /* ===== 技能货架 ===== */
   openstory_skills_list: read,
-  openstory_skills_read: read
+  openstory_skills_read: read,
+
+  /* ===== OS-213 建库原语 ===== */
+  // 建库：在作者给定的绝对路径创建库并登记（写盘＋注册）→ create。
+  openstory_library_create: create(),
+  // 只读诊断：不触发升级、不写业务文件。
+  openstory_library_diagnose: read,
+  // 扫描旧源：只产计划，零写入。
+  openstory_library_scan: read,
+  // 导入旧源：真搬文件，覆盖前有 plan 与备份 → write。
+  openstory_library_import: write(),
+  // 主载体切换：改 project.json → write。
+  openstory_library_primary: write(),
+
+  /* ===== OS-213 套件原语 ===== */
+  openstory_suites: read,
+  openstory_suite_enable: write(),
+  openstory_suite_settings: write(),
+
+  /* ===== OS-213 fact 原语 ===== */
+  openstory_fact_books: read,
+  openstory_fact_entries: read,
+  // 整份替换事实链条目：有备份，但语义是覆盖写。
+  openstory_fact_entries_import: write(),
+
+  /* ===== OS-213 exchange 原语 ===== */
+  // 导出缺省只返回数据（读）；save=true 才落盘 → 条件写。
+  openstory_exchange_export: Object.freeze({
+    effect: 'read',
+    requiredConfirm: 'read',
+    mutatesWhen: Object.freeze({ parameter: 'save', equals: true, effect: 'write', requiredConfirm: 'create' })
+  }),
+  // 导入：缺省（不传 dryRun）就是真写——这是默认路径，不能因为「可能传了 dryRun」就放行。
+  // 注册表的 mutatesWhen 只能「命中参数才升级」，无法表达「参数缺省即写」，所以整体按写工具：
+  // 即使 dryRun:true 也要 confirm（宁严不宽；dryRun 的零写入由实现保证）。
+  openstory_exchange_import: write()
 })
 
 /** 取一个工具的语义；未分类/未知一律 null（调用方必须 fail-closed，不许回落成 read）。 */

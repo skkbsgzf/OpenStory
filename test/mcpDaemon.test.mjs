@@ -5,6 +5,7 @@ import { spawn } from 'node:child_process'
 import { readFile, writeFile, mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { withTempDaemon } from './helpers/tempDaemon.mjs'
+import { MCP_TOOL_NAMES } from '../src/host/mcp.mjs'
 
 function startMcp(port, env = {}) {
   const child = spawn(process.execPath, [join(import.meta.dirname, '..', 'src', 'host', 'mcp.mjs')], {
@@ -51,13 +52,19 @@ const call = async (mcp, name, args) => {
 }
 const payload = (result) => JSON.parse(result.content[0].text)
 
-test('OS-209 MCP：24 工具全部映射到临时 daemon／本地纯函数；写操作有备份', async () => {
+test('OS-209 MCP：全部工具映射到临时 daemon／本地纯函数；写操作有备份', async () => {
   await withTempDaemon(async (fx) => {
     await withMcp(fx, async (mcp) => {
       const init = await mcp.request('initialize', { protocolVersion: '2024-11-05' })
       assert.equal(init.result.serverInfo.name, 'openstory-local')
       const list = await mcp.request('tools/list')
-      assert.equal(list.result.tools.length, 24)
+      // OS-213：24 基础工具 + 13 建库原语。用注册表对账而非写死数字——新增工具自动纳入
+      // 枚举（更强），同时仍证明「tools/list 与注册表逐名一致」。
+      assert.equal(list.result.tools.length, MCP_TOOL_NAMES.length)
+      assert.equal(new Set(MCP_TOOL_NAMES).size, MCP_TOOL_NAMES.length, '工具名不许重复')
+      for (const name of ['openstory_library_create', 'openstory_suites', 'openstory_fact_books', 'openstory_exchange_export']) {
+        assert.ok(MCP_TOOL_NAMES.includes(name), `OS-213 工具应已注册：${name}`)
+      }
       const libraries = payload(await call(mcp, 'openstory_libraries', {}))
       assert.equal(libraries.libraries.length, 1)
       const files = payload(await call(mcp, 'openstory_files', { root: fx.root, dir: '正文' }))

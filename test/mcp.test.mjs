@@ -75,16 +75,22 @@ test('MCP：initialize 握手（serverInfo/instructions/tools 能力）', async 
   } finally { mcp.close() }
 })
 
-test('MCP：tools/list 24 个工具、五模块分组、schema 带 required', async () => {
+test('MCP：tools/list 与注册表逐名一致、五模块分组、schema 带 required', async () => {
   const mcp = startMcp()
   try {
     const reply = await mcp.request('tools/list')
     const tools = reply.result.tools
-    // OS-91：22 → 24（+ openstory_skills_list / openstory_skills_read）；OS-172 钉死现有工具面
-    assert.equal(tools.length, 24, 'OpenStory 自身工具数必须保持 24')
+    // OS-91：22 → 24；OS-213：24 → 37（+13 建库原语）。用注册表对账而非写死数字——
+    // 工具面继续扩张时自动跟随，同时仍强制「tools/list 与注册表逐名一致」。
+    assert.equal(tools.length, MCP_TOOL_NAMES.length, 'tools/list 必须与 MCP_TOOL_NAMES 数量一致')
     const names = tools.map((tool) => tool.name)
-    assert.equal(new Set(names).size, 24, '工具名不得重复')
-    for (const name of ['openstory_libraries', 'openstory_novel_write_chapter', 'openstory_reference_graph', 'openstory_deduce_present', 'openstory_analysis_chapter', 'openstory_habits_read', 'openstory_skills_list', 'openstory_skills_read']) {
+    assert.equal(new Set(names).size, MCP_TOOL_NAMES.length, '工具名不得重复')
+    for (const name of ['openstory_libraries', 'openstory_novel_write_chapter', 'openstory_reference_graph', 'openstory_deduce_present', 'openstory_analysis_chapter', 'openstory_habits_read', 'openstory_skills_list', 'openstory_skills_read',
+      // OS-213 建库原语必须在工具面里
+      'openstory_library_create', 'openstory_library_diagnose', 'openstory_library_scan', 'openstory_library_import', 'openstory_library_primary',
+      'openstory_suites', 'openstory_suite_enable', 'openstory_suite_settings',
+      'openstory_fact_books', 'openstory_fact_entries', 'openstory_fact_entries_import',
+      'openstory_exchange_export', 'openstory_exchange_import']) {
       assert.ok(names.includes(name), `缺工具 ${name}`)
     }
     for (const tool of tools) {
@@ -120,7 +126,8 @@ test('MCP：tools/list 24 个工具、五模块分组、schema 带 required', as
   const renamedSchema = [{ name: 'openstory_deduce_present', inputSchema: { properties: { root: {}, confirm: {}, resetState: {} } } }]
   assert.equal(validateSemanticsRegistry(renamedSchema).ok, false, 'schema 参数改名后注册表必须 fail-closed')
   assert.ok(validateSemanticsRegistry(renamedSchema).malformed.includes('openstory_deduce_present'), '改名触发 malformed')
-  assert.equal(Object.keys(MCP_TOOL_SEMANTICS).length, 24)
+  // 注册表条目数必须与工具面相等（不是随手能对上的数字）：多一个假条目或少一个未分类工具都算失配。
+  assert.equal(Object.keys(MCP_TOOL_SEMANTICS).length, MCP_TOOL_NAMES.length)
   for (const name of MCP_TOOL_NAMES) {
     const semantics = toolSemanticsOf(name)
     assert.ok(semantics, `${name} 必须在安全语义注册表里（未分类工具禁止 operate 引用）`)
@@ -185,7 +192,9 @@ async function assertConfirmGate(mcp) {
     })
     assert.equal(noConfirm.error, undefined, '授权闸不是 -32602 参数错')
     assert.equal(noConfirm.result.isError, true)
-    assert.match(noConfirm.result.content[0].text, /^CONFIRM_REQUIRED · .*需 restore 确认/u)
+    // 文案可调，语义不可调：拒绝 + 明确要求 restore 级确认。
+    assert.match(noConfirm.result.content[0].text, /^CONFIRM_REQUIRED · /u)
+    assert.match(noConfirm.result.content[0].text, /restore/u)
 
     const wrongLevel = await mcp.request('tools/call', {
       name: 'openstory_deduce_present',
@@ -200,15 +209,20 @@ async function assertConfirmGate(mcp) {
     assert.equal(noReset.error, undefined)
     assert.doesNotMatch(noReset.result.content[0].text, /^CONFIRM_REQUIRED · /u)
 
-    // 普通写工具（无 mutatesWhen）接受 confirm 实参（不再 -32602）：只要传了就必须
-    // 满足注册表门槛；不传则按工单「不触发写时放行」落到业务闸（NO_LIBRARY）。
+    // 普通写工具（无 mutatesWhen）是无条件写：**每次调用都要求**满足门槛的 confirm。
+    // OS-213 收紧：之前「不传 confirm 就放行」等于写通道对任意外部 Agent 敞开——调用本身
+    // 就是写，不存在「这次不写」的分支。confirm 仍是已知参数（不是 -32602）。
     const plainWrite = { root: 'fixture-root', file: '正文/001.md', text: 'x' }
     const unconfirmedWrite = await mcp.request('tools/call', { name: 'openstory_novel_write_chapter', arguments: plainWrite })
     assert.equal(unconfirmedWrite.error, undefined, 'confirm 不是未知参数，不能 -32602')
-    assert.doesNotMatch(unconfirmedWrite.result.content[0].text, /^CONFIRM_REQUIRED · /u, '普通写未传 confirm 时放行')
+    assert.match(unconfirmedWrite.result.content[0].text, /^CONFIRM_REQUIRED · /u, '无条件写工具缺 confirm 必须拒绝')
+    assert.match(unconfirmedWrite.result.content[0].text, /create/u, '必须点名所需级别')
+    const satisfiedWrite = await mcp.request('tools/call', { name: 'openstory_novel_write_chapter', arguments: { ...plainWrite, confirm: 'create' } })
+    assert.equal(satisfiedWrite.error, undefined)
+    assert.doesNotMatch(satisfiedWrite.result.content[0].text, /^CONFIRM_REQUIRED · /u, '满足门槛后应落到业务闸（NO_LIBRARY）')
     const lowConfirm = await mcp.request('tools/call', { name: 'openstory_novel_write_chapter', arguments: { ...plainWrite, confirm: 'read' } })
     assert.equal(lowConfirm.error, undefined)
-    assert.match(lowConfirm.result.content[0].text, /^CONFIRM_REQUIRED · .*需 create 确认/u)
+    assert.match(lowConfirm.result.content[0].text, /^CONFIRM_REQUIRED · /u)
     for (const [name, args, level] of [
       ['openstory_novel_write_chapter', { root: 'fixture-root', file: '世界书/试.md', text: 'x' }, 'create'],
       ['openstory_novel_delete_chapter', { root: 'fixture-root', file: '正文/001.md' }, 'restore'],

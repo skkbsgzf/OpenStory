@@ -603,6 +603,345 @@ const tools = [
       if (typeof args.name !== 'string' || !args.name.trim()) throw invalidArgs('name')
       return await daemon('/api/skill', { query: { name: String(args.name).trim() } })
     }
+  },
+
+  /* ---------- 建库原语（OS-213）：从空目录到可写库 ----------
+   * 全部走现有 daemon HTTP，本层只做薄适配（不复制任何业务逻辑）。
+   * diagnose/scan 只读；create/import/primary 会写盘，故注册表标为写工具，
+   * 调用需带满足门槛的 confirm。 */
+  {
+    name: 'openstory_library_create',
+    title: '新建库',
+    description: '在一个**绝对路径**下新建 OpenStory 库（写 .openstory/project.json 并登记到本机库列表）。path 必须是绝对路径且目录可写；name 是显示名；primaryCarrier 可选（正文/剧本等主载体 id，缺省按库类型默认）。**会写盘**，调用需 confirm:create。建完先 openstory_library_diagnose 确认形状。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        path: { type: 'string', description: '库根目录绝对路径（不存在会被创建）' },
+        name: { type: 'string', description: '库显示名' },
+        primaryCarrier: { type: 'string', description: '主载体 id（可选；缺省用库类型默认）' }
+      },
+      required: ['path', 'name'],
+      additionalProperties: false
+    },
+    async run(args) {
+      if (typeof args.path !== 'string' || !args.path.trim()) throw invalidArgs('path')
+      if (typeof args.name !== 'string' || !args.name.trim()) throw invalidArgs('name')
+      const payload = await daemon('/api/library/create', {
+        method: 'POST',
+        body: cleanBody({ path: args.path.trim(), name: args.name.trim(), primaryCarrier: args.primaryCarrier })
+      })
+      return {
+        root: payload.root,
+        document: payload.document,
+        enabled: payload.enabled ?? [],
+        needsPrimary: payload.needsPrimary === true,
+        registered: payload.registered
+      }
+    }
+  },
+  {
+    name: 'openstory_library_diagnose',
+    title: '诊断库形状',
+    description: '只读诊断一个库当前的形状与版本判定（shape/verdict）：目录结构、project.json 是否可读、是否旧版待升级、缺哪些目录。**不写盘、不触发升级**——判断「这个库能不能直接用」先调它。',
+    inputSchema: {
+      type: 'object',
+      properties: { root: { type: 'string', description: '库根目录绝对路径' } },
+      required: ['root'],
+      additionalProperties: false
+    },
+    async run(args) {
+      const root = requireRoot(args)
+      const payload = await daemon('/api/library/diagnose', { query: { root } })
+      return { shape: payload.shape, verdict: payload.verdict }
+    }
+  },
+  {
+    name: 'openstory_library_scan',
+    title: '扫描旧源出计划',
+    description: '扫描一个外部旧稿目录，产出**导入计划**（会搬什么、跳过什么、冲突什么），零写入。sourcePath 是旧稿目录绝对路径。看完计划再调 openstory_library_import 执行。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        root: { type: 'string', description: '目标库根目录绝对路径' },
+        sourcePath: { type: 'string', description: '旧稿目录绝对路径' }
+      },
+      required: ['root', 'sourcePath'],
+      additionalProperties: false
+    },
+    async run(args) {
+      const root = requireRoot(args)
+      if (typeof args.sourcePath !== 'string' || !args.sourcePath.trim()) throw invalidArgs('sourcePath')
+      const payload = await daemon('/api/library/scan', { method: 'POST', body: { root, sourcePath: args.sourcePath.trim() } })
+      return { plan: payload.plan }
+    }
+  },
+  {
+    name: 'openstory_library_import',
+    title: '导入旧稿',
+    description: '按 openstory_library_scan 的计划真正导入旧稿到库（搬文件、留 .history 备份、写日志）。**会写盘**，调用需 confirm:create。先 scan 再 import——不要跳过计划直接搬。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        root: { type: 'string', description: '目标库根目录绝对路径' },
+        sourcePath: { type: 'string', description: '旧稿目录绝对路径' }
+      },
+      required: ['root', 'sourcePath'],
+      additionalProperties: false
+    },
+    async run(args) {
+      const root = requireRoot(args)
+      if (typeof args.sourcePath !== 'string' || !args.sourcePath.trim()) throw invalidArgs('sourcePath')
+      const payload = await daemon('/api/library/import', { method: 'POST', body: { root, sourcePath: args.sourcePath.trim() } })
+      return { report: payload.report }
+    }
+  },
+  {
+    name: 'openstory_library_primary',
+    title: '设主载体',
+    description: '切换库的主载体（正文/剧本等）。**会改 project.json**，调用需 confirm:create。expectedRevision 可选：传了就做乐观锁，版本不符拒绝覆盖。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        root: { type: 'string' },
+        primaryCarrier: { type: 'string', description: '主载体 id' },
+        expectedRevision: { type: 'integer', description: '可选乐观锁：当前 project.json revision' }
+      },
+      required: ['root', 'primaryCarrier'],
+      additionalProperties: false
+    },
+    async run(args) {
+      const root = requireRoot(args)
+      if (typeof args.primaryCarrier !== 'string' || !args.primaryCarrier.trim()) throw invalidArgs('primaryCarrier')
+      const payload = await daemon('/api/library/primary', {
+        method: 'POST',
+        body: cleanBody({ root, primaryCarrier: args.primaryCarrier.trim(), expectedRevision: args.expectedRevision })
+      })
+      return { document: payload.document, enabled: payload.enabled ?? [] }
+    }
+  },
+
+  /* ---------- 套件原语（OS-213）：建库后配齐写作/编剧套件 ---------- */
+  {
+    name: 'openstory_suites',
+    title: '列套件与状态',
+    description: '列出可用套件（写作/编剧等）及每个套件的启用状态与设置。带 root＝按该库的启停状态与覆盖；不带＝本机默认。',
+    inputSchema: {
+      type: 'object',
+      properties: { root: { type: 'string', description: '库根目录（可选；带则按该库状态）' } },
+      additionalProperties: false
+    },
+    async run(args) {
+      const payload = await daemon('/api/suites', { query: args.root ? { root: String(args.root).trim() } : {} })
+      return {
+        suites: payload.suites || [],
+        overrides: payload.overrides ?? [],
+        ...(payload.userDir ? { userDir: payload.userDir } : {}),
+        ...(payload.warnings?.length ? { warnings: payload.warnings } : {})
+      }
+    }
+  },
+  {
+    name: 'openstory_suite_enable',
+    title: '启停套件',
+    description: '启用或停用一个套件（id 从 openstory_suites 取）。带 root 改该库状态，不带改本机默认。**会写状态文件**，调用需 confirm:create。启停即时反映到模块投影。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', description: '套件 id' },
+        enabled: { type: 'boolean', description: 'true＝启用，false＝停用' },
+        root: { type: 'string', description: '库根目录（可选）' }
+      },
+      required: ['id', 'enabled'],
+      additionalProperties: false
+    },
+    async run(args) {
+      if (typeof args.id !== 'string' || !args.id.trim()) throw invalidArgs('id')
+      if (typeof args.enabled !== 'boolean') throw invalidArgs('enabled')
+      const payload = await daemon('/api/suite/state', {
+        method: 'PUT',
+        body: cleanBody({ id: args.id.trim(), enabled: args.enabled, root: args.root })
+      })
+      return { enabled: payload.enabled }
+    }
+  },
+  {
+    name: 'openstory_suite_settings',
+    title: '写套件设置',
+    description: '改一个套件的设置项（如写作套件的新建章节默认标题）。id 从 openstory_suites 取，values 是键值对象（只覆盖传入的键）。**会写设置文件**，调用需 confirm:create。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', description: '套件 id' },
+        values: { type: 'object', description: '要写入的设置键值（只覆盖传入键）' },
+        root: { type: 'string', description: '库根目录（可选）' }
+      },
+      required: ['id', 'values'],
+      additionalProperties: false
+    },
+    async run(args) {
+      if (typeof args.id !== 'string' || !args.id.trim()) throw invalidArgs('id')
+      if (!args.values || typeof args.values !== 'object' || Array.isArray(args.values)) throw invalidArgs('values')
+      const payload = await daemon('/api/suite/settings', {
+        method: 'PUT',
+        body: cleanBody({ id: args.id.trim(), values: args.values, root: args.root })
+      })
+      return { values: payload.values }
+    }
+  },
+
+  /* ---------- fact 原语（OS-213）：事实链读写与导入 ---------- */
+  {
+    name: 'openstory_fact_books',
+    title: '列事实书',
+    description: '列一个库里的全部事实书（bookId/标题/条目数/revision）。任何 fact 操作前先调它拿 bookId。',
+    inputSchema: {
+      type: 'object',
+      properties: { root: { type: 'string' } },
+      required: ['root'],
+      additionalProperties: false
+    },
+    async run(args) {
+      const root = requireRoot(args)
+      const payload = await daemon('/api/fact/books', { query: { root } })
+      return { books: payload.books || [] }
+    }
+  },
+  {
+    name: 'openstory_fact_entries',
+    title: '读事实条目',
+    description: '读一个事实书的条目（可按 layer 过滤、按 q 全文搜、分页）。返回 bookId/revision/total/entries/layers。写正文前后用它核对事实链。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        root: { type: 'string' },
+        bookId: { type: 'string', description: '事实书 id（可选；缺省用主事实书）' },
+        layer: { type: 'string', description: '只取某一层（worldview/character/plot 等）' },
+        q: { type: 'string', description: '全文搜索词' },
+        offset: { type: 'string', description: '分页起点（数字字符串）' },
+        limit: { type: 'string', description: '每页条数（数字字符串）' }
+      },
+      required: ['root'],
+      additionalProperties: false
+    },
+    async run(args) {
+      const root = requireRoot(args)
+      const payload = await daemon('/api/fact/entries', {
+        query: cleanBody({ root, bookId: args.bookId, layer: args.layer, q: args.q, offset: args.offset, limit: args.limit })
+      })
+      return {
+        bookId: payload.bookId,
+        ...(payload.book ? { book: payload.book } : {}),
+        revision: payload.revision,
+        total: payload.total,
+        entries: payload.entries || [],
+        layers: payload.layers || {},
+        ...(payload.warnings?.length ? { warnings: payload.warnings } : {})
+      }
+    }
+  },
+  {
+    name: 'openstory_fact_entries_import',
+    title: '导入事实条目',
+    description: '把一份**完整的**条目数组写进一个事实书——这是**整份替换**，不是合并：传进来的 entries 就是这本书之后的全部条目。每条都会过 fact schema 校验，任一条不合法整份拒绝零写入。**会覆盖主档**（写前备份、留 operationId 幂等日志），调用需 confirm:create。operationId 相同＝幂等重放不重复写。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        root: { type: 'string' },
+        bookId: { type: 'string', description: '事实书 id' },
+        entries: { type: 'array', description: '完整条目数组（整份替换，不是增量）' },
+        title: { type: 'string', description: '事实书标题（可选）' },
+        wiki: { type: 'object', description: '派生的 wiki 结构（可选；derivedFrom 由内核按写后 revision 覆盖）' },
+        operationId: { type: 'string', description: '幂等键（可选；同 id 重放不重复写）' }
+      },
+      required: ['root', 'bookId', 'entries'],
+      additionalProperties: false
+    },
+    async run(args) {
+      const root = requireRoot(args)
+      if (typeof args.bookId !== 'string' || !args.bookId.trim()) throw invalidArgs('bookId')
+      if (!Array.isArray(args.entries)) throw invalidArgs('entries')
+      const payload = await daemon('/api/fact/entries/import', {
+        method: 'POST',
+        body: cleanBody({
+          root, bookId: args.bookId.trim(), entries: args.entries,
+          title: args.title, wiki: args.wiki, operationId: args.operationId
+        })
+      })
+      return {
+        bookId: payload.bookId,
+        entries: payload.entries,
+        ...(payload.revision !== undefined ? { revision: payload.revision } : {}),
+        ...(payload.backup ? { backup: payload.backup } : {})
+      }
+    }
+  },
+
+  /* ---------- exchange 原语（OS-213）：fact 与外部格式互转 ---------- */
+  {
+    name: 'openstory_exchange_export',
+    title: '导出事实书',
+    description: '把一个事实书导出成外部格式（format 如 jsonl/csv/markdown）。save 缺省 false＝只返回数据不落盘；save:true 会写文件（需 confirm:create）。返回 entries 与 lost（导出会丢的字段，说明格式装不下的信息）。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        root: { type: 'string' },
+        bookId: { type: 'string' },
+        format: { type: 'string', description: '导出格式：jsonl / csv / markdown' },
+        save: { type: 'boolean', description: 'true＝落盘；缺省只回数据' }
+      },
+      required: ['root', 'bookId', 'format'],
+      additionalProperties: false
+    },
+    async run(args) {
+      const root = requireRoot(args)
+      if (typeof args.bookId !== 'string' || !args.bookId.trim()) throw invalidArgs('bookId')
+      if (typeof args.format !== 'string' || !args.format.trim()) throw invalidArgs('format')
+      const payload = await daemon('/api/exchange/export', {
+        method: 'POST',
+        body: cleanBody({ root, bookId: args.bookId.trim(), format: args.format.trim(), save: args.save })
+      })
+      return {
+        bookId: payload.bookId,
+        entries: payload.entries || [],
+        lost: payload.lost || [],
+        ...(payload.file ? { file: payload.file } : {})
+      }
+    }
+  },
+  {
+    name: 'openstory_exchange_import',
+    title: '导入外部格式',
+    description: '把外部格式文本导入一个事实书。dryRun:true＝只解析并报告（entries/errors/warnings/skipped，零写入）；缺省或 false＝真写（需 confirm:create，写前备份）。总是先 dryRun 看报告再真导。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        root: { type: 'string' },
+        bookId: { type: 'string' },
+        format: { type: 'string', description: '导出格式：jsonl / csv / markdown' },
+        text: { type: 'string', description: '外部格式原文' },
+        dryRun: { type: 'boolean', description: 'true＝只解析不写；缺省真写' }
+      },
+      required: ['root', 'bookId', 'format', 'text'],
+      additionalProperties: false
+    },
+    async run(args) {
+      const root = requireRoot(args)
+      if (typeof args.bookId !== 'string' || !args.bookId.trim()) throw invalidArgs('bookId')
+      if (typeof args.format !== 'string' || !args.format.trim()) throw invalidArgs('format')
+      if (typeof args.text !== 'string') throw invalidArgs('text')
+      const payload = await daemon('/api/exchange/import', {
+        method: 'POST',
+        body: cleanBody({ root, bookId: args.bookId.trim(), format: args.format.trim(), text: args.text, dryRun: args.dryRun })
+      })
+      return {
+        dryRun: payload.dryRun === true,
+        entries: payload.entries ?? 0,
+        errors: payload.errors || [],
+        warnings: payload.warnings || [],
+        skipped: payload.skipped || [],
+        ...(payload.written ? { written: payload.written } : {})
+      }
+    }
   }
 ]
 
@@ -692,23 +1031,25 @@ async function callTool(name, args) {
     throw err
   }
   try {
-    // OS-212：确认闸——所需级别来自 mcpToolSemantics 单一注册表。
-    // · 所有工具都接受 confirm 实参（协议口径：照声明传参不再被 -32602 打挂）；
-    // · 写工具一旦传了 confirm，必须满足注册表门槛（不足＝业务错误信封）；
-    // · mutatesWhen 命中的条件写（reset:true）必传 confirm，缺失也拒绝；
-    // · 未触发条件写的普通写调用照工单「不触发写时放行」，沿用 daemon 备份/授权闸。
+    // OS-212/213：确认闸——所需级别来自 mcpToolSemantics 单一注册表。
+    // · 无条件写工具（create/write/delete/reset）**每次调用都要求**满足门槛的 confirm：
+    //   调用它本身就是触发写，不存在「这次不写」的分支，缺 confirm 即 fail-closed 拒绝。
+    // · 条件写工具（注册表声明 effect:'read' + mutatesWhen）：只在参数命中升级时要求 confirm，
+    //   未命中时按读放行——这是工单「不触发写时放行」的唯一适用情形。
+    // · 所有工具都接受 confirm 实参，照声明传参不再被 additionalProperties 的 -32602 打挂。
     const callArgs = args || {}
     const base = toolSemanticsOf(name)
     const effective = semanticsForCall(name, callArgs)
     const needed = effective?.requiredConfirm
     const actual = callArgs[CONFIRM_PARAM]
     const upgraded = Boolean(base && effective && (effective.requiredConfirm !== base.requiredConfirm || effective.effect !== base.effect))
-    if (base && base.effect !== 'read' && needed && (upgraded || actual !== undefined)
-      && !confirmSatisfies(String(actual ?? 'read'), needed)) {
-      const rule = base.mutatesWhen
-      const err = new Error(upgraded
+    const isUnconditionalWrite = Boolean(base && base.effect !== 'read')
+    const requiresConfirm = Boolean(needed) && (isUnconditionalWrite || upgraded)
+    if (requiresConfirm && !confirmSatisfies(String(actual ?? 'read'), needed)) {
+      const rule = base?.mutatesWhen
+      const err = new Error(upgraded && !isUnconditionalWrite
         ? `该调用触发条件写语义（${rule?.parameter ?? '参数'}=${String(rule?.equals)}），需 ${needed} 确认：${name}`
-        : `该工具是写工具（${base.effect}），confirm 级别不足，需 ${needed} 确认：${name}`)
+        : `该工具是写工具（${effective?.effect ?? base?.effect}），必须带 ${needed} 级 confirm 才执行：${name}`)
       err.code = 'CONFIRM_REQUIRED'
       throw err
     }

@@ -809,23 +809,23 @@ test('OS-211 MCP：世界书写工具经专用端点成功，章节工具写世�
         assert.equal(reply.error, undefined, JSON.stringify(reply.error))
         return reply.result
       }
-      // 世界书写：走 referenceNotePut（工具名不变）
+      // 世界书写：走 referenceNotePut（工具名不变）。OS-213 起写工具必须带 confirm。
       const noteWritten = JSON.parse((await call('openstory_reference_write_note', {
-        root, file: '世界书/人物/吴用.md', text: '---\ntags: [人物]\n---\n\n# 吴用\n\n智多星。\n'
+        root, file: '世界书/人物/吴用.md', text: '---\ntags: [人物]\n---\n\n# 吴用\n\n智多星。\n', confirm: 'create'
       })).content[0].text)
       assert.ok(noteWritten.chars > 0, JSON.stringify(noteWritten))
       assert.match(readFileSync(join(root, '世界书', '人物', '吴用.md'), 'utf-8'), /智多星/u)
 
       // 章节写工具（工具名不变，但目标必须落在载体目录）
       const chapterPayload = JSON.parse((await call('openstory_novel_write_chapter', {
-        root, file: '正文/001-开局.md', text: '第一章 开局\n经 MCP 改过。\n'
+        root, file: '正文/001-开局.md', text: '第一章 开局\n经 MCP 改过。\n', confirm: 'create'
       })).content[0].text)
       assert.ok(chapterPayload.chars > 0, JSON.stringify(chapterPayload))
 
-      const bypass = await call('openstory_novel_write_chapter', { root, file: `${FACT_DIR}/${BOOK_ID}.json`, text: '{"entries":[]}' })
+      const bypass = await call('openstory_novel_write_chapter', { root, file: `${FACT_DIR}/${BOOK_ID}.json`, text: '{"entries":[]}', confirm: 'create' })
       assert.equal(bypass.isError, true, 'MCP 章节工具写故事源必须失败')
       assert.match(bypass.content[0].text, /INVALID_ENTRY/u)
-      const worldbookViaChapter = await call('openstory_novel_write_chapter', { root, file: '世界书/人物/吴用.md', text: '从章节工具改世界书' })
+      const worldbookViaChapter = await call('openstory_novel_write_chapter', { root, file: '世界书/人物/吴用.md', text: '从章节工具改世界书', confirm: 'create' })
       assert.equal(worldbookViaChapter.isError, true, 'MCP 章节工具写世界书也必须失败')
       assert.match(worldbookViaChapter.content[0].text, /INVALID_ENTRY/u)
       assert.equal(readFileSync(join(root, '世界书', '人物', '吴用.md'), 'utf-8').includes('从章节工具改世界书'), false)
