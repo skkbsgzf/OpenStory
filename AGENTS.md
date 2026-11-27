@@ -9,19 +9,21 @@
 node:http 手写路由，127.0.0.1:8807；
 OS-127 进程治理：单实例锁＋stamp＋generation＋`/api/health`）
 + `public/` 原生 JS 前端。模块：**小说**（纯净写作面）/ **世界书**（世界书笔记＋故事源词条只读层）/
-**习惯**（写作规矩表）/ **故事源**（fact 链可视化）/ **扮演**（主持人＋多角色，默认）/ **确定性推演**（可选）/ **剧本** / **分析**（本地引擎）。
-全部经契约层（`src/api/contracts.mjs` 聚合 `src/api/contracts/` 分片，117 端点）分派；
-MCP 对外 65 工具（`src/host/mcp.mjs` 直跑；stdio 独立进程，数据操作走 daemon HTTP 薄适配）。
+**习惯**（写作规矩表）/ **故事源**（fact 链可视化）/ **扮演**（主持人＋多角色，默认）/ **确定性推演**（可选）/ **剧本** / **分析**（本地引擎）/ **知识库**（跨项目储备知识，独立于作品世界书）。
+全部经契约层（`src/api/contracts.mjs` 聚合 `src/api/contracts/` 分片，129 端点）分派；
+MCP 对外 68 工具（`src/host/mcp.mjs` 直跑；stdio 独立进程，数据操作走 daemon HTTP 薄适配）。
+计数以 `docs/number-anchors.json` 为准（129 端点／23 份 manifest／1067 例单测／29 项门禁）；
+`ARCHITECTURE.md` 的分层数字只在生成段里，不手填。
 分层见 [ARCHITECTURE.md](./ARCHITECTURE.md)：OS-173/C6 起不再用 L7–L2 旧层号；按
 前端 `public/` → 契约 `src/api/` → 底座 `src/host/` → 协议 `src/protocol/`＋能力句柄 →
-`src/modules/`（七个内核件＋工作台＋宿主组合面）→ 物理写管道 `src/kernel/` → 磁盘库 描述依赖方向。
+`src/modules/`（八个内核件＋工作台＋宿主组合面）→ 物理写管道 `src/kernel/` → 磁盘库 描述依赖方向。
 `src/kernel/` 只留写管道、错误词表与身份五个文件；fact 链与 enrich 已归 `src/modules/fact/`。
 
 ## 硬规则（违反＝白干）
 
 1. **内核自有、磁盘格式名冻结**：内核身份 `openstory-kernel@1`，实现只在 `src/kernel/**`
    （物理公开面 `index.mjs` 为 `KERNEL_ID/KERNEL_NAME/KERNEL_VERSION/ok/fail/writeFileAtomic`；身份 `identity.mjs`）；
-  业务能力已降为 `src/modules/` 下七个 manifest@2 kernel：storage/fact/prose/text/deduce/agent-runtime/media。
+  业务能力已降为 `src/modules/` 下八个 manifest@2 kernel：storage/fact/prose/text/deduce/agent-runtime/media/knowledge-runtime。
    由 Pinax-next `feat/pinax-electron-next`@`70a4f44` 于 OS-152→157 逐步转自有，@pinax/core
    0.16.0 的世界书契约转为 `src/modules/worldbook/worldbookFileContract.mjs`，
    逐文件「来源 → 现位置」见 `docs/kernel-provenance.md`。`core/`、`vendor/` 与
@@ -103,7 +105,7 @@ MCP 对外 65 工具（`src/host/mcp.mjs` 直跑；stdio 独立进程，数据�
    | `src/api/` | 契约层 `contracts.mjs` ＋ `contracts/` 八域分片（API 形状唯一真源） |
    | `src/protocol/` | 底座契约层（逐文件理由见 `src/protocol/README.md`）：形状/错误信封、路径安全、授权、写管道、装载协议、能力图与迁移、slots、命名取表口、旧库一次性升级、进程内事件词表，以及与工作台无关的格式/路径纯函数；零转供叶 |
    | `src/kernel/` | 自有物理内核（`openstory-kernel@1`）：公开面 `index.mjs`＋身份 `identity.mjs`，管道件 `errors.mjs`/`atomicWrite.mjs`/`fsDurability.mjs`；业务 fact/enrich 已降为模块内核，core/、vendor/ 已退役 |
-   | `src/modules/` | 21 份 `module.manifest.json`：12 个 workbench（chapters/script/worldbook/storysource/roleplay/analysis/imagegen/knowledge/habits/artifacts/log/exchange）、7 个 kernel（storage/fact/prose/text/deduce/agent-runtime/media）、2 个宿主组合面（agentbar/library，恒启用）；library/ 建库导入、storage/ 库骨架、deduce/ 推演、roleplay/ 扮演、worldbook/ 世界书、agentbar/ Agent 存储 |
+   | `src/modules/` | 23 份 `module.manifest.json`：13 个 workbench（chapters/script/worldbook/storysource/roleplay/analysis/imagegen/knowledge/knowledge-base/habits/artifacts/log/exchange）、8 个 kernel（storage/fact/prose/text/deduce/agent-runtime/media/knowledge-runtime）、2 个宿主组合面（agentbar/library，恒启用）；library/ 建库导入、storage/ 库骨架、deduce/ 推演、roleplay/ 扮演、worldbook/ 世界书、knowledge-base/ 独立知识库、knowledge-runtime/ HyperGraphRAG sidecar、agentbar/ Agent 存储 |
    | `src/services/` | 底座服务与货架资源装载：货架（skills/styles/genres/runtimes/suites/stylePacks）、跨内核底座服务（systemPrompt/syncCheck）与 OS-193 遗留内核兼容叶；jobCenter/nativePicker/uiPreferences 已归 `src/host/` |
 
    实现文件不得再放仓根；仓根 `.mjs` 计数必须为零。门禁 S0.1 钉死仓根零 `.mjs`。
@@ -136,6 +138,35 @@ MCP 对外 65 工具（`src/host/mcp.mjs` 直跑；stdio 独立进程，数据�
 
 五件底座能力经 `context.base` 以只读句柄给本机模块：`process / contract / write / naming / loader`
 （loader 只给 snapshot/manifests/sources，不提供 `activate`）。内置模块仍按 OS-193～195 口径。
+
+## 独立知识库与检索（OS-225～231，阶段 C；书面契约见 `docs/protocol/knowledge-library.md`）
+
+- 知识库是**跨项目的储备知识资产**，不是作品世界书；两者只共用中性 wiki 呈现层 `public/wiki/**`
+  （零依赖纯层，世界书 `reference.mjs`／`referenceViews.mjs`／`graph.mjs`／`md.mjs` 真实复用），**不共享数据语义**。
+- 机器级清单 `%LOCALAPPDATA%/OpenStory/openstory/knowledge-libraries.json`（`openstory.knowledge-library@1`）：
+  `id` 稳定 slug，`root` 保留登记输入、`realRoot` 是 realpath 归一结果；`enabled=false` 保留数据但不许检索；
+  `activeLibraryId` 只能是已登记且 enabled 的库或 `null`。清单不存正文、凭据、请求头或 provider 原始错误。
+  登记先 preview（带 fingerprint）再 register（`confirm:true`），写前快照到 `openstory/knowledge/history/<opId>/`，
+  元数据日志 `openstory/knowledge/log/<yyyy-mm>.jsonl` 只记 id/ref/hash/revision/op/actor/time。
+- 单库 manifest 是源根下只读 `knowledge.base.json`（`openstory.knowledge-base@1`）；拒绝未知 schema、
+  绝对路径/盘符/`..`/NUL/URL scheme、越界 documentEntry、symlink、脚本/凭据入口与疑似凭据字段。
+  `contentHash=sha256(bytes)`，`contentRevision=sha256(sorted(path+NUL+hash+NUL))`；索引五态
+  `never-indexed/building/fresh/stale/failed`，失败 staging 永不发布。
+- 检索能力 `knowledge.retrieval@1` 由 `src/modules/knowledge-runtime/`（kernel）提供，协议
+  `openstory.knowledge-sidecar@1` JSONL stdio：固定绝对 venv Python 以 `-I` 启动，stdout 只许协议帧，
+  stderr 环形缓冲 64KiB、单帧 1MiB，单活跃 worker／单库串行／requestId 精确匹配／deadline+cancel，
+  Windows 清进程树、POSIX 清独立进程组。HyperGraphRAG 固定源 commit
+  `e01d2f2a5f3d1e80415b933c10fa7d14587cf811`（无 release/tag、PyPI 无同名包，见 `tools/knowledge-runtime/runtime-source.json`）；
+  worker 必须走官方内部链路拿 text unit 与 `full_doc_id/chunk_order_index`，不得自建词面检索冒充语义检索。
+- 错误码 `RUNTIME_MISSING`／`RUNTIME_VERSION_MISMATCH`／`INDEX_NOT_READY`／`STALE_INDEX`／`QUERY_TIMEOUT`／
+  `INDEX_BUILD_TIMEOUT`／`RUNTIME_CRASHED`／`REQUEST_CANCELLED` 必须类型化返回；**不可用时空 hits 是违规**，
+  也不隐式降级到 WeKnora。
+- API／MCP／Agent 三通道共用 `KnowledgeSearchService`（`src/modules/knowledge-base/knowledgeSearchService.mjs`）的
+  canonical hits＋provenance，Agent 只裁剪封装、不重查重排；去重键 `(libraryId, documentRef, chunkId/locatorHash)`。
+  MCP 首版只开放只读 `openstory_knowledge_libraries/search/read`（见 `docs/mcp/knowledge.md`），
+  登记／定制／索引同步只在知识库工作台经预览确认执行。凭据仍只存本机 `kb-config.json`，不入清单/日志/种子包。
+- **未验证项**：四题材黄金 query 的召回/来源正确率尚未跑通（阶段 C 收口见 `docs/workorders/stage-c-acceptance.md`），
+  不得宣称真实语义质量通过。
 
 ## 本地化与可追溯（OS-89 作者立宪，不可协商）
 
@@ -174,6 +205,8 @@ MCP 对外 65 工具（`src/host/mcp.mjs` 直跑；stdio 独立进程，数据�
    | 机器级界面偏好（皮肤，无库也生效） | `%LOCALAPPDATA%/OpenStory/openstory/ui-preferences.json`（OS-158，不入库；任何端口共用一份） |
    | 本机库清单（root 白名单来源） | `%LOCALAPPDATA%/OpenStory/libraries.json`（OS-167/189：只认 `{schemaVersion,libraries:[{path,name,addedAt,source}]}`；`source=openstory\|imported`。非本产品形状只读告警、拒绝覆盖（按内容形状不按文件名）；库身份靠库内 `.openstory/project.json`，不靠本机清单） |
    | 本机模块根信任表（OS-196，机器级） | `%LOCALAPPDATA%/OpenStory/openstory/module-roots.json`（`openstory.module-roots/v1`：根路径、登记时间、登记时每个模块的 manifest／内容摘要；未登记的根不扫描、不装载） |
+   | 知识库清单／元数据日志（OS-226，机器级） | `%LOCALAPPDATA%/OpenStory/openstory/knowledge-libraries.json`（`openstory.knowledge-library@1`）＋`knowledge/history/<opId>/` 写前快照＋`knowledge/log/<yyyy-mm>.jsonl`；源知识库只读，作品侧不写资产状态 |
+   | 本机知识库连接凭据 | `%LOCALAPPDATA%/OpenStory/openstory/kb-config.json`（短密钥全掩码，坏配置拒覆盖；不进清单/manifest/定制/日志/响应/种子包） |
 
    旧库升级只针对请求中显式指定且已授权的 root，由 daemon 在模块闸与业务 handler 前调用
    `ensureLibraryUpgraded()`：先备份到 `.history/upgrade-<时间戳>/`，再迁移 `.pinax/` 运行态、
@@ -254,7 +287,7 @@ MCP 对外 65 工具（`src/host/mcp.mjs` 直跑；stdio 独立进程，数据�
 
 20. **app.js 增量冻结（OS-143，作者立宪：活装配壳只减不增；OS-198 扩到 slot 编排）。**
     `public/app.js` 是消费壳。**「哪个工作面出现在哪里、什么顺序」只由 manifest 决定**：
-    底座 `slotPlacements()`／`slotProjection()` 从 21 份 manifest 生成投影，`GET /api/plugins`
+    底座 `slotPlacements()`／`slotProjection()` 从 23 份 manifest 生成投影，`GET /api/plugins`
     下发 `slots`（每项 `{slot,page,module,label,view}`，iframe 另带 `entry`），前端照投影渲染。
     OS-200 起同一响应还带 `modules[].requires/dependents/status/toggleCheck` 等推导字段、顶层
     `moduleGraph` 与套件货架四键；槽位降级件带 `degraded:true`＋`missing`。启停闸、快照与投影
@@ -310,9 +343,10 @@ MCP 对外 65 工具（`src/host/mcp.mjs` 直跑；stdio 独立进程，数据�
 ## 改完必跑（验收线，详见 `docs/ACCEPTANCE.md`）
 
 ```bash
-node .zcode/run-gate.mjs                    # ① 全量单测（1067 例）
+node .zcode/run-gate.mjs                    # ① 全量单测（1073 例）
 node tools/acceptance/acceptance.mjs        # ② 交付标准 S0–S4 门禁（29 检查，Rea 式证据；S0=布局宪法）
 node tools/arch-stats.mjs --check           # ③ 架构统计与生成段一致
+node tools/number-anchors.mjs --check       # ③' 数字锚（测试数/门单数/端点数/app.js 上限）
 node tools/verify/verify-ci-workflow.mjs    # ④ CI 三层门禁结构
 node tools/verify/verify-os172-e2e.mjs      # ⑤ 隔离全栈 E2E（临时 daemon/库/院子/假上游）
 node tools/verify/page-browser-smoke.mjs --out /tmp/openstory-page-smoke
@@ -323,10 +357,12 @@ node tools/verify/verify-page-report.mjs /tmp/openstory-page-smoke
 # ⑨ 前端批次给作者截图讲场景（对照 design-system/DESIGN.md + docs/UX-STRUCTURE.md）
 ```
 
-①②③④⑤⑥⑦ 全绿才合入。CI 的 `gates` 跑两轮单测、验收、架构核对与隔离 E2E；独立 `browser-smoke`
+①②③③'④⑤⑥⑦ 全绿才合入。CI 的 `gates` 跑两轮单测、验收、架构/数字锚核对与隔离 E2E；独立 `browser-smoke`
 在 Ubuntu 安装 Chromium 跑完整页面矩阵，并上传 manifest、日志、console/pageerror 记录与截图。
 两条 E2E 均不连接或重启 8807，不读作者真库或真实 `%LOCALAPPDATA%`。MCP 工具增删必须同步：
-`docs/mcp/*.md`、`test/mcp.test.mjs` 的工具数、`DEMO.md`、`tools/acceptance/acceptance.mjs` 的 S1.1 覆盖面。
+`docs/mcp/*.md`、`test/mcp.test.mjs` 的工具数、`DEMO.md`、`tools/acceptance/acceptance.mjs` 的 S1.1 覆盖面；
+`docs/number-anchors.json` 钉死测试数／门单数／端点数／app.js 行数上限，改结构后按
+`node tools/number-anchors.mjs --check` 的报错回写并修正文档（该检查已含在验收门禁里）。
 
 测试纪律（OS-169）：测试不许依赖本机环境——夹具一律临时 `LOCALAPPDATA`，不读真实用户目录、不靠本机
 装了什么 CLI 或下载过什么模型；环境不齐就显式 skip 并注明守卫理由，禁止靠本机环境「假绿」。
@@ -338,11 +374,11 @@ node tools/verify/verify-page-report.mjs /tmp/openstory-page-smoke
 ## 仓内地图
 
 - 启动入口：`src/host/daemon.mjs` / `src/host/mcp.mjs`（OS-159 直跑，仓根零垫片）
-- 契约层：`src/api/contracts.mjs` 聚合器 ＋ `src/api/contracts/` 八域分片（library/chapters/fact/reference/
-  agent/plugins/system/exchange，108 端点）→ `src/api/handlers/` 八域 handler ＋ `src/api/registry.mjs` 注册表（OS-141，键＝endpointId）
+- 契约层：`src/api/contracts.mjs` 聚合器 ＋ `src/api/contracts/` 十分片（library/chapters/fact/reference/
+  agent/plugins/system/exchange/script/knowledgeBase，129 端点）→ `src/api/handlers/` 域 handler ＋ `src/api/registry.mjs` 注册表（OS-141，键＝endpointId）
   → `src/host/daemon.mjs` 路由分派（endpointFor → validateRequest → 取 handler → 调用）＋ 共享管线 `src/host/{http,authorize,sse}.mjs`
 - 自有物理内核：`src/kernel/index.mjs`（身份常量＋ok/fail/writeFileAtomic）＋ `identity.mjs`（`openstory-kernel@1`）；
-  业务内核能力由 `src/protocol/capabilityImplementations.mjs` 统一注册，经 `src/host/capabilityBindings.mjs` 按库快照解析。
+  业务内核能力由 `src/protocol/capabilityImplementations.mjs` 统一注册（含 `knowledge.retrieval@1`），经 `src/host/capabilityBindings.mjs` 按库快照解析。
   `core/`、`vendor/` 已退役；逐文件出处见 `docs/kernel-provenance.md`，改名见 `docs/error-code-rename.md`
 - 底座契约（`src/protocol/`，逐文件一句理由见 `src/protocol/README.md`）：hostWrite（宿主写协议唯一入口，OS-138）/
   changelog（变更日志）/ authorize（路径授权）/ modules＋capabilityGraph＋capabilityResolver（装载与能力图）/
@@ -356,9 +392,13 @@ node tools/verify/verify-page-report.mjs /tmp/openstory-page-smoke
   `engine/`（OS-155 自上游平移到本模块的确定性推演链 8 件＋出口 index.mjs）；
   会话容器自 OS-195a 起归 `src/modules/deduce/deduceSession.mjs`（扮演/<bookId>/session.json），经 deduce 能力句柄取用
 - `src/modules/worldbook/referenceStore.mjs`（世界书索引/图谱）· `src/modules/fact/enrich/engine.mjs`（语义富化 6 窗）· `src/modules/prose/factGuard.mjs`（OS-195b 归位）
+- `src/modules/knowledge-base/`（机器级知识库清单、扫描/路径安全、wiki 浏览与统一检索服务）·
+  `src/modules/knowledge-runtime/`（HyperGraphRAG 固定源 sidecar／staging／原子发布）·
+  `public/wiki/**`（中性 wiki 呈现层：markdown/tree/view）· `knowledge-packs/`（四题材种子包）·
+  `tools/knowledge-runtime/`（install-runtime.py／worker.py／requirements.lock／runtime-source.json）
 - 底座服务（`src/services/`）：货架装载（skills/genres/stylePacks/suites/runtimes）＋ 跨内核底座服务（systemPrompt/
   syncCheck）＋ OS-193 遗留兼容叶；jobCenter/nativePicker/uiPreferences 已迁 `src/host/`
-- `skills/` 创作知识库 31 包＋套件捆绑 2（SKILL.md 制）· `docs/mcp/` 对外分发材料 · `design-system/` 设计令牌包
+- `skills/` 创作知识库 32 包＋套件捆绑 2（SKILL.md 制，含 `build-project` operate 说明书）· `docs/mcp/` 对外分发材料 · `design-system/` 设计令牌包
 - `tools/acceptance/` 验收门禁 · `.ua/` UA 知识图谱（intermediate/ 与 tmp/ 是运行产物不入库）
 - `test/` node --test 全覆盖；跑法统一走 `.zcode/run-gate.mjs`（它会 chdir 到仓根）
 - 遗留事项与「明确不做」清单：`docs/LEGACY-ITEMS.md`（OS-133 起收官判定的唯一台账）

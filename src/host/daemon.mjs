@@ -47,8 +47,10 @@ import { builtinSkillsDir, defaultUserSkillsDir } from '../services/skills.mjs'
 import { moduleDisabledOwnerFor, degradationFor, moduleManifestFor, endpointOwnerFor, migrationStateFor, dataVersionAheadFor, moduleRootsReport } from './moduleRuntime.mjs'
 import { ensureLibraryUpgraded } from '../protocol/libraryUpgrade.mjs'
 import {
-  resolveAgentRuntimeCapability, resolveFactCapability, resolveProseCapability
+  resolveAgentRuntimeCapability, resolveFactCapability, resolveProseCapability, resolveStorageCapability
 } from './capabilityBindings.mjs'
+// OS-232：官方样例库首次启动登记（只在清单缺失时播种，见模块内纪律说明）。
+import { seedOfficialSample } from '../modules/library/seedSample.mjs'
 
 /* ---------- 测试/工具面的再出口（OS-140 垫片契约）：实现迁走了，符号从原处继续拿 ---------- */
 export { browseMemoryPath, defaultBrowseRoot } from './nativePicker.mjs'
@@ -782,6 +784,25 @@ export function startDaemon({
         const stops = await startupHooks({ env, repoRoot: REPO_ROOT, logger })
         kbHealthStop = () => stops.forEach((stop) => stop())
       } catch { /* 不阻塞启动 */ }
+      // OS-232：官方样例库首次启动登记——清单不存在才播种；已有清单一律不动。
+      // **不 await**：listen 回调里任何长活都不能推迟 resolvePromise，
+      // 否则 main() 回写 boundPort 被推后，单实例锁会短暂缺字段（实测 CLI 用例红）。
+      void (async () => {
+        try {
+          const storage = await resolveStorageCapability('', 'library.list')
+          if (!storage.ok) return
+          const seeded = await seedOfficialSample({
+            repoRoot: REPO_ROOT,
+            env,
+            preferencesPath,
+            readLibraryManifest: storage.capability.readLibraryManifest,
+            writeLibraryManifest: storage.capability.writeLibraryManifest,
+            resolveLibraryManifestPath: storage.capability.resolveLibraryManifestPath
+          })
+          if (seeded.seeded) logger?.log?.(`官方样例库已登记：${seeded.path}`)
+          else if (!seeded.ok) logger?.log?.(`样例库播种跳过：${seeded.message ?? seeded.reason}`)
+        } catch { /* 播种失败不阻塞启动 */ }
+      })()
       resolvePromise({
         server,
         port: actualPort,

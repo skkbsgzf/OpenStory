@@ -106,7 +106,7 @@ test('C6 架构规模：取消 L2，按 manifest class 分组且生成段逐字�
   assert.match(block, /knowledge\.retrieval@1/u)
   assert.match(block, /\| `public\/app\.js` 行数 \| 10,047 \|/u)
   assert.match(block, /\| 契约端点数（`ENDPOINTS` 键数） \| 129 \|/u)
-  assert.match(block, /\| 测试文件数（`test\/\*\.test\.mjs`） \| 139 \|/u)
+  assert.match(block, /\| 测试文件数（`test\/\*\.test\.mjs`） \| 140 \|/u)
   assert.match(architecture, /<!-- arch-stats:start -->[\s\S]*?<!-- arch-stats:end -->/u, '文档生成段标记仍在，待 docs 收口批次统一回写')
 })
 
