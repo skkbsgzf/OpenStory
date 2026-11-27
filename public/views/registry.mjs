@@ -78,7 +78,8 @@ export const NAMING_TABLE = Object.freeze([
   { id: 'analysis', contract: null, mcpPrefix: 'openstory_analysis_chapter', note: '右栏分析卡片＋MCP 本地计算，不经 daemon 端点' },
   { id: 'enrich', logModule: '故事源', contract: 'fact', mcpPrefix: 'openstory_enrich_', note: '语义增补写旁挂 wiki，变更记在「故事源」日志' },
   { id: 'imagegen', contract: 'reference', mcpPrefix: 'openstory_image_generate', note: '生图与识图：生图落条目 assets/（/api/reference/image），识图 /api/vision/describe；vision 概念并入本节' },
-  { id: 'knowledge', contract: 'system', note: '知识库三件套（/api/kb/*；端点与 MCP 名不动）' },
+  { id: 'knowledge', contract: 'system', note: '知识库连接（/api/kb/*；端点与 MCP 名不动）' },
+  { id: 'knowledge-base', contract: 'knowledgeBase', note: '跨项目知识库资产与 wiki 工作台；不属于作品世界书' },
   { id: 'shelf', contract: 'plugins', mcpPrefix: 'openstory_skills_', note: '风格/技能/体裁/套件货架' },
   { id: 'agent', contract: 'agent', note: 'Agent 对话与待确认卡；MCP 不开 agent 对话（硬约束 5）' }
 ].map(namingRow))
@@ -229,6 +230,7 @@ export const TAB_REGISTRY = Object.freeze([
   behavior({ id: 'analysis', view: 'analysis', slotOnly: 'right' }),
   behavior({ id: 'imagegen', view: 'imagegen', slotOnly: 'settings' }),
   behavior({ id: 'knowledge', view: 'knowledge', slotOnly: 'settings' }),
+  behavior({ id: 'knowledge-base', view: 'knowledge-base', render: 'knowledgeBaseHtml', icon: '知', closable: true, scope: 'library', panel: true }),
   behavior({ id: 'exchange', view: 'exchange', slotOnly: 'host-actions' }),
   // 宿主路由（不进页签栏，只服务 go() 的作用域校验与 render() 分派）。
   behavior({ id: 'libraries', view: 'libraries', render: 'libraryHtml', routeOnly: true, scope: 'global' }),

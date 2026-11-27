@@ -161,6 +161,9 @@ const scriptViewsReady = import('./views/scriptViews.mjs').then((mod) => { scrip
 let referenceViews = null
 const referenceViewsReady = import('./views/referenceViews.mjs').then((mod) => { referenceViews = mod; return mod })
   .catch((error) => { console.error('[views] 世界书视图模块加载失败', error); return null })
+let knowledgeBaseViews = null, knowledgeBaseController = null
+const knowledgeBaseViewsReady = import('./views/knowledgeBaseViews.mjs').then((mod) => { knowledgeBaseViews = mod; return mod }).catch(() => null)
+const knowledgeBaseControllerReady = import('./views/knowledgeBaseController.mjs').then((mod) => { knowledgeBaseController = mod.createKnowledgeBaseController({ state, api, render, esc, text, go, knowledgeBaseViews: () => knowledgeBaseViews }); return mod }).catch(() => null)
 /* OS-164：扮演纯视图（views/deduceViews.mjs）——扮演/叙事流的纯 HTML 构造住这里；状态机与打字机留本文件 */
 let deduceViews = null
 const deduceViewsReady = import('./views/deduceViews.mjs').then((mod) => { deduceViews = mod; return mod })
@@ -284,8 +287,8 @@ const state = {
   settings: { userDir: '', section: 'plugins', suiteId: '', open: false, prevView: '', helpOpen: false },
   kbStatus: null,
   kbConfig: null,
-  kbMsg: '',
-  tabHidden: {},
+  kbMsg: '', tabHidden: {},
+  knowledgeBase: { loaded: false, loading: false, error: '', libraries: [], activeLibraryId: '', documents: [], tags: [], activeRef: '', activeTag: '', treeQuery: '', document: null, backlinks: { linked: [], unlinked: [] }, documentLoading: false, graph: null, graphLoading: false, graphError: '', view: 'detail', picked: null, query: '', hits: [], searching: false, searchError: '', indexStatus: 'never-indexed', runtimeAvailable: false, form: null },
   ssJump: null,
   // 产物驳回记录（OS-51）：msgHtml index → true。会话级，不落档
   rejectedMsgs: {},
@@ -563,6 +566,7 @@ function renderJobBall() {
 const VIEW_RENDERERS = {
   libraryHtml, createHtml, importHtml, repairHtml, writeHtml, habitsViewHtml,
   referencePageHtml, deduceHtml, settingsHtml, artifactsHtml, dirViewHtml,
+  knowledgeBaseHtml: () => knowledgeBaseController?.html() || '<div class="loading">知识库载入中…</div>',
   modulePageHtml: (view) => modulePageViews?.modulePageHtml(view, {
     slots: state.plugins?.slots ?? {},
     modules: state.plugins?.modules ?? [],
@@ -625,6 +629,7 @@ function render() {
     else if (state.reference.activePath && state.reference.note) mountDetailGraph()
     else if (state.reference.activeEntry) mountEntryGraph()
   }
+  else if (state.view === 'knowledge-base') viewEl.innerHTML = viewHtml('knowledge-base')
   else if (state.view === 'lib-create') viewEl.innerHTML = viewHtml('lib-create')
   else if (state.view === 'lib-import') viewEl.innerHTML = viewHtml('lib-import')
   else if (state.view === 'repair') viewEl.innerHTML = viewHtml('repair')
@@ -3870,7 +3875,7 @@ function referenceEditorHtml() {
   ref.fmLen = fmLen
   return referenceViews.referenceEditorHtml({
     ref, note, bodySource, body: renderRefDocBody(bodySource),
-    imagesSlot: refImagesSlotHtml(note), esc, text
+    imagesSlot: refImagesSlotHtml(note), backlinks: ref.backlinks, esc, text
   })
 }
 
@@ -4266,7 +4271,6 @@ async function mountReferenceGraph() {
   graphCleanup = mod.mountGraph({
     canvas,
     graph: graphFocusView(),
-    mode: 'focus',
     focusId: state.reference.focus,
     onPick: (node) => {
       // OS-51：点节点＝聚焦邻域＋出信息卡（跳转走卡片按钮，不再「再点进详情」）
@@ -4298,7 +4302,6 @@ async function mountDetailGraph() {
   detailGraphCleanup = mod.mountGraph({
     canvas,
     graph: view,
-    mode: 'jump',
     focusId: state.reference.activePath,
     onPick: (node) => {
       if (node.id === state.reference.activePath) return
@@ -4328,7 +4331,6 @@ async function mountEntryGraph() {
   detailGraphCleanup = mod.mountGraph({
     canvas,
     graph: view,
-    mode: 'jump',
     focusId,
     onPick: (node) => {
       if (node.id === focusId) return
@@ -7700,7 +7702,7 @@ function deduceAgentHtml() {
 /* ---------- 数据加载 ---------- */
 
 async function boot() {
-  await Promise.all([registryReady, runtimeShelfReady, suiteShelfViewsReady, workbenchViewsReady, scriptViewsReady, referenceViewsReady, deduceViewsReady, settingsAggregationReady, uiKitReady, settingsViewsReady, analysisViewsReady, agentViewsReady, libraryFlowViewsReady, syncViewsReady, referencePageViewsReady, governanceViewsReady]) // OS-143/149/161/163/164：注册表、运行时货架、各工作面纯视图先就位（首帧起页签全部由注册表驱动）
+  await Promise.all([registryReady, runtimeShelfReady, suiteShelfViewsReady, workbenchViewsReady, scriptViewsReady, referenceViewsReady, knowledgeBaseViewsReady, knowledgeBaseControllerReady, deduceViewsReady, settingsAggregationReady, uiKitReady, settingsViewsReady, analysisViewsReady, agentViewsReady, libraryFlowViewsReady, syncViewsReady, referencePageViewsReady, governanceViewsReady]) // OS-143/149/161/163/164：注册表、运行时货架、各工作面纯视图先就位（首帧起页签全部由注册表驱动）
   applyTypography()   // OS-91：无库时也先套默认字号档，避免首帧跳变
   applyAgentCollapse() // OS-103
   // 运行时清单与 config 一起拉：chip 要能显示「DSH 原生」这类具体名字，不能等进设置页才加载
@@ -8096,6 +8098,7 @@ function go(view) {
     loadRefModule().then(() => { if (state.view === 'worldbook') render() }).catch(() => {})
     return
   }
+  if (view === 'knowledge-base') { knowledgeBaseController?.load(); return }
   if (view === 'roleplay') {
     // OS-89：推演模块加载时检索自己的 log
     loadModuleLog(registryModule.namingEntry('roleplay').logModule, { limit: 20 }).then(() => {
@@ -8184,12 +8187,13 @@ document.addEventListener('click', (event) => {
       if (state.libDirs.includes(dir)) { go(`dir:${dir}`); return }
     }
   }
-  const target = event.target.closest('[data-view], [data-go], [data-action], [data-skin], [data-lib-path], [data-kind], [data-session-id], [data-session-del], [data-create-primary], [data-create-genre], [data-runtime-id], [data-chapter-file], [data-dirfile-pick], [data-settings-section], [data-ref-path], [data-ref-tag], [data-ref-view], a.wl[data-ref]')
+  const target = event.target.closest('[data-view], [data-go], [data-action], [data-skin], [data-lib-path], [data-kind], [data-session-id], [data-session-del], [data-create-primary], [data-create-genre], [data-runtime-id], [data-chapter-file], [data-dirfile-pick], [data-settings-section], [data-ref-path], [data-ref-tag], [data-ref-view], [data-wiki-open], [data-wiki-tag], a.wl[data-ref]')
   // 点在菜单/按钮之外：收起输入区菜单（OS-51）——注意这不 return，
   // 后面消息内路径 code 的点击不携带任何 data-*，必须继续往下走
   if (!event.target.closest?.('.composer-pop, .c-tool')) closeComposerMenus()
   if (!target || target.getAttribute?.('aria-disabled') === 'true') return
 
+  if (state.view === 'knowledge-base') { knowledgeBaseController?.click(target); return }
   if (target.dataset.createGenre !== undefined) {
     state.create.genre = target.dataset.createGenre
     state.create.length = null
@@ -8435,9 +8439,6 @@ document.addEventListener('click', (event) => {
     render()
   } else if (action === 'fc-save') {
     saveFirstChapter(target.dataset.fcPath)
-  } else if (action === 'ref-new-note') {
-    // OS-96：看到第 N 章为止——number input 的 change 在 keyup/blur 触发；这里直接监听 input 元素
-    render()
   } else if (action === 'ref-new-note') {
     openNewReferenceModal('note')
   } else if (action === 'ref-new-tag') {
@@ -9141,6 +9142,7 @@ document.addEventListener('click', (event) => {
 
 document.addEventListener('change', (event) => {
   const target = event.target
+  if (state.view === 'knowledge-base') { knowledgeBaseController?.change(target); return }
   // 设置 · 模型：运行时下拉＝立刻切活动运行时（与插件节的运行时卡同一口径）
   if (target.id === 'mcfg-runtime') {
     selectRuntime(text(target.value))
@@ -9194,6 +9196,7 @@ document.addEventListener('change', (event) => {
 
 document.addEventListener('input', (event) => {
   const target = event.target
+  if (state.view === 'knowledge-base') { knowledgeBaseController?.input(target); return }
   // 推演输入条（OS-81）：自由输入同步进 engine 状态（重渲不丢）＋轻量自适应高度
   if (target.id === 'deduce-custom') {
     const engine = state.deduce.engine
