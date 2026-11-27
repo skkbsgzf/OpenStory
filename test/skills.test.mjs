@@ -143,17 +143,22 @@ domain: 第3章#tag
   assert.equal(parsed.skill.domain, '第3章#tag', '值内的 # 不是注释（前面无空白）')
 })
 
-test('内置货架：31 个技能全部合规，五类齐全（operate 暂无正片）', () => {
+test('内置货架：32 个技能全部合规，五类齐全（含 build-project operate 正片）', () => {
   const { skills, warnings } = loadSkills([builtinSkillsDir()])
   assert.equal(warnings.length, 0, `不应有 warning：${JSON.stringify(warnings)}`)
-  assert.equal(skills.length, 31)
+  assert.equal(skills.length, 32)
   const byCat = {}
   for (const skill of skills) (byCat[skill.category] ||= []).push(skill.name)
   assert.equal(byCat.craft.length, 21, 'craft：剧本/分镜/去AI/信息投放/文风延续/冷感短句/番茄套路/需求铁律/套路设计法/文风×11（彭湃+女频短篇×3+长篇头部×7）')
   assert.equal(byCat.transform.length, 5, 'transform：改写/大纲/世界书/场景扩写/humanizer（OS-212 归位）')
   assert.equal(byCat.review.length, 3, 'review：连续性/一致性/爽文自检')
   assert.equal(byCat.extract.length, 2, 'extract：fact 抽取/采集质量守则')
-  assert.equal(byCat.operate?.length ?? 0, 0, 'operate 正片由 OS-216/OS-223 建，本单只立协议')
+  assert.equal(byCat.operate?.length ?? 0, 1, 'OS-216：build-project 是第一个 operate 正片')
+  const buildProject = skills.find((skill) => skill.name === 'build-project')
+  assert.equal(buildProject.category, 'operate')
+  assert.equal(buildProject.confirm, 'restore')
+  assert.equal(buildProject.tools.length, MCP_TOOL_NAMES.length, 'build-project 必须声明全部构建工具')
+  assert.deepEqual(buildProject.tools.slice().sort(), MCP_TOOL_NAMES.slice().sort(), '声明工具必须与真实 tools/list 逐名一致')
   for (const expected of ['screenplay-craft', 'storyboard-craft', 'de-ai-writing', 'humanizer', 'shuangwen-chapter-check', 'info-reveal-budget', 'rule-horror-cold-prose', 'prose-continuity-rules', 'fanqie-pattern-playbook', 'reader-needs-ironrules', 'pattern-design-method', 'style-yishou-micheng', 'fact-extraction-quality', 'style-wangbuliao-baiyue', 'style-nianshang-yinshi', 'style-moshi-danmu', 'style-rejinzhi', 'style-fengpi-fanpai', 'style-huanqin-baofu', 'style-chixie-rusong', 'style-da-qin-yaoren', 'style-shangan-guanchang', 'style-shangjiao-guojia']) {
     assert.ok(skills.some((skill) => skill.name === expected), `缺 ${expected}`)
   }
@@ -447,11 +452,11 @@ test('daemon 端到端：列技能（体裁过滤）→ 取全文 → 未知技�
   try {
     const all = await (await fetch(`${origin}/api/skills`)).json()
     assert.equal(all.ok, true)
-    assert.equal(all.skills.length, 33) // 31 内置（含 visual-describe）＋写作/编剧套件捆绑 2（OS-68）
+    assert.equal(all.skills.length, 34) // 32 内置（含 build-project）＋写作/编剧套件捆绑 2（OS-68）
     assert.ok(all.skills.every((skill) => skill.body === undefined), '清单不带正文')
     // OS-212：确认级别与工具声明必须随唯一读路径（/api/skills 清单）抵达调用方，
     // 否则 Agent 拿到清单却不知道 operate 说明书的写权限边界。
-    assert.ok(all.skills.every((skill) => Array.isArray(skill.tools) && skill.confirm === 'read'), '清单带 tools/confirm')
+    assert.ok(all.skills.every((skill) => Array.isArray(skill.tools) && typeof skill.confirm === 'string'), '清单带 tools/confirm')
     const humanizerSummary = all.skills.find((skill) => skill.name === 'humanizer')
     assert.deepEqual(humanizerSummary.tools, [], 'humanizer 清单里工具声明为空')
     assert.equal(humanizerSummary.confirm, 'read')
@@ -461,7 +466,7 @@ test('daemon 端到端：列技能（体裁过滤）→ 取全文 → 未知技�
     assert.ok(drama.skills.some((skill) => skill.name === 'storyboard-craft'), '分镜在短剧体裁可用')
     const featureOnly = all.skills.filter((skill) => skill.genres.length && !skill.genres.includes('*'))
     assert.ok(featureOnly.length >= 2, '有技能声明了具体体裁')
-    assert.equal(drama.skills.length, 18, '短剧：排除长篇/短篇专属 13 个，其余 18 个兼容（含套件捆绑 2＋visual-describe）')
+    assert.equal(drama.skills.length, 19, '短剧：排除长篇/短篇专属 13 个，其余 18 个兼容（含套件捆绑 2＋visual-describe）')
     assert.ok(!drama.skills.some((skill) => skill.name === 'rule-horror-cold-prose'), '长篇专属技能在短剧下被过滤')
 
     const one = await (await fetch(`${origin}/api/skill?name=screenplay-craft`)).json()

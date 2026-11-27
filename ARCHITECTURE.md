@@ -61,7 +61,7 @@
 | 宿主组合面（恒启） | `src/modules/agentbar/`＋`src/modules/library/` | 5 | 1,172 |
 | 套件模块（class: suite） | `src/modules/` | 0 | 0 |
 | 服务 | `src/services/` | 7 | 1,908 |
-| 套件资源 | `suites/`＋`styles/`＋`runtimes/`＋`genres/`＋`skills/` | 58 | 2,835 |
+| 套件资源 | `suites/`＋`styles/`＋`runtimes/`＋`genres/`＋`skills/` | 60 | 3,139 |
 | 设计令牌 | `design-system/` | 3 | 138 |
 | 前端 | `public/` | 32 | 21,542 |
 | 磁盘库 | 库＝文件夹（无代码） | — | — |

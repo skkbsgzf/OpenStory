@@ -70,6 +70,8 @@ test('MCP：initialize 握手（serverInfo/instructions/tools 能力）', async 
     assert.equal(reply.result.protocolVersion, '2024-11-05')
     assert.equal(reply.result.serverInfo.name, 'openstory-local')
     assert.match(reply.result.instructions, /openstory_libraries/)
+    // OS-216：空目录构建必须能从握手说明直接找到官方 operate skill。
+    assert.match(reply.result.instructions, /build-project/u)
     assert.doesNotMatch(reply.result.instructions, /参考/u)
     assert.ok(reply.result.capabilities.tools)
   } finally { mcp.close() }

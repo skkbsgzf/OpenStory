@@ -24,15 +24,15 @@
 | 条目页签/拆解 | fact 数据契约 | `src/modules/fact/`（自持实现，出处见 `docs/kernel-provenance.md`） |
 | MCP 分发材料 | 上面所有模块的使用口径 | `docs/mcp/*.md`（这是对外材料，不是知识库本体） |
 
-## 技能包清单（31 个内置 ＋ 2 个套件捆绑，按用途）
+## 技能包清单（32 个内置 ＋ 2 个套件捆绑，按用途）
 
 - **审稿/检查**（review/extract）：shuangwen-chapter-check（十项自检）、fact-consistency、continuity-check、prose-continuity-rules、info-reveal-budget、fact-extraction-quality
 - **改写/生成**（transform/craft）：chapter-rewrite、scene-expand、outline-restructure、worldbook-refactor、humanizer、de-ai-writing
 - **方法论**（craft）：pattern-design-method、fanqie-pattern-playbook（16 本硬统计）、reader-needs-ironrules（100 本效率反推）、screenplay-craft、storyboard-craft
 - **文风包**（style-*，11 个）：尺芥入松/大秦谣愿/风披反拍/换亲暴富/末世弹幕/年上隐市/热晋直/山干观场/上交国家/忘不掉白月/一手遮成
 - **规则题材**：rule-horror-cold-prose
-- **操作说明书**（operate）：由 OS-216/OS-223 分别建 `build-project` / `update-project`；**当前内置货架 31 个里暂无 operate 正片**，先用临时夹具验证协议。operate 是只读说明书，不产出小说内容、不执行代码、不注入 prompt、不自动写盘；写操作只能调用 frontmatter `tools` 里声明的、在 MCP 安全语义注册表（`src/protocol/mcpToolSemantics.mjs`）里已分类的官方工具，并按 `confirm` 级别（read/create/migrate/restore，作为每个 MCP 工具的 `confirm` 实参传入；条件写必传，普通写传了就须满足门槛，不足返回 `CONFIRM_REQUIRED`）经作者确认。非法声明 fail-closed 拒绝装载。协议见 [PROTOCOL.md](PROTOCOL.md)。
-- **套件捆绑 2 个**：写作套件 `beat-rhythm-review`、编剧套件 `dialogue-tighten`（随套件启停生效，**不计入 31 个内置**）。故 `openstory_skills_list` 可见总数为 **31 内置 ＋ 2 套件捆绑 ＝ 33**，另有套件随启停出现的口径以该端点为准。
+- **操作说明书**（operate）：`build-project`（OS-216，从空目录初始化项目，含 55 工具速查表、写红线、幂等与失败恢复）；`update-project` 由 OS-223 建，当前尚未落盘。operate 是只读说明书，不产出小说内容、不执行代码、不注入 prompt、不自动写盘；写操作只能调用 frontmatter `tools` 里声明的、在 MCP 安全语义注册表（`src/protocol/mcpToolSemantics.mjs`）里已分类的官方工具，并按 `confirm` 级别（read/create/migrate/restore，作为每个 MCP 工具的 `confirm` 实参传入；写工具按门槛强制校验，不足返回 `CONFIRM_REQUIRED`）经作者确认。非法声明 fail-closed 拒绝装载。协议见 [PROTOCOL.md](PROTOCOL.md)。
+- **套件捆绑 2 个**：写作套件 `beat-rhythm-review`、编剧套件 `dialogue-tighten`（随套件启停生效，**不计入 32 个内置**）。故 `openstory_skills_list` 可见总数为 **32 内置 ＋ 2 套件捆绑 ＝ 34**，另有套件随启停出现的口径以该端点为准。
 
 ## 推演文游素材绑定约定（OS-61 P4）
 

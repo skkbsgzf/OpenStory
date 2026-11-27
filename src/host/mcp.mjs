@@ -1408,12 +1408,12 @@ async function callTool(name, args) {
 
 const SERVER_INFO = { name: 'openstory-local', version: '0.1.0' }
 const INSTRUCTIONS = [
-  'OpenStory 本地 MCP：小说（正文读写，写有 .history 备份）/ 世界书（Obsidian 式标签双链笔记，定位＝本项目的创作型条目管理知识库）/',
-  '推演（种子化 2d6 拍循环＋enrich 富化）／数据分析（本地引擎，秒回）四模块。',
-  '先 openstory_libraries 拿 root；读自由，写有备份；absorb 不开（显式动稿）。',
+  'OpenStory 本地 MCP：小说（正文/剧本读写，写有 .history 备份）/ 世界书（Obsidian 式标签双链笔记，定位＝本项目的创作型条目管理知识库）/ 建库与套件 / fact 与 exchange / 多局与推演 / 数据分析。',
+  '先 openstory_libraries 拿 root；空目录用 openstory_library_create；读自由，写有备份，absorb 不开（显式动稿）。',
   '世界书只单向链小说：世界书可 [[正文/...]]，正文不要回挂世界书。',
   '技能货架用 openstory_skills_list/read 按需读取：craft 可注入 prompt；operate 是只读操作说明书，不注入、不执行代码，写操作只准调用其声明的官方 MCP 工具并按 confirm 级别经作者确认。',
-  '模块级使用说明见仓 docs/mcp/*.md（novel / reference / deduce / analysis）。'
+  '从空目录建项目先 openstory_skills_read {name:"build-project"}：它是基于当前 tools/list 的官方构建说明书，含 55 工具速查表、写红线、幂等与失败恢复。',
+  '模块级使用说明见仓 docs/mcp/*.md；工具参数、确认与错误语义以 tools/list 为准。'
 ].join('\n')
 
 /* OS-140 布局归一：stdio 通道装配＋就绪 banner 收成可导出的 main(argv)——本文件即入口
