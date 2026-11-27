@@ -310,7 +310,7 @@ MCP 对外 24 工具（`src/host/mcp.mjs` 直跑；stdio 独立进程，数据�
 ## 改完必跑（验收线，详见 `docs/ACCEPTANCE.md`）
 
 ```bash
-node .zcode/run-gate.mjs                    # ① 全量单测（960 例）
+node .zcode/run-gate.mjs                    # ① 全量单测（964 例）
 node tools/acceptance/acceptance.mjs        # ② 交付标准 S0–S4 门禁（29 检查，Rea 式证据；S0=布局宪法）
 node tools/arch-stats.mjs --check           # ③ 架构统计与生成段一致
 node tools/verify/verify-ci-workflow.mjs    # ④ CI 三层门禁结构

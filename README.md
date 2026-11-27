@@ -70,7 +70,7 @@ L1  磁盘库                     文件即真相（.openstory 运行态；旧�
 
 仓根零 `.mjs`（OS-159 布局宪法）：入口直跑 `src/host/daemon.mjs` / `src/host/mcp.mjs`，实现都在 `src/` 六目录。
 
-当前实测：21 份内置 manifest（12 workbench＋7 kernel＋2 宿主组合面）、111 个契约端点、960 例单测（958 过／2 跳过）、29 项验收检查、`app.js` 10,044 行。数字由 `ARCHITECTURE.md` 生成段与 `docs/number-anchors.json` 校验，不手写承诺。
+当前实测：21 份内置 manifest（12 workbench＋7 kernel＋2 宿主组合面）、111 个契约端点、964 例单测（962 过／2 跳过）、29 项验收检查、`app.js` 10,044 行。数字由 `ARCHITECTURE.md` 生成段与 `docs/number-anchors.json` 校验，不手写承诺。
 
 CI 是合入门禁：推送与合并请求在 Node 24 上跑两轮 `npm test`、验收与架构核对，再用临时 daemon/库/院子跑隔离全栈 E2E；独立 `browser-smoke` job 用 Chromium 跑完整页面矩阵并上传 manifest 与截图。本地等价命令见 [ACCEPTANCE.md](docs/ACCEPTANCE.md)，不连接 8807 或作者真库。
 

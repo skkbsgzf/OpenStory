@@ -942,6 +942,347 @@ const tools = [
         ...(payload.written ? { written: payload.written } : {})
       }
     }
+  },
+
+  /* ---------- 剧本 / 会话 / 扮演构建原语（OS-215）----------
+   * 只做薄适配：业务实现与备份/幂等/错误语义都在 daemon 端点。
+   * 不开放 absorb、Agent 对话、待确认卡的**创建**；pending 只结算既有卡。 */
+  {
+    name: 'openstory_script_to_fact',
+    title: '剧本转事实',
+    description: '把完整剧本文本转成 fact 条目骨架（幕/角色/场景），纯结构映射、不写盘、不调模型。返回 entries、wiki、stats；先 dry-run 看结果，再调 openstory_fact_entries_import 落库（那里才做 schema/revision/备份）。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        root: { type: 'string' }, text: { type: 'string', description: '完整剧本文本' },
+        bookId: { type: 'string' }, domain: { type: 'string' }
+      },
+      required: ['root', 'text'],
+      additionalProperties: false
+    },
+    async run(args) {
+      const root = requireRoot(args)
+      if (typeof args.text !== 'string') throw invalidArgs('text')
+      return await daemon('/api/script/to-fact', {
+        method: 'POST',
+        body: cleanBody({ root, text: args.text, bookId: args.bookId, domain: args.domain })
+      })
+    }
+  },
+  {
+    name: 'openstory_script_from_fact',
+    title: '事实转剧本',
+    description: '把 fact 条目渲染成剧本文本（可传 entries，或按 bookId 读现档）。纯渲染不写盘、不调模型。返回 text 与 stats；空条目是错误，不渲染空剧本冒充成功。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        root: { type: 'string' }, bookId: { type: 'string' },
+        entries: { type: 'array', description: '可选：显式条目；省略则按 bookId 读现档' },
+        wiki: { type: 'object', description: '可选：派生 wiki 结构' }
+      },
+      required: ['root'],
+      additionalProperties: false
+    },
+    async run(args) {
+      const root = requireRoot(args)
+      return await daemon('/api/script/from-fact', {
+        method: 'POST',
+        body: cleanBody({ root, bookId: args.bookId, entries: args.entries, wiki: args.wiki })
+      })
+    }
+  },
+  {
+    name: 'openstory_chapters_rename',
+    title: '章节重命名',
+    description: '保号重命名章节：只换标题段，目标已存在拒绝。**会改文件名并留日志**，调用需 confirm:create。正文/剧本载体外的路径一律拒绝。',
+    inputSchema: {
+      type: 'object',
+      properties: { root: { type: 'string' }, file: { type: 'string' }, title: { type: 'string', description: '新标题（不含 NNN- 前缀）' } },
+      required: ['root', 'file', 'title'],
+      additionalProperties: false
+    },
+    async run(args) {
+      const root = requireRoot(args)
+      if (typeof args.file !== 'string' || !args.file.trim()) throw invalidArgs('file')
+      if (typeof args.title !== 'string' || !args.title.trim()) throw invalidArgs('title')
+      return await daemon('/api/chapters/rename', {
+        method: 'POST', body: { root, file: args.file.trim(), title: args.title.trim() }
+      })
+    }
+  },
+
+  /* ---------- 多局会话：list / get / new / switch / delete / 整存 ---------- */
+  {
+    name: 'openstory_sessions',
+    title: '列多局会话',
+    description: '列一个事实书下的全部推演/扮演会话（主线＋分局）与激活指针。返回 bookId/activeId/sessions。',
+    inputSchema: {
+      type: 'object',
+      properties: { root: { type: 'string' }, bookId: { type: 'string' } },
+      required: ['root'], additionalProperties: false
+    },
+    async run(args) {
+      const root = requireRoot(args)
+      return await daemon('/api/deduce/sessions', { query: cleanBody({ root, bookId: args.bookId }) })
+    }
+  },
+  {
+    name: 'openstory_session_get',
+    title: '读会话',
+    description: '读一个会话全文（可显式 sessionId；省略走 activeId）。返回 session/activeId。',
+    inputSchema: {
+      type: 'object',
+      properties: { root: { type: 'string' }, bookId: { type: 'string' }, sessionId: { type: 'string' } },
+      required: ['root'], additionalProperties: false
+    },
+    async run(args) {
+      const root = requireRoot(args)
+      return await daemon('/api/deduce/session', { query: cleanBody({ root, bookId: args.bookId, sessionId: args.sessionId }) })
+    }
+  },
+  {
+    name: 'openstory_session_new',
+    title: '新建会话',
+    description: '在事实书下新建一个空会话并设为激活。**会写会话盘**，调用需 confirm:create。返回 sessionId/session/activeId/sessions。',
+    inputSchema: {
+      type: 'object',
+      properties: { root: { type: 'string' }, bookId: { type: 'string' }, title: { type: 'string' } },
+      required: ['root'], additionalProperties: false
+    },
+    async run(args) {
+      const root = requireRoot(args)
+      return await daemon('/api/deduce/session/manage', {
+        method: 'POST', body: cleanBody({ root, bookId: args.bookId, action: 'new', title: args.title })
+      })
+    }
+  },
+  {
+    name: 'openstory_session_switch',
+    title: '切换会话',
+    description: '激活一个已存在的会话。**会改 activeId 指针**，调用需 confirm:create。',
+    inputSchema: {
+      type: 'object',
+      properties: { root: { type: 'string' }, bookId: { type: 'string' }, sessionId: { type: 'string' } },
+      required: ['root', 'sessionId'], additionalProperties: false
+    },
+    async run(args) {
+      const root = requireRoot(args)
+      if (typeof args.sessionId !== 'string' || !args.sessionId.trim()) throw invalidArgs('sessionId')
+      return await daemon('/api/deduce/session/manage', {
+        method: 'POST', body: cleanBody({ root, bookId: args.bookId, action: 'switch', sessionId: args.sessionId.trim() })
+      })
+    }
+  },
+  {
+    name: 'openstory_session_delete',
+    title: '删除会话',
+    description: '非破坏删除一个会话（挪成 .deleted，不是真删）。**最后一局不能删**；调用需 confirm:restore。',
+    inputSchema: {
+      type: 'object',
+      properties: { root: { type: 'string' }, bookId: { type: 'string' }, sessionId: { type: 'string' } },
+      required: ['root', 'sessionId'], additionalProperties: false
+    },
+    async run(args) {
+      const root = requireRoot(args)
+      if (typeof args.sessionId !== 'string' || !args.sessionId.trim()) throw invalidArgs('sessionId')
+      return await daemon('/api/deduce/session/manage', {
+        method: 'POST', body: cleanBody({ root, bookId: args.bookId, action: 'delete', sessionId: args.sessionId.trim() })
+      })
+    }
+  },
+  {
+    name: 'openstory_session_put',
+    title: '整存会话',
+    description: '用完整 session 对象覆盖一个会话（会先备份）。**会写盘**，调用需 confirm:create；日常推进优先用 turn/pending 等细粒度工具，不要把整存当补丁用。',
+    inputSchema: {
+      type: 'object',
+      properties: { root: { type: 'string' }, bookId: { type: 'string' }, session: { type: 'object' } },
+      required: ['root', 'session'], additionalProperties: false
+    },
+    async run(args) {
+      const root = requireRoot(args)
+      if (!args.session || typeof args.session !== 'object' || Array.isArray(args.session)) throw invalidArgs('session')
+      return await daemon('/api/deduce/session', {
+        method: 'PUT', body: cleanBody({ root, bookId: args.bookId, session: args.session })
+      })
+    }
+  },
+
+  /* ---------- 扮演 / 推演动作 ---------- */
+  {
+    name: 'openstory_roleplay_turn',
+    title: '推进一回合',
+    description: '推进一个扮演/推演回合：选候选 choiceId 或给自定义 customText，可 regenerate 只重写最后一拍。**会保存会话状态**，调用需 confirm:create；模型不可用返回 AGENT_NOT_CONFIGURED/上游错误，不伪造成功。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        root: { type: 'string' }, bookId: { type: 'string' }, sessionId: { type: 'string' },
+        choiceId: { type: 'string' }, customText: { type: 'string' }, regenerate: { type: 'boolean' }
+      },
+      required: ['root'], additionalProperties: false
+    },
+    async run(args) {
+      const root = requireRoot(args)
+      return await daemon('/api/deduce/turn', {
+        method: 'POST',
+        body: cleanBody({ root, bookId: args.bookId, sessionId: args.sessionId, choiceId: args.choiceId, customText: args.customText, regenerate: args.regenerate })
+      })
+    }
+  },
+  {
+    name: 'openstory_roleplay_archive',
+    title: '归档一章',
+    description: '把当前会话的缓存区归档成扮演/归档下的 md 文件。**会写盘**，调用需 confirm:create。返回 path/words。',
+    inputSchema: {
+      type: 'object',
+      properties: { root: { type: 'string' }, bookId: { type: 'string' }, sessionId: { type: 'string' }, title: { type: 'string' } },
+      required: ['root'], additionalProperties: false
+    },
+    async run(args) {
+      const root = requireRoot(args)
+      return await daemon('/api/deduce/archive', {
+        method: 'POST', body: cleanBody({ root, bookId: args.bookId, sessionId: args.sessionId, title: args.title })
+      })
+    }
+  },
+  {
+    name: 'openstory_roleplay_export',
+    title: '导出会话',
+    description: '把当前会话导出成扮演/导出下的 md 文件。**会写盘**，调用需 confirm:create。返回 path/words。',
+    inputSchema: {
+      type: 'object',
+      properties: { root: { type: 'string' }, bookId: { type: 'string' }, sessionId: { type: 'string' }, title: { type: 'string' } },
+      required: ['root'], additionalProperties: false
+    },
+    async run(args) {
+      const root = requireRoot(args)
+      return await daemon('/api/deduce/export', {
+        method: 'POST', body: cleanBody({ root, bookId: args.bookId, sessionId: args.sessionId, title: args.title })
+      })
+    }
+  },
+  {
+    name: 'openstory_roleplay_promote',
+    title: '节点转正文',
+    description: '把一个推演节点转成正文章节（复用章节写通道，写前备份）。**会写正文**，调用需 confirm:create；不自动 absorb、不创建待确认卡。',
+    inputSchema: {
+      type: 'object',
+      properties: { root: { type: 'string' }, bookId: { type: 'string' }, sessionId: { type: 'string' }, nodeId: { type: 'string' }, title: { type: 'string' } },
+      required: ['root', 'nodeId'], additionalProperties: false
+    },
+    async run(args) {
+      const root = requireRoot(args)
+      if (typeof args.nodeId !== 'string' || !args.nodeId.trim()) throw invalidArgs('nodeId')
+      return await daemon('/api/deduce/promote', {
+        method: 'POST', body: cleanBody({ root, bookId: args.bookId, sessionId: args.sessionId, nodeId: args.nodeId.trim(), title: args.title })
+      })
+    }
+  },
+  {
+    name: 'openstory_roleplay_pending',
+    title: '结算待确认卡',
+    description: '结算一张**已存在**的待确认卡：write＝单条 upsert 进 fact（不整份替换），dismiss＝丢弃。**会写会话或事实链**，调用需 confirm:create；重复 pendingId 返回 NOT_FOUND。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        root: { type: 'string' }, bookId: { type: 'string' }, sessionId: { type: 'string' },
+        pendingId: { type: 'string' }, action: { type: 'string', enum: ['write', 'dismiss'] }
+      },
+      required: ['root', 'pendingId'], additionalProperties: false
+    },
+    async run(args) {
+      const root = requireRoot(args)
+      if (typeof args.pendingId !== 'string' || !args.pendingId.trim()) throw invalidArgs('pendingId')
+      return await daemon('/api/deduce/pending', {
+        method: 'POST', body: cleanBody({ root, bookId: args.bookId, sessionId: args.sessionId, pendingId: args.pendingId.trim(), action: args.action })
+      })
+    }
+  },
+  {
+    name: 'openstory_roleplay_branch',
+    title: '从节点开分支',
+    description: '从某个节点开一个新会话分支（保留全量节点与分叉溯源）。**会写会话态**，调用需 confirm:create。',
+    inputSchema: {
+      type: 'object',
+      properties: { root: { type: 'string' }, bookId: { type: 'string' }, sessionId: { type: 'string' }, fromNodeId: { type: 'string' } },
+      required: ['root', 'fromNodeId'], additionalProperties: false
+    },
+    async run(args) {
+      const root = requireRoot(args)
+      if (typeof args.fromNodeId !== 'string' || !args.fromNodeId.trim()) throw invalidArgs('fromNodeId')
+      return await daemon('/api/deduce/branch', {
+        method: 'POST', body: cleanBody({ root, bookId: args.bookId, sessionId: args.sessionId, fromNodeId: args.fromNodeId.trim() })
+      })
+    }
+  },
+
+  /* ---------- 素材与推演生图 ---------- */
+  {
+    name: 'openstory_assets',
+    title: '列素材',
+    description: '盘点一个事实书下的扮演素材（角色/场景/BGM），返回 characters/scenes/bgm 三个数组。目录不存在是合法空态。',
+    inputSchema: {
+      type: 'object',
+      properties: { root: { type: 'string' }, bookId: { type: 'string' } },
+      required: ['root'], additionalProperties: false
+    },
+    async run(args) {
+      const root = requireRoot(args)
+      return await daemon('/api/deduce/assets', { query: cleanBody({ root, bookId: args.bookId }) })
+    }
+  },
+  {
+    name: 'openstory_asset_read',
+    title: '读素材',
+    description: '读一个素材本体（.png/.mp3，≤16MB）。MCP 以 base64 返回 dataUrl 与 mediaType；路径越界/盘符/异扩展名/缺档均明确拒绝。',
+    inputSchema: {
+      type: 'object',
+      properties: { root: { type: 'string' }, bookId: { type: 'string' }, path: { type: 'string', description: '素材相对路径，如 角色/沈岚.png' } },
+      required: ['root', 'path'], additionalProperties: false
+    },
+    async run(args) {
+      const root = requireRoot(args)
+      if (typeof args.path !== 'string' || !args.path.trim()) throw invalidArgs('path')
+      const query = new URLSearchParams({ root, path: args.path.trim(), ...(args.bookId ? { bookId: args.bookId } : {}) })
+      const response = await fetch(`${BASE}/api/deduce/asset?${query}`).catch((cause) => {
+        const err = new Error(`DAEMON_UNREACHABLE · 素材读取失败：${cause.message}`); err.code = 'DAEMON_UNREACHABLE'; throw err
+      })
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null)
+        const err = new Error(payload?.error?.message || `素材读取失败（HTTP ${response.status}）`)
+        err.code = payload?.error?.code || `HTTP_${response.status}`
+        throw err
+      }
+      const mediaType = response.headers.get('content-type') || 'application/octet-stream'
+      const buffer = Buffer.from(await response.arrayBuffer())
+      return {
+        path: args.path.trim(), mediaType, bytes: buffer.length,
+        dataUrl: `data:${mediaType};base64,${buffer.toString('base64')}`
+      }
+    }
+  },
+  {
+    name: 'openstory_deduce_image',
+    title: '推演生图',
+    description: '为当前推演局面生成一张素材图并落到扮演/素材。**会写文件**，调用需 confirm:create；模型不可用返回 AGENT_NOT_CONFIGURED/上游错误，不伪造成功。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        root: { type: 'string' }, bookId: { type: 'string' },
+        name: { type: 'string' }, prompt: { type: 'string' },
+        size: { type: 'string' }, stylePrompt: { type: 'string' }, negative: { type: 'string' }
+      },
+      required: ['root', 'name', 'prompt'], additionalProperties: false
+    },
+    async run(args) {
+      const root = requireRoot(args)
+      if (typeof args.name !== 'string' || !args.name.trim()) throw invalidArgs('name')
+      if (typeof args.prompt !== 'string' || !args.prompt.trim()) throw invalidArgs('prompt')
+      return await daemon('/api/deduce/image', {
+        method: 'POST',
+        body: cleanBody({ root, bookId: args.bookId, name: args.name.trim(), prompt: args.prompt.trim(), size: args.size, stylePrompt: args.stylePrompt, negative: args.negative })
+      })
+    }
   }
 ]
 

@@ -5,7 +5,7 @@
 | 批次 | OS-211～231；阶段 A |
 | 执行 | workflow 施工；dsv4flash / hy4flash 交替，对方模型评审 |
 | 依赖 | OS-213、OS-214 |
-| 允许改动 | `src/host/mcp.mjs`、`test/mcp.test.mjs`、`test/mcpDaemon.test.mjs`、`docs/mcp/**`、相关门禁与数字锚 |
+| 允许改动 | `src/host/mcp.mjs`、`src/protocol/mcpToolSemantics.mjs`（OS-215 新工具必须同步登记的单一注册表）、`test/mcp.test.mjs`、`test/mcpDaemon.test.mjs`、`test/os215*.test.mjs`（新增）、`docs/mcp/**`、相关门禁与数字锚 |
 | 风险 | 中高——工具面与写安全 |
 | 状态 | 待施工 |
 

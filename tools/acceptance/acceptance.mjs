@@ -136,13 +136,23 @@ console.log('\n── S1 Agentic ──')
 const mcpSrc = readRepo('src/host/mcp.mjs')
 const toolNames = [...mcpSrc.matchAll(/name:\s*'([a-z_]+)'/g)].map((m) => m[1])
 const MODULE_PREFIX = {
-  novel: 'openstory_chapter',
+  novel: 'openstory_novel',
   worldbook: 'openstory_ref',
   reference: 'openstory_reference',
   deduce: 'openstory_deduce',
   analysis: 'openstory_analyze',
   habits: 'openstory_habits',
-  worldbookEntries: 'openstory_worldbook'
+  worldbookEntries: 'openstory_worldbook',
+  // OS-213/215：建库、套件、fact/exchange、剧本、多局、素材。按工具名前缀自动归类，
+  // 新增域落到组外不等于「覆盖不足」。
+  library: 'openstory_library',
+  suites: 'openstory_suite',
+  fact: 'openstory_fact',
+  exchange: 'openstory_exchange',
+  script: 'openstory_script',
+  sessions: 'openstory_session',
+  roleplay: 'openstory_roleplay',
+  assets: 'openstory_asset'
 }
 const modCoverage = Object.entries(MODULE_PREFIX)
   .map(([mod, prefix]) => [mod, toolNames.filter((t) => t.startsWith(prefix))])

@@ -116,7 +116,30 @@ export const MCP_TOOL_SEMANTICS = Object.freeze({
   // 导入：缺省（不传 dryRun）就是真写——这是默认路径，不能因为「可能传了 dryRun」就放行。
   // 注册表的 mutatesWhen 只能「命中参数才升级」，无法表达「参数缺省即写」，所以整体按写工具：
   // 即使 dryRun:true 也要 confirm（宁严不宽；dryRun 的零写入由实现保证）。
-  openstory_exchange_import: write()
+  openstory_exchange_import: write(),
+
+  /* ===== OS-215 剧本/扮演构建原语 II ===== */
+  openstory_script_to_fact: read,
+  openstory_script_from_fact: read,
+  openstory_chapters_rename: write(),
+
+  openstory_sessions: read,
+  openstory_session_get: read,
+  openstory_session_new: create(),
+  openstory_session_switch: write(),
+  openstory_session_delete: erase(),
+  openstory_session_put: write(),
+
+  openstory_roleplay_turn: write(),
+  openstory_roleplay_archive: create(),
+  openstory_roleplay_export: create(),
+  openstory_roleplay_promote: write(),
+  openstory_roleplay_pending: write(),
+  openstory_roleplay_branch: create(),
+
+  openstory_assets: read,
+  openstory_asset_read: read,
+  openstory_deduce_image: write()
 })
 
 /** 取一个工具的语义；未分类/未知一律 null（调用方必须 fail-closed，不许回落成 read）。 */
