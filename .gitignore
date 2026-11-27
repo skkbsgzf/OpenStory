@@ -45,3 +45,8 @@ samples/**/.operations.jsonl
 # ── Python 运行时缓存（knowledge-runtime worker/installer 自产）──
 __pycache__/
 *.pyc
+
+# 样例库里的 .history 是运行备份，不是内容（样例只留稿件与 OS-160 运行态配置）
+samples/**/.history/
+samples/**/*/.history/
+samples/**/*/*/.history/
