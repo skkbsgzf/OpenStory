@@ -12,6 +12,9 @@
  * 本模块只负责渲染——不持有任何真相。
  */
 
+import { buildWikiDocumentTree, buildWikiTagTree, filterWikiTree } from './wiki/tree.mjs'
+import { wikiBacklinksHtml, wikiNavigationHtml } from './wiki/view.mjs'
+
 function esc(value) {
   return String(value ?? '').replace(/[&<>"']/gu, (char) => (
     { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]
@@ -23,27 +26,7 @@ function text(value) {
 }
 
 /** 标签按 `/` 拆层，做成树（Obsidian 的 nested tags）。 */
-export function buildTagTree(tags) {
-  const root = { name: '', children: new Map(), count: 0, description: '', color: '' }
-  for (const tag of Array.isArray(tags) ? tags : []) {
-    const parts = text(tag.name).split('/').filter(Boolean)
-    if (!parts.length) continue
-    let node = root
-    let prefix = ''
-    for (const part of parts) {
-      prefix = prefix ? `${prefix}/${part}` : part
-      if (!node.children.has(part)) {
-        node.children.set(part, { name: part, full: prefix, children: new Map(), count: 0, description: '', color: '' })
-      }
-      node = node.children.get(part)
-      node.count += Number(tag.count) || 0
-    }
-    // 叶子挂描述/颜色
-    if (tag.description) node.description = text(tag.description)
-    if (tag.color) node.color = text(tag.color)
-  }
-  return root
-}
+export function buildTagTree(tags) { return buildWikiTagTree(tags) }
 
 /**
  * 统一目录树（OS-53，作者裁定）：一棵树管完「标签→笔记」的层级浏览——
@@ -52,34 +35,7 @@ export function buildTagTree(tags) {
  *   点标签行＝展开子树＋定位（activeTag 高亮，祖先自动展开）；点笔记行＝打开详情。
  */
 export function buildRefTree(notes) {
-  const root = { name: '', full: '', children: new Map(), notes: [], count: 0 }
-  const nodeAt = (tagPath) => {
-    let node = root
-    let prefix = ''
-    for (const part of tagPath.split('/').filter(Boolean)) {
-      prefix = prefix ? `${prefix}/${part}` : part
-      if (!node.children.has(part)) node.children.set(part, { name: part, full: prefix, children: new Map(), notes: [], count: 0 })
-      node = node.children.get(part)
-      node.count += 1
-    }
-    return node
-  }
-  for (const note of Array.isArray(notes) ? notes : []) {
-    if (note.isTagNote) continue // 标签定义笔记是「标签的描述」，不是词条，不进目录
-    const tags = [...new Set(Array.isArray(note.tags) ? note.tags : [])]
-    if (!tags.length) {
-      root.notes.push(note)
-      continue
-    }
-    // 多点挂载（Obsidian 标签面板口径）：笔记出现在它每个标签的路径末端——
-    // 打 #人物/梁山 的笔记同时是「人物」与「人物/梁山」的成员，一个维度都不丢
-    const ends = new Set()
-    for (const tag of tags) {
-      const end = nodeAt(tag)
-      if (!ends.has(end)) { end.notes.push(note); ends.add(end) }
-    }
-  }
-  return root
+  return buildWikiDocumentTree(notes, { include: (note) => !note.isTagNote })
 }
 
 /** 搜索过滤：笔记匹配 title/path/摘要/标签；标签节点保留「子树里有匹配」的。 */
@@ -127,20 +83,32 @@ function renderTreeBranch(node, { activeTag = '', activePath = '', q = '' } = {}
 
 /** 目录树整块（搜索时只重渲这个容器，输入框不丢焦点）。 */
 export function refTreeHtml({ notes, tags = [], activeTag = '', activePath = '', q = '' } = {}) {
-  const needle = text(q).trim().toLowerCase()
-  let tree = buildRefTree(notes)
-  if (needle) tree = filterTree(tree, needle)
-  const branches = [...tree.children.values()].sort((left, right) => right.count - left.count || left.name.localeCompare(right.name, 'zh-Hans-CN'))
-  const body = branches.map((kid) => renderTreeBranch(kid, { activeTag, activePath, q })).join('')
-  const untagged = !needle && tree.notes.length
-    ? `<div class="nav-group-label">未打标签</div>${tree.notes.map((note) => treeNoteRow(note, activePath)).join('')}`
-    : ''
-  if (!body && !untagged) {
-    return needle
-      ? '<p class="nav-empty">没有匹配的笔记或标签。</p>'
-      : '<p class="nav-empty">还没有世界书笔记。<br>点右上「新建笔记」开始。</p>'
-  }
-  return `${body}${untagged}`
+  return wikiNavigationHtml({
+    items: notes,
+    tags,
+    activeId: activePath,
+    activeTag,
+    query: q,
+    buildTree: (items) => buildRefTree(items),
+    filterTree: (tree, query) => {
+      const filtered = filterWikiTree({ ...tree, items: tree.notes }, query)
+      return { ...filtered, notes: filtered.items }
+    },
+    renderItem: (note, { active }) => {
+      const fc = Number(note.firstChapter) || 0
+      const fcBadge = fc > 0 ? `<span class="fc-badge" title="首次出现于第${fc}章">${fc}章</span>` : '<span class="fc-badge fc-base" title="原生共识（开篇即成立）">共识</span>'
+      return `<button class="nav-row note${active ? ' on' : ''}" data-ref-path="${esc(note.path)}" title="${esc(note.path)}"><span class="tag-name">${esc(note.title)}</span><span class="nav-count">${note.chars}</span>${fcBadge}</button>`
+    },
+    renderTag: (node, { active }) => `<button class="nav-row tag${active ? ' on' : ''}" data-ref-tag="${esc(node.full)}" title="${node.description ? esc(node.description) : '按标签筛选'}"><span class="tag-name">${esc(node.name)}</span><span class="nav-count">${node.count}</span></button>`,
+    searchAction: 'id="ref-search" type="search" placeholder="过滤目录…"',
+    emptyHtml: needleEmptyHtml(q)
+  })
+}
+
+function needleEmptyHtml(q) {
+  return text(q).trim()
+    ? '<p class="nav-empty">没有匹配的笔记或标签。</p>'
+    : '<p class="nav-empty">还没有世界书笔记。<br>点右上「新建笔记」开始。</p>'
 }
 
 /** 故事源词条分组（OS-103）：世界书的另一来源——库内 fact 条目（enrich 产物）。
@@ -197,18 +165,11 @@ export function refNavHtml({ tags = [], notes, activeTag = '', activePath = '', 
 
 /** 反链（双段：已链接 / 未链接）。OS-51：不再占独立列，作为「关联说明」进详情页底部。 */
 export function backlinksHtml(backlinks) {
-  const linked = Array.isArray(backlinks?.linked) ? backlinks.linked : []
-  const unlinked = Array.isArray(backlinks?.unlinked) ? backlinks.unlinked : []
-  const block = (label, items, cls) => `
-    <section class="bl-sec ${cls}">
-      <h5>${label} <span class="count">${items.length}</span></h5>
-      ${items.length
-        ? items.map((item) => `<button class="bl-row" data-ref-path="${esc(item.path)}" title="${esc(item.excerpt)}">
-            <b>${esc(item.title)}</b><span>${esc(item.excerpt)}</span>
-          </button>`).join('')
-        : '<p class="empty">没有</p>'}
-    </section>`
-  return block('已链接', linked, 'linked') + block('未链接（提到了但没建链）', unlinked, 'unlinked')
+  return wikiBacklinksHtml({
+    linked: Array.isArray(backlinks?.linked) ? backlinks.linked : [],
+    unlinked: Array.isArray(backlinks?.unlinked) ? backlinks.unlinked : [],
+    openAction: 'data-ref-path'
+  })
 }
 
 /** 笔记视图未选中态（OS-53b）：给两条出路而不是一句提示。 */

@@ -6,8 +6,8 @@
  * 因此不需要 sanitizer 二次清洗（这也是唯一安全的零依赖路径）。
  *
  * 支持子集（够小说正文用）：ATX 标题、段落、粗体/斜体/行内码/围栏代码、引用、有序/无序列表、
- * 分割线、链接、硬换行（两空格或行尾反斜杠）、反斜杠转义。
- * 明确不支持（不做半懂）：表格、脚注、HTML 内联、任务列表、自动链接。
+ * GFM 管道表、分割线、链接、图片、硬换行（两空格或行尾反斜杠）、反斜杠转义。
+ * 明确不支持：脚注、HTML 内联、任务列表、自动链接。
  */
 
 const ESCAPES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }
@@ -17,7 +17,7 @@ export function escapeHtml(value) {
 }
 
 /** 行内渲染：先转义，再按标记替换（顺序敏感：行内码最先切分，避免码内标记被解析）。 */
-export function renderInline(text) {
+export function renderInline(text, { resolveWikiLink } = {}) {
   const raw = String(text ?? '')
   // 行内码先吃掉：用占位符保护
   const codes = []
@@ -39,6 +39,17 @@ export function renderInline(text) {
     if (!target && !anchor) return match
     const label = display || (anchor ? `${target || '本文'} › ${anchor}` : target)
     const embed = bang === '!'
+    if (typeof resolveWikiLink === 'function') {
+      const resolved = resolveWikiLink({ target, anchor, display, embed, label })
+      if (resolved && typeof resolved === 'object') {
+        const attrs = Object.entries(resolved.attrs ?? {})
+          .filter(([, value]) => value !== undefined && value !== null && value !== '')
+          .map(([name, value]) => ` ${String(name).replace(/[^\w:-]/gu, '')}="${escapeHtml(value)}"`)
+          .join('')
+        links.push(`<a class="${escapeHtml(resolved.className ?? 'wl')}"${attrs}>${escapeHtml(resolved.label ?? label)}</a>`)
+        return `\u0001${links.length - 1}\u0001`
+      }
+    }
     links.push(
       `<a class="wl${embed ? ' embed' : ''}" data-ref="${target}"${anchor ? ` data-anchor="${anchor}"` : ''}` +
       ` title="${embed ? '嵌入' : '参考'}：${target || anchor}">${label}</a>`
@@ -105,13 +116,13 @@ function parseTable(lines, startIndex) {
 }
 
 /** 表格 → HTML（外层 div 负责横向滚动，表格本身不缩）。 */
-function renderTable(table) {
+function renderTable(table, options) {
   const styleOf = (column) => (table.align[column] && table.align[column] !== 'left' ? ` style="text-align:${table.align[column]}"` : '')
   const head = table.header
-    .map((cell, column) => `<th${styleOf(column)}>${renderInline(cell)}</th>`)
+    .map((cell, column) => `<th${styleOf(column)}>${renderInline(cell, options)}</th>`)
     .join('')
   const body = table.rows
-    .map((row) => `<tr>${row.map((cell, column) => `<td${styleOf(column)}>${renderInline(cell)}</td>`).join('')}</tr>`)
+    .map((row) => `<tr>${row.map((cell, column) => `<td${styleOf(column)}>${renderInline(cell, options)}</td>`).join('')}</tr>`)
     .join('')
   return `<div class="md-table-wrap"><table class="md-table"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`
 }
@@ -120,7 +131,7 @@ function renderTable(table) {
  * 块级渲染。返回 HTML 字符串。
  * 段落之间用空行切分；单换行在段落内保留为 <br>（小说排版按「所见即所得」更直观）。
  */
-export function renderMarkdown(source) {
+export function renderMarkdown(source, options = {}) {
   const lines = String(source ?? '').replace(/\r\n?/gu, '\n').split('\n')
   const out = []
   let paragraph = []
@@ -133,7 +144,7 @@ export function renderMarkdown(source) {
 
   const flushParagraph = () => {
     if (paragraph.length === 0) return
-    const body = paragraph.map((line) => renderInline(line)).join('<br>')
+    const body = paragraph.map((line) => renderInline(line, options)).join('<br>')
     if (body.trim()) out.push(`<p>${body}</p>`)
     paragraph = []
   }
@@ -146,7 +157,7 @@ export function renderMarkdown(source) {
   }
   const flushQuote = () => {
     if (quoteLines.length === 0) return
-    out.push(`<blockquote>${quoteLines.map((line) => renderInline(line)).join('<br>')}</blockquote>`)
+    out.push(`<blockquote>${quoteLines.map((line) => renderInline(line, options)).join('<br>')}</blockquote>`)
     quoteLines = []
   }
   const flushAll = () => {
@@ -187,7 +198,7 @@ export function renderMarkdown(source) {
       const table = parseTable(lines, lineIndex)
       if (table) {
         flushAll()
-        out.push(renderTable(table))
+        out.push(renderTable(table, options))
         lineIndex = table.nextIndex - 1
         continue
       }
@@ -203,7 +214,7 @@ export function renderMarkdown(source) {
     if (heading) {
       flushAll()
       const level = heading[1].length
-      out.push(`<h${level}>${renderInline(heading[2].replace(/\s*#+\s*$/u, ''))}</h${level}>`)
+      out.push(`<h${level}>${renderInline(heading[2].replace(/\s*#+\s*$/u, ''), options)}</h${level}>`)
       continue
     }
     // 引用
@@ -223,7 +234,7 @@ export function renderMarkdown(source) {
       const type = ordered ? 'ol' : 'ul'
       if (listType && listType !== type) flushList()
       listType = type
-      listItems.push(renderInline((ordered ?? bullet)[1]))
+      listItems.push(renderInline((ordered ?? bullet)[1], options))
       continue
     }
     if (listItems.length) flushList()

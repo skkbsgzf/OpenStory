@@ -15,34 +15,46 @@
  */
 
 /** 画布 fillStyle 不认 var(--*)，这里从 :root 令牌现读（令牌缺失时回退最后值）。 */
-const KIND_TOKENS = {
+const DEFAULT_KIND_TOKENS = {
   worldbook: ['--accent', '#ff385c'],
   tag: ['--warn', '#c48a00'],
   artifact: ['--ok', '#008a05'],
   entry: ['--meta', '#9a9a9a']
 }
+const DEFAULT_KIND_STYLE = {
+  worldbook: { ring: 0.34, radius: null, labelFont: 'wide', decorative: false, fillAlpha: 1 },
+  artifact: { ring: 0.62, radius: 6, labelFont: 'normal', decorative: false, fillAlpha: 1, angleOffset: 0.35 },
+  tag: { ring: 0.92, radius: 5, labelFont: 'normal', decorative: true, fillAlpha: 1, angleOffset: 0.7, labelColor: '#a06a00' },
+  entry: { ring: 0.92, radius: 5, labelFont: 'normal', decorative: false, fillAlpha: 0.55 }
+}
 const KIND_COLOR_CACHE = new Map()
-function kindColor(kind) {
-  if (KIND_COLOR_CACHE.has(kind)) return KIND_COLOR_CACHE.get(kind)
-  const [token, fallback] = KIND_TOKENS[kind] || ['', fallbackHex(kind)]
-  let v = fallback
+function normalizeKindStyle(kindStyle) {
+  const merged = { ...DEFAULT_KIND_STYLE, ...(kindStyle || {}) }
+  for (const [kind, value] of Object.entries(merged)) {
+    merged[kind] = {
+      ring: 0.8,
+      radius: null,
+      labelFont: 'normal',
+      decorative: false,
+      fillAlpha: 1,
+      ...(value || {}),
+      color: kindStyle?.[kind]?.color ?? DEFAULT_KIND_TOKENS[kind]?.[1] ?? '#9a9a9a'
+    }
+  }
+  return merged
+}
+function styleFor(styles, kind) {
+  return styles[String(kind || 'node')] ?? styles.node ?? { ring: 0.8, radius: null, labelFont: 'normal', decorative: false, fillAlpha: 1, color: '#9a9a9a' }
+}
+function kindColor(kind, token = '', fallback = '#9a9a9a') {
+  const key = `${kind}|${token}|${fallback}`
+  if (KIND_COLOR_CACHE.has(key)) return KIND_COLOR_CACHE.get(key)
+  let value = fallback
   try {
-    v = getComputedStyle(document.documentElement).getPropertyValue(token).trim() || fallback
+    value = getComputedStyle(document.documentElement).getPropertyValue(token).trim() || fallback
   } catch { /* 非 DOM 环境（测试）用回退 */ }
-  KIND_COLOR_CACHE.set(kind, v)
-  return v
-}
-function fallbackHex(kind) {
-  return { worldbook: '#ff385c', tag: '#c48a00', artifact: '#008a05', entry: '#9a9a9a' }[kind] || '#9a9a9a'
-}
-const KIND_COLOR = new Proxy({}, { get: (_t, kind) => kindColor(kind) })
-
-/** 初始环半径比例（相对画布短边）：越「核心」的 kind 越靠内。 */
-const KIND_RING = {
-  worldbook: 0.34,
-  artifact: 0.62,
-  tag: 0.92,
-  entry: 0.92
+  KIND_COLOR_CACHE.set(key, value)
+  return value
 }
 
 /** 边弹簧参数按来源分：link=双链（结构边），tag=标签共现，mention=提及。 */
@@ -55,28 +67,36 @@ const EDGE_SPRING = {
 const LABEL_FONT = '10.5px system-ui, sans-serif'
 const LABEL_FONT_WIDE = '600 11px system-ui, sans-serif'
 
-function radiusOf(node) {
-  if (node.kind === 'tag') return 5
-  if (node.kind === 'artifact') return 6
-  if (node.kind === 'entry') return 5
-  // 世界书节点：字数越多越大（6~13）
+function radiusOf(node, styles) {
+  const fixed = styleFor(styles, node.kind).radius
+  if (Number.isFinite(Number(fixed)) && Number(fixed) > 0) return Number(fixed)
   const chars = Number(node.chars) || 0
   return Math.max(6, Math.min(13, 6 + chars / 400))
+}
+
+function labelFontFor(style) {
+  return style.labelFont === 'wide' ? LABEL_FONT_WIDE : LABEL_FONT
 }
 
 /**
  * 挂载/重绘图谱。幂等：同一 canvas 上重复调用会重置。
  * @param {object} opts
- * @param {'jump'|'focus'} opts.mode jump=点节点直接 onPick（正文页左栏小图）；focus=调用方管聚焦（世界书页大图）
- * @param {string|null} opts.focusId 聚焦节点 id（focus 模式下画深色描边环）
+ * @param {string|null} opts.focusId 聚焦节点 id（画深色描边环）
  * @param {(node) => void} opts.onPick 点节点（位移 <4px）
- * @param {() => void} opts.onBlank 点空白（focus 模式复位用）
+ * @param {() => void} opts.onBlank 点空白（调用方决定复位行为）
+ * @param {object} opts.kindStyle 节点 kind → ring/radius/color/labelFont/decorative/fillAlpha
+ * @param {object} opts.edgeStyle 边类型 → rest/stiffness
  * @returns {() => void} 清理函数（卸载动画与监听）
  */
-export function mountGraph({ canvas, graph, onPick, onBlank, mode = 'jump', focusId = null }) {
+export function mountGraph({
+  canvas, graph, onPick, onBlank, focusId = null, kindStyle = {}, edgeStyle = EDGE_SPRING,
+  edgeType = (edge) => (edge.sources && edge.sources[0]) || 'link', defaultKind = 'node'
+}) {
   if (!canvas || !graph) return () => {}
   const ctx = canvas.getContext('2d')
   if (!ctx) return () => {}
+  const styles = normalizeKindStyle(kindStyle)
+  const colorOf = (kind) => kindColor(kind, styleFor(styles, kind).colorToken || '', styleFor(styles, kind).color)
 
   const rawNodes = graph.nodes || []
   const rawEdges = graph.edges || []
@@ -91,7 +111,7 @@ export function mountGraph({ canvas, graph, onPick, onBlank, mode = 'jump', focu
   // 节点初始化：按 kind 分环铺开（比单一圆环好看，也符合「枢纽在内、外围装饰」的阅读顺序）
   const byKind = new Map()
   for (const node of rawNodes) {
-    const kind = node.kind || 'worldbook'
+    const kind = node.kind || defaultKind
     if (!byKind.has(kind)) byKind.set(kind, [])
     byKind.get(kind).push(node)
   }
@@ -102,12 +122,13 @@ export function mountGraph({ canvas, graph, onPick, onBlank, mode = 'jump', focu
   const spread = Math.min(initW, initH) * 0.46
   const nodes = []
   for (const [kind, list] of byKind) {
-    const ring = (KIND_RING[kind] ?? 0.8) * spread
+    const style = styleFor(styles, kind)
+    const ring = style.ring * spread
     list.forEach((node, index) => {
-      const angle = (index / list.length) * Math.PI * 2 + (kind === 'artifact' ? 0.35 : kind === 'tag' ? 0.7 : 0)
+      const angle = (index / list.length) * Math.PI * 2 + (style.angleOffset ?? 0)
       nodes.push({
         ...node,
-        r: radiusOf(node),
+        r: radiusOf(node, styles),
         deg: degree.get(node.id) || 0,
         x: Math.cos(angle) * ring,
         y: Math.sin(angle) * ring * 0.82,
@@ -122,7 +143,7 @@ export function mountGraph({ canvas, graph, onPick, onBlank, mode = 'jump', focu
       ...edge,
       from: byId.get(edge.a),
       to: byId.get(edge.b),
-      spring: EDGE_SPRING[(edge.sources && edge.sources[0]) || 'tag'] || EDGE_SPRING.tag
+      spring: edgeStyle[edgeType(edge)] || edgeStyle.default || EDGE_SPRING.tag
     }))
     .filter((edge) => edge.from && edge.to)
 
@@ -130,7 +151,7 @@ export function mountGraph({ canvas, graph, onPick, onBlank, mode = 'jump', focu
   const labelWidthCache = new Map()
   function labelWidth(node, label) {
     if (!labelWidthCache.has(label)) {
-      ctx.font = node.kind === 'worldbook' ? LABEL_FONT_WIDE : LABEL_FONT
+      ctx.font = labelFontFor(styleFor(styles, node.kind))
       labelWidthCache.set(label, ctx.measureText(label).width)
     }
     return labelWidthCache.get(label)
@@ -147,7 +168,7 @@ export function mountGraph({ canvas, graph, onPick, onBlank, mode = 'jump', focu
       // 窄画布里长标题会横贯整张图并互相压住：按可用宽度动态截断（最少 6 字）
       const raw = String(node.label || node.id)
       const maxW = width - 8
-      ctx.font = node.kind === 'worldbook' ? LABEL_FONT_WIDE : LABEL_FONT
+      ctx.font = labelFontFor(styleFor(styles, node.kind))
       let label = raw.slice(0, 24)
       if (ctx.measureText(label).width > maxW) {
         let cut = label
@@ -339,9 +360,9 @@ export function mountGraph({ canvas, graph, onPick, onBlank, mode = 'jump', focu
   function labelVisible(node) {
     if (hover?.id === node.id || focusId === node.id) return true
     if (labelTier === 'all') return true
-    if (labelTier === 'refs') return node.kind !== 'tag'
-    // hubs：只留度数高的世界书/产物节点
-    return node.kind !== 'tag' && node.deg >= hubCutoff
+    if (labelTier === 'refs') return !styleFor(styles, node.kind).decorative
+    // hubs：只留度数高的主节点，装饰节点让位
+    return !styleFor(styles, node.kind).decorative && node.deg >= hubCutoff
   }
 
   function draw() {
@@ -360,7 +381,7 @@ export function mountGraph({ canvas, graph, onPick, onBlank, mode = 'jump', focu
     }
     // 节点：halo 光圈 + 本体 + 白描边 + 聚焦深环（照 Wiki 的径向渐变观感，canvas 用两层圆近似）
     for (const node of nodes) {
-      const color = KIND_COLOR[node.kind] || '#888'
+      const color = colorOf(node.kind)
       const isHover = hover?.id === node.id
       const isFocusNode = focusId === node.id
       // halo
@@ -373,7 +394,8 @@ export function mountGraph({ canvas, graph, onPick, onBlank, mode = 'jump', focu
       // 本体
       ctx.beginPath()
       ctx.arc(node.x, node.y, node.r + (isHover ? 1.8 : 0), 0, Math.PI * 2)
-      ctx.fillStyle = node.kind === 'entry' ? 'rgba(154,154,154,0.55)' : color
+      ctx.fillStyle = color
+      ctx.globalAlpha = styleFor(styles, node.kind).fillAlpha
       ctx.fill()
       ctx.strokeStyle = '#fff'
       ctx.lineWidth = 1.6
@@ -395,13 +417,13 @@ export function mountGraph({ canvas, graph, onPick, onBlank, mode = 'jump', focu
       if (!pos) continue
       const lx = node.x + pos.dx
       const ly = node.y + pos.dy
-      ctx.font = node.kind === 'worldbook' ? LABEL_FONT_WIDE : LABEL_FONT
+      ctx.font = labelFontFor(styleFor(styles, node.kind))
       ctx.textAlign = pos.anchor === 'center' ? 'center' : pos.anchor === 'left' ? 'left' : 'right'
       ctx.textBaseline = 'middle'
       ctx.strokeStyle = 'rgba(255,255,255,0.9)'
       ctx.lineWidth = 3
       ctx.strokeText(node._label, lx, ly)
-      ctx.fillStyle = node.kind === 'tag' ? '#a06a00' : '#3d3a36'
+      ctx.fillStyle = styleFor(styles, node.kind).labelColor || '#3d3a36'
       ctx.fillText(node._label, lx, ly)
     }
     ctx.textAlign = 'left'
@@ -519,7 +541,5 @@ export function mountGraph({ canvas, graph, onPick, onBlank, mode = 'jump', focu
   }
 }
 
-/** 节点配色（供图例复用）。 */
 /** 皮肤/库切换后清颜色缓存（app.js openLibrary 重置块调用）。 */
 export function resetGraphColors() { KIND_COLOR_CACHE.clear() }
-export { KIND_COLOR }
