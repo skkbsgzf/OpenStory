@@ -4,11 +4,12 @@
   "name": "世界书",
   "version": "0.1.0",
   "builtin": true,
-  "description": "世界书工作面：独占 referenceGet / referenceGraphGet / referenceNoteGet / referenceAssetGet / referenceAbsorb / referenceImageGenerate（写条目 frontmatter 与 assets 的设定图端点，OS-195a 从生图模块收回，走端点分派）。fact 读端点为共享通道，如实登记但不随本模块启停。显示名、页签名、磁盘目录与日志模块名统一为世界书。",
+  "description": "世界书工作面：独占 referenceGet / referenceGraphGet / referenceNoteGet / referenceNotePut / referenceAssetGet / referenceAbsorb / referenceImageGenerate（条目写入与设定图端点，OS-195a 从生图模块收回，走端点分派；referenceNotePut 是 OS-211 起的专用写端点，复用 prose.writeChapterWithBackup）。fact 读端点为共享通道，如实登记但不随本模块启停。显示名、页签名、磁盘目录与日志模块名统一为世界书。",
   "endpoints": [
     "referenceGet",
     "referenceGraphGet",
     "referenceNoteGet",
+    "referenceNotePut",
     "referenceAssetGet",
     "referenceAbsorb",
     "referenceImageGenerate"

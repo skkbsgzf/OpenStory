@@ -218,7 +218,10 @@ test('⑤ 派生档分离：写 patch.wiki 时主档 entries 一字不动、兄�
     assert.equal(Object.prototype.hasOwnProperty.call(document, 'wiki'), false, '主档永不落 wiki')
 
     const sibling = await readJson(wikiPath)
-    assert.deepEqual(sibling.derivedFrom, { factRevision: 2, schema: WIKI_DERIVED_SCHEMA }, 'derivedFrom 指向上一次主档版本')
+    // OS-211：派生基准＝本次写完后的主档 revision（旧口径用写前 baseRevision，永远落后一版，
+    // 同源检查会恒报 stale）。成功写后 derivedFrom.factRevision === document.revision 必须恒成立。
+    assert.deepEqual(sibling.derivedFrom, { factRevision: 3, schema: WIKI_DERIVED_SCHEMA }, 'derivedFrom 与写后主档 revision 对齐')
+    assert.equal(sibling.derivedFrom.factRevision, document.revision, '派生基准 === 主档 revision（OS-211 对齐口径）')
     assert.deepEqual(sibling.chapters, wiki.chapters)
     assert.deepEqual(sibling.characters, wiki.characters)
 
@@ -226,7 +229,7 @@ test('⑤ 派生档分离：写 patch.wiki 时主档 entries 一字不动、兄�
     const read = readFactWiki({ root, id: BOOK_ID })
     assert.equal(read.source, 'sibling')
     assert.deepEqual(read.wiki, { ...wiki }, '读回的 wiki 与写入的内容一致（不含 derivedFrom）')
-    assert.deepEqual(read.derivedFrom, { factRevision: 2, schema: WIKI_DERIVED_SCHEMA })
+    assert.deepEqual(read.derivedFrom, { factRevision: 3, schema: WIKI_DERIVED_SCHEMA })
 
     /* store.wikiGet 走同一口径 */
     const store = createFactFileStore({ root })

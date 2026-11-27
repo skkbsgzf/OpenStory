@@ -132,7 +132,9 @@ export async function syncCheck(ctx) {
     wikiGeneratedAt: wikiAt,
     refsMtimeMax,
     chaptersMtimeMax: chaptersAt,
-    factRevision: factRevision ?? (entries.length ? 1 : 0),
+    // OS-211：主档 revision 读不到就原样传 null——不许在这里补 1／0 冒充「可信版本」，
+    // 否则 revision 判定会把「没读到」当成「第 0 版」，同源检查就失去权威依据。
+    factRevision,
     wikiDerivedFrom,
     entries
   })

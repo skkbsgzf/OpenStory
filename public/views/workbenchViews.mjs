@@ -8,6 +8,23 @@
  *
  * 每个函数配金样测试（test/workbenchViews.test.mjs）：固定夹具 → 固定 HTML。
  */
+
+/**
+ * OS-211：产物「恢复此版本」要走**目标所属**的写端点。
+ * 世界书笔记归 `referenceNotePut`（历史档读也走同名端点的 GET），其余载体（正文／剧本）
+ * 仍走 chapter 通道——通用章节端点已被载体闸收窄，不许写世界书。
+ * 纯函数：只按路径首段给路由计划，不读盘、不发请求。
+ * @param {string} file 要恢复到的库内相对路径（历史项的 original）
+ * @param {{ worldbookDir: string }} dirs 命名表里的世界书目录名
+ * @returns {{ kind: 'worldbook'|'carrier', read: string, put: string }}
+ */
+export function artifactRestoreRoute(file, { worldbookDir }) {
+  const isWorldbook = typeof file === 'string' && file.startsWith(`${worldbookDir}/`)
+  return isWorldbook
+    ? { kind: 'worldbook', read: '/api/reference/note', put: '/api/reference/note' }
+    : { kind: 'carrier', read: '/api/chapter', put: '/api/chapter' }
+}
+
 const NEED_LIBRARY = `<div class="empty-state">
     <h2>先选一个库</h2>
     <p>点右上角的「库」切换器选一个库，OpenStory 才会去读那个文件夹。</p>

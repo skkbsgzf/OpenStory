@@ -2276,7 +2276,7 @@ function plusMenuHtml() {
 
 /** 技能节（OS-68b）：真技能货架为主列（内置/本机/套件捆绑），套件规范降为次组。 */
 function plusSkillsHtml() {
-  const catLabel = { craft: '技法', review: '审阅', transform: '改写', extract: '抽取' }
+  const catLabel = { craft: '技法', review: '审阅', transform: '改写', extract: '抽取', operate: '操作' }
   const kits = state.suites.filter((kit) => kit.enabled !== false)
   const kitRows = kits.length
     ? `<div class="pop-div"></div><div class="pop-title">套件规范</div>` +
@@ -2287,7 +2287,7 @@ function plusSkillsHtml() {
   if (!skills) return `<div class="pop-item plain"><span class="pi-ic">…</span><b>正在读技能货架</b></div>${kitRows}`
   if (state.agent.skillsError) return `<div class="pop-item plain"><span class="pi-ic">◇</span><b>技能货架读不到</b><i>${esc(state.agent.skillsError)}</i></div>${kitRows}`
   if (!skills.length) return `<div class="pop-item plain"><span class="pi-ic">◇</span><b>货架还没有技能</b><i>openstory/skills/ 丢目录即上新</i></div>${kitRows}`
-  const order = { craft: 0, review: 1, transform: 2, extract: 3 }
+  const order = { craft: 0, review: 1, transform: 2, extract: 3, operate: 4 }
   const sorted = [...skills].sort((a, b) => (order[a.category] ?? 9) - (order[b.category] ?? 9) || a.name.localeCompare(b.name))
   const rows = sorted.map((skill) => {
     const cat = catLabel[skill.category] || skill.category || '技能'
@@ -2318,8 +2318,8 @@ async function refreshAgentSkillsMenu() {
 async function attachSkillToAgent(name) {
   try {
     const payload = await api(`/api/skill?name=${encodeURIComponent(name)}`)
-    const body = text(payload?.skill?.body || '')
-    agent.pendingContext = { kind: 'skill', quote: name, context: body || `按技能《${name}》执行。`, label: `技能：${name}` }
+    const body = payload?.skill?.category === 'operate' ? `使用 openstory_skills_read 按需读取《${name}》并按 tools/confirm 执行。` : text(payload?.skill?.body || '') // OS-212：operate 不注入正文
+    agent.pendingContext = { kind: 'skill', quote: name, context: body || `按技能《${name}》执行。`, label: `${payload?.skill?.category === 'operate' ? '操作说明书（按需读取）' : '技能'}：${name}` }
     agent.lastError = null
   } catch (error) {
     agent.lastError = `技能全文读不到：${name}（${text(error?.message || error)}）`
@@ -3800,9 +3800,9 @@ async function commitRefBlock(blockEl) {
   blockEl.dataset.raw = nextBlock
   setAutosaveChip('保存中…')
   try {
-    const payload = await api('/api/chapter', {
+    const payload = await api('/api/reference/note', {
       method: 'PUT',
-      body: JSON.stringify({ root: state.current.path, file: notePath, text: nextText })
+      body: JSON.stringify({ root: state.current.path, path: notePath, text: nextText })
     })
     setAutosaveChip('已保存 · 刚刚')
     // 标签可能被编辑动了（frontmatter/行内 #tag）：延迟重扫索引，不重开笔记（不打断编辑）
@@ -4731,9 +4731,9 @@ async function createReferenceFromModal() {
     ? `---\nkind: tag\ntag: ${name}\ndescription: ${text(descEl.value).trim()}\n---\n\n`
     : `---\ntags: []\n---\n\n# ${name}\n\n`
   try {
-    await api('/api/chapter', {
+    await api('/api/reference/note', {
       method: 'PUT',
-      body: JSON.stringify({ root: state.current.path, file, text: body })
+      body: JSON.stringify({ root: state.current.path, path: file, text: body })
     })
     closeModal()
     await loadReferences({ force: true })
@@ -4802,17 +4802,17 @@ function artifactsHtml() {
   })
 }
 
-/** 恢复历史版本：读历史档 → PUT 回原文件（写前自动 .history 备份＝恢复动作也留档）。 */
+/** 恢复历史版本：读历史档 → PUT 回原文件（写前自动 .history 备份＝恢复动作也留档）。OS-211：按目标所属写端点路由（views/artifactRestoreRoute）。 */
 async function restoreArtifact(historyFile, original) {
   const confirmed = globalThis.confirm?.(`把「${original}」恢复成这份历史版本？当前内容会先自动备份进 .history。`)
   if (!confirmed) return
   const inventory = state.artifacts
   try {
-    const version = await api(`/api/chapter?root=${encodeURIComponent(state.current.path)}&file=${encodeURIComponent(historyFile)}`)
-    await api('/api/chapter', {
-      method: 'PUT',
-      body: JSON.stringify({ root: state.current.path, file: original, text: version.text })
-    })
+    const route = workbenchViews.artifactRestoreRoute(original, { worldbookDir: registryModule.namingEntry('worldbook').dir })
+    const readKey = route.kind === 'worldbook' ? 'path' : 'file'
+    const read = await api(`${route.read}?${new URLSearchParams({ root: state.current.path, [readKey]: historyFile })}`)
+    const version = route.kind === 'worldbook' ? read.note?.text ?? '' : read.text
+    await api(route.put, { method: 'PUT', body: JSON.stringify({ root: state.current.path, [readKey]: original, text: version }) })
     inventory.previewFile = original
     await openArtifacts({ force: true })
   } catch (error) {
@@ -6647,9 +6647,9 @@ async function roleplaySaveCard(name) {
     fm = setLine(fm, 'personality', personality.length ? '[' + personality.join(', ') + ']' : '')
     const body = fmMatch ? raw.slice(fmMatch[0].length) : raw
     const nextText = '---\n' + fm.trim() + '\n---' + body
-    await api('/api/chapter', {
+    await api('/api/reference/note', {
       method: 'PUT',
-      body: JSON.stringify({ root: state.current.path, file: hit.path, text: nextText })
+      body: JSON.stringify({ root: state.current.path, path: hit.path, text: nextText })
     })
     closeModal()
     engine.hint = `角色档案已更新：${cardName}（${hit.path}）——下一幕起就用新档案`
@@ -10018,10 +10018,10 @@ async function saveFirstChapter(notePath, value) {
     } else {
       next = `---\nfirstChapter: ${value}\n---\n\n` + raw
     }
-    // 与逐块编辑同通道（/api/chapter PUT——世界书笔记就是普通文件）
-    await api('/api/chapter', {
+    // OS-211：世界书笔记走专用端点（/api/reference/note PUT——归属 worldbook，写实现同一份）
+    await api('/api/reference/note', {
       method: 'PUT',
-      body: JSON.stringify({ root: state.current.path, file: notePath, text: next })
+      body: JSON.stringify({ root: state.current.path, path: notePath, text: next })
     })
     note.firstChapter = value
     if (ref.note?.path === notePath) ref.note.firstChapter = value

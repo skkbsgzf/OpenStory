@@ -13,11 +13,11 @@
 
 ## 三个概念
 
-**标签（tag）**：`#人物`、`#人物/梁山`（`/` 是层级）。Obsidian 口径的 tokenizer：行首或空白后的 `#词` 才算；纯数字拒绝。标签可以有**描述**（`参考/标签/人物.md` 里 frontmatter `kind: tag` + `description`）——`reference_index` 返回的 tags 里带 description。
+**标签（tag）**：`#人物`、`#人物/梁山`（`/` 是层级）。Obsidian 口径的 tokenizer：行首或空白后的 `#词` 才算；纯数字拒绝。标签可以有**描述**（`世界书/标签/人物.md` 里 frontmatter `kind: tag` + `description`）——`reference_index` 返回的 tags 里带 description。
 
 **双链（wikilink）**：`[[标题]]` / `[[标题|显示文本]]` / `[[正文/001-xxx.md|别名]]`。解析前会掩掉代码块。图谱边权：link（双链）=2、mention（提及未建链）=min(n,3)、tag=1。
 
-**单向原则（红线）**：边只从**参考出发**指向产物。参考笔记可以写 `[[正文/001-xxx.md|第一回]]`；**正文里不要写 `[[某参考]]` 回挂**——那会污染正文的纯净性，也让参考的上下文反向渗进正文。`openstory_reference_write_note` 会拒绝不以 `参考/` 开头的 file。
+**单向原则（红线）**：边只从**参考出发**指向产物。参考笔记可以写 `[[正文/001-xxx.md|第一回]]`；**正文里不要写 `[[某参考]]` 回挂**——那会污染正文的纯净性，也让参考的上下文反向渗进正文。`openstory_reference_write_note` 只接受以 `世界书/` 开头的 file（世界书是当前正名），不以该前缀开头的路径在调用 daemon 前即被拒绝；旧 `参考/` 目录名已退役。
 
 ## 写一篇参考的规范
 
@@ -38,6 +38,10 @@ title: 宋江
 - 内部互链用 `[[标题]]`；链接正文用全路径 + 别名 `[[正文/001-xxx.md|第一回]]`。
 - **不要**在正文区写「本回关联：[[某参考]]」——方向反了。
 - 写入会先备份原稿进 `.history`（响应 `backup` 字段）。
+- **OS-211 起写通道是专用端点** `PUT /api/reference/note`（请求 `{ root, path, text }`）：
+  端点归属世界书模块（停用回 `409 MODULE_DISABLED`），只放行 `世界书/` 下的路径。
+  通用章节端点 `PUT /api/chapter` 已收窄到载体目录（正文／剧本），**不再**接受世界书写入；
+  真源仍是同一份 `writeChapterWithBackup`（原子写＋`.history`＋变更日志）。
 
 ## 反链的两段口径
 
@@ -57,6 +61,6 @@ title: 宋江
 **沉淀新设定**
 ```
 1. openstory_reference_index            → 确认没有重复笔记
-2. openstory_reference_write_note       → 参考/人物/新角色.md（frontmatter tags）
+2. openstory_reference_write_note       → 世界书/人物/新角色.md（frontmatter tags；file 必须以 世界书/ 开头）
 3. openstory_reference_graph            → 确认新节点与边挂上了
 ```

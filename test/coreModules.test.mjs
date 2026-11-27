@@ -65,7 +65,7 @@ test('manifest：四个原核心工作台已去 core，端点归属与错误契�
   ])
   assert.deepEqual([...moduleManifest('script').endpoints], [], '剧本没有独占端点（借 chapters 通道）')
   assert.deepEqual([...moduleManifest('worldbook').endpoints].sort(), [
-    'referenceAbsorb', 'referenceAssetGet', 'referenceGet', 'referenceGraphGet', 'referenceImageGenerate', 'referenceNoteGet'
+    'referenceAbsorb', 'referenceAssetGet', 'referenceGet', 'referenceGraphGet', 'referenceImageGenerate', 'referenceNoteGet', 'referenceNotePut'
   ])
   assert.equal(moduleManifest('roleplay').endpoints.includes('deduceImage'), false)
   assert.equal(moduleOfEndpoint('deduceImage'), 'imagegen')

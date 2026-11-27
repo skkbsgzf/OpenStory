@@ -27,7 +27,7 @@ openstory_deduce_settle {root, candidateId, action: 'choose'}
 ```
 
 - `seed` 参数可复现：同一 seed 同一操作序列 = 同样的局面。做「如果世界」对比时，固定 seed 换候选即可分岔。
-- `reset: true` 重置推演状态（从第一拍重来）。
+- `reset: true` 重置推演状态（从第一拍重来），**必须同时传 `confirm: 'restore'`**：正常续拍也会保存会话状态（create 级），`reset:true` 升到 restore 级；不传或级别不足会返回 `isError:true` + `CONFIRM_REQUIRED`（不是 -32602）。其余写工具（如 `openstory_deduce_settle`/`openstory_enrich_run`）可在实参 `confirm` 上传对应级别，一旦传了就须满足门槛（不足返回 `CONFIRM_REQUIRED`）。
 - 结算产出的条目**只交回调用方，不自动写库**——要落库走 enrich 或参考写（对齐「推演不直接动稿」）。
 - `WORLD_EMPTY` 错误＝这个 book 还没有世界书事实，先跑 enrich。
 

@@ -222,7 +222,7 @@
 | C | OS-230 | 真实 HyperGraphRAG 黄金语料验收 | 229 | 待施工 |
 | C | OS-231 | 知识库 E2E/总收口 | 230 | 待施工 |
 
-**Workflow**：dsv4flash＝`opencode-go-responses/deepseek-v4.1-flash`，hy4flash＝`opencode-go-responses/hy4-flash-free`；波次见规划 §3。施工不提交、不 push；监督线逐阶段验收后提交。
+**Workflow**：dsv4flash＝`opencode-go-responses/deepseek-v4.1-flash`，hy4flash＝`opencode-go-responses/hy4-flash-free`；模型交替顺序见规划 §3，**实际并发以文件面和依赖为准**：A1/A3/A4、B1/B2、C1/C3 串行，A2/C2 文件面隔离时并行。施工不提交、不 push；监督线逐阶段验收后提交。
 
 ## 挂账（不排期，动工前先在此登记）
 

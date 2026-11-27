@@ -10,17 +10,23 @@ description: |
   parallelisms, and excessive conjunctive phrases.
 allowed-tools:
   - Read
-  - Write
-  - Edit
   - Grep
   - Glob
   - AskUserQuestion
-category: craft
+tools: []
+output: proposal
+confirm: read
+category: transform
 genres: ["*"]
 vendor: CodeBuddy 官方
 ---
 
 # Humanizer: Remove AI Writing Patterns
+
+> OpenStory 边界（OS-212）：本技能是 `transform` 类——**只产改写提案，绝不自动写盘**。
+> `allowed-tools` 里的 Read/Grep/Glob 是只读检索，AskUserQuestion 是向作者请示；
+> 这里不含 Write/Edit，更不赋予绕过 OpenStory MCP 工具与作者确认的自动写权。
+> 正文采纳与否由作者在界面决定，落盘经 daemon 的写管道（备份＋变更日志）。
 
 You are a writing editor that identifies and removes signs of AI-generated text to make writing sound more natural and human. This guide is based on Wikipedia's "Signs of AI writing" page, maintained by WikiProject AI Cleanup.
 

@@ -12,7 +12,7 @@ import { existsSync, readFileSync, statSync } from 'node:fs'
 import { basename, dirname, join, relative, sep } from 'node:path'
 import { atomicWriteFile } from '../../protocol/hostWrite.mjs'
 import { recordChange, logFilePath } from '../../protocol/changelog.mjs'
-import { logModuleForDir } from '../../protocol/naming.mjs' // OS-148：目录→日志模块名只从命名表取
+import { logModuleForDir, namingEntry } from '../../protocol/naming.mjs' // OS-148：目录→日志模块名只从命名表取
 import { API_ERROR_CODES } from '../../protocol/apiErrors.mjs'
 import { resolveInsideRoot, text } from '../../protocol/rootPath.mjs'
 
@@ -171,6 +171,81 @@ export function mapWriteErrorCode(code) {
   if (upper.includes('INVALID_INPUT')) return API_ERROR_CODES.WRITE_PROTOCOL_INVALID_INPUT
   if (upper.includes('INVALID_ENTRY')) return API_ERROR_CODES.WRITE_PROTOCOL_VALIDATION_FAILED
   return API_ERROR_CODES.WRITE_PROTOCOL_IO_FAILED
+}
+
+/**
+ * OS-211：载体写目录白名单（正文、剧本）——章节写端点只许落在这里。
+ *
+ * 真源是命名表（`chapters`／`script` 的 `dir` 列），不另抄一份字面量；载体表
+ * （`storage/projectDoc.mjs` 的 CARRIERS.dataDirs）指向的正是这两个目录。
+ * `故事源/`（fact 协议独占）、`世界书/`（走世界书写端点）、`.openstory/`（宿主写通道）
+ * 与任意其它目录一律拒绝——通用章节通道不是「任意文件写」。
+ */
+export const CARRIER_WRITE_DIRS = Object.freeze([
+  namingEntry('chapters')?.dir,
+  namingEntry('script')?.dir
+].filter(Boolean))
+
+/** 世界书载体目录（日志恢复等宿主级文本回写放行的第二个目录）。 */
+const WORLDBOOK_DIR = namingEntry('worldbook')?.dir ?? ''
+
+function firstSegmentOf(file) {
+  return text(file).trim().replaceAll('\\', '/').replace(/^\.\//u, '').split('/')[0] || ''
+}
+
+/** 路径里是否有隐藏段（`.history/…` 这类备份目录不许当稿子写）。 */
+function hasHiddenSegment(file) {
+  return text(file).trim().replaceAll('\\', '/').replace(/^\.\//u, '')
+    .split('/').some((part) => part.startsWith('.') && part !== '.' && part !== '..')
+}
+
+/**
+ * 章节写边界判定（OS-211）。返回 `{ ok:true, dir }` 或 `{ ok:false, code, message, details }`。
+ * 路径逃逸形态与 resolveInsideRoot 同判（PATH_ESCAPE，403），目录归属不符回 INVALID_ENTRY（400）。
+ */
+export function assertCarrierWrite(file) {
+  const normalized = text(file).trim().replaceAll('\\', '/').replace(/^\.\//u, '')
+  if (!normalized) {
+    return { ok: false, code: API_ERROR_CODES.INVALID_ENTRY, message: '章节写入需要 file（库内相对路径）', details: { file: normalized } }
+  }
+  const segments = normalized.split('/')
+  // 逃逸形态先在写边界拦下：绝对路径、盘符、`.`/`..`/空段——与 resolveInsideRoot 同一口径。
+  if (normalized.startsWith('/') || /^[a-zA-Z]:\//u.test(normalized)
+    || segments.some((part) => !part || part === '.' || part === '..')) {
+    return {
+      ok: false, code: API_ERROR_CODES.PATH_ESCAPE,
+      message: `路径不合法或越出库根：${normalized}`,
+      details: { file: normalized, carrierDirs: CARRIER_WRITE_DIRS }
+    }
+  }
+  if (hasHiddenSegment(normalized)) {
+    return {
+      ok: false, code: API_ERROR_CODES.INVALID_ENTRY,
+      message: `章节写入不接受隐藏目录或备份目录：${normalized}`,
+      details: { file: normalized, carrierDirs: CARRIER_WRITE_DIRS }
+    }
+  }
+  const dir = segments[0]
+  if (!CARRIER_WRITE_DIRS.includes(dir)) {
+    return {
+      ok: false, code: API_ERROR_CODES.INVALID_ENTRY,
+      message: `章节写入只允许载体目录（${CARRIER_WRITE_DIRS.join(' / ')}）：${normalized} 不在其中`,
+      details: { file: normalized, carrierDirs: CARRIER_WRITE_DIRS }
+    }
+  }
+  return { ok: true, dir }
+}
+
+/**
+ * 宿主文本回写边界（OS-211）：载体目录＋世界书目录。日志恢复一类的通用回写只许
+ * 回这两处——`故事源/` 必须经 fact 写协议（schema/revision/operationId），不许被文本通道
+ * 整份覆盖；`.openstory/` 归宿主写通道，不走这里。
+ */
+export function assertGuardedTextWrite(file) {
+  const normalized = text(file).trim().replaceAll('\\', '/')
+  const dir = firstSegmentOf(normalized)
+  if (dir && dir === WORLDBOOK_DIR) return { ok: true, dir }
+  return assertCarrierWrite(file)
 }
 
 /**

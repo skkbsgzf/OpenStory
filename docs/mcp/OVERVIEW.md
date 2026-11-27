@@ -35,6 +35,17 @@ OpenStory 是跑在本机的小说工作台：**小说**（正文读写＋事实
 
 所有工具的第一个参数都是 `root`——库的绝对路径，来自 `openstory_libraries`。
 
+## 技能货架（OS-212）
+
+用 `openstory_skills_list` / `openstory_skills_read` 按需发现与读取（31 个内置 ＋ 2 个套件捆绑）。
+五类：`craft` 技法（可注入 prompt）／`review` 审阅（只出问题清单）／`transform` 改写（产提案）／
+`extract` 抽取（产数据）／`operate` 操作说明书（项目构建/升级，只读）。
+`operate` **不自动注入 prompt、不产出小说内容、不执行代码**；写操作只能调用其 `tools` 里声明、
+且在 MCP 安全语义注册表里已分类的官方工具，并按 `confirm`（read/create/migrate/restore，逐级更高）
+经作者确认。**调用时把级别放进每个工具都有的 `confirm` 实参**（如 `confirm:'restore'`）；条件写（如 `deduce_present reset:true`）必传，普通写工具一旦传了 `confirm` 就必须满足门槛，级别不足返回 `isError:true` + `CONFIRM_REQUIRED`。工具效果与最低确认级别出自单一注册表 `src/protocol/mcpToolSemantics.mjs`（连 `confirm` 四级 enum 也只在此定义），
+非法声明（未知/未分类工具、shell/fs 伪装、写工具确认不足、只读类写工具）一律拒绝装载。
+新增工具必须同步这张表，否则 MCP 启动即 fail-closed。
+
 ## 红线（全部工具通用）
 
 1. **写＝有备份，不是无痕**：正文/参考的写入会先把原稿挪进 `.history/`（返回 `backup` 路径，可人工找回）；删除同理（挪进 `.history`，不是真删）。写前先 read 确认目标。

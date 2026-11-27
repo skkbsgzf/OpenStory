@@ -1,10 +1,10 @@
 /**
  * API handler 注册表用例（OS-141 拆分 / OS-194 归插件后重写）。
  *
- * 契约壳现在只持有宿主端点（62）；模块声明的 41 个端点经 activate() 贡献登记。
+ * 契约壳现在只持有宿主端点（67）；模块声明的 42 个端点经 activate() 贡献登记。
  * 这里钉死三条：
  *   ① 宿主表键集合＝宿主端点集合，全量表（宿主＋贡献）键集合＝ENDPOINTS 键集合；
- *   ② 每个 handler 调用后返回 Promise——用隔离夹具真实调用全部 108 个 handler；
+ *   ② 每个 handler 调用后返回 Promise——用隔离夹具真实调用全部 109 个 handler；
  *   ③ 宿主表与贡献表都冻结，路由层不能被运行期改表。
  *
  * 夹具纪律：LOCALAPPDATA 指向临时目录；fs-browse.json 预写 nativeDialog=NO_DESKTOP
@@ -66,7 +66,7 @@ test('注册表键集合：宿主表＝宿主白名单，全量表＝ENDPOINTS�
   assert.deepEqual(hostIds, expectedHost, '宿主静态表只许放宿主白名单端点')
   const table = await allHandlers()
   const contributed = Object.keys(table).filter((id) => !hostOwnedEndpointIds().has(id))
-  assert.equal(contributed.length, 41, '模块贡献恰为 41 个独占端点')
+  assert.equal(contributed.length, 42, '模块贡献恰为 42 个独占端点')
   assert.deepEqual(Object.keys(table).sort(), Object.keys(ENDPOINTS).sort())
 })
 

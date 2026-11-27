@@ -11,6 +11,8 @@ import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
+import { MCP_TOOL_NAMES, MCP_SEMANTICS_CHECK } from '../src/host/mcp.mjs'
+import { MCP_TOOL_SEMANTICS, TOOL_CONFIRM_LEVELS, confirmSatisfies, isWriteTool, maxRequiredConfirm, semanticsEntryMalformed, toolParamNames, toolSemanticsOf, validateSemanticsRegistry } from '../src/protocol/mcpToolSemantics.mjs'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 
@@ -88,6 +90,9 @@ test('MCP：tools/list 24 个工具、五模块分组、schema 带 required', as
     for (const tool of tools) {
       assert.ok(tool.description, `${tool.name} 缺 description`)
       assert.equal(tool.inputSchema.type, 'object')
+      // OS-212：每个工具都接受 confirm 实参（写工具传参不再被 -32602 打挂）；
+      // enum 必须与注册表单一真源逐项一致，不在 mcp.mjs 手抄第二份。
+      assert.deepEqual(tool.inputSchema.properties.confirm.enum, [...TOOL_CONFIRM_LEVELS], `${tool.name} confirm enum 脱离注册表`)
       assert.ok(!JSON.stringify(tool).includes('参考/'), `${tool.name} 仍在描述旧目录 参考/`)
     }
     const readNote = tools.find((tool) => tool.name === 'openstory_reference_read_note')
@@ -96,6 +101,65 @@ test('MCP：tools/list 24 个工具、五模块分组、schema 带 required', as
     assert.match(writeNote.inputSchema.properties.file.description, /世界书\/子目录\/标题\.md/u)
     const write = tools.find((tool) => tool.name === 'openstory_novel_write_chapter')
     assert.deepEqual(write.inputSchema.required, ['root', 'file', 'text'])
+
+    // OS-212：category enum 五类齐全；MCP 注册表导出与 tools/list 同源
+    const list = tools.find((tool) => tool.name === 'openstory_skills_list')
+    assert.deepEqual(list.inputSchema.properties.category.enum, ['craft', 'review', 'transform', 'extract', 'operate'])
+    assert.deepEqual(MCP_TOOL_NAMES.slice().sort(), names.slice().sort(), 'MCP_TOOL_NAMES 必须与 tools/list 同源')
+    assert.ok(MCP_TOOL_NAMES.includes('openstory_libraries'), 'operate 声明的读工具必须存在')
+    assert.ok(!MCP_TOOL_NAMES.includes('openstory_shell_exec'), '危险/伪工具不得进注册表')
+
+    // ---- OS-212：工具表 ↔ 安全语义注册表双向一致；未知/危险工具与确认级别门禁 ----
+    // 双向校验：工具表每个工具都有语义，注册表没有假工具（mcp.mjs 导入时已 fail-closed，这里再钉一次）
+  assert.equal(MCP_SEMANTICS_CHECK.ok, true, JSON.stringify(MCP_SEMANTICS_CHECK))
+  assert.deepEqual(MCP_SEMANTICS_CHECK.missing, [])
+  assert.deepEqual(MCP_SEMANTICS_CHECK.extra, [])
+  assert.deepEqual(MCP_SEMANTICS_CHECK.paramMismatch, [])
+  // 参数语义来自真实 inputSchema，不再是手抄副本：改名即 fail-closed。
+  assert.deepEqual(toolParamNames('openstory_deduce_present'), Object.keys(tools.find((t) => t.name === 'openstory_deduce_present').inputSchema.properties))
+  const renamedSchema = [{ name: 'openstory_deduce_present', inputSchema: { properties: { root: {}, confirm: {}, resetState: {} } } }]
+  assert.equal(validateSemanticsRegistry(renamedSchema).ok, false, 'schema 参数改名后注册表必须 fail-closed')
+  assert.ok(validateSemanticsRegistry(renamedSchema).malformed.includes('openstory_deduce_present'), '改名触发 malformed')
+  assert.equal(Object.keys(MCP_TOOL_SEMANTICS).length, 24)
+  for (const name of MCP_TOOL_NAMES) {
+    const semantics = toolSemanticsOf(name)
+    assert.ok(semantics, `${name} 必须在安全语义注册表里（未分类工具禁止 operate 引用）`)
+  }
+  assert.equal(toolSemanticsOf('openstory_nope'), null, '未知工具不得有语义')
+  assert.equal(toolSemanticsOf('shell_exec'), null, 'shell/fs 伪装不得有语义')
+  assert.equal(isWriteTool('openstory_novel_write_chapter'), true, '写工具必须标写')
+  assert.equal(isWriteTool('openstory_libraries'), false, '读工具不得标写')
+  // 危险工具门槛：delete 要 restore，write/create 要 create；confirm 级别不满足即红。
+  assert.equal(confirmSatisfies('restore', 'restore'), true)
+  assert.equal(confirmSatisfies('create', 'restore'), false)
+  assert.equal(confirmSatisfies('create', 'create'), true)
+  assert.equal(confirmSatisfies('read', 'create'), false)
+  for (const dangerous of ['openstory_novel_write_chapter', 'openstory_novel_delete_chapter', 'openstory_reference_write_note', 'openstory_habits_put', 'openstory_image_generate']) {
+    assert.ok(isWriteTool(dangerous), `${dangerous} 必须 classified 为写工具`)
+    assert.ok(!confirmSatisfies('read', toolSemanticsOf(dangerous).requiredConfirm), `${dangerous} 不得以 confirm:read 调用`)
+  }
+  // deduce_present：续拍写状态（create），reset=true 升 restore；声明按最坏门槛 restore。
+  assert.equal(toolSemanticsOf('openstory_deduce_present').requiredConfirm, 'create')
+  assert.equal(maxRequiredConfirm('openstory_deduce_present'), 'restore', '无法绑定实参→整体按最坏门槛')
+  assert.equal(confirmSatisfies('read', 'create'), false, 'deduce_present 不能以 read 确认引用')
+  assert.equal(confirmSatisfies('create', 'restore'), false, 'create 说明书不得声明可 reset 的 deduce_present')
+
+  // P1-6：嵌套语义形状也必须验（纯函数反证，不改冻结注册表）。
+  const name = 'openstory_deduce_present'
+  const base = { effect: 'write', requiredConfirm: 'create' }
+  const rule = (over) => ({ parameter: 'reset', equals: true, effect: 'reset', requiredConfirm: 'restore', ...over })
+  assert.equal(semanticsEntryMalformed(name, { ...base, mutatesWhen: rule({ effect: 'nuke' }) }), true, '非法 mutatesWhen.effect')
+  assert.equal(semanticsEntryMalformed(name, { ...base, mutatesWhen: rule({ requiredConfirm: 'nuke' }) }), true, '非法 mutatesWhen.requiredConfirm')
+  assert.equal(semanticsEntryMalformed(name, { ...base, mutatesWhen: rule({ parameter: 'nope' }) }), true, 'mutatesWhen 指向 schema 外参数')
+  assert.equal(semanticsEntryMalformed(name, { ...base, parameterEffects: { nope: 'reset' } }), true, 'parameterEffects 指向 schema 外参数')
+  assert.equal(semanticsEntryMalformed(name, { ...base, parameterEffects: { reset: 'nuke' } }), true, 'parameterEffects 非法 effect')
+  // P1：parameterEffects 与 mutatesWhen 描述同一参数却给出不同 effect＝注册表自相矛盾。
+  assert.equal(semanticsEntryMalformed(name, {
+    ...base,
+    mutatesWhen: rule(),
+    parameterEffects: { reset: 'write' }
+  }), true, 'parameterEffects 与 mutatesWhen 冲突必须 malformed')
+  assert.equal(semanticsEntryMalformed(name, { ...MCP_TOOL_SEMANTICS[name] }), false, '合法嵌套语义应通过')
   } finally { mcp.close() }
 })
 
@@ -104,7 +168,7 @@ test('MCP：世界书写入拒绝旧 参考/ 前缀（校验先于 daemon）', a
   try {
     const reply = await mcp.request('tools/call', {
       name: 'openstory_reference_write_note',
-      arguments: { root: 'fixture-root', file: '参考/人物/宋江.md', text: '提案' }
+      arguments: { root: 'fixture-root', file: '参考/人物/宋江.md', text: '提案', confirm: 'create' }
     })
     assert.equal(reply.error, undefined)
     assert.equal(reply.result.isError, true)
@@ -112,9 +176,68 @@ test('MCP：世界书写入拒绝旧 参考/ 前缀（校验先于 daemon）', a
   } finally { mcp.close() }
 })
 
+/** OS-212：确认闸反证——由「参数缺失」用例一并调用，避免新增 test() 令数字锚漂移。 */
+async function assertConfirmGate(mcp) {
+    // 确认闸先于 daemon：无需 daemon 可达即能反证（DAEMON_UNREACHABLE 不会盖过 CONFIRM_REQUIRED）。
+    const noConfirm = await mcp.request('tools/call', {
+      name: 'openstory_deduce_present',
+      arguments: { root: 'fixture-root', reset: true }
+    })
+    assert.equal(noConfirm.error, undefined, '授权闸不是 -32602 参数错')
+    assert.equal(noConfirm.result.isError, true)
+    assert.match(noConfirm.result.content[0].text, /^CONFIRM_REQUIRED · .*需 restore 确认/u)
+
+    const wrongLevel = await mcp.request('tools/call', {
+      name: 'openstory_deduce_present',
+      arguments: { root: 'fixture-root', reset: true, confirm: 'create' }
+    })
+    assert.equal(wrongLevel.result.isError, true)
+    assert.match(wrongLevel.result.content[0].text, /^CONFIRM_REQUIRED · /u)
+
+    // 不带 reset（正常续拍只保存 create 级状态）带 create 确认应越过条件闸——
+    // OS-212 评审修正：普通写调用也要 confirm，旧夹具「不带 reset 就不带 confirm」已不合法。
+    const noReset = await mcp.request('tools/call', { name: 'openstory_deduce_present', arguments: { root: 'fixture-root', confirm: 'create' } })
+    assert.equal(noReset.error, undefined)
+    assert.doesNotMatch(noReset.result.content[0].text, /^CONFIRM_REQUIRED · /u)
+
+    // 普通写工具（无 mutatesWhen）接受 confirm 实参（不再 -32602）：只要传了就必须
+    // 满足注册表门槛；不传则按工单「不触发写时放行」落到业务闸（NO_LIBRARY）。
+    const plainWrite = { root: 'fixture-root', file: '正文/001.md', text: 'x' }
+    const unconfirmedWrite = await mcp.request('tools/call', { name: 'openstory_novel_write_chapter', arguments: plainWrite })
+    assert.equal(unconfirmedWrite.error, undefined, 'confirm 不是未知参数，不能 -32602')
+    assert.doesNotMatch(unconfirmedWrite.result.content[0].text, /^CONFIRM_REQUIRED · /u, '普通写未传 confirm 时放行')
+    const lowConfirm = await mcp.request('tools/call', { name: 'openstory_novel_write_chapter', arguments: { ...plainWrite, confirm: 'read' } })
+    assert.equal(lowConfirm.error, undefined)
+    assert.match(lowConfirm.result.content[0].text, /^CONFIRM_REQUIRED · .*需 create 确认/u)
+    for (const [name, args, level] of [
+      ['openstory_novel_write_chapter', { root: 'fixture-root', file: '世界书/试.md', text: 'x' }, 'create'],
+      ['openstory_novel_delete_chapter', { root: 'fixture-root', file: '正文/001.md' }, 'restore'],
+      ['openstory_reference_write_note', { root: 'fixture-root', file: '世界书/试.md', text: 'x' }, 'create'],
+      ['openstory_habits_put', { root: 'fixture-root', habits: {} }, 'create'],
+      ['openstory_image_generate', { root: 'fixture-root', path: '世界书/a.png', prompt: 'x' }, 'create'],
+      ['openstory_deduce_settle', { root: 'fixture-root', action: 'veto' }, 'create'],
+      ['openstory_enrich_run', { root: 'fixture-root', bookId: 'shuihu' }, 'create']
+    ]) {
+      // 传了不足的 confirm 必须被拒（不足级别不能当免死金牌）。
+      const bad = await mcp.request('tools/call', { name, arguments: { ...args, confirm: 'read' } })
+      assert.equal(bad.error, undefined, `${name} confirm 传参不能 -32602`)
+      assert.equal(bad.result.isError, true, `${name} 级别不足必须被拒`)
+      assert.match(bad.result.content[0].text, /^CONFIRM_REQUIRED · /u)
+      const good = await mcp.request('tools/call', { name, arguments: { ...args, confirm: level } })
+      assert.equal(good.error, undefined, `${name} 带 confirm:${level} 不能 -32602`)
+      assert.doesNotMatch(good.result.content[0].text, /^CONFIRM_REQUIRED · /u, `${name} 满足门槛应越过闸`)
+    }
+
+    // 读工具缺省 confirm 也照常放行。
+    const readTool = await mcp.request('tools/call', { name: 'openstory_libraries', arguments: {} })
+    assert.equal(readTool.error, undefined)
+    assert.doesNotMatch(readTool.result.content[0].text, /^CONFIRM_REQUIRED · /u)
+}
+
 test('MCP：参数缺失 -32602 / 未知工具 -32601 / 未知方法 -32601', async () => {
   const mcp = startMcp()
   try {
+    await assertConfirmGate(mcp)
     const missing = await mcp.request('tools/call', { name: 'openstory_novel_read_chapter', arguments: { root: 'D:/x' } })
     assert.equal(missing.error.code, -32602)
     assert.match(missing.error.message, /file/)

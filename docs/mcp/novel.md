@@ -18,6 +18,10 @@
 - 写入前 daemon 自动把原稿备份进 `正文/.history/`（响应里 `backup` 字段是备份路径）。写错了可以人工从备份找回。
 - 响应里 `factStale: true` 表示**正文比拆解事实新**——你刚写的章还没有事实条目支撑（剧情曲线、知识图谱都是旧的）。补救：跑 `openstory_enrich_run`（长任务）同步。
 - 文件名格式必须是 `正文/NNN-标题.md`。新章编号用 `openstory_novel_new_chapter` 自动拿，不要自己猜号。
+- **写边界（OS-211）**：章节写工具只落载体目录（正文／剧本）。写 `故事源/` 会被拒
+  （`INVALID_ENTRY`）——那是 fact 写协议的地盘（schema／revision／operationId 三件套），
+  通用文本通道不许整份覆盖；写 `世界书/` 要改用 `openstory_reference_write_note`。
+  MCP 与直接 HTTP 走同一道闸。
 
 ## 标题格式（水浒样本库示例）
 

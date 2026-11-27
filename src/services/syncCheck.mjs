@@ -2,12 +2,14 @@
  * 同源版本检查 ＋ 外部变更检测（OS-107）。
  *
  * 两件事：
- *   A) `checkSameSource()` —— **纯函数，不碰磁盘**：故事源 fact 的修改时间、兄弟 wiki 的
- *      生成时间、世界书笔记最新 mtime 三者摆在一起，回答两个问题：
+ *   A) `checkSameSource()` —— **纯函数，不碰磁盘**：故事源主档 revision、兄弟 wiki 的
+ *      `derivedFrom.factRevision`、以及三个时间戳摆在一起，回答两个问题：
  *      「派生档是不是比 fact 旧」（wikiStale）与「世界书笔记最新改动是什么时候」。
  *
- *   **对齐口径：一律用时间戳**（OS-114）。revision 是内核内部计数器，作者看不懂
- *   「revision 1 与 4 差几版」；真实写作是频繁小改，需要的是「谁比谁新」。
+ *   **对齐口径（OS-211）**：派生档基准 `derivedFrom.factRevision` 由写协议在写完主档那一刻
+ *   落成主档的新 revision，**两边都可信且不等＝真过期**，以它为准。时间戳（OS-114）只在
+ *   revision 不可信（旧信封没有 derivedFrom、主档 revision 读不到）时兜底，其余时候保留作
+ *   辅助诊断——作者仍能看见「谁比谁新」与「正文有没有跑在事实链前面」。
  *   B) `snapshotAndDiff()` —— 唯一读盘入口：读 `<库>/.openstory/sync-state.json` 的上次快照，
  *      与本次正文快照比对，捞出「hash 变了、但变更日志里没有对应记录」的文件
  *      （＝绕过了写通道被外部改过），然后原子写回新快照（OS-138 归一 hostWrite.atomicWriteFile）。
@@ -54,10 +56,15 @@ function isLaterThan(mtime, loggedAt) {
 /**
  * A) 同源检查（纯函数，不读盘、不写盘）。
  *
+ * **OS-211 判定口径**：派生档的 `derivedFrom.factRevision` 是权威依据——它由写协议在
+ * 落盘那一刻写成主档的新 revision，两者都可信且不相等就是真过期（`wikiStale=true`）。
+ * 时间戳（factAt／wikiAt）只在 revision 不可信时兜底，并在结果里保留作辅助诊断
+ * （给人看的「谁比谁新」，以及「正文有没有跑在事实链前面」）。
+ *
  * @param {object} opts
  * @param {string} [opts.root]               库根——只作调用方对称（本函数不碰磁盘），不参与计算
  * @param {number} [opts.factRevision]       故事源主档顶层 revision；非安全整数时按条目数兜底（有条目＝1，没有＝0）
- * @param {object|null} [opts.wikiDerivedFrom] 兄弟 `<id>.wiki.json` 的 `derivedFrom`
+ * @param {object|null} [opts.wikiDerivedFrom] 兄弟 `<id>.wiki.json` 的 `derivedFrom`（含 factRevision）
  * @param {string|Date|number|null} [opts.refsMtimeMax] 世界书笔记最新 mtime
  * @param {Array} [opts.entries]             主档 entries（只用于 revision 缺省时的兜底判定）
  * @returns {{factRevision:number, wikiFactRevision:number|null, wikiStale:boolean, wikiNote:string, refsNewerThan:string|null}}
@@ -69,16 +76,23 @@ export function checkSameSource({
   refsMtimeMax = null,
   chaptersMtimeMax = null,
   factRevision,
+  wikiDerivedFrom = null,
   entries = []
 } = {}) {
   void root // 纯函数：root 只为与 snapshotAndDiff 的调用形状对称，这里不读盘
   const entryList = Array.isArray(entries) ? entries : []
 
-  // revision 只作诊断字段保留（内核语义），不再参与「过期」判定
-  const given = Number(factRevision)
-  const revision = Number.isSafeInteger(given) && given >= 0
-    ? given
-    : (entryList.length ? 1 : 0)
+  // 主档 revision：只有调用方真给了安全整数才算「可信」；null/undefined 不能经
+  // Number() 被悄悄算成 0（那是「第 0 版」，与「没读到版本」不是一回事）。
+  const given = (factRevision === null || factRevision === undefined || factRevision === '')
+    ? null
+    : Number(factRevision)
+  const revisionTrusted = Number.isSafeInteger(given) && given >= 0
+  const revision = revisionTrusted ? given : (entryList.length ? 1 : 0)
+
+  // 派生档基准：derivedFrom.factRevision 同样要安全整数才算可信（旧信封没有 derivedFrom）。
+  const derivedRevisionRaw = Number(wikiDerivedFrom?.factRevision)
+  const wikiFactRevision = Number.isSafeInteger(derivedRevisionRaw) && derivedRevisionRaw >= 0 ? derivedRevisionRaw : null
 
   const factAt = isoOrNull(factMtime)
   const wikiAt = isoOrNull(wikiGeneratedAt)
@@ -99,9 +113,14 @@ export function checkSameSource({
     return ta - tb > TOLERANCE_MS
   }
 
-  // wiki 过期：fact 比 wiki 新 = 派生档落后
+  // ① 权威判定：两边 revision 都可信时，只看数字是否相等。
+  const revisionComparable = revisionTrusted && wikiFactRevision !== null
+  const revisionStale = revisionComparable ? wikiFactRevision !== revision : null
+  // ② 辅助诊断：时间戳（revision 不可信时才拿它下结论）。
   const factNewerThanWiki = newer(factAt, wikiAt)
-  const wikiStale = factNewerThanWiki === true
+  const timestampStale = factNewerThanWiki === true
+
+  const wikiStale = revisionComparable ? revisionStale === true : timestampStale
 
   // 正文比 fact 新 = 故事源可能没跟上正文（提示，不判错）
   const chaptersNewerThanFact = newer(chaptersAt, factAt)
@@ -109,7 +128,11 @@ export function checkSameSource({
   // 世界书笔记比 fact 新 = 跟 fact 无关（笔记是手写设定，随时改），只作展示
 
   let wikiNote = '无派生档'
-  if (!wikiAt) {
+  if (revisionComparable && wikiStale) {
+    wikiNote = `派生档基准是第 ${wikiFactRevision} 版，事实源已是第 ${revision} 版——派生档落后，建议重新生成`
+  } else if (revisionComparable) {
+    wikiNote = `一致（派生档基准与事实源同为第 ${revision} 版${wikiAt ? `，生成于 ${fmt(wikiAt)}` : ''}）`
+  } else if (!wikiAt) {
     wikiNote = factAt ? '还没有派生档（跑 enrich 生成）' : '无派生档'
   } else if (!factAt) {
     wikiNote = '派生档有生成时间，fact 无修改时间（异常）'
@@ -124,20 +147,22 @@ export function checkSameSource({
     : ''
 
   return {
-    // 时间戳（新口径：唯一判定依据）
+    // 时间戳（辅助诊断：谁比谁新）
     factAt,
     wikiAt,
     refsAt,
     chaptersAt,
-    // 派生档状态
+    // 派生档状态（revision 权威，时间戳兜底）
     wikiStale,
     wikiNote,
     factNewerThanWiki,
     chaptersNewerThanFact,
     chaptersNote,
-    // 兼容旧调用方（诊断用，不再参与判定）
+    // 版本对账
     factRevision: revision,
-    wikiFactRevision: null,
+    wikiFactRevision,
+    revisionComparable,
+    // 兼容旧调用方
     refsNewerThan: refsAt
   }
 }

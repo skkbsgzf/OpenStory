@@ -468,6 +468,28 @@ export async function writeFactFile({ root, bookId, id, entry, patch, operationI
           if (key === 'entries') {
             if (!Array.isArray(value)) return writeFail('INVALID_INPUT', 'patch.entries 必须是数组（整份替换）')
             if (value.some((item) => !isPlainObject(item))) return writeFail('INVALID_INPUT', 'patch.entries 里每一条都必须是对象')
+            // OS-211：整份替换前逐条过同一份信封校验（与单条 upsert 同一闸）。
+            // 任一条有 errors 就整体拒绝、零写入——抽取管线重跑不能把坏数据写进真源。
+            const entryErrors = []
+            value.forEach((item, index) => {
+              const checkedEntry = validateFactEntry(item)
+              const missingId = !str(item.id).trim()
+              if (!checkedEntry.ok || missingId) {
+                entryErrors.push({
+                  index,
+                  id: str(item.id),
+                  ...(missingId ? { errors: [{ code: 'MISSING_REQUIRED', field: 'id', message: 'id 不能为空（patch.entries 按 id 替换）' }, ...checkedEntry.errors] } : { errors: checkedEntry.errors }),
+                  ...(checkedEntry.warnings?.length ? { warnings: checkedEntry.warnings } : {})
+                })
+              }
+            })
+            if (entryErrors.length) {
+              return writeFail(
+                'VALIDATION_FAILED',
+                `patch.entries 有 ${entryErrors.length} 条没过信封校验，整份替换已拒绝（未写入任何条目）`,
+                { entries: entryErrors, file }
+              )
+            }
             nextEntries = jsonClone(value)
             continue
           }
@@ -520,10 +542,19 @@ export async function writeFactFile({ root, bookId, id, entry, patch, operationI
 
       // wiki 先落、主档后落：主档是唯一真源，wiki 可删可重建；中途崩溃最多留下
       // 「兄弟文件比主档新一版」，重建即可，不会反向污染真源。
+      // OS-211：`derivedFrom` 是**内核受管字段**——必须展开在最后，入参里自带的
+      // `derivedFrom` 一律被内核算出的值覆盖（真实调用链 public/scriptFact.mjs 的 wiki
+      // 硬编码 `derivedFrom:{factRevision:1}`；若先展开内核值，就会被它盖掉，派生档
+      // 基准恒为 1，同源检查永久误报 stale）。
+      // 记的是**本次写完后的**主档 revision（nextDocument.revision），不是写前的
+      // baseRevision——派生档与它描述的那一版主档对齐，成功写后
+      // `derivedFrom.factRevision === document.revision` 恒成立。
       if (hasWiki) {
+        const { derivedFrom: incomingDerivedFrom, ...wikiBody } = isPlainObject(wiki) ? wiki : {}
+        void incomingDerivedFrom // 只丢弃，不采信：派生基准只能由内核按写后 revision 落
         await writeJsonAtomic(wikiTarget, {
-          derivedFrom: { factRevision: baseRevision, schema: WIKI_DERIVED_SCHEMA },
-          ...(isPlainObject(wiki) ? wiki : {})
+          ...wikiBody,
+          derivedFrom: { factRevision: nextDocument.revision, schema: WIKI_DERIVED_SCHEMA }
         })
       }
       await writeJsonAtomic(target, nextDocument)

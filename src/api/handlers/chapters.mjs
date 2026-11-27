@@ -66,6 +66,15 @@ export async function changeLogRestore(ctx) {
     return sendError(res, API_ERROR_CODES.INVALID_ENTRY,
       '这条变更没有留下可恢复的备份（新建类变更回退不了）')
   }
+  // OS-211：恢复是「整份文本回写」——只许回载体目录与 世界书/。故事源/ 的修订单
+  // 必须走 fact 写协议（schema/revision/operationId），不能被日志恢复整份覆盖。
+  // 2) 先给当前内容做一次安全备份（这次恢复本身也要可回退），再写回
+  const prose = await proseCapabilityOrError(res, authorized.root)
+  if (!prose) return null
+  const guarded = prose.assertGuardedTextWrite(entry.file)
+  if (!guarded.ok) {
+    return sendError(res, guarded.code ?? API_ERROR_CODES.INVALID_ENTRY, `日志恢复不放行这个路径：${guarded.message}`, guarded.details)
+  }
   // 1) 读备份内容
   const backupAbs = resolveInsideRoot(authorized.root, entry.backup, { allowMetadata: true })
   if (!backupAbs.ok) return sendError(res, backupAbs.code, backupAbs.message, backupAbs.details)
@@ -73,9 +82,6 @@ export async function changeLogRestore(ctx) {
   try { beforeText = await readFile(backupAbs.path, 'utf-8') } catch (error) {
     return sendError(res, API_ERROR_CODES.NOT_FOUND, `备份文件读不到：${text(error?.message || error)}`)
   }
-  // 2) 先给当前内容做一次安全备份（这次恢复本身也要可回退），再写回
-  const prose = await proseCapabilityOrError(res, authorized.root)
-  if (!prose) return null
   const written = await prose.writeChapterWithBackup(authorized.root, entry.file, beforeText, {
     module: entry.module,
     actor: 'author',

@@ -5,11 +5,14 @@
  * 不做执行：执行归 Agent（把 SKILL.md 正文按 category 装进上下文，或当作工具型配方按需调用）。
  * 与套件/体裁/风格包同口径：内置目录＋本机目录（按 name 覆盖）、坏档跳过＋warning。
  *
- * 三类边界（协议见 skills/PROTOCOL.md）：
+ * 五类边界（协议见 skills/PROTOCOL.md）：
  *   craft   技法规则 → 可进 instruction 块（过守卫）
  *   review  审阅，只出问题清单，绝不改文件
  *   transform 改写，产物是提案（作者采纳才落盘）
  *   extract 抽取，产结构化数据
+ *   operate 项目构建/升级说明书——只读、不产出小说内容、不执行代码；
+ *           写操作只能调用声明的官方 MCP 工具（tools＋confirm 级别），
+ *           不自动注入 prompt，只能按需 openstory_skills_read 读取。
  */
 import { existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs'
 import { mkdir, readFile } from 'node:fs/promises'
@@ -18,17 +21,99 @@ import { fileURLToPath } from 'node:url'
 import { minVersionGate, readAppVersion } from '../protocol/versionGate.mjs'
 import { atomicWriteFile } from '../protocol/hostWrite.mjs'
 import { courtyardPath } from '../protocol/courtyard.mjs'
+import { TOOL_CONFIRM_LEVELS, confirmSatisfies, maxRequiredConfirm, toolSemanticsOf } from '../protocol/mcpToolSemantics.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 /** OS-140 布局归一：本模块迁到 src/services/——货架数据目录（skills/）仍在仓根。 */
 const REPO_ROOT = join(HERE, '..', '..')
 
 export const SKILL_SPEC = 'openstory-skill@1'
-export const SKILL_CATEGORIES = Object.freeze(['craft', 'review', 'transform', 'extract'])
+export const SKILL_CATEGORIES = Object.freeze(['craft', 'review', 'transform', 'extract', 'operate'])
 const NAME_RE = /^[\w-]{1,60}$/u
+
+/** OS-212：确认级别——read 只读 / create 建新 / migrate 结构迁移 / restore 从备份恢复。
+ * 唯一真源在安全语义注册表；这里只做 re-export（P1-5：不再各写一遍）。 */
+export const SKILL_CONFIRM_LEVELS = TOOL_CONFIRM_LEVELS
+/** OS-212：只读类技能（review/extract）不得声明写工具。 */
+const READONLY_CATEGORIES = new Set(['review', 'extract'])
+/** OS-212：operate 的写工具名——必须从 MCP 注册表来，不许 shell/fs 直写伪装成 MCP 工具。 */
+const MCP_TOOL_RE = /^openstory_[a-z][a-z0-9_]*$/u
+/** OS-212（P1）：`allowed-tools` 是 agent 能力声明（非 MCP 工具）。白名单只收只读检索
+ * 与向作者请示；Bash/Write/Edit 等 shell/fs 直写语义一律 fail-closed 拒绝，不给
+ * 「Write/Edit 伪装成 OpenStory 自动写权」的口子。 */
+const SAFE_ALLOWED_TOOLS = Object.freeze(['Read', 'Grep', 'Glob', 'AskUserQuestion'])
+/** OS-212：operate 说明书引用工具的安全语义必须来自单一注册表（纯数据，零副作用）——
+ * 加载器只做形状与语义校验，不持有 MCP 实现，也不靠「工具名前缀」猜写只读。 */
 
 function text(value) {
   return String(value ?? '')
+}
+
+/**
+ * OS-212：规整并验证 frontmatter 的 tools / confirm 声明——**安全语义违规 fail-closed**。
+ *
+ * 形状坏、未知/未分类工具、shell/fs 伪装、写工具确认不足、只读类声明写工具/写确认，
+ * 一律返回 `ok:false` 拒绝装载，绝不「只 warning 照装」。验证口径只认单一注册表
+ * （`mcpToolSemantics`），加载器不靠工具名前缀猜读写。
+ *
+ * 非 operate 类可以声明只读工具（现有七个 craft/review/extract 技能的历史声明），但：
+ *   · 只读类（review/extract）不得声明任何写工具或写确认；
+ *   · craft/transform 不得声明写工具（它们只出提案/规则，不获得写权）；
+ *   · operate 必须 tools 非空、每个工具都已分类；写工具必须带满足门槛的 confirm。
+ */
+function toolDeclarations(meta, category, where) {
+  const rawTools = meta.tools
+  let tools = []
+  const reject = (code, message) => ({ ok: false, error: { code, dir: where, message: `${message}：${where}` } })
+  if (rawTools === undefined || rawTools === null || rawTools === '') {
+    tools = []
+  } else if (Array.isArray(rawTools) && rawTools.every((item) => typeof item === 'string' && item.trim())) {
+    tools = [...new Set(rawTools.map((item) => item.trim()))]
+  } else {
+    return reject('SKILL_TOOLS_SHAPE', 'tools 必须是字符串数组')
+  }
+  if (category === 'operate' && !tools.length) return reject('SKILL_TOOLS_REQUIRED', 'operate 必须声明非空 tools（写操作只能调用声明的官方工具）')
+
+  const rawConfirm = meta.confirm === undefined || meta.confirm === null || meta.confirm === '' ? 'read' : text(meta.confirm).trim()
+  const confirm = rawConfirm
+  if (!SKILL_CONFIRM_LEVELS.includes(confirm)) return reject('SKILL_CONFIRM_LEVEL', `confirm 只收 ${SKILL_CONFIRM_LEVELS.join('/')}`)
+
+  for (const tool of tools) {
+    if (!MCP_TOOL_RE.test(tool)) {
+      return reject('SKILL_TOOLS_NOT_MCP', `tools 只收官方 MCP 工具名（openstory_*），shell/fs 伪装一律拒绝：${tool}`)
+    }
+    const semantics = toolSemanticsOf(tool)
+    if (!semantics) {
+      return reject('SKILL_TOOL_UNCLASSIFIED', `工具不在 MCP 安全语义注册表（未知/未分类工具）：${tool}`)
+    }
+    if (semantics.effect !== 'read' && (READONLY_CATEGORIES.has(category) || category === 'craft' || category === 'transform')) {
+      return reject('SKILL_READONLY_WRITE', `${category} 类不得声明写工具：${tool}`)
+    }
+    // P1-4：声明时无法绑定实参，按最坏门槛（含 mutatesWhen 升级）校验，
+    // 不能让 confirm:create 的说明书合规带上 reset=true 要 restore 的 deduce_present。
+    const needed = maxRequiredConfirm(tool)
+    if (semantics.effect !== 'read' && category === 'operate' && !confirmSatisfies(confirm, needed)) {
+      return reject('SKILL_WRITE_WITHOUT_CONFIRM', `operate 声明写工具 ${tool} 需要至少 ${needed} 确认，实际 ${confirm}`)
+    }
+  }
+  // OS-212（P0-1）：只有 operate 说明书可以声明写确认；其余四类任何非 read 确认一律拒绝，
+  // 与 tools 是否为空无关。之前带 `&& tools.length` 会让 review/extract+confirm:migrate 与
+  // craft+confirm:restore（无 tools）被静默接受。
+  if (category !== 'operate' && confirm !== 'read') {
+    return reject('SKILL_READONLY_WRITE', `${category} 类不得声明写确认：${confirm}（只有 operate 才有写权）`)
+  }
+  // OS-212（P1）：allowed-tools 必须解析、校验并进 skill 对象；shell/fs 直写能力拒绝装载。
+  const rawAllowed = meta['allowed-tools']
+  const allowedTools = rawAllowed === undefined || rawAllowed === null || rawAllowed === ''
+    ? []
+    : Array.isArray(rawAllowed) ? rawAllowed
+      : [String(rawAllowed).trim()]
+  for (const entry of allowedTools) {
+    if (typeof entry !== 'string' || !SAFE_ALLOWED_TOOLS.includes(entry.trim())) {
+      return reject('SKILL_ALLOWED_TOOLS_UNSAFE', `allowed-tools 只收只读检索/请示能力（${SAFE_ALLOWED_TOOLS.join('/')}），shell/fs 直写拒绝：${text(entry)}`)
+    }
+  }
+  return { ok: true, tools, confirm, allowedTools: allowedTools.map((entry) => entry.trim()) }
 }
 
 export function builtinSkillsDir() {
@@ -67,8 +152,25 @@ export function parseSkillMarkdown(raw, { source, dir, appVersion } = {}) {
     if (!trimmed || trimmed.startsWith('#')) continue
     const colon = trimmed.indexOf(':')
     if (colon <= 0) continue
-    const key = trimmed.slice(0, colon).trim()
+    // OS-212（P0）：YAML 允许键加引号——`"tools": [...]`、`'confirm': read` 都是合法写法，
+    // 任何 YAML 生成器都可能这么 dump。之前直接 slice 出带引号的键，meta 里存成 `"tools"`
+    // 而 toolDeclarations 读 `meta.tools` 得 undefined → 默认 []，违规声明被静默洗白且零 warning。
+    // 键名统一剥引号后再判重与取用。
+    const key = trimmed.slice(0, colon).trim().replace(/^(["'])(.*)\1$/u, '$2').trim()
+    // OS-212：重复声明安全相关字段不许后者静默覆盖前者——人眼读第一行会以为这是只读
+    // review 技能，第二行却把 category 洗成 operate、confirm 洗成 restore 放行写权。
+    // fail-closed 拒绝整个 frontmatter（tools/allowed-tools 原有理由同样是「洗成空」）。
+    const DUPLICATE_SENSITIVE = ['tools', 'allowed-tools', 'category', 'confirm']
+    if (DUPLICATE_SENSITIVE.includes(key) && Object.hasOwn(meta, key)) {
+      return bad('SKILL_TOOLS_DUPLICATE', `frontmatter 重复声明 ${key}，拒绝装载`)
+    }
     let value = trimmed.slice(colon + 1).trim()
+    // OS-212（P1）：YAML 行内注释（`category: craft   # craft｜review…`）是合法写法——
+    // PROTOCOL.md 的模板自己就这么写，照抄模板必须能装载。注释只在 `#` 前有空白且值未被
+    // 引号包裹时才生效（与 YAML 一致）；`description: 第3章#tag` 里的 # 不是注释。
+    if (value !== '|' && value !== '>' && !/^["']/u.test(value)) {
+      value = value.replace(/\s+#.*$/u, '').trim()
+    }
     // YAML 块标量（description: | 后跟缩进行）：把后续更深的缩进行拼成一段
     if (value === '|' || value === '>') {
       const block = []
@@ -86,6 +188,39 @@ export function parseSkillMarkdown(raw, { source, dir, appVersion } = {}) {
       const inner = value.slice(1, -1).trim()
       meta[key] = inner ? inner.split(',').map((item) => item.trim().replace(/^["']|["']$/gu, '')).filter(Boolean) : []
       continue
+    }
+    // OS-212（P0-2）：标准 YAML 块序列 `tools:` 后跟 `- item` 行——**零缩进**（PyYAML /
+    // js-yaml dump 默认形态）与缩进两种都要认。不能静默丢成空串：那会把「声明了写工具」
+    // 洗成「无工具」，绕过 fail-closed 校验。注释行跳过；遇到同层 `key:` 新键即结束块。
+    if (value === '') {
+      const block = []
+      let sawItem = false
+      for (let follow = index + 1; follow < fmLines.length; follow += 1) {
+        const next = fmLines[follow]
+        const stripped = next.trim()
+        if (!stripped || stripped.startsWith('#')) continue
+        if (/^- /u.test(stripped)) {
+          block.push(stripped.slice(2).trim().replace(/^["']|["']$/gu, ''))
+          sawItem = true
+          index = follow
+          continue
+        }
+        break
+      }
+      if (sawItem) {
+        meta[key] = block
+        continue
+      }
+      // OS-212：合法 YAML 折叠纯量 `tools:\n  openstory_x` / `allowed-tools:\n  Bash`
+      // 会被 PyYAML/js-yaml 读成字符串。若静默落空串，toolDeclarations 把 '' 当空数组，
+      // 等于把写工具声明洗成空、把 Bash 伪装洗掉——fail-closed 直接拒绝整个 frontmatter。
+      const scalar = fmLines.slice(index + 1)
+        .find((next) => next.trim() && !next.trim().startsWith('#') && !/^\s*-\s/u.test(next.trim()))
+      if (scalar && /^\s+/u.test(scalar) && DUPLICATE_SENSITIVE.includes(key)) {
+        return bad('SKILL_TOOLS_SHAPE', `${key} 的折叠纯量须用行内数组或 - item 块，拒绝装载：${scalar.trim()}`)
+      }
+      // `key:` 后一个 `- item` 都没有，且下一行已是同层新键——这是 YAML null，不是数组。
+      // 保留空串交给 toolDeclarations 按 fail-closed 判（operate 空 tools 直接拒）。
     }
     value = value.replace(/^["']|["']$/gu, '')
     meta[key] = value
@@ -105,6 +240,8 @@ export function parseSkillMarkdown(raw, { source, dir, appVersion } = {}) {
   // 最低应用版本闸（OS-121）：缺字段＝不校验；要求高于当前＝跳过；格式坏＝照常加载＋_BAD warning
   const gate = minVersionGate(meta.minOpenStoryVersion, appVersion ?? readAppVersion(), { prefix: 'SKILL', label: '技能', where })
   if (gate.skip) return bad('SKILL_MIN_VERSION', gate.message)
+  const declarations = toolDeclarations(meta, category, where)
+  if (!declarations.ok) return bad(declarations.error.code, declarations.error.message)
   const extraWarnings = gate.warning ? [gate.warning] : []
   return {
     ok: true,
@@ -116,8 +253,10 @@ export function parseSkillMarkdown(raw, { source, dir, appVersion } = {}) {
       version,
       vendor: text(meta.vendor).trim(),
       stage: text(meta.stage).trim(),
-      // 工具型字段（历史 frontmatter 兼容键）：原样带出，供将来工具接线
-      tools: Array.isArray(meta.tools) ? meta.tools : [],
+      // OS-212：官方 MCP 工具白名单＋确认级别（operate 说明书的写权限声明）
+      tools: declarations.tools,
+      confirm: declarations.confirm,
+      allowedTools: declarations.allowedTools,
       output: text(meta.output).trim(),
       domain: text(meta.domain).trim(),
       source,
@@ -234,7 +373,14 @@ export function skillSummary(skill) {
     vendor: skill.vendor,
     stage: skill.stage,
     source: skill.source,
-    chars: skill.chars
+    chars: skill.chars,
+    // OS-212（P1-3）：tools/confirm 必须随技能抵达唯一 MCP 读路径。
+    // skillsGet/skillGet 都经 skillSummary（src/api/handlers/plugins.mjs:60/72），
+    // 这里补上 tools 即可，无需改不在本单 allow 内的 handler。
+    // skillGet 另在 :72 覆写 tools（同源同值），保持清单与全文声明一致。
+    tools: skill.tools ?? [],
+    confirm: skill.confirm,
+    allowedTools: skill.allowedTools ?? []
   }
 }
 

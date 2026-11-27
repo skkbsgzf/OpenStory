@@ -24,6 +24,10 @@ export const proseCapability = Object.freeze({
     renameChapter: chapters.renameChapter,
     deleteChapter: chapters.deleteChapter,
     historyBackupPath: chapterWrite.historyBackupPath,
+    // OS-211：写边界判定（载体目录白名单）——章节端点与宿主回写共用同一份口径。
+    CARRIER_WRITE_DIRS: chapterWrite.CARRIER_WRITE_DIRS,
+    assertCarrierWrite: chapterWrite.assertCarrierWrite,
+    assertGuardedTextWrite: chapterWrite.assertGuardedTextWrite,
     HISTORY_KEEP_DEFAULT: chapterWrite.HISTORY_KEEP_DEFAULT,
     resolveHistoryKeepPerFile: chapterWrite.resolveHistoryKeepPerFile,
     pruneHistoryBackups: chapterWrite.pruneHistoryBackups,

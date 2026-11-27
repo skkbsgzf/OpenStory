@@ -38,6 +38,18 @@ export const referenceEndpoints = {
     errors: ['NO_LIBRARY', 'PATH_ESCAPE', 'INVALID_ENTRY', 'NOT_FOUND', 'MODULE_DISABLED', 'PLUGIN_DEGRADED']
   },
 
+  referenceNotePut: {
+    method: 'PUT',
+    path: '/api/reference/note',
+    // OS-211 世界书专用写端点：整篇写入 `世界书/` 下的笔记（新建＝文件不存在时落盘）。
+    // 归属 worldbook 模块（manifest endpoints），停用即 MODULE_DISABLED；实现复用
+    // prose.writeChapterWithBackup（原子写＋.history 备份＋changelog），不复制写实现。
+    // 只放行 世界书/ 目录：正文/剧本走章节通道，故事源走 fact 写协议，.openstory/ 归宿主。
+    request: { body: { root: 'string', path: 'string', text: 'string' } },
+    response: { ok: 'true', path: 'string', chars: 'integer', savedAt: 'string', backup: 'string?' },
+    errors: ['NO_LIBRARY', 'PATH_ESCAPE', 'INVALID_ENTRY', 'WRITE_PROTOCOL_IO_FAILED', 'MODULE_DISABLED', 'PLUGIN_DEGRADED']
+  },
+
   referenceAssetGet: {
     method: 'GET',
     path: '/api/reference/asset',

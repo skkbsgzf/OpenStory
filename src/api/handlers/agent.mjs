@@ -690,6 +690,12 @@ export async function agentCardCreate(ctx) {
   const root = authorized.root
   const loaded = await readSession(context.agentSessionsDir, root, request.sessionId)
   if (!loaded) return sendError(res, API_ERROR_CODES.NOT_FOUND, `会话不存在：${request.sessionId}`)
+  // OS-211：待确认卡采纳时走 writeChapterWithBackup——目标同样只许载体目录。
+  // 建卡时就拦（而不是等采纳），否则替作者攒下一张注定写不进去的卡。
+  const proseResult = await resolveProseCapability(root)
+  if (!proseResult.ok) return sendError(res, API_ERROR_CODES.PLUGIN_DEGRADED, proseResult.message, proseResult.details)
+  const carrier = proseResult.capability.assertCarrierWrite(request.file)
+  if (!carrier.ok) return sendError(res, carrier.code, carrier.message, carrier.details)
   const resolved = resolveInsideRoot(root, request.file)
   if (!resolved.ok) return sendError(res, resolved.code, resolved.message, resolved.details)
   let snapshot
@@ -746,6 +752,14 @@ export async function agentCardAdopt(ctx) {
   const found = await findOpenCard(context, root, request.sessionId, request.id)
   if (found.error) return sendError(res, found.error.code, found.error.message)
   const card = found.card
+  const proseResult = await resolveProseCapability(root)
+  if (!proseResult.ok) return sendError(res, API_ERROR_CODES.PLUGIN_DEGRADED, proseResult.message, proseResult.details)
+  // OS-211 写边界（落盘点，不是只建卡时）：采纳会走 writeChapterWithBackup 真写盘，
+  // 而卡的目标来自会话 jsonl——历史数据与外部工具都能往 jsonl 里塞一张 open 卡。
+  // 所以这里必须再判一次载体目录；契约 agentCardAdopt 的语义就是「重读正文」，
+  // 只许正文／剧本（故事源走 fact 写协议，世界书走 referenceNotePut）。
+  const carrier = proseResult.capability.assertCarrierWrite(card.file)
+  if (!carrier.ok) return sendError(res, carrier.code, carrier.message, carrier.details)
   const resolved = resolveInsideRoot(root, card.file)
   if (!resolved.ok) return sendError(res, resolved.code, resolved.message, resolved.details)
   let current
@@ -767,8 +781,6 @@ export async function agentCardAdopt(ctx) {
       `这段产物命中了你的习惯表：${habitHits.map((hit) => hit.message).join('；')}。确认仍要采纳？`,
       { habitHits, needsConfirm: true, file: card.file })
   }
-  const proseResult = await resolveProseCapability(root)
-  if (!proseResult.ok) return sendError(res, API_ERROR_CODES.PLUGIN_DEGRADED, proseResult.message, proseResult.details)
   const written = await proseResult.capability.writeChapterWithBackup(root, card.file, card.text)
   if (!written.ok) return sendError(res, written.code, written.message, written.details)
   const updated = await updateCard(context.agentSessionsDir, root, request.sessionId, request.id, {

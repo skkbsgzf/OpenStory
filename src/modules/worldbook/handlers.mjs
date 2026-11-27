@@ -7,6 +7,7 @@
 import { mkdir, readFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { atomicWriteFile } from '../../protocol/hostWrite.mjs'
+import { LOG_MODULES } from '../../protocol/naming.mjs'
 import {
   absorbLegacyDirs,
   backlinksOf,
@@ -75,6 +76,34 @@ export function createHandlers({ host, factStore, prose, mediaGenerate, agentRun
       ok: true,
       note: { ...(note || { path: requested, title: requested.split('/').pop() }), text: raw },
       backlinks
+    })
+  }
+
+  /** OS-211：世界书专用写端点。归属本模块（manifest endpoints），停用即 MODULE_DISABLED。 */
+  async function referenceNotePut(ctx) {
+    const { res, request, allowlist } = ctx
+    const authorized = authorizeRoot(allowlist, request.root)
+    if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
+    const requested = text(request.path).trim().replaceAll('\\', '/')
+    if (!requested.startsWith(`${REFERENCE_DIR}/`)) {
+      return sendError(res, apiErrors.INVALID_ENTRY, `只写世界书目录下的笔记：${requested}`, { worldbookDir: REFERENCE_DIR })
+    }
+    if (typeof request.text !== 'string') {
+      return sendError(res, apiErrors.INVALID_ENTRY, 'text 必须是字符串（整篇写入）')
+    }
+    // 写实现只有一份：复用宿主正文写通道（原子写＋.history 备份＋changelog 留痕）。
+    // 日志模块名从命名表取（LOG_MODULES.worldbook），不写字面量（OS-148/G8a）。
+    const written = await prose.writeChapterWithBackup(authorized.root, requested, request.text, {
+      module: LOG_MODULES.worldbook,
+      actor: 'author'
+    })
+    if (!written.ok) return sendError(res, written.code, written.message, written.details)
+    return sendJson(res, 200, {
+      ok: true,
+      path: requested,
+      chars: written.chars,
+      savedAt: written.savedAt,
+      ...(written.backup ? { backup: written.backup } : {})
     })
   }
 
@@ -242,5 +271,5 @@ export function createHandlers({ host, factStore, prose, mediaGenerate, agentRun
     })
   }
 
-  return { referenceGet, referenceGraphGet, referenceNoteGet, referenceAssetGet, referenceAbsorb, referenceImageGenerate }
+  return { referenceGet, referenceGraphGet, referenceNoteGet, referenceNotePut, referenceAssetGet, referenceAbsorb, referenceImageGenerate }
 }

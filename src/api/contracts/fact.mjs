@@ -32,7 +32,9 @@ export const factEndpoints = {
     path: '/api/fact/entries/import',
     // 剧本/外部数据 → 故事源条目（OS-78 首次开放 fact 写通道）。
     // 走内核 writeFactFile 的 patch.entries 整份替换（原子写＋revision 自增＋operationId 幂等）。
-    // 同时写兄弟 wiki 文件（章摘要/角色档/伏笔）。
+    // OS-211：patch.entries 逐条过 validateFactEntry——任一条有 errors 整份拒绝、零写入
+    // （WRITE_PROTOCOL_VALIDATION_FAILED → 422，details.entries 逐条点名 index/id/errors）；
+    // 兄弟 wiki 的 derivedFrom.factRevision 与写完后的主档 revision 一致。
     request: {
       body: {
         root: 'string',
@@ -44,7 +46,7 @@ export const factEndpoints = {
       }
     },
     response: { ok: 'true', bookId: 'string', entries: 'number', revision: 'number?', backup: 'string?' },
-    errors: ['NO_LIBRARY', 'INVALID_ENTRY', 'WRITE_PROTOCOL_IO_FAILED']
+    errors: ['NO_LIBRARY', 'INVALID_ENTRY', 'WRITE_PROTOCOL_VALIDATION_FAILED', 'WRITE_PROTOCOL_IO_FAILED']
   },
 
   deduceImage: {

@@ -13,6 +13,7 @@ import { parseChapterNumber } from '../../protocol/chapterNumber.mjs'
 import { resolveInsideRoot } from '../../protocol/rootPath.mjs'
 import { API_ERROR_CODES } from '../../protocol/apiErrors.mjs'
 import { namingEntry } from '../../protocol/naming.mjs'
+import { assertCarrierWrite } from './chapterWrite.mjs'
 
 const METADATA_DIR = namingEntry('libraryStorage').metadataDir
 

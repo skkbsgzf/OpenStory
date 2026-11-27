@@ -5,7 +5,7 @@
 | 批次 | OS-211～231；规划见 [`mcp-build-upgrade-knowledge-20261126.md`](../plan/mcp-build-upgrade-knowledge-20261126.md) |
 | 执行 | workflow 施工；dsv4flash / hy4flash 交替，对方模型评审 |
 | 依赖 | 无 |
-| 允许改动 | `src/modules/chapters/**`、`src/modules/worldbook/**`、`src/modules/prose/**`、`src/modules/fact/**`、`src/services/syncCheck.mjs`、`src/api/contracts/**`、`src/api/handlers/**`、`test/**`、`tools/acceptance/**`、对应文档与数字锚 |
+| 允许改动 | `src/modules/chapters/**`、`src/modules/worldbook/**`、`src/modules/prose/**`、`src/modules/fact/**`、`src/services/syncCheck.mjs`、`src/api/contracts/**`、`src/api/handlers/**`、`src/host/mcp.mjs`（仅世界书写工具调用方）、`public/app.js`（仅世界书写入调用方，净行数不增）、`public/views/workbenchViews.mjs`（仅新增世界书/正文写入路由选择的纯函数，监督线 2026-11-27 批准）、`test/**`、`tools/acceptance/**`、对应文档与数字锚 |
 | 风险 | 高——写安全与数据契约 |
 | 状态 | 待施工 |
 

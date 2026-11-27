@@ -1,5 +1,5 @@
 /**
- * OS-194：daemon 级端点分派测试——41 个模块端点全部经真实分派跑到 handler；
+ * OS-194：daemon 级端点分派测试——42 个模块端点全部经真实分派跑到 handler；
  * 停用/启用按库快照换贡献；共用端点不受模块停用影响。
  *
  * 夹具一律临时 LOCALAPPDATA，不碰作者真库与真实配置。
@@ -76,7 +76,7 @@ async function call(origin, endpointId, root) {
   return { status: response.status, payload }
 }
 
-test('daemon：41 个模块端点全部经真实分派到达 handler（无「端点未实现」）', async () => {
+test('daemon：42 个模块端点全部经真实分派到达 handler（无「端点未实现」）', async () => {
   const { base, root, preferencesPath } = await makeLibrary()
   const daemon = await startDaemon({
     port: 0,
@@ -86,7 +86,7 @@ test('daemon：41 个模块端点全部经真实分派到达 handler（无「端
   })
   try {
     const moduleEndpoints = MODULE_MANIFESTS.flatMap((manifest) => manifest.endpoints ?? [])
-    assert.equal(moduleEndpoints.length, 41)
+    assert.equal(moduleEndpoints.length, 42)
     for (const endpointId of moduleEndpoints) {
       const { status, payload } = await call(daemon, endpointId, root)
       // 业务 404（文件/条目不存在）是 handler 正常回话；这里只钉「分派没到 handler」的两种错误。

@@ -8,7 +8,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import * as uiKit from '../public/ui-kit.mjs'
-import { habitsViewHtml, ssTableHtml, ssOutlineSideHtml, ssTraceHtml, ssChartFallbackHtml } from '../public/views/workbenchViews.mjs'
+import { habitsViewHtml, ssTableHtml, ssOutlineSideHtml, ssTraceHtml, ssChartFallbackHtml, artifactRestoreRoute } from '../public/views/workbenchViews.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
@@ -169,4 +169,23 @@ test('纯度：故事源渲染函数本体不在 app.js（薄壳转交）', () =
     assert.ok(shell.length < 500, `${name} 应是薄壳（<500 字符），实际 ${shell.length}`)
     assert.ok(shell.includes(`workbenchViews.${name}`), `${name} 必须转交 views`)
   }
+})
+
+test('OS-211 artifactRestoreRoute：世界书走 referenceNotePut，其余载体走 chapter 通道', () => {
+  const dirs = { worldbookDir: '世界书' }
+  assert.deepEqual(artifactRestoreRoute('世界书/人物/宋江.md', dirs), {
+    kind: 'worldbook', read: '/api/reference/note', put: '/api/reference/note'
+  })
+  assert.deepEqual(artifactRestoreRoute('世界书/大纲/主线.md', dirs), {
+    kind: 'worldbook', read: '/api/reference/note', put: '/api/reference/note'
+  })
+  for (const file of ['正文/001-开局.md', '剧本/001-第一场.md', '故事源/book.json']) {
+    assert.deepEqual(artifactRestoreRoute(file, dirs), {
+      kind: 'carrier', read: '/api/chapter', put: '/api/chapter'
+    }, `${file} 应走载体通道`)
+  }
+  // 前缀相似但不是世界书目录（防 startsWith 误判）
+  assert.equal(artifactRestoreRoute('世界书稿/a.md', dirs).kind, 'carrier')
+  assert.equal(artifactRestoreRoute('', dirs).kind, 'carrier')
+  assert.equal(artifactRestoreRoute(null, dirs).kind, 'carrier')
 })

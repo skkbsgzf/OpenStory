@@ -18,6 +18,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, before, describe, it } from 'node:test'
 import { validateResponse } from '../src/api/contracts.mjs'
+import { stableEntryId } from '../src/modules/fact/fact/domain/stableId.js'
 
 let base = ''
 let libRoot = ''
@@ -79,18 +80,24 @@ describe('chapterPut 的 factStale（FACT-FIRST 规则 5）', () => {
 
   it('拆解落盘后改正文：chapterPut 回 factStale:true + factEntries 计数（正文比拆解新＝过期）', async () => {
     // 先造拆解档（走 factEntriesImport——与生产同一条写通道）
+    // OS-211：patch.entries 逐条过 validateFactEntry 后夹具必须是真正合法的 v3 条目
+    // （status 只能 draft/proposed/adopted/superseded；id 必须是 stableEntryId；plot 层要 fingerprint）。
+    // 旧夹具的 `status:'fact'`＋`id:'plot-1'` 从来没过过信封校验，只是以前写通道不检查。
+    const plotName = '开局'
+    const plotDomain = '测试'
     const imported = await request('POST', '/api/fact/entries/import', {
       root: libRoot,
       bookId: 'stale-book',
       title: '过期测试书',
       entries: [{
         schema: 'fact.data/v3',
-        id: 'plot-1',
+        id: stableEntryId({ layer: 'plot', domain: plotDomain, name: plotName }),
         layer: 'plot',
-        name: '开局',
-        domain: '测试',
-        status: 'fact',
-        provenance: { book: 'stale-book', book_id: 'stale-book', mode: 'analyze', extractor: 'fact-chain/v1', chapters: [1] },
+        name: plotName,
+        domain: plotDomain,
+        status: 'adopted',
+        provenance: { book: 'stale-book', book_id: 'stale-book', mode: 'analyze', extractor: 'fact-chain/v1', chapters: [1], scenes: [] },
+        fingerprint: { vec: null, metrics: {} },
         who: ['沈岚'],
         events: [{ index: 1, who: '沈岚', channel: 'perceive', content: '沈岚看到弹幕预警。', segments: [{ index: 1, chars: 9 }] }],
         validity: { from: 1, to: 1 }

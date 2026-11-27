@@ -22,6 +22,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, before, describe, it } from 'node:test'
 import { validateResponse } from '../src/api/contracts.mjs'
+import { stableEntryId } from '../src/modules/fact/fact/domain/stableId.js'
 
 let base = ''
 let libRoot = ''
@@ -30,18 +31,27 @@ let port = 0
 
 const factFileOf = (bookId) => join(libRoot, '故事源', `${bookId}.json`)
 
-const entryOf = (bookId, id, chapter, content) => ({
-  schema: 'fact.data/v3',
-  id,
-  layer: 'plot',
-  name: `第${chapter}章`,
-  domain: '测试',
-  status: 'fact',
-  provenance: { book: bookId, book_id: bookId, mode: 'analyze', extractor: 'fact-chain/v1', chapters: [chapter] },
-  who: ['沈岚'],
-  events: [{ index: 1, who: '沈岚', channel: 'perceive', content, segments: [{ index: 1, chars: content.length }] }],
-  validity: { from: chapter, to: chapter }
-})
+/**
+ * OS-211：patch.entries 逐条过 validateFactEntry 后，夹具必须是真正合法的 v3 条目。
+ * 旧夹具把 `key` 直接当 id（`plot-1`）且 status 写 `'fact'`——那是从来没被信封校验过的
+ * 形状，只是以前写通道不检查。这里保留 `key` 作为稳定名字段，`id` 按同一算法派生。
+ */
+const entryOf = (bookId, key, chapter, content) => {
+  const name = `第${chapter}章 ${key}`
+  return {
+    schema: 'fact.data/v3',
+    id: stableEntryId({ layer: 'plot', domain: '测试', slot: '', name }),
+    layer: 'plot',
+    name,
+    domain: '测试',
+    status: 'adopted',
+    provenance: { book: bookId, book_id: bookId, mode: 'analyze', extractor: 'fact-chain/v1', chapters: [chapter], scenes: [] },
+    fingerprint: { vec: null, metrics: {} },
+    who: ['沈岚'],
+    events: [{ index: 1, who: '沈岚', channel: 'perceive', content, segments: [{ index: 1, chars: content.length }] }],
+    validity: { from: chapter, to: chapter }
+  }
+}
 
 before(async () => {
   const { startDaemon } = await import('../src/host/daemon.mjs')
@@ -113,7 +123,7 @@ describe('factEntriesImport 回归（OS-113 的 factPath ReferenceError）', () 
     assert.equal(onDisk.book.id, 'reg-book')
     assert.equal(onDisk.book.title, '回归测试书')
     assert.equal(onDisk.entries.length, 1)
-    assert.equal(onDisk.entries[0].id, 'plot-1')
+    assert.equal(onDisk.entries[0].id, entryOf('reg-book', 'plot-1', 1, '').id, '落盘条目 id 就是入参那条')
   })
 })
 
@@ -141,7 +151,7 @@ describe('factEntriesImport 写端点直测（OS-135②）', () => {
     assert.equal(onDisk.revision, 2)
     assert.equal(onDisk.entries.length, 2)
     assert.equal(onDisk.entries[0].events[0].content, '沈岚看到弹幕预警（修订）。', '整份替换：旧内容应被新 entries 覆盖')
-    assert.equal(onDisk.entries[1].id, 'plot-2')
+    assert.equal(onDisk.entries[1].id, entryOf('reg-book', 'plot-2', 2, '').id)
     const wikiOnDisk = JSON.parse(readFileSync(factFileOf('reg-book').replace(/\.json$/u, '.wiki.json'), 'utf-8'))
     assert.equal(wikiOnDisk.derivedFrom.factRevision, 2)
     assert.equal(wikiOnDisk.slots.logline, '末世三天，她反杀囤货的男友。')
@@ -196,6 +206,6 @@ describe('factEntriesImport 写端点直测（OS-135②）', () => {
     assert.equal(body.revision, 1)
     const onDisk = JSON.parse(readFileSync(factFileOf('fresh-book'), 'utf-8'))
     assert.equal(onDisk.revision, 1)
-    assert.equal(onDisk.entries[0].id, 'plot-9')
+    assert.equal(onDisk.entries[0].id, entryOf('fresh-book', 'plot-9', 9, '').id)
   })
 })

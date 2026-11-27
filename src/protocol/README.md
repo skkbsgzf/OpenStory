@@ -23,6 +23,7 @@
 | `apiErrors.mjs` | `API_ERROR_CODES` 错误码词表，前端与 MCP 靠它稳定识别 404/409/503。 |
 | `httpText.mjs` | HTTP 文本/JSON 响应的纯编码约定，契约壳与各域共用。 |
 | `agentEvents.mjs` | AG-UI 事件词表与 SSE 帧投影，进程内事件不落盘、格式全仓唯一。 |
+| `mcpToolSemantics.mjs` | MCP 工具效果/所需确认级别的纯声明表（零 I/O），skill 装载与 MCP 工具定义共用同一份真源。 |
 
 ### 路径安全、授权与写管道
 

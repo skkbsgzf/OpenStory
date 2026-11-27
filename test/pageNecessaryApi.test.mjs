@@ -89,7 +89,8 @@ test('OS-208 Agent：DSH 缺环境如实空列表、会话创建读取、选择�
     assert.ok(session.id)
     const got = ok(await call(fx, 'GET', '/api/agent/session', { root: fx.root, id: session.id }))
     assert.equal(got.session.id, session.id)
-    const picks = ok(await call(fx, 'PUT', '/api/agent-picks', { root: fx.root, style: 'de-ai-writing', methods: ['humanizer'] }))
+    // OS-212：humanizer 已归 transform（不进 prompt 注入选择链），method 改用合法 craft 技能 screenplay-craft
+    const picks = ok(await call(fx, 'PUT', '/api/agent-picks', { root: fx.root, style: 'de-ai-writing', methods: ['screenplay-craft'] }))
     assert.equal(picks.picks.style, 'de-ai-writing')
     const read = ok(await call(fx, 'GET', '/api/agent-picks', { root: fx.root }))
     assert.equal(read.explicit, true)

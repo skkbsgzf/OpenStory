@@ -31,6 +31,8 @@ import { pathToFileURL } from 'node:url'
 import { resolve } from 'node:path'
 import { isModuleEnabled } from '../protocol/modules.mjs'
 import { namingEntry } from '../protocol/naming.mjs'
+import { CONFIRM_PARAM, TOOL_CONFIRM_LEVELS, confirmSatisfies, semanticsForCall, toolSemanticsOf, validateSemanticsRegistry } from '../protocol/mcpToolSemantics.mjs'
+import { SKILL_CATEGORIES } from '../services/skills.mjs'
 import { resolveCapability } from './capabilityBindings.mjs'
 
 const require = createRequire(import.meta.url)
@@ -311,7 +313,9 @@ const tools = [
       if (!args.file) throw invalidArgs('file')
       if (!String(args.file).startsWith(namingEntry('worldbook').dir + '/')) throw invalidArgs(`file 必须以 ${namingEntry('worldbook').dir}/ 开头（世界书系统只管 ${namingEntry('worldbook').dir}/ 目录）`)
       if (typeof args.text !== 'string' || !args.text.trim()) throw invalidArgs('text')
-      const payload = await daemon('/api/chapter', { method: 'PUT', body: { root, file: args.file, text: args.text } })
+      // OS-211：走世界书专用写端点（referenceNotePut，归属 worldbook 模块）——
+      // 通用章节端点已收窄到载体目录，不再承担世界书写入；写实现仍是同一份 writeChapterWithBackup。
+      const payload = await daemon('/api/reference/note', { method: 'PUT', body: { root, path: args.file, text: args.text } })
       let habits2 = null
       try { habits2 = (await daemon('/api/habits', { query: { root } })).habits } catch { habits2 = null }
       const habitHits2 = lintHabits(args.text, habits2)
@@ -422,7 +426,8 @@ const tools = [
         bookId: { type: 'string', description: '故事源 bookId（如 shuihu），缺省用主 book' },
         pov: { type: 'string', description: '视角角色 id（可选）' },
         seed: { type: 'integer', description: '随机种子（可选，复现用）' },
-        reset: { type: 'boolean', description: '重置推演状态' }
+        reset: { type: 'boolean', description: '重置推演状态（受控重置，需 confirm:restore）' },
+        [CONFIRM_PARAM]: { type: 'string', enum: [...TOOL_CONFIRM_LEVELS], description: '作者确认级别（reset:true 时需要 restore，其余写调用按注册表门槛）' }
       },
       required: ['root'],
       additionalProperties: false
@@ -554,12 +559,12 @@ const tools = [
   {
     name: 'openstory_skills_list',
     title: '技能清单',
-    description: '列出本机技能货架的**全部手艺配方**（31 个：技法/审阅/改写/抽取四类，含文风包）。返回 name/description/category/genres/stage/version/vendor。开工前先看清单，再用 openstory_skills_read 读全文——选技能靠 description，别凭名字猜。可按体裁过滤。',
+    description: '列出本机技能货架的全部配方（31 个内置＋2 套件捆绑：技法 craft/审阅 review/改写 transform/抽取 extract/操作说明书 operate 五类，含文风包）。返回 name/description/category/genres/stage/version/vendor。开工前先看清单，再用 openstory_skills_read 读全文——选技能靠 description，别凭名字猜。可按体裁过滤。operate 是只读说明书，不自动注入 prompt，写操作只按其声明的官方 MCP 工具＋确认级别执行。',
     inputSchema: {
       type: 'object',
       properties: {
         genre: { type: 'string', description: '体裁 id（如 long-serial / short-story / screenplay）；不传＝全部' },
-        category: { type: 'string', enum: ['craft', 'review', 'transform', 'extract'], description: '只列某一类' }
+        category: { type: 'string', enum: [...SKILL_CATEGORIES], description: '只列某一类' }
       },
       additionalProperties: false
     },
@@ -587,7 +592,7 @@ const tools = [
   {
     name: 'openstory_skills_read',
     title: '读技能全文',
-    description: '读一个技能的 SKILL.md 全文（含 frontmatter 之外的正文、附属 tools/output 声明）。这是「怎么做事」的真源——craft 类是技法规则可直接遵循，review 类只出问题清单不改文件，transform 类产提案，extract 类产数据。**动手前先读这一篇，别只凭 description 发挥**。',
+    description: '读一个技能的 SKILL.md 全文（含 frontmatter 之外的正文、附属 tools/confirm/output 声明）。这是「怎么做事」的真源——craft 类是技法规则可直接遵循，review 类只出问题清单不改文件，transform 类产提案，extract 类产数据，operate 类只读项目构建/升级说明书（不产出小说内容、不执行代码，写操作只准按其声明的官方 MCP 工具＋confirm 级别执行）。**动手前先读这一篇，别只凭 description 发挥**。',
     inputSchema: {
       type: 'object',
       properties: { name: { type: 'string', description: '技能 id（openstory_skills_list 返回的 name）' } },
@@ -646,7 +651,27 @@ function cleanBody(args) {
   return body
 }
 
+/** OS-212：confirm 参数声明挂到每个工具的 inputSchema.properties——写工具调用可带
+ * 作者确认级别，不再被 additionalProperties:false 的 -32602 打挂；enum 取自单一注册表，
+ * 不在 mcp.mjs 手抄第二份。deduce_present 已经声明过同名字段，赋值同一份即可。 */
+const CONFIRM_SCHEMA = { type: 'string', enum: [...TOOL_CONFIRM_LEVELS], description: `作者确认级别（${TOOL_CONFIRM_LEVELS.join('/')}）；写工具按注册表门槛要求，读工具可省略` }
+for (const tool of tools) tool.inputSchema.properties[CONFIRM_PARAM] = CONFIRM_SCHEMA
+
 const toolsByName = new Map(tools.map((tool) => [tool.name, tool]))
+
+/** OS-212：对外工具名注册表（只读快照）——operate skill 的 tools 声明必须来自这里。
+ * 门禁/测试拿它做白名单，避免说明书声明不存在的工具或伪装成 MCP 工具的 shell/fs 直写。 */
+export const MCP_TOOL_NAMES = Object.freeze(tools.map((tool) => tool.name))
+
+/** OS-212：MCP 工具表 ↔ 安全语义注册表双向校验——fail-closed。
+ * 工具多一个没分类、注册表多一个假工具、或语义形状坏，都让 MCP 进程启动失败，
+ * 不允许 operate 说明书引用一个不存在/未分类的工具，也不允许 shell/fs 伪装混进来。 */
+const SEMANTICS_CHECK = validateSemanticsRegistry(tools)
+if (!SEMANTICS_CHECK.ok) {
+  throw new Error(`MCP 工具语义注册表失配（OS-212 fail-closed）：missing=${JSON.stringify(SEMANTICS_CHECK.missing)} extra=${JSON.stringify(SEMANTICS_CHECK.extra)} malformed=${JSON.stringify(SEMANTICS_CHECK.malformed)} paramMismatch=${JSON.stringify(SEMANTICS_CHECK.paramMismatch)}`)
+}
+/** 供门禁/测试核对的校验结果（只读）。 */
+export const MCP_SEMANTICS_CHECK = Object.freeze({ ...SEMANTICS_CHECK })
 
 /** 工具列表的 MCP 形状（inputSchema 原样透出）。 */
 function toolsForList() {
@@ -667,7 +692,29 @@ async function callTool(name, args) {
     throw err
   }
   try {
-    const result = await tool.run(args || {})
+    // OS-212：确认闸——所需级别来自 mcpToolSemantics 单一注册表。
+    // · 所有工具都接受 confirm 实参（协议口径：照声明传参不再被 -32602 打挂）；
+    // · 写工具一旦传了 confirm，必须满足注册表门槛（不足＝业务错误信封）；
+    // · mutatesWhen 命中的条件写（reset:true）必传 confirm，缺失也拒绝；
+    // · 未触发条件写的普通写调用照工单「不触发写时放行」，沿用 daemon 备份/授权闸。
+    const callArgs = args || {}
+    const base = toolSemanticsOf(name)
+    const effective = semanticsForCall(name, callArgs)
+    const needed = effective?.requiredConfirm
+    const actual = callArgs[CONFIRM_PARAM]
+    const upgraded = Boolean(base && effective && (effective.requiredConfirm !== base.requiredConfirm || effective.effect !== base.effect))
+    if (base && base.effect !== 'read' && needed && (upgraded || actual !== undefined)
+      && !confirmSatisfies(String(actual ?? 'read'), needed)) {
+      const rule = base.mutatesWhen
+      const err = new Error(upgraded
+        ? `该调用触发条件写语义（${rule?.parameter ?? '参数'}=${String(rule?.equals)}），需 ${needed} 确认：${name}`
+        : `该工具是写工具（${base.effect}），confirm 级别不足，需 ${needed} 确认：${name}`)
+      err.code = 'CONFIRM_REQUIRED'
+      throw err
+    }
+    // confirm 不是业务参数，不转发给 daemon。
+    const forwarded = callArgs[CONFIRM_PARAM] === undefined ? callArgs : Object.fromEntries(Object.entries(callArgs).filter(([key]) => key !== CONFIRM_PARAM))
+    const result = await tool.run(forwarded)
     return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }], isError: false }
   } catch (error) {
     const code = error.code || 'E_TOOL_FAILED'
@@ -683,6 +730,7 @@ const INSTRUCTIONS = [
   '推演（种子化 2d6 拍循环＋enrich 富化）／数据分析（本地引擎，秒回）四模块。',
   '先 openstory_libraries 拿 root；读自由，写有备份；absorb 不开（显式动稿）。',
   '世界书只单向链小说：世界书可 [[正文/...]]，正文不要回挂世界书。',
+  '技能货架用 openstory_skills_list/read 按需读取：craft 可注入 prompt；operate 是只读操作说明书，不注入、不执行代码，写操作只准调用其声明的官方 MCP 工具并按 confirm 级别经作者确认。',
   '模块级使用说明见仓 docs/mcp/*.md（novel / reference / deduce / analysis）。'
 ].join('\n')
 
