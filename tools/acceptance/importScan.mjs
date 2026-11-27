@@ -53,16 +53,23 @@ export function resolveSpec(fileRel, spec) {
  */
 export const PUBLIC_EDGE_ALLOW = Object.freeze([
   Object.freeze({
-    edge: 'scriptFact.mjs -> script.mjs',
-    reason: '剧本解析/渲染协议：scriptFact 只取 parseScript（纯解析），script.mjs 零 DOM、零 import，与 md.mjs 同级共享协议'
-  }),
-  Object.freeze({
     edge: 'analysisModules.mjs -> analysis.mjs',
     reason: '分析引擎是浏览器/Node 双用的纯函数（analysis.mjs 零依赖、零 DOM，后端 roleplayEngine 也引它）；analysisModules 只在调用方没注入引擎时惰性 import 取 analyzeChapter，属共享引擎边而非模块耦合'
   }),
   Object.freeze({
     edge: 'referenceStore.mjs -> views/registry.mjs',
     reason: '世界书存储层只读命名真源表的 worldbook.dir；registry 不反向引存储层、不执行 DOM 或视图渲染，此边不形成模块耦合或循环依赖'
+  }),
+  // OS-214：剧本↔fact 互转与剧本解析下沉到 src/modules/script/（服务端真源），
+  // public/ 的两个文件退化为纯 re-export。目标文件都零依赖、零 DOM（与 analysis.mjs
+  // 同性质），这条边不会把浏览器绑到服务端运行时上。
+  Object.freeze({
+    edge: 'script.mjs -> src/modules/script/scriptParse.mjs',
+    reason: 'OS-214 单向 re-export：scriptParse 是零依赖零 DOM 的纯解析/渲染函数；服务端互转端点必须与前端解析出同样的幕/场景/台词，故共用同一份实现'
+  }),
+  Object.freeze({
+    edge: 'scriptFact.mjs -> src/modules/script/scriptFact.mjs',
+    reason: 'OS-214 单向 re-export：scriptFact 只依赖 scriptParse，纯结构映射不调模型不写盘；/api/script/to-fact 与 /from-fact 与前端共用同一份算法'
   })
 ])
 

@@ -1,7 +1,7 @@
 /**
  * API handler 注册表用例（OS-141 拆分 / OS-194 归插件后重写）。
  *
- * 契约壳现在只持有宿主端点（67）；模块声明的 42 个端点经 activate() 贡献登记。
+ * 契约壳现在只持有宿主端点；模块声明的端点（当前 44，随工单增长）经 activate() 贡献登记。
  * 这里钉死三条：
  *   ① 宿主表键集合＝宿主端点集合，全量表（宿主＋贡献）键集合＝ENDPOINTS 键集合；
  *   ② 每个 handler 调用后返回 Promise——用隔离夹具真实调用全部 109 个 handler；
@@ -18,6 +18,7 @@ import { join } from 'node:path'
 import { ENDPOINTS } from '../src/api/contracts.mjs'
 import { HOST_HANDLERS } from '../src/api/registry.mjs'
 import { allHandlers } from '../src/host/handlerTable.mjs'
+import { MODULE_MANIFESTS } from '../src/protocol/modules.mjs'
 import { hostOwnedEndpointIds } from '../tools/acceptance/moduleCoverage.mjs'
 import { createRootAllowlist, loadLibraries } from '../src/host/authorize.mjs'
 
@@ -66,7 +67,9 @@ test('注册表键集合：宿主表＝宿主白名单，全量表＝ENDPOINTS�
   assert.deepEqual(hostIds, expectedHost, '宿主静态表只许放宿主白名单端点')
   const table = await allHandlers()
   const contributed = Object.keys(table).filter((id) => !hostOwnedEndpointIds().has(id))
-  assert.equal(contributed.length, 42, '模块贡献恰为 42 个独占端点')
+  // 数字从 manifest 派生，不写死：OS-214 起剧本域贡献 2 个端点，后续工单还会继续增长。
+  const declaredModuleEndpoints = MODULE_MANIFESTS.flatMap((manifest) => manifest.endpoints ?? [])
+  assert.equal(contributed.length, declaredModuleEndpoints.length, '模块贡献端点数必须等于 manifest 声明数')
   assert.deepEqual(Object.keys(table).sort(), Object.keys(ENDPOINTS).sort())
 })
 

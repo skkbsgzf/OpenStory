@@ -61,7 +61,8 @@ test('反例：未登记的 foo.mjs → ./script.mjs 会红（豁免按边，不
 
 test('正例：登记过的边放行；同文件自引用与裸说明符不进 public 边面', () => {
   const files = [
-    { rel: 'public/scriptFact.mjs', src: "import { parseScript } from './script.mjs'" },
+    // OS-214 起 public/scriptFact.mjs 转发到服务端真源，不再引同目录的 script.mjs。
+    { rel: 'public/scriptFact.mjs', src: "export { scriptToFact } from '../src/modules/script/scriptFact.mjs'" },
     { rel: 'public/analysisModules.mjs', src: "if (!engine) engine = import('./analysis.mjs').then((mod) => mod.analyzeChapter)" },
     { rel: 'public/ui-kit.mjs', src: "// 用法：import { chipField } from './ui-kit.mjs'\nimport 'node:fs'" }
   ]

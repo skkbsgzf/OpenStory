@@ -63,7 +63,8 @@ test('manifest：四个原核心工作台已去 core，端点归属与错误契�
   assert.deepEqual([...moduleManifest('chapters').endpoints].sort(), [
     'chapterDelete', 'chapterGet', 'chapterPut', 'chaptersCreate', 'chaptersGet', 'chaptersRename', 'draftGet'
   ])
-  assert.deepEqual([...moduleManifest('script').endpoints], [], '剧本没有独占端点（借 chapters 通道）')
+  // OS-214：剧本新增 2 个独占端点（剧本↔fact 互转）；剧本文件本身仍走 chapters 通道。
+  assert.deepEqual([...moduleManifest('script').endpoints].sort(), ['scriptFromFact', 'scriptToFact'])
   assert.deepEqual([...moduleManifest('worldbook').endpoints].sort(), [
     'referenceAbsorb', 'referenceAssetGet', 'referenceGet', 'referenceGraphGet', 'referenceImageGenerate', 'referenceNoteGet', 'referenceNotePut'
   ])

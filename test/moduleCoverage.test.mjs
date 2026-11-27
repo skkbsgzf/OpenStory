@@ -17,6 +17,7 @@ import {
   HOST_KEPT_RENDERERS, HOST_OWNED_ENDPOINTS, HOST_OWNED_TABS,
   coverageReport, hostOwnedEndpointIds
 } from '../tools/acceptance/moduleCoverage.mjs'
+import { ENDPOINTS } from '../src/api/contracts.mjs'
 import { TAB_REGISTRY } from '../public/views/registry.mjs'
 import { HOST_HANDLERS } from '../src/api/registry.mjs'
 import { allHandlers } from '../src/host/handlerTable.mjs'
@@ -117,8 +118,9 @@ test('b) 端点覆盖：全量 handler 键 100% 有归属或宿主白名单理�
       assert.ok(!hostOwnedEndpointIds().has(endpoint), `工作台端点 ${endpoint} 不该在宿主白名单`)
     }
   }
-  assert.equal(report.endpointCount, 109)
-  assert.equal(report.claimedEndpointCount + report.hostEndpointCount, 109)
+  // 端点数从契约派生，不写死：OS-214 起剧本域 +2，后续工单继续增长。
+  assert.equal(report.endpointCount, Object.keys(ENDPOINTS).length)
+  assert.equal(report.claimedEndpointCount + report.hostEndpointCount, Object.keys(ENDPOINTS).length)
 })
 
 test('c) 页签覆盖：每个 manifest 页签位置都落在本模块声明的页面上', () => {

@@ -1,4 +1,4 @@
-/** OS-209：42 个模块独占端点的停用→409→恢复矩阵（OS-211 加 referenceNotePut）。 */
+/** OS-209：模块独占端点的停用→409→恢复矩阵（端点数随 manifest 增长）。 */
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { ENDPOINTS } from '../src/api/contracts.mjs'
@@ -45,10 +45,10 @@ async function invoke(fx, id, root) {
   return { status: response.status, payload: await response.json().catch(() => null) }
 }
 
-test('OS-209 42 个模块端点：逐所属工作台停用→409 MODULE_DISABLED→恢复→不再 409', async () => {
+test('OS-209 模块端点：逐所属工作台停用→409 MODULE_DISABLED→恢复→不再 409', async () => {
   await withTempDaemon(async (fx) => {
     const all = owners.flatMap((owner) => owner.endpoints)
-    assert.equal(all.length, 42)
+    assert.ok(all.length >= 42, "模块端点至少 42（随 manifest 增长）")
     const tested = []
     for (const owner of owners) {
       for (const id of owner.endpoints) {
@@ -72,7 +72,7 @@ test('OS-209 42 个模块端点：逐所属工作台停用→409 MODULE_DISABLED
         tested.push(id)
       }
     }
-    assert.equal(new Set(tested).size, 42)
+    assert.equal(new Set(tested).size, all.length, "每个声明端点都必须被测到（无遗漏）")
     // 共享宿主端点不受工作台停用影响。
     await fx.json('/api/ui-state', {
       method: 'PUT', headers: { 'content-type': 'application/json' },

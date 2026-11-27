@@ -4,8 +4,11 @@
   "name": "剧本",
   "version": "0.1.0",
   "builtin": true,
-  "description": "剧本工作面：剧本文件走 chapters 的 chapter 通道，本身没有独占端点。共享通道 chapterGet / chapterPut / chaptersGet 属宿主；剧本↔fact 互转走 public/scriptFact.mjs 与既有的 fact 写协议，不另开写口。",
-  "endpoints": [],
+  "description": "剧本工作面：剧本文件走 chapters 的 chapter 通道；剧本↔fact 互转走本模块独占端点 POST /api/script/to-fact 与 /api/script/from-fact（纯结构映射、不写盘、不调模型；写入另走 /api/fact/entries/import）。",
+  "endpoints": [
+    "scriptToFact",
+    "scriptFromFact"
+  ],
   "pages": [
     {
       "id": "script",
@@ -15,7 +18,16 @@
   "settings": [],
   "class": "workbench",
   "entry": "index.mjs",
-  "requires": [{ "id": "prose.write", "min": 1 }, { "id": "fact.store", "min": 3 }],
+  "requires": [
+    {
+      "id": "prose.write",
+      "min": 1
+    },
+    {
+      "id": "fact.store",
+      "min": 3
+    }
+  ],
   "slots": [
     {
       "slot": "tab",

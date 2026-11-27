@@ -14,6 +14,7 @@ import { agentEndpoints } from '../src/api/contracts/agent.mjs'
 import { pluginsEndpoints } from '../src/api/contracts/plugins.mjs'
 import { systemEndpoints } from '../src/api/contracts/system.mjs'
 import { exchangeEndpoints } from '../src/api/contracts/exchange.mjs'
+import { scriptEndpoints } from '../src/api/contracts/script.mjs'
 
 const DOMAINS = [
   ['library', libraryEndpoints],
@@ -23,7 +24,8 @@ const DOMAINS = [
   ['agent', agentEndpoints],
   ['plugins', pluginsEndpoints],
   ['system', systemEndpoints],
-  ['exchange', exchangeEndpoints]
+  ['exchange', exchangeEndpoints],
+  ['script', scriptEndpoints]
 ]
 
 test('分域切片：各域并集正好等于聚合 ENDPOINTS（无孤儿、无覆盖）', () => {
