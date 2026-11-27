@@ -65,6 +65,34 @@ const workbench = [
     assertions: ['世界书主区可见', '无横向溢出'],
     viewports: [{ width: 1500, height: 980 }, { width: 675, height: 900 }, { width: 420, height: 800 }]
   }),
+  page('knowledge-base', 'knowledge-base', '知识库', {
+    entry: [click('#tabs .tab[data-view="knowledge-base"]'), wait('#view .kb-workspace', 15000)],
+    requiredApi: [...baseApi, api('GET', '/api/knowledge/libraries'), api('GET', '/api/knowledge/documents'), api('GET', '/api/knowledge/index/status')],
+    dom: ['#view', '.kb-workspace, .empty'],
+    assertions: ['知识库 wiki 主区可见', '无横向溢出'],
+    actions: [evaluate("document.querySelector('[data-wiki-open=\"docs/技法.md\"]').click()"), wait('#view .wiki-detail')],
+    checksAfter: [assertEval("document.querySelector('#view .wiki-detail')?.innerText.includes('三拍法')", '知识库文档详情必须显示源标题')],
+    viewports: [{ width: 1500, height: 980 }, { width: 675, height: 900 }, { width: 420, height: 800 }]
+  }),
+  page('knowledge-base-graph', 'knowledge-base', '知识库图谱', {
+    entry: [evaluate("go('knowledge-base')"), wait('#view .kb-workspace'), click('[data-action="kb-view-graph"]'), wait('#view .wiki-graph')],
+    requiredApi: [...baseApi, api('GET', '/api/knowledge/libraries'), api('GET', '/api/knowledge/documents'), api('GET', '/api/knowledge/index/status')],
+    dom: ['#view', '.wiki-graph, .graph, .empty'],
+    assertions: ['知识库图谱可见'],
+    viewports: [{ width: 1500, height: 980 }, { width: 675, height: 900 }, { width: 420, height: 800 }]
+  }),
+  page('knowledge-base-register', 'knowledge-base', '知识库登记确认', {
+    entry: [click('#tabs .tab[data-view="knowledge-base"]'), wait('#view .kb-workspace', 15000), click('[data-action="kb-register"]'), wait('#view .kb-form')],
+    requiredApi: [...baseApi, api('GET', '/api/knowledge/libraries')],
+    dom: ['#view', '.kb-form, .kb-workspace'],
+    assertions: ['登记表单与确认边界可见']
+  }),
+  page('knowledge-base-empty', 'knowledge-base', '知识库空态', {
+    entry: [evaluate("state.knowledgeBase.libraries=[]; state.knowledgeBase.activeLibraryId=''; state.knowledgeBase.loaded=true; render()"), wait('#view .empty')],
+    requiredApi: [...baseApi],
+    dom: ['#view', '.empty'],
+    assertions: ['空知识库态可见']
+  }),
   page('script', 'dir:剧本', '剧本', {
     entry: [click('#tabs .tab[data-view="dir:剧本"]'), wait('#view')],
     requiredApi: [...baseApi, api('GET', '/api/files')],
@@ -136,8 +164,8 @@ const settings = SETTINGS_NAV.flatMap((group) => group.sections.map((section) =>
     dom: ['.settings-content', '.settings-nav'],
     assertions: [`设置分区「${section.label}」可见`],
     checks: section.id === 'governance' ? [
-      assertEval("document.querySelectorAll('.gov-card').length >= 21", '治理台必须显示全部 21 内置件，本机模块允许额外增加'),
-      assertEval("document.querySelectorAll('.gov-card [role=\"switch\"]').length >= 12", '治理台必须显示全部 12 内置工作台开关，本机模块允许额外增加'),
+      assertEval("document.querySelectorAll('.gov-card').length >= 23", '治理台必须显示全部 23 内置件，本机模块允许额外增加'),
+      assertEval("document.querySelectorAll('.gov-card [role=\"switch\"]').length >= 13", '治理台必须显示全部 13 内置工作台开关，本机模块允许额外增加'),
       assertEval("document.querySelectorAll('.gov-graph-node').length >= 21", '能力图必须显示全部 21 内置节点，本机模块允许额外增加')
     ] : [],
     actions: section.id === 'governance' ? [click('[data-gov-action="expand"][data-id="fact"]')] : [],
@@ -212,8 +240,8 @@ const criticalScenarios = [
     requiredApi: [...baseApi],
     dom: ['.gov', '.gov-graph'],
     checks: [
-      assertEval("document.querySelectorAll('.gov-card').length >= 21", '没开库仍显示全部 21 内置件，本机模块允许额外增加'),
-      assertEval("[...document.querySelectorAll('.gov-card [role=\"switch\"]')].length >= 12", '没开库仍有全部 12 内置工作台开关')
+      assertEval("document.querySelectorAll('.gov-card').length >= 23", '没开库仍显示全部 23 内置件，本机模块允许额外增加'),
+      assertEval("[...document.querySelectorAll('.gov-card [role=\"switch\"]')].length >= 13", '没开库仍有全部 13 内置工作台开关')
     ],
     checksAfter: [
       assertEval("[...document.querySelectorAll('.gov-card [role=\"switch\"]')].every((el) => el.disabled)", '没开库所有工作台开关必须 disabled'),

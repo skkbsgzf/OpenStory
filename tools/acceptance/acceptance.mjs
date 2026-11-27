@@ -107,7 +107,7 @@ console.log('\n── S0 布局 ──')
 // S0.1 根目录白名单（OS-159 收紧）：根目录下的文件与目录必须落在清单里，多一个都红。
 // 入口不再放仓根垫片——`node src/host/daemon.mjs` / `node src/host/mcp.mjs` 直跑实现文件。
 const ROOT_FILES = new Set(['AGENTS.md', 'ARCHITECTURE.md', 'LICENSE', 'README.md', 'package.json', 'package-lock.json', '.gitignore'])
-const ROOT_DIRS = new Set(['src', 'public', 'test', 'tools', 'docs', 'samples', 'suites', 'runtimes', 'styles', 'genres', 'skills', 'design-system', '.github', '.zcode', '.ua', '.cache', 'node_modules'])
+const ROOT_DIRS = new Set(['src', 'public', 'test', 'tools', 'docs', 'samples', 'knowledge-packs', 'suites', 'runtimes', 'styles', 'genres', 'skills', 'design-system', '.github', '.zcode', '.ua', '.cache', 'node_modules'])
 const rootEntries = readdirSync(REPO).sort()
 const rootStrays = rootEntries.filter((name) => {
   if (ROOT_FILES.has(name) || ROOT_DIRS.has(name)) return false

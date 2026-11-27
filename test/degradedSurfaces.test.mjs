@@ -227,8 +227,8 @@ test('OS-203·daemon 降级载荷：扮演页签是降级定义，其余七个�
   await withDegradedDaemon((payload) => {
     const defs = projectedTabDefs({ slots: payload.slots, ctx: ctx() })
     // 沿用 OS-200 的降级夹具：analysis/habits 停在禁用态，只有 roleplay 是降级页签。
-    assert.equal(defs.length, 7)
-    assert.deepEqual(defs.map((def) => def.view), ['artifacts', 'chapters', 'worldbook', 'dir:剧本', 'dir:日志', 'dir:故事源', 'roleplay'])
+    assert.equal(defs.length, 8)
+    assert.deepEqual(defs.map((def) => def.view), ['artifacts', 'chapters', 'knowledge-base', 'worldbook', 'dir:剧本', 'dir:日志', 'dir:故事源', 'roleplay'])
     const roleplay = defs.find((def) => def.view === 'roleplay')
     assert.equal(roleplay.degraded, true)
     assert.ok(roleplay.missing.some((item) => item.capability === 'text.analyze' && item.min === 1))

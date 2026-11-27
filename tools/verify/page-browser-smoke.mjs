@@ -167,7 +167,7 @@ try {
     browser = await launchCdpBrowser()
     for (const item of pages) await runPage(browser, item)
     return null
-  }, { defaultRoot: pages.some((item) => item.scope === 'library'), localModule: pages.some((item) => item.setup === 'local-module') })
+  }, { defaultRoot: pages.some((item) => item.scope === 'library'), localModule: pages.some((item) => item.setup === 'local-module'), knowledge: pages.some((item) => item.id.startsWith('knowledge-base')) })
 } catch (error) {
   browserError = String(error?.message ?? error)
   console.error(`✗ 浏览器 smoke 启动/执行失败：${browserError}`)

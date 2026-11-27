@@ -1,7 +1,7 @@
 /**
  * OS-201：插件治理台卡片流——模型、卡片、确认条、没开库、自报设置、降级、空态与接线。
  *
- * 夹具直接用 OS-200 的纯函数（projectModuleGraph/slotProjection）对内置 21 件生成
+ * 夹具直接用 OS-200 的纯函数（projectModuleGraph/slotProjection）对内置 23 件生成
  * /api/plugins 形状载荷，不手抄名单；测试只用内存对象，不碰真库与本机目录。
  */
 import test from 'node:test'
@@ -51,11 +51,11 @@ const cardOf = (id, from = model()) => {
 }
 const cards = (id) => pluginCardHtml(cardOf(id), { esc, expanded: true })
 
-test('OS-201·模型：三组 7/12/2 顺序固定，摘要按位置口径，surfaces 与 slots 一致', () => {
+test('OS-201·模型：三组 8/13/2 顺序固定，摘要按位置口径，surfaces 与 slots 一致', () => {
   const result = model()
-  assert.equal(result.total, 21)
+  assert.equal(result.total, 23)
   assert.deepEqual(result.groups.map((group) => group.id), ['kernel', 'workbench', 'host'])
-  assert.deepEqual(result.groups.map((group) => group.cards.length), [7, 12, 2])
+  assert.deepEqual(result.groups.map((group) => group.cards.length), [8, 13, 2])
   assert.equal(cardOf('fact', result).summary, '供给 7 项 · 被 10 件依赖')
   assert.match(cardOf('roleplay', result).summary, /页签/u)
   assert.match(cardOf('analysis', result).summary, /右栏/u)
@@ -142,7 +142,7 @@ test('OS-201·没开库：开关置灰并提示先开库；页头写未打开库
 })
 
 /* ── OS-205a 没开库真实条件：canToggle 只由 state.current 决定，不看 options ── */
-// /api/plugins.modules[] 的真实形状：21 件模块 + 48 件货架（class:'suite'），共 69 条。
+// /api/plugins.modules[] 的真实形状：23 件模块 + 48 件货架（class:'suite'），共 71 条。
 const suiteFillers = Array.from({ length: 48 }, (_, index) => ({
   id: `suite-filler-${String(index).padStart(2, '0')}`,
   name: `货架${index}`,
@@ -152,15 +152,15 @@ const fullPayload = buildPayload({ modules: [...payload.modules, ...suiteFillers
 const toggleButtons = (html) => [...html.matchAll(/<button\b[^>]*data-gov-action="toggle"[^>]*>/gu)].map((match) => match[0])
 const govView = (current) => ({ ...deps, state: { plugins: fullPayload, current }, uiMemory: () => ({ values: {} }) })
 
-test('OS-205a·没开库真实条件：不传 options 时 12 个开关全置灰，卡片/能力图 21/21 照常可看', () => {
-  assert.equal(fullPayload.modules.length, 69, '真实载荷是 21 件模块 + 48 件货架')
+test('OS-205a·没开库真实条件：不传 options 时 13 个开关全置灰，卡片/能力图 23/23 照常可看', () => {
+  assert.equal(fullPayload.modules.length, 71, '真实载荷是 23 件模块 + 48 件货架')
   // 真实页面调用 governanceHtml() 不传第二个参数——这正是原缺陷漏掉的路径。
   const html = governanceHtml(govView(null))
-  assert.match(html, /21 件 · 未打开库/u, '页头仍写未打开库')
-  assert.equal((html.match(/data-gov-id="/gu) ?? []).length, 21, '卡片数不变')
-  assert.equal(nodeTags(html).length, 21, '能力图节点数不变')
+  assert.match(html, /23 件 · 未打开库/u, '页头仍写未打开库')
+  assert.equal((html.match(/data-gov-id="/gu) ?? []).length, 23, '卡片数不变')
+  assert.equal(nodeTags(html).length, 23, '能力图节点数不变')
   const toggles = toggleButtons(html)
-  assert.equal(toggles.length, 12, '12 个工作台开关')
+  assert.equal(toggles.length, 13, '13 个工作台开关')
   for (const toggle of toggles) {
     assert.match(toggle, /\bdisabled\b/u, '没开库要 disabled')
     assert.match(toggle, /aria-disabled="true"/u, '没开库要 aria-disabled')
@@ -170,11 +170,11 @@ test('OS-205a·没开库真实条件：不传 options 时 12 个开关全置灰�
   assert.match(html, /右栏 · 依赖 1 项/u, '依赖照常可看')
 })
 
-test('OS-205a·已开库真实条件：同一载荷不传 options 时 12 个开关可点，不带 disabled', () => {
+test('OS-205a·已开库真实条件：同一载荷不传 options 时 13 个开关可点，不带 disabled', () => {
   const html = governanceHtml(govView({ path: '/lib', name: '测试库' }))
   assert.match(html, /当前库：测试库/u)
   const toggles = toggleButtons(html)
-  assert.equal(toggles.length, 12)
+  assert.equal(toggles.length, 13)
   for (const toggle of toggles) {
     assert.doesNotMatch(toggle, /\bdisabled\b/u, '开库后开关可点')
     assert.doesNotMatch(toggle, /aria-disabled/u, '开库后不带 aria-disabled')
@@ -270,7 +270,7 @@ test('OS-201·导航：治理台入口就位、旧 moduleSettings 深链重定�
   assert.match(views.settingsHtml(), /治理台已装载/u, '旧 id 深链仍渲染治理台')
 })
 
-// OS-201a：21 件模块 + 货架条目的真实混合载荷（货架来自五类货架清单，class:'suite'）。
+// OS-201a：23 件模块 + 货架条目的真实混合载荷（货架来自五类货架清单，class:'suite'）。
 const suiteEntries = [
   { id: 'suite-skill-zz1', name: '货架甲ZZZ', class: 'suite', role: 'suite', version: '1.0.0',
     settings: [{ key: 'tone', label: '语气', type: 'string', default: '平实' }], settingsHint: '真配置在套件状态文件' },
@@ -281,10 +281,10 @@ const suiteEntries = [
 ]
 const mixedPayload = buildPayload({ modules: [...payload.modules, ...suiteEntries] })
 
-test('OS-201a·治理台只出 21 件模块：total 是模块数，三组 7/12/2，货架一条都不出卡', () => {
+test('OS-201a·治理台只出 23 件模块：total 是模块数，三组 8/13/2，货架一条都不出卡', () => {
   const result = governanceModel(mixedPayload, {}, deps)
-  assert.equal(result.total, 21, 'total 是模块数，不是 modules[] 长度')
-  assert.deepEqual(result.groups.map((group) => group.cards.length), [7, 12, 2])
+  assert.equal(result.total, 23, 'total 是模块数，不是 modules[] 长度')
+  assert.deepEqual(result.groups.map((group) => group.cards.length), [8, 13, 2])
   for (const suite of suiteEntries) {
     for (const group of result.groups) {
       assert.ok(!group.cards.some((card) => card.id === suite.id), `${group.id} 组混进了货架 ${suite.id}`)
@@ -302,7 +302,7 @@ test('OS-201a·货架带 settings／非空 settingsHint 也不进治理台 HTML�
     assert.ok(!html.includes(suite.id), `治理台 HTML 出现货架 id：${suite.id}`)
     assert.ok(!html.includes(suite.name), `治理台 HTML 出现货架名称：${suite.name}`)
   }
-  assert.match(html, /21 件/u, '页头计数仍是模块数')
+  assert.match(html, /23 件/u, '页头计数仍是模块数')
 })
 
 test('OS-201a·isGovernanceModule：kernel／workbench／host-composition 为真，suite／畸形／空载荷为假', () => {
@@ -350,14 +350,14 @@ const nodeGroups = (html) => [...html.matchAll(/<g class="gov-graph-node[ "][\s\
 const edgeTags = (html) => [...html.matchAll(/<path class="gov-graph-edge[ "][^>]*>/gu)].map((match) => match[0])
 const hasClass = (tag, cls) => new RegExp(`\\b${cls}\\b`, 'u').test(attrOf(tag, 'class'))
 
-test('OS-202·布局：21 节点坐标有限且互不相交、同输入逐字相同；38 条非底座边全带箭头且端点都在图里', () => {
+test('OS-202·布局：23 节点坐标有限且互不相交、同输入逐字相同；39 条非底座边全带箭头且端点都在图里', () => {
   const html = graphOf()
   const nodes = nodeTags(html)
-  assert.equal(nodes.length, 21)
+  assert.equal(nodes.length, 23)
   const ids = nodes.map((tag) => attrOf(tag, 'data-id'))
-  assert.equal(new Set(ids).size, 21)
+  assert.equal(new Set(ids).size, 23)
   const rects = [...html.matchAll(/<g class="gov-graph-node[ "][\s\S]*?<rect ([^>]*)\/>/gu)].map((match) => match[1])
-  assert.equal(rects.length, 21)
+  assert.equal(rects.length, 23)
   const boxes = rects.map((rect) => ({
     x: Number(attrOf(rect, 'x')), y: Number(attrOf(rect, 'y')),
     w: Number(attrOf(rect, 'width')), h: Number(attrOf(rect, 'height'))
@@ -377,7 +377,7 @@ test('OS-202·布局：21 节点坐标有限且互不相交、同输入逐字相
   }
   assert.equal(html, graphOf(), '同一输入两次输出逐字相同')
   const edges = edgeTags(html)
-  assert.equal(edges.length, 38)
+  assert.equal(edges.length, 39)
   for (const edge of edges) {
     assert.match(edge, /marker-end="url\(#gov-graph-arrow[^"]*\)"/u, '每条非底座边都要有箭头')
     assert.ok(ids.includes(attrOf(edge, 'data-from')), `边的 from 不是节点：${attrOf(edge, 'data-from')}`)
@@ -388,14 +388,14 @@ test('OS-202·布局：21 节点坐标有限且互不相交、同输入逐字相
   assert.ok(html.indexOf('gov-graph-edges') < html.indexOf('gov-graph-nodes'), '边在节点下层')
 })
 
-test('OS-202·选中：fact 高亮 14 边/10 邻节点/压暗 10 节点，roleplay 高亮 4 边，取消后无高亮无压暗', () => {
+test('OS-202·选中：fact 高亮 14 边/10 邻节点/压暗 12 节点，roleplay 高亮 4 边，取消后无高亮无压暗', () => {
   const hotEdges = (html) => edgeTags(html).filter((tag) => hasClass(tag, 'hot')).length
   const adjNodes = (html) => nodeTags(html).filter((tag) => hasClass(tag, 'adj')).length
   const dimNodes = (html) => nodeTags(html).filter((tag) => hasClass(tag, 'dim')).length
   const fact = graphOf('fact')
   assert.equal(hotEdges(fact), 14)
   assert.equal(adjNodes(fact), 10)
-  assert.equal(dimNodes(fact), 10)
+  assert.equal(dimNodes(fact), 12)
   assert.match(nodeTags(fact).find((tag) => attrOf(tag, 'data-id') === 'fact'), /\bsel\b/u)
   assert.equal(hotEdges(graphOf('roleplay')), 4)
   const plain = graphOf()
@@ -434,7 +434,7 @@ test('OS-202·状态：本机标记、停用虚线框与虚线边且不高亮、
 
 test('OS-202·说明条：三个底座能力与依赖方数取自数据；graph 缺失整块不出', () => {
   const note = graphOf().match(/<text class="gov-graph-note-text"[^>]*>([^<]*)<\/text>/u)?.[1] || ''
-  assert.match(note, /base\.write（4 件依赖）/u)
+  assert.match(note, /base\.write（5 件依赖）/u)
   assert.match(note, /base\.contract（2 件依赖）/u)
   assert.match(note, /base\.naming（5 件依赖）/u)
   assert.match(note, /装载协议 · 能力图 · 契约壳 · 物理写管道（全员依赖，图中略）/u)
@@ -443,7 +443,7 @@ test('OS-202·说明条：三个底座能力与依赖方数取自数据；graph 
   const html = governanceHtml(view)
   assert.doesNotMatch(html, /gov-map/u)
   assert.doesNotMatch(html, /gov-graph/u)
-  assert.match(html, /21 件/u, '卡片流照常渲染')
+  assert.match(html, /23 件/u, '卡片流照常渲染')
 })
 
 test('OS-202·装配：图例、收起/展开按钮、图与卡片共用选中态并滚动闪一下', () => {
@@ -484,7 +484,7 @@ test('OS-202·转义：节点名含 < 与引号时转义，边标题同样转义
 /* ── OS-202a 节点可点：纯函数 / 装配 / 委托命中 / 键盘实测 ────────────────── */
 test('OS-202a·节点可点：纯函数输出每个节点都带 data-gov-action/role/tabindex/aria-label，数量与节点数相等', () => {
   const tags = nodeTags(graphOf())
-  assert.equal(tags.length, 21)
+  assert.equal(tags.length, 23)
   for (const tag of tags) {
     assert.equal(attrOf(tag, 'data-gov-action'), 'graph-node', '每个节点都要能被整页委托命中')
     assert.equal(attrOf(tag, 'role'), 'button', '读屏要当成按钮')
@@ -504,7 +504,7 @@ test('OS-202a·装配：governanceHtml 里的 svg 节点同样带 data-gov-actio
   const svg = governanceHtml(view).match(/<svg class="gov-graph"[\s\S]*?<\/svg>/u)?.[0]
   assert.ok(svg, '整页要有能力图 svg')
   const tags = nodeTags(svg)
-  assert.equal(tags.length, 21)
+  assert.equal(tags.length, 23)
   for (const tag of tags) {
     assert.equal(attrOf(tag, 'data-gov-action'), 'graph-node')
     assert.equal(attrOf(tag, 'role'), 'button')
@@ -531,7 +531,7 @@ test('OS-202a·接线回归：假 DOM 上委托选择器能命中 [data-gov-acti
     const target = element.closest('[data-gov-action]')
     return target && target.dataset.govAction === 'graph-node' && target.dataset.id
   })
-  assert.equal(hits.length, 21, '页面上没有任何可被委托命中的 graph-node 节点——节点可点性回归')
+  assert.equal(hits.length, 23, '页面上没有任何可被委托命中的 graph-node 节点——节点可点性回归')
   for (const hit of hits) assert.ok(hit.tag.includes('role="button"'))
   const source = readFileSync(join(REPO, 'public/views/governanceViews.mjs'), 'utf8')
   assert.match(source, /closest\?\.\('\[data-gov-action\]'\)/u, '点击委托用的选择器')

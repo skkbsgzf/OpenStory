@@ -39,11 +39,11 @@ test('a) 模块清单：src/modules/ 下每个目录都有合法 @2 manifest，c
     assert.equal(checked.ok, true, `${manifest.id}: ${checked.errors?.join('；')}`)
   }
   assert.deepEqual(report.coreFieldOwners, [])
-  // C6 实测 20 个已登记模块：11 workbench + 7 kernel + 2 host-composition。
-  assert.equal(report.manifestIds.length, 21)
+  // 阶段 C 实测 23 个已登记模块：13 workbench + 8 kernel + 2 host-composition。
+  assert.equal(report.manifestIds.length, 23)
   assert.equal(report.manifestIds.length, report.moduleDirs.length)
-  assert.equal(report.sourceGroups.workbench.length, 12)
-  assert.deepEqual(report.sourceGroups.kernel, ['agent-runtime', 'deduce', 'fact', 'media', 'prose', 'storage', 'text'])
+  assert.equal(report.sourceGroups.workbench.length, 13)
+  assert.deepEqual(report.sourceGroups.kernel, ['agent-runtime', 'deduce', 'fact', 'knowledge-runtime', 'media', 'prose', 'storage', 'text'])
   assert.deepEqual(report.sourceGroups['host-composition'], ['agentbar', 'library'])
   assert.deepEqual(report.sourceIssues, [])
 })

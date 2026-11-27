@@ -94,18 +94,21 @@ test('激活上下文：记录依赖句柄，贡献白名单不收未知字段',
   assert.equal(validateModuleContribution(manifest('alpha'), { capabilities: { 'alpha.run': { run() {} } }, rogue: {} }).ok, false)
 })
 
-test('生产能力图：20 个内置入口全部真实激活，七内核贡献完整且零图问题', async () => {
+test('生产能力图：23 个内置入口全部真实激活，八内核贡献完整且零图问题', async () => {
   assert.deepEqual(CAPABILITY_SNAPSHOT.issues, [])
   const result = await activateModules({ snapshot: CAPABILITY_SNAPSHOT, manifests: MODULE_MANIFESTS })
   assert.deepEqual(result.activated.map((item) => item.id), MODULE_MANIFESTS.map((item) => item.id))
-  assert.equal(result.activated.length, 21)
+  assert.equal(result.activated.length, 23)
   assert.deepEqual(
     result.activated.filter((item) => MODULE_MANIFESTS.find((manifest) => manifest.id === item.id)?.class === 'kernel')
       .flatMap((item) => Object.keys(item.contribution.capabilities)).sort(),
-    ['agent.runtime', 'deduce.engine', 'fact.books', 'fact.domain', 'fact.engine', 'fact.enrich', 'fact.pack', 'fact.store', 'fact.write', 'media.describe', 'media.generate', 'prose.write', 'storage.inventory', 'storage.roots', 'storage.scaffold', 'library.list', 'text.analyze'].sort()
+    ['agent.runtime', 'deduce.engine', 'fact.books', 'fact.domain', 'fact.engine', 'fact.enrich', 'fact.pack', 'fact.store', 'fact.write', 'knowledge.retrieval', 'media.describe', 'media.generate', 'prose.write', 'storage.inventory', 'storage.roots', 'storage.scaffold', 'library.list', 'text.analyze'].sort()
   )
+  // 唯一无 requires 的内核是 knowledge-runtime：它只供给能力，不解析任何依赖。
+  assert.deepEqual(MODULE_MANIFESTS.filter((manifest) => !manifest.requires?.length).map((manifest) => manifest.id), ['knowledge-runtime'])
   for (const item of result.activated) {
-    assert.ok(item.resolved.length > 0, `${item.id} 必须真实解析依赖`)
+    if (item.id === 'knowledge-runtime') assert.deepEqual(item.resolved, [])
+    else assert.ok(item.resolved.length > 0, `${item.id} 必须真实解析依赖`)
     for (const dependency of item.resolved) assert.equal(dependency.capability.snapshot, CAPABILITY_SNAPSHOT.id)
   }
 })

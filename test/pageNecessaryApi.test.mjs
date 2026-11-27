@@ -150,10 +150,12 @@ test('OS-208 目录：新建幂等、非法名/保留名/路径分隔符拒绝',
 
 test('OS-208 知识库：配置写/密钥掩码/__KEEP__/停用不写；连接测试无外部依赖', async () => {
   await withTempDaemon(async (fx) => {
-    const saved = ok(await call(fx, 'PUT', '/api/kb/config', { root: fx.root, baseUrl: 'http://127.0.0.1:1', apiKey: 'sk-test-secret-value', collections: { test: 'c1' } }))
+    // 严格配置校验后 backend 必须是 weknora/mock，夹具显式写合法 backend，
+    // 不再依赖空档时 loadKbConfig 兜出的 'none' 被透传写回。
+    const saved = ok(await call(fx, 'PUT', '/api/kb/config', { root: fx.root, backend: 'weknora', baseUrl: 'http://127.0.0.1:1', apiKey: 'sk-test-secret-value', collections: { test: 'c1' } }))
     assert.ok(saved.status)
     const read = ok(await call(fx, 'GET', '/api/kb/config', { root: fx.root }))
-    assert.equal(read.config.apiKeyMasked, 'sk-tes…alue')
+    assert.equal(read.config.apiKeyMasked, '••••alue')
     assert.equal(read.masked, true)
     assert.ok(!JSON.stringify(read).includes('sk-test-secret-value'))
     ok(await call(fx, 'PUT', '/api/kb/config', { root: fx.root, apiKey: '__KEEP__' }))

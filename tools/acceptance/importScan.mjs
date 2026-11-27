@@ -70,6 +70,23 @@ export const PUBLIC_EDGE_ALLOW = Object.freeze([
   Object.freeze({
     edge: 'scriptFact.mjs -> src/modules/script/scriptFact.mjs',
     reason: 'OS-214 单向 re-export：scriptFact 只依赖 scriptParse，纯结构映射不调模型不写盘；/api/script/to-fact 与 /from-fact 与前端共用同一份算法'
+  }),
+  // OS-225：公共 wiki 呈现层。被世界书与独立知识库复用，零 DOM/存储/模块实现引用。
+  Object.freeze({
+    edge: 'reference.mjs -> wiki/tree.mjs',
+    reason: 'OS-225 单向 import 公共 wiki 树模型；tree.mjs 是零依赖纯函数，世界书只在 adapter 里注入作品策略，不形成模块耦合'
+  }),
+  Object.freeze({
+    edge: 'reference.mjs -> wiki/view.mjs',
+    reason: 'OS-225 单向 import 公共 wiki HTML 构造；view.mjs 零 DOM/存储/世界书字段，世界书注入 data-ref 与 firstChapter badge'
+  }),
+  Object.freeze({
+    edge: 'views/knowledgeBaseViews.mjs -> wiki/view.mjs',
+    reason: 'OS-227 独立知识库复用 OS-225 公共 wiki 呈现层；view.mjs 无知识库状态/服务依赖，只吃入参返回 HTML'
+  }),
+  Object.freeze({
+    edge: 'views/referenceViews.mjs -> wiki/view.mjs',
+    reason: 'OS-225 世界书视图 adapter 转调公共 wiki 详情/反链/图谱/节点卡；公共层不读世界书 state 或策略'
   })
 ])
 

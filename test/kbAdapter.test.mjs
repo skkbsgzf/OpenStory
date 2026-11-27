@@ -6,7 +6,7 @@
  */
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
@@ -14,6 +14,7 @@ import {
   createKbClient,
   defaultKbConfigPath,
   loadKbConfig,
+  maskApiKey,
   normalizeCollections,
   normalizeHits
 } from '../src/modules/knowledge/knowledgeAdapter.mjs'
@@ -34,7 +35,11 @@ test('检索响应：WeKnora {success,data:[chunk]} → 我们的 hit 形状', (
   assert.equal(hits[0].text, '结尾一句反转是知乎短篇的标配。')
   assert.equal(hits[0].score, 0.82)
   assert.equal(hits[0].meta.knowledgeId, 'k1')
+  assert.equal(hits[0].knowledgeId, 'k1')
+  assert.equal(hits[0].knowledgeBaseId, 'kb1')
+  assert.equal(hits[0].chunkIndex, 3)
   assert.equal(hits[1].meta.chunkIndex, 0)
+  assert.equal('chunkIndex' in normalizeHits({ data: [{ id: 'no-index', content: 'x' }] })[0], false, '未知 chunkIndex 不伪造')
 })
 
 test('检索响应：空体/坏体不抛，返回空数组', () => {
@@ -70,10 +75,26 @@ test('KB 配置：缺档＝未配置（不是错误）；坏档记 warning；bac
     await writeFile(path, '{ broken', 'utf-8')
     const corrupt = await loadKbConfig(path)
     assert.equal(corrupt.config.backend, 'none')
-    assert.equal(corrupt.warnings[0].code, 'KB_CONFIG_CORRUPT')
+    assert.equal(corrupt.ok, false)
+    assert.equal(corrupt.code, 'KB_CONFIG_CORRUPT')
+
+    const unreadablePath = join(base, 'directory-not-file')
+    await mkdir(unreadablePath)
+    const unreadable = await loadKbConfig(unreadablePath)
+    assert.equal(unreadable.ok, false)
+    assert.equal(unreadable.code, 'KB_CONFIG_CORRUPT')
+
+    const primitivePath = join(base, 'primitive-config.json')
+    await writeFile(primitivePath, '"not-an-object"', 'utf-8')
+    assert.equal((await loadKbConfig(primitivePath)).code, 'KB_CONFIG_CORRUPT')
+
+    await writeFile(path, JSON.stringify({ baseUrl: 'http://127.0.0.1:8080/', apiKey: 'fixture-key', spaceId: 's1' }), 'utf-8')
+    const noBackend = await loadKbConfig(path)
+    assert.equal(noBackend.ok, true, '既有 kb-config 可省略 backend，默认由消费者按 weknora 处理')
+    assert.equal(noBackend.config.apiKey, 'fixture-key')
 
     await writeFile(path, JSON.stringify({ backend: 'pinecone' }), 'utf-8')
-    assert.equal((await loadKbConfig(path)).warnings[0].code, 'KB_CONFIG_BACKEND')
+    assert.equal((await loadKbConfig(path)).code, 'KB_CONFIG_BACKEND')
 
     await writeFile(path, JSON.stringify({ backend: 'weknora', baseUrl: 'http://127.0.0.1:8080/', apiKey: 'k', spaceId: 's1' }), 'utf-8')
     const good = await loadKbConfig(path)
@@ -81,6 +102,16 @@ test('KB 配置：缺档＝未配置（不是错误）；坏档记 warning；bac
     assert.equal(good.config.baseUrl, 'http://127.0.0.1:8080', '尾斜杠剥掉')
   } finally {
     await rm(base, { recursive: true, force: true })
+  }
+})
+
+test('密钥掩码：≤8 全掩码；长密钥只回尾号；与凭据工具口径一致', async () => {
+  const { maskApiKey: canonicalMaskApiKey } = await import('../src/modules/agent-runtime/credentials.mjs')
+  for (const key of ['x', '12345678']) assert.equal(maskApiKey(key), '••••')
+  assert.equal(maskApiKey('123456789'), '••••6789')
+  assert.equal(maskApiKey('  sk-test-secret-tail  '), '••••tail')
+  for (const key of ['', 'tiny', '12345678', '123456789', 'sk-test-secret-tail']) {
+    assert.equal(maskApiKey(key), canonicalMaskApiKey(key))
   }
 })
 
@@ -150,8 +181,11 @@ test('weknora 客户端：打真实端点与请求体；不可达＝KB_UNAVAILAB
   assert.equal(searchCall.body.match_count, 8, 'WeKnora 用 match_count 而非 top_k')
   assert.equal(searchCall.headers['x-api-key'], 'sk-x', 'WeKnora API key 走 X-API-Key 头')
 
-  const down = createKbClient({ backend: 'weknora', baseUrl: 'http://127.0.0.1:1' }, { fetchImpl: async () => { throw new Error('ECONNREFUSED') } })
-  assert.equal((await down.query({ collectionIds: ['kb1'], query: 'x' })).code, KB_ERROR_CODES.KB_UNAVAILABLE)
+  const secret = 'sk-do-not-leak-1234567890'
+  const down = createKbClient({ backend: 'weknora', baseUrl: 'http://127.0.0.1:1' }, { fetchImpl: async () => { throw new Error(`leaked secret ${secret}`) } })
+  const downResult = await down.query({ collectionIds: ['kb1'], query: 'x' })
+  assert.equal(downResult.code, KB_ERROR_CODES.KB_UNAVAILABLE)
+  assert.equal(JSON.stringify(downResult).includes(secret), false, '连接异常不得回显密钥')
 
   const denied = createKbClient({ backend: 'weknora', baseUrl: 'http://x' }, { fetchImpl: async () => ({ ok: false, status: 401 }) })
   assert.equal((await denied.listCollections()).code, KB_ERROR_CODES.KB_UNAUTHORIZED)

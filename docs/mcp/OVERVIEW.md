@@ -1,6 +1,6 @@
 # OpenStory 本地 MCP · 总览（对外分发材料）
 
-OpenStory 是跑在本机的小说工作台。MCP 当前对外提供 **65 个工具**：覆盖小说与剧本载体、世界书、习惯、故事源事实与富化、确定性推演、多角色扮演、多局会话、素材、建库与套件、升级确认链、导入导出、技能、分析和插件投影。工具名、参数与描述以 `src/host/mcp.mjs` 导出的 `MCP_TOOL_NAMES` 和运行时 `tools/list` 为唯一真源；本目录只讲能力边界与使用顺序。
+OpenStory 是跑在本机的小说工作台。MCP 当前对外提供 **68 个工具**：覆盖小说与剧本载体、世界书、独立知识库、习惯、故事源事实与富化、确定性推演、多角色扮演、多局会话、素材、建库与套件、升级确认链、导入导出、技能、分析和插件投影。工具名、参数与描述以 `src/host/mcp.mjs` 导出的 `MCP_TOOL_NAMES` 和运行时 `tools/list` 为唯一真源；本目录只讲能力边界与使用顺序。
 
 ## 连接
 
@@ -20,6 +20,7 @@ OpenStory 是跑在本机的小说工作台。MCP 当前对外提供 **65 个工
 | 元信息 | `openstory_libraries`、`openstory_files`：取 root、看库内文件 | 见下 |
 | 小说与章节 | `openstory_novel_list_chapters`、`openstory_novel_read_chapter`、`openstory_novel_write_chapter`、`openstory_novel_new_chapter`、`openstory_novel_delete_chapter`、`openstory_chapters_rename`：正文/剧本载体章节读写与保号重命名 | [novel.md](novel.md) |
 | 世界书 | `openstory_reference_index`、`openstory_reference_graph`、`openstory_reference_read_note`、`openstory_reference_write_note`：创作型条目知识库、标签、双链与反链 | [reference.md](reference.md) |
+| 独立知识库 | `openstory_knowledge_libraries`、`openstory_knowledge_search`、`openstory_knowledge_read`：跨项目储备知识的清单、统一检索与只读文档 | [knowledge.md](knowledge.md) |
 | 习惯 | `openstory_habits_read`、`openstory_habits_put`：作者写作规矩，成文前必读必守 | 见下 |
 | 视觉与生图 | `openstory_vision_describe`：为库内图片写文学白描；`openstory_image_generate`：为世界书条目生成设定图 | [assets.md](assets.md) |
 | 故事源事实 | `openstory_fact_books`、`openstory_fact_entries`、`openstory_fact_entries_import`：事实书定位、条目读取与整份替换 | [fact.md](fact.md) |

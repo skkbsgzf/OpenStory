@@ -479,12 +479,12 @@ test('快照与启动报告递归冻结，报告只含可公开的路由与问�
   assert.equal('statuses' in report, false)
 })
 
-test('OS-192 内置能力图干净：模块＋五类货架逐项 loaded，七内核按实际 id 排序', () => {
+test('OS-192 内置能力图干净：模块＋五类货架逐项 loaded，八内核按实际 id 排序', () => {
   assert.equal(CAPABILITY_SNAPSHOT.ok, true)
   assert.deepEqual(CAPABILITY_SNAPSHOT.issues, [])
-  assert.equal(MODULE_MANIFESTS.length, 21)
+  assert.equal(MODULE_MANIFESTS.length, 23)
   const kernels = MODULE_MANIFESTS.filter((item) => item.class === 'kernel').map((item) => item.id).sort()
-  assert.deepEqual(kernels, ['agent-runtime', 'deduce', 'fact', 'media', 'prose', 'storage', 'text'])
+  assert.deepEqual(kernels, ['agent-runtime', 'deduce', 'fact', 'knowledge-runtime', 'media', 'prose', 'storage', 'text'])
   assert.deepEqual([...CAPABILITY_SNAPSHOT.loaded].sort(), ALL_CAPABILITY_MANIFESTS.map((item) => item.id).sort())
   for (const group of ['技能包', '文风包', '体裁包', '运行时套件', '业务套装']) {
     assert.ok(SHELF_MANIFESTS.some((item) => item.group === group), `${group} 必须进能力图`)

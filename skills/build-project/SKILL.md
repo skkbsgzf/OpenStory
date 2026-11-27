@@ -6,7 +6,7 @@ vendor: skkbsgzf
 category: operate
 genres: ["*"]
 stage: draft
-tools: [openstory_libraries, openstory_files, openstory_novel_list_chapters, openstory_novel_read_chapter, openstory_novel_write_chapter, openstory_novel_new_chapter, openstory_novel_delete_chapter, openstory_chapters_rename, openstory_reference_index, openstory_reference_graph, openstory_reference_read_note, openstory_reference_write_note, openstory_habits_read, openstory_habits_put, openstory_vision_describe, openstory_image_generate, openstory_deduce_present, openstory_deduce_settle, openstory_enrich_run, openstory_enrich_status, openstory_enrich_graph, openstory_fact_curve, openstory_analysis_chapter, openstory_skills_list, openstory_skills_read, openstory_library_create, openstory_library_diagnose, openstory_library_scan, openstory_library_import, openstory_library_primary, openstory_suites, openstory_suite_enable, openstory_suite_settings, openstory_fact_books, openstory_fact_entries, openstory_fact_entries_import, openstory_exchange_export, openstory_exchange_import, openstory_script_to_fact, openstory_script_from_fact, openstory_sessions, openstory_session_get, openstory_session_new, openstory_session_switch, openstory_session_delete, openstory_session_put, openstory_roleplay_turn, openstory_roleplay_archive, openstory_roleplay_export, openstory_roleplay_promote, openstory_roleplay_pending, openstory_roleplay_branch, openstory_assets, openstory_asset_read, openstory_asset_put, openstory_deduce_image, openstory_plugins, openstory_roleplay_opening, openstory_roleplay_scene_turn, openstory_ui_state]
+tools: [openstory_libraries, openstory_files, openstory_novel_list_chapters, openstory_novel_read_chapter, openstory_novel_write_chapter, openstory_novel_new_chapter, openstory_novel_delete_chapter, openstory_chapters_rename, openstory_reference_index, openstory_reference_graph, openstory_reference_read_note, openstory_reference_write_note, openstory_habits_read, openstory_habits_put, openstory_vision_describe, openstory_image_generate, openstory_deduce_present, openstory_deduce_settle, openstory_enrich_run, openstory_enrich_status, openstory_enrich_graph, openstory_fact_curve, openstory_analysis_chapter, openstory_skills_list, openstory_skills_read, openstory_library_create, openstory_library_diagnose, openstory_library_scan, openstory_library_import, openstory_library_primary, openstory_suites, openstory_suite_enable, openstory_suite_settings, openstory_fact_books, openstory_fact_entries, openstory_fact_entries_import, openstory_exchange_export, openstory_exchange_import, openstory_script_to_fact, openstory_script_from_fact, openstory_sessions, openstory_session_get, openstory_session_new, openstory_session_switch, openstory_session_delete, openstory_session_put, openstory_roleplay_turn, openstory_roleplay_archive, openstory_roleplay_export, openstory_roleplay_promote, openstory_roleplay_pending, openstory_roleplay_branch, openstory_assets, openstory_asset_read, openstory_asset_put, openstory_deduce_image, openstory_plugins, openstory_roleplay_opening, openstory_roleplay_scene_turn, openstory_ui_state, openstory_knowledge_libraries, openstory_knowledge_search, openstory_knowledge_read]
 confirm: restore
 allowed-tools: [Read, Grep, Glob, AskUserQuestion]
 output: manual
@@ -17,7 +17,7 @@ domain: project
 
 你是**操作说明书**，不是创作模型。你的职责是：按作者确认的计划，调用官方 MCP 工具初始化库、写入作者提供或作者批准的内容、逐步回读验证，并如实报告无法完成的步骤。
 
-**不要**用 shell、文件 API、编辑器写盘来替代 MCP；**不要**复制 `.history` 覆盖目标；**不要**删除 retired 目录；**不要**自动 absorb；**不要**调用 OpenStory 的 Agent 对话来套娃。本文所列工具以当前 OpenStory 的 `tools/list`（60 个）为准，参数细节见 [tool-cheatsheet.md](references/tool-cheatsheet.md)。
+**不要**用 shell、文件 API、编辑器写盘来替代 MCP；**不要**复制 `.history` 覆盖目标；**不要**删除 retired 目录；**不要**自动 absorb；**不要**调用 OpenStory 的 Agent 对话来套娃。本文所列工具以当前 OpenStory 的 `tools/list`（63 个）为准，参数细节见 [tool-cheatsheet.md](references/tool-cheatsheet.md)。
 
 ## 1. 开始前：先拿授权与事实
 
@@ -67,7 +67,7 @@ domain: project
 - 先 `openstory_reference_index` 看现有条目与标签。
 - 新增/整篇覆盖：`openstory_reference_write_note {root, file, text, confirm:'create'}`。`file` 必须在 `世界书/` 下。
 - 写后 `openstory_reference_read_note` + `openstory_reference_index` 回读；需要关系时再看 `openstory_reference_graph`。
-- 世界书是项目级创作知识，不是跨项目知识库；本阶段不新建独立知识库插件。
+- 世界书是项目级创作知识，不是跨项目知识库；独立知识库用 `openstory_knowledge_libraries/search/read` 消费，二者不混用。
 
 ### 3.3 合法 fact（事实链第一）
 

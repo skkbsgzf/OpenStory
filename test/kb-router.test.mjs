@@ -4,10 +4,10 @@
  */
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdir, mkdtemp, writeFile, rm } from 'node:fs/promises'
+import { readFile, writeFile, mkdir, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { buildAugmentedPrompt, knowledgePromptSection, resolveCollections, routeQuery } from '../src/modules/knowledge/knowledgeRouter.mjs'
+import { applyHitBudget, buildAugmentedPrompt, canonicalizeHit, knowledgePromptSection, precedentPromptSectionForGenre, resolveCollections, routeQuery } from '../src/modules/knowledge/knowledgeRouter.mjs'
 import { defaultKbConfigPath } from '../src/modules/knowledge/knowledgeAdapter.mjs'
 import { listFingerprintPacks, runStyleCheck } from '../src/modules/text/lint.mjs'
 
@@ -75,6 +75,71 @@ test('增强指令：任务＋知识块＋守卫要求三位一体', () => {
   const bare = buildAugmentedPrompt('只写任务', [])
   assert.ok(!bare.includes('【style'))
   assert.ok(bare.includes('【要求】'))
+})
+
+test('canonical hit：保留库/文档/chunk 身份与来源信息，不丢 provenance', () => {
+  const hit = canonicalizeHit({
+    id: 'chunk-7', text: '正文', title: '文档标题', source: 'weknora', score: 0.8,
+    libraryId: 'lib-1', knowledgeId: 'doc-1', knowledgeBaseId: 'kb-1', chunkIndex: 7,
+    hash: 'sha256-x', tags: ['a'],
+    meta: { knowledgeId: 'wrong-meta-id' },
+    provenance: { contentRevision: 'rev-3', indexHash: 'index-4', chunkId: 'chunk-7' }
+  })
+  assert.equal(hit.libraryId, 'lib-1')
+  assert.equal(hit.knowledgeId, 'doc-1')
+  assert.equal(hit.knowledgeBaseId, 'kb-1')
+  assert.equal(hit.chunkIndex, 7)
+  assert.equal(hit.ref, '')
+  assert.equal(hit.hash, 'sha256-x')
+  assert.deepEqual(hit.tags, ['a'])
+  assert.equal(hit.provenance.contentRevision, 'rev-3')
+  assert.equal(hit.provenance.indexHash, 'index-4')
+  assert.equal(hit.provenance.chunkId, 'chunk-7')
+  assert.equal(hit.provenance.knowledgeId, 'doc-1')
+})
+
+test('总预算：跨全部 hit 生效、按身份去重、裁最后一块且不伪造 chunkIndex', () => {
+  const hits = [
+    { libraryId: 'lib-1', knowledgeId: 'doc-1', chunkIndex: 1, text: '12345' },
+    { libraryId: 'lib-1', knowledgeId: 'doc-1', chunkIndex: 1, text: 'duplicate' },
+    { libraryId: 'lib-1', knowledgeId: 'doc-1', chunkIndex: 2, text: 'abcdefgh' }
+  ]
+  const budgeted = applyHitBudget(hits, 8)
+  assert.deepEqual(budgeted.map((hit) => hit.text), ['12345', 'abc'])
+  assert.equal(budgeted.reduce((sum, hit) => sum + hit.text.length, 0), 8)
+  assert.equal(budgeted[1].chunkIndex, 2)
+  assert.deepEqual(applyHitBudget(hits, 0), [])
+  assert.equal('chunkIndex' in applyHitBudget([{ knowledgeId: 'doc-x', text: 'x' }], 10)[0], false)
+})
+
+test('配置坏档：类型化 KB_CONFIG_CORRUPT，错误不回显配置片段', async () => {
+  const base = await mkdtemp(join(tmpdir(), 'openstory-kbcorrupt-'))
+  try {
+    const configPath = join(base, 'kb-config.json')
+    const secret = 'sk-config-secret-never-echo'
+    await writeFile(configPath, `{"apiKey":"${secret}", broken`, 'utf-8')
+    const result = resolveCollections(configPath)
+    assert.equal(result.ok, false)
+    assert.equal(result.code, 'KB_CONFIG_CORRUPT')
+    assert.equal(JSON.stringify(result).includes(secret), false)
+  } finally {
+    await rm(base, { recursive: true, force: true })
+  }
+})
+
+test('Agent 先例钩子：明确空态，不访问配置、不发起任何检索', async () => {
+  const configPath = join(tmpdir(), `os229-must-not-read-${process.pid}-${Date.now()}.json`)
+  const originalFetch = globalThis.fetch
+  let fetchCalls = 0
+  globalThis.fetch = async () => { fetchCalls += 1; throw new Error('must not fetch') }
+  try {
+    assert.equal(await precedentPromptSectionForGenre('短剧', { configPath, timeoutMs: 1 }), '')
+    assert.equal(await precedentPromptSectionForGenre('短剧', { configPath, timeoutMs: 1 }), '')
+    assert.equal(fetchCalls, 0, '统一 service 接线前不得有 WeKnora 直连旁路')
+    await assert.rejects(readFile(configPath), { code: 'ENOENT' })
+  } finally {
+    globalThis.fetch = originalFetch
+  }
 })
 
 /* ---------- 指纹门禁 ---------- */

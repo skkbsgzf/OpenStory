@@ -41,3 +41,7 @@ desktop.ini
 
 # ── 运行残留补遗（OS-110 发现）──
 samples/**/.operations.jsonl
+
+# ── Python 运行时缓存（knowledge-runtime worker/installer 自产）──
+__pycache__/
+*.pyc

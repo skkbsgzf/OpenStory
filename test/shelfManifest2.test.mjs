@@ -48,7 +48,7 @@ test('唯一清单：五类货架的六组都有投影，全部 module@2 且进�
     assert.equal(Array.isArray(manifest.entries), false)
   }
   assert.deepEqual(counts, countByGroup(SHELF_MANIFESTS))
-  assert.equal(ALL_CAPABILITY_MANIFESTS.length, 21 + manifests.length)
+  assert.equal(ALL_CAPABILITY_MANIFESTS.length, 23 + manifests.length)
   assert.equal(CAPABILITY_SNAPSHOT.ok, true)
   assert.deepEqual(CAPABILITY_SNAPSHOT.issues, [])
   for (const group of GROUPS) assert.ok(SHELF_MANIFESTS.some((item) => item.group === group), `${group} 在能力图`)

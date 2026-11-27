@@ -14,19 +14,25 @@ for (const page of PAGE_MATRIX) {
   for (const item of page.requiredApi) unique.set(`${item.method} ${item.path}`, item)
 }
 
-function queryFor(endpoint, root) {
+function queryFor(endpoint, root, knowledgeIds) {
   const out = { root }
   const shape = endpoint.request?.query ?? {}
   if (shape.dir !== undefined) out.dir = '正文'
   if (shape.limit !== undefined) out.limit = '20'
+  // 阶段 C 的 knowledgeBase 域端点按 libraryId 取具体知识库；夹具用真实登记的库 id，
+  // 不用伪造 id 绕过契约必填校验。
+  if (shape.libraryId !== undefined) {
+    assert.ok(knowledgeIds.length > 0, '知识库端点需要夹具登记至少一座知识库')
+    out.libraryId = knowledgeIds[0]
+  }
   return out
 }
 
-async function requestApi(fx, method, path) {
+async function requestApi(fx, method, path, knowledgeIds) {
   const endpoint = Object.values(ENDPOINTS).find((item) => item.method === method && item.path === path)
   assert.ok(endpoint, `契约里没有 ${method} ${path}`)
   const endpointId = Object.entries(ENDPOINTS).find(([, item]) => item === endpoint)?.[0]
-  const query = queryFor(endpoint, fx.root)
+  const query = queryFor(endpoint, fx.root, knowledgeIds)
   const url = new URL(`http://127.0.0.1:${fx.daemon.port}${path}`)
   for (const [key, value] of Object.entries(query)) if (value !== undefined) url.searchParams.set(key, String(value))
   const response = await fetch(url)
@@ -37,14 +43,20 @@ async function requestApi(fx, method, path) {
 test('OS-208 页面矩阵：每个 requiredApi 都有真实 HTTP 成功用例且响应符合契约', async () => {
   await withTempDaemon(async (fx) => {
     assert.ok(unique.size >= 20, `页面 API 覆盖不足：${unique.size}`)
+    // 知识库页的 requiredApi 需要真实登记的库：从 fixtures 的 libraries 响应读 id，
+    // 与 tempDaemon 里 preview→register 落盘的那两座库同源。
+    const libraries = await fetch(`http://127.0.0.1:${fx.daemon.port}/api/knowledge/libraries?root=${encodeURIComponent(fx.root)}`).then((res) => res.json())
+    assert.equal(libraries.ok, true, JSON.stringify(libraries))
+    const knowledgeIds = (libraries.libraries ?? []).map((item) => item.id)
+    assert.deepEqual(knowledgeIds, ['page-kb-one', 'page-kb-two'], '页面夹具登记两座知识库')
     for (const [key, item] of unique) {
-      const result = await requestApi(fx, item.method, item.path)
+      const result = await requestApi(fx, item.method, item.path, knowledgeIds)
       assert.equal(result.status, 200, `${key} 应 200，实得 ${result.status} ${JSON.stringify(result.payload)}`)
       assert.ok(result.payload?.ok === true, `${key} 应回 ok:true`)
       const checked = validateResponse(result.endpointId, result.payload)
       assert.equal(checked.ok, true, `${key} 响应契约不符：${JSON.stringify(checked.errors)}`)
     }
-  }, { defaultRoot: true, upstream: true })
+  }, { defaultRoot: true, upstream: true, knowledge: true })
 })
 
 test('OS-208 两库隔离：相同 API 按 root 返回各自数据，不串库', async () => {

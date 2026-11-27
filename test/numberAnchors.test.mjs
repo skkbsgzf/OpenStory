@@ -47,13 +47,30 @@ test('app.js 上限锚保留 11,886 初始值且只许下调', () => {
 test('机器锚与静态实测、当前文档互相一致', () => {
   const persisted = JSON.parse(read('docs/number-anchors.json'))
   const actual = collectStaticAnchors()
+  // docs/number-anchors.json 已是阶段 C 当前事实快照；逐字段与实测核对，
+  // 任何源码/文档漂移都会红。
   assert.deepEqual({
+    schema: actual.schema,
+    appJs: actual.appJs,
+    modules: actual.modules,
+    endpoints: actual.endpoints,
+    testFiles: actual.testFiles
+  }, {
     schema: persisted.schema,
     appJs: persisted.appJs,
     modules: persisted.modules,
     endpoints: persisted.endpoints,
     testFiles: persisted.testFiles
-  }, actual)
+  })
+  assert.equal(actual.appJs.lines, countPhysicalLines(read('public/app.js')))
+  assert.equal(actual.appJs.lines, 10047)
+  assert.deepEqual(actual.modules, { total: 23, workbench: 13, kernel: 8, hostComposition: 2 })
+  assert.deepEqual(actual.endpoints, {
+    total: 129, moduleOwned: 57, hostOwned: 72, hostDomain: 0, hostDomainIds: []
+  })
+  assert.equal(actual.endpoints.total, Object.keys(ENDPOINTS).length)
+  assert.equal(actual.endpoints.moduleOwned + actual.endpoints.hostOwned, actual.endpoints.total)
+  assert.equal(actual.testFiles, readdirSync(new URL('../test/', import.meta.url)).filter((name) => name.endsWith('.test.mjs')).length)
   // 测试汇总由 S2.8 在真实复跑后核对，避免 JSON 旧状态自指。
   const missing = documentAnchorChecks(persisted)
     .filter((item) => item.label !== '测试汇总')

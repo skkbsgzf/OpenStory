@@ -84,7 +84,7 @@ test('OS-198-daemon：/api/plugins.slots 与 manifest 一致，停用习惯后�
     const initial = await plugins(origin, root)
     assert.equal(initial.status, 200)
     assert.ok(initial.payload.slots?.tab, '响应必须带 slots.tab')
-    assert.deepEqual(tabPages(initial.payload), ['artifacts', 'chapters', 'worldbook', 'script', 'log', 'storysource', 'habits', 'roleplay'])
+    assert.deepEqual(tabPages(initial.payload), ['artifacts', 'chapters', 'knowledge-base', 'worldbook', 'script', 'log', 'storysource', 'habits', 'roleplay'])
     assert.ok(initial.payload.slots.tab.every((item) => item.view === 'builtin'), '内置页面走 builtin 视图')
     assert.deepEqual(initial.payload.slotWarnings, [])
 
@@ -92,12 +92,12 @@ test('OS-198-daemon：/api/plugins.slots 与 manifest 一致，停用习惯后�
     assert.equal(off.status, 200)
     const without = await plugins(origin, root)
     assert.ok(!tabPages(without.payload).includes('habits'), '停用后投影里没有习惯')
-    assert.deepEqual(tabPages(without.payload), ['artifacts', 'chapters', 'worldbook', 'script', 'log', 'storysource', 'roleplay'])
+    assert.deepEqual(tabPages(without.payload), ['artifacts', 'chapters', 'knowledge-base', 'worldbook', 'script', 'log', 'storysource', 'roleplay'])
 
     const on = await put(origin, root, { modules: { enabled: { habits: true } } })
     assert.equal(on.status, 200)
     const back = await plugins(origin, root)
-    assert.deepEqual(tabPages(back.payload), ['artifacts', 'chapters', 'worldbook', 'script', 'log', 'storysource', 'habits', 'roleplay'])
+    assert.deepEqual(tabPages(back.payload), ['artifacts', 'chapters', 'knowledge-base', 'worldbook', 'script', 'log', 'storysource', 'habits', 'roleplay'])
   })
 })
 

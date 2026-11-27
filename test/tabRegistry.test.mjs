@@ -2,7 +2,7 @@
  * 视图行为表与 slot 投影（OS-143 立表；OS-198 退为行为表，node:test）。
  *
  * 钉死五件事：
- *   ① 投影快照——八个工作台页签的顺序与显示名只来自 manifest，设置页签固定在后；
+ *   ① 投影快照——九个工作台页签的顺序与显示名只来自 manifest，设置页签固定在后；
  *   ② 停用模块——投影里该页签消失，其余不动；
  *   ③ 第三方 iframe 页面——`module:<模块>/<页面>` 视图与入口；内置视图优先；
  *   ④ 行为表纯度——`TAB_REGISTRY` 不含页签名/目录/模块归属/顺序，注册表零 import；
@@ -36,11 +36,11 @@ const canon = (defs) => defs.map((def) => ({
   readonly: def.readonly === true, closable: def.closable !== false
 }))
 
-test('投影快照：八个工作台页签顺序与显示名只来自 manifest，设置固定在后', () => {
+test('投影快照：九个工作台页签顺序与显示名只来自 manifest，设置固定在后', () => {
   const slots = slotsFor()
-  assert.deepEqual(viewsOf(slots), ['artifacts', 'chapters', 'worldbook', 'dir:剧本', 'dir:日志', 'dir:故事源', 'habits', 'roleplay'])
+  assert.deepEqual(viewsOf(slots), ['artifacts', 'chapters', 'knowledge-base', 'worldbook', 'dir:剧本', 'dir:日志', 'dir:故事源', 'habits', 'roleplay'])
   assert.deepEqual(projectedTabDefs({ slots, ctx: ctx() }).map((def) => def.label),
-    ['产物', '正文', '世界书', '剧本', '日志', '故事源', '习惯', '扮演'])
+    ['产物', '正文', '知识库', '世界书', '剧本', '日志', '故事源', '习惯', '扮演'])
   assert.equal(projectedTabDefs({ slots, ctx: ctx() }).find((def) => def.view === 'dir:日志').readonly, true)
   // 设置是宿主自有页签，打开才出现、永远排在模块页签之后
   const open = projectedTabDefs({ slots, ctx: ctx({ settingsOpen: true }) })
@@ -55,7 +55,7 @@ test('停用工作台：投影里该页签消失，其余不动；重新启用�
   const enabled = slotsFor({ habits: false })
   const views = viewsOf(enabled)
   assert.ok(!views.includes('habits'))
-  assert.deepEqual(views, ['artifacts', 'chapters', 'worldbook', 'dir:剧本', 'dir:日志', 'dir:故事源', 'roleplay'])
+  assert.deepEqual(views, ['artifacts', 'chapters', 'knowledge-base', 'worldbook', 'dir:剧本', 'dir:日志', 'dir:故事源', 'roleplay'])
   assert.ok(viewsOf(slotsFor()).includes('habits'))
 })
 
@@ -133,7 +133,7 @@ test('隐藏过滤与「＋」面板：勾选项只在投影内', () => {
   const slots = slotsFor()
   const defs = projectedTabDefs({ slots, ctx: ctx() })
   assert.deepEqual(visibleTabDefs(defs, new Set(['chapters', 'settings'])).map((def) => def.view),
-    ['artifacts', 'worldbook', 'dir:剧本', 'dir:日志', 'dir:故事源', 'habits', 'roleplay'])
+    ['artifacts', 'knowledge-base', 'worldbook', 'dir:剧本', 'dir:日志', 'dir:故事源', 'habits', 'roleplay'])
   const panel = projectedPanelTabs(slots, TAB_REGISTRY, ctx())
   assert.ok(panel.some((item) => item.view === 'chapters' && item.label === '正文'))
   assert.ok(panel.every((item) => item.view !== 'settings'))

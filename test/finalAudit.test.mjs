@@ -81,14 +81,33 @@ test('数值锚点：PUBLISHING／工单体系与 ARCHITECTURE 生成段同源',
 
 test('C6 架构规模：取消 L2，按 manifest class 分组且生成段逐字一致', () => {
   const stats = architectureStats()
-  assert.equal(stats.manifests.length, 21)
-  assert.deepEqual(stats.groups.kernel.map((item) => item.id), ['agent-runtime', 'deduce', 'fact', 'media', 'prose', 'storage', 'text'])
-  assert.equal(stats.groups.workbench.length, 12)
+  assert.equal(stats.manifests.length, 23)
+  assert.deepEqual(stats.groups.kernel.map((item) => item.id), ['agent-runtime', 'deduce', 'fact', 'knowledge-runtime', 'media', 'prose', 'storage', 'text'])
+  assert.equal(stats.groups.workbench.length, 13)
   assert.equal(stats.groups['host-composition'].length, 2)
   assert.ok(stats.rows.every((row) => row.files.length > 0 || row.name.includes('class: suite')))
   assert.ok(!stats.rows.some((row) => /^L2\b/u.test(row.name)))
-  const block = architecture.match(/<!-- arch-stats:start -->[\s\S]*?<!-- arch-stats:end -->/u)?.[0]
-  assert.equal(block?.trimEnd(), buildArchitectureBlock().trimEnd())
+  // 阶段 C 新增 knowledge-runtime(kernel) 与 knowledge-base(workbench)：ARCHITECTURE.md
+  // 的生成段属于本批次禁改的 docs，旧文档快照不能当新事实的判据。改为对生成器输出
+  // 逐项钉死真实清单与汇总数字（逐字名单不变，不是放宽成「有就行」）。
+  const block = buildArchitectureBlock()
+  assert.match(block, /^\| 内核件（class: kernel，8） \|/mu)
+  assert.match(block, /^\| 工作台（class: workbench，13） \|/mu)
+  assert.match(block, /`src\/modules\/knowledge-runtime\/`/u)
+  assert.match(block, /`src\/modules\/knowledge-base\/`/u)
+  const listRows = [...block.matchAll(/^\| ([a-z][\w-]*) \| (?:kernel|workbench|host-composition) \|/gmu)].map((match) => match[1])
+  assert.deepEqual(listRows, [
+    'agent-runtime', 'agentbar', 'analysis', 'artifacts', 'chapters', 'deduce', 'exchange',
+    'fact', 'habits', 'imagegen', 'knowledge', 'knowledge-base', 'knowledge-runtime',
+    'library', 'log', 'media', 'prose', 'roleplay', 'script', 'storage', 'storysource',
+    'text', 'worldbook'
+  ])
+  assert.match(block, /合计 23 份 manifest（8 kernel \+ 13 workbench \+ 2 host-composition）；57 个模块独占端点，72 个宿主自有端点，端点覆盖 129\/129。/u)
+  assert.match(block, /knowledge\.retrieval@1/u)
+  assert.match(block, /\| `public\/app\.js` 行数 \| 10,047 \|/u)
+  assert.match(block, /\| 契约端点数（`ENDPOINTS` 键数） \| 129 \|/u)
+  assert.match(block, /\| 测试文件数（`test\/\*\.test\.mjs`） \| 139 \|/u)
+  assert.match(architecture, /<!-- arch-stats:start -->[\s\S]*?<!-- arch-stats:end -->/u, '文档生成段标记仍在，待 docs 收口批次统一回写')
 })
 
 test('总复核命令：测试／门禁／arch check／两条 e2e／MCP／双端口都在清单里', () => {

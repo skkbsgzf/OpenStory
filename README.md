@@ -15,7 +15,7 @@
 - **剧本**：原生剧本工作面＋外部剧本→故事源条目导入（fact 写通道首次开放）
 - **Agent**：左列一等公民——会话连续（DSH resume）、思维链渐进、工具调用行、待确认卡（采纳走快照闸）、灯泡选择链（题材/风格词条单选＋方法论多选＋知识库标注卡）、套件捆绑技能
 - **生图与识图**：ComfyUI 双后端生图（世界书条目配图）＋vision 文学化白描（读库内图片）
-- **全局设施**：任务中心（悬浮球轮询）、修改日志（模块自检索 diff＋单条恢复）、界面状态/草稿落 `.openstory/`、设置页本体/插件中心两组、MCP server（65 工具，零依赖 stdio；含建库、套件、fact/exchange、剧本、多局、素材、ui-state 与项目升级）、Windows 原生文件夹选择器/资源管理器唤起（新建库与本地路径位）
+- **全局设施**：任务中心（悬浮球轮询）、修改日志（模块自检索 diff＋单条恢复）、界面状态/草稿落 `.openstory/`、设置页本体/插件中心两组、MCP server（68 工具，零依赖 stdio；含建库、套件、fact/exchange、剧本、多局、素材、ui-state、项目升级与独立知识库）、Windows 原生文件夹选择器/资源管理器唤起（新建库与本地路径位）
 
 ## 三条边界
 
@@ -41,7 +41,7 @@
 ```bash
 npm install        # 装依赖（transformers；sharp 只作其传递依赖，内核已自持，无 tgz 依赖）
 npm start          # node src/host/daemon.mjs → http://127.0.0.1:8807（单实例锁＋/api/health）
-npm run mcp        # 全模块 MCP server（65 工具，stdio）
+npm run mcp        # 全模块 MCP server（68 工具，stdio）
 npm test           # node --test（零外部依赖）
 ```
 
@@ -70,7 +70,7 @@ L1  磁盘库                     文件即真相（.openstory 运行态；旧�
 
 仓根零 `.mjs`（OS-159 布局宪法）：入口直跑 `src/host/daemon.mjs` / `src/host/mcp.mjs`，实现都在 `src/` 六目录。
 
-当前实测：21 份内置 manifest（12 workbench＋7 kernel＋2 宿主组合面）、117 个契约端点、1017 例单测（1015 过／2 跳过）、29 项验收检查、`app.js` 10,044 行；MCP 65 工具、内置技能 32＋套件捆绑 2。数字由 `ARCHITECTURE.md` 生成段与 `docs/number-anchors.json` 校验，不手写承诺。
+当前实测：23 份内置 manifest（13 workbench＋8 kernel＋2 宿主组合面）、129 个契约端点、1067 例单测（1065 过／2 跳过）、29 项验收检查、`app.js` 10,047 行；MCP 68 工具、内置技能 32＋套件捆绑 2。数字由 `ARCHITECTURE.md` 生成段与 `docs/number-anchors.json` 校验，不手写承诺。
 
 CI 是合入门禁：推送与合并请求在 Node 24 上跑两轮 `npm test`、验收与架构核对，再用临时 daemon/库/院子跑隔离全栈 E2E；独立 `browser-smoke` job 用 Chromium 跑完整页面矩阵并上传 manifest 与截图。本地等价命令见 [ACCEPTANCE.md](docs/ACCEPTANCE.md)，不连接 8807 或作者真库。
 
@@ -81,11 +81,11 @@ CI 是合入门禁：推送与合并请求在 Node 24 上跑两轮 `npm test`、
 | 路径 | 内容 |
 |---|---|
 | `src/host/daemon.mjs` / `src/host/mcp.mjs` | 启动入口（OS-159：实现文件自带直跑判定，仓根不再放垫片） |
-| `src/host/` | daemon（端点契约分派＋进程治理）＋ MCP server（65 工具，零依赖 stdio；`npm run mcp`） |
+| `src/host/` | daemon（端点契约分派＋进程治理）＋ MCP server（68 工具，零依赖 stdio；`npm run mcp`） |
 | `src/api/` | 契约层 `contracts.mjs` ＋ `contracts/` 九域分片（OS-130 起分域，OS-162 加 exchange，OS-214 加 script；纯数据，两端共享） |
 | `src/protocol/` | 底座契约层（逐文件理由见 `src/protocol/README.md`）：形状/错误信封、路径安全与授权、写管道、装载协议与能力图/迁移、slots、命名取表口、旧库一次性升级、进程内事件词表，以及与工作台无关的格式/路径纯函数；零转供叶。`chapters`／`factGuard` 在 `src/modules/prose/`，`libraryManifest` 在 `src/modules/storage/` |
 | `src/kernel/` | 自有物理内核（`openstory-kernel@1`：写管道、错误词表与身份，五个文件 `index/atomicWrite/fsDurability/errors/identity.mjs`，公开面 `index.mjs`；fact 链与 enrich 已归 `src/modules/fact/`；出处与文件对应见 [docs/kernel-provenance.md](./docs/kernel-provenance.md)） |
-| `src/modules/` | 域模块与工作面插件：21 份 `module.manifest.json`（`openstory-module@2`）——12 个 workbench（chapters / worldbook / script / storysource / roleplay / analysis / imagegen / knowledge / habits / artifacts / log / exchange）、7 个 kernel（storage / fact / prose / text / deduce / agent-runtime / media）、2 个恒启用宿主组合面（agentbar / library）；模块级 `core` 与 `MODULE_CORE` 已退役，工作台停用回 `MODULE_DISABLED`，能力缺失回 `PLUGIN_DEGRADED`。library/ 建库导入自持（library 声明 0 个宿主域端点，Pinax 清单导入端点已退役；`.openstory/project.json` 使用 `openstory-project@4`）、deduce/ 推演、roleplay/ 扮演调度＋四层提示词、worldbook/ 世界书索引、agentbar/ Agent 存储。端点归属 117/117 有主，见 `ARCHITECTURE.md`「模块插件清单」 |
+| `src/modules/` | 域模块与工作面插件：23 份 `module.manifest.json`（`openstory-module@2`）——13 个 workbench（chapters / worldbook / script / storysource / roleplay / analysis / imagegen / knowledge / knowledge-base / habits / artifacts / log / exchange）、8 个 kernel（storage / fact / prose / text / deduce / agent-runtime / media / knowledge-runtime）、2 个恒启用宿主组合面（agentbar / library）；模块级 `core` 与 `MODULE_CORE` 已退役，工作台停用回 `MODULE_DISABLED`，能力缺失回 `PLUGIN_DEGRADED`。library/ 建库导入自持（library 声明 0 个宿主域端点，Pinax 清单导入端点已退役；`.openstory/project.json` 使用 `openstory-project@4`）、deduce/ 推演、roleplay/ 扮演调度＋四层提示词、worldbook/ 世界书索引、knowledge-base/ 独立知识库、knowledge-runtime/ HyperGraphRAG sidecar、agentbar/ Agent 存储。端点归属 129/129 有主，见 `ARCHITECTURE.md`「模块插件清单」 |
 | `src/services/` | 底座服务与货架装载（共七个文件）：五个货架装载 `genres` / `runtimes` / `skills` / `stylePacks` / `suites` ＋ `systemPrompt` / `syncCheck`；`jobCenter` / `nativePicker` / `uiPreferences` 已归 `src/host/`，十个内核兼容叶已删（一律经能力句柄） |
 | `public/` | 工作台单页（app.js＋reference/graph/md/analysis/charts/ui-kit/storySource 等零依赖模块；echarts 本地 vendor） |
 | `suites/` `styles/` `runtimes/` `genres/` `skills/`（31＋套件捆绑 2） | 五类货架数据目录（内置样例）：经 `loadShelfCapabilityManifests()` 投影成 module@2 一等套件，一个装载入口、一套启停与状态（`.openstory/plugins/suite-state.json`）、依赖闭包；设置页按六组供给类型管理。协议见 [suites/PROTOCOL.md](suites/PROTOCOL.md) 与 [docs/protocol/module-manifest-2.md](docs/protocol/module-manifest-2.md)。legacy `openstory-suite@1/@2` 页面模式与漫剧占位套件已退役 |

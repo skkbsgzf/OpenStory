@@ -79,14 +79,14 @@ async function writeIframeModule(moduleRoot) {
   return dir
 }
 
-test('OS-200·纯函数健康态：38 条非底座边、11 条底座边，反向依赖与连锁清单逐件对上', () => {
+test('OS-200·纯函数健康态：39 条非底座边、12 条底座边，反向依赖与连锁清单逐件对上', () => {
   const { projections, moduleGraph } = projected()
   assert.equal(moduleGraph.spec, 'openstory-module-graph@1')
   assert.equal(moduleGraph.snapshot, CAPABILITY_SNAPSHOT.id)
-  assert.equal(moduleGraph.edges.filter((edge) => edge.to !== 'base').length, 38)
-  assert.equal(moduleGraph.edges.filter((edge) => edge.to === 'base').length, 11)
+  assert.equal(moduleGraph.edges.filter((edge) => edge.to !== 'base').length, 39)
+  assert.equal(moduleGraph.edges.filter((edge) => edge.to === 'base').length, 12)
   const baseCounts = Object.fromEntries(moduleGraph.base.map((item) => [item.id, item.consumers.length]))
-  assert.equal(baseCounts['base.write'], 4)
+  assert.equal(baseCounts['base.write'], 5)
   assert.equal(baseCounts['base.contract'], 2)
   assert.equal(baseCounts['base.naming'], 5)
 
@@ -111,7 +111,7 @@ test('OS-200·纯函数健康态：38 条非底座边、11 条底座边，反向
     assert.deepEqual(projections.get(manifest.id).capabilities, [])
   }
   const workbenches = MODULE_MANIFESTS.filter((item) => item.class === 'workbench')
-  assert.equal(workbenches.length, 12)
+  assert.equal(workbenches.length, 13)
   assert.ok(workbenches.every((item) => projections.get(item.id).toggleCheck.ok === true))
 })
 
@@ -149,17 +149,17 @@ test('OS-200·slot：带 statuses 时降级位置标记 missing，不带时健�
   assert.deepEqual(optionalOnly.slots.tab, plain.slots.tab)
 })
 
-test('OS-200·daemon 健康库：响应合法、21 件 loaded、8 个页签无降级', async () => {
+test('OS-200·daemon 健康库：响应合法、23 件 loaded、9 个页签无降级', async () => {
   await withDaemon(async ({ origin, root }) => {
     const { status, payload } = await plugins(origin, root)
     assert.equal(status, 200)
     assert.deepEqual(validateResponse('pluginsGet', payload), { ok: true, errors: [] })
     const modules = MODULE_MANIFESTS.map((manifest) => byId(payload, manifest.id))
-    assert.ok(modules.every(Boolean), '21 件模块都在清单里')
+    assert.ok(modules.every(Boolean), '23 件模块都在清单里')
     assert.ok(modules.every((item) => item.status === 'loaded'))
-    assert.equal(payload.slots.tab.length, 8)
+    assert.equal(payload.slots.tab.length, 9)
     assert.ok(payload.slots.tab.every((item) => !('degraded' in item)))
-    assert.equal(payload.moduleGraph.edges.filter((edge) => edge.to !== 'base').length, 38)
+    assert.equal(payload.moduleGraph.edges.filter((edge) => edge.to !== 'base').length, 39)
     assert.ok(Array.isArray(payload.suites))
   })
 })

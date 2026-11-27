@@ -70,7 +70,7 @@ async function fixturePost(origin, path, body) {
 }
 
 /** 起一个隔离 daemon。defaultRoot=false 时首页停在库管理，便于覆盖全局页。 */
-export async function makeTempDaemon({ defaultRoot = true, clearUi = true, sample = true, upstream = false, localModule = false } = {}) {
+export async function makeTempDaemon({ defaultRoot = true, clearUi = true, sample = true, upstream = false, localModule = false, knowledge = false } = {}) {
   const base = await mkdtemp(join(tmpdir(), 'openstory-page-test-'))
   const appData = join(base, 'appdata')
   const env = { ...process.env, LOCALAPPDATA: appData, APPDATA: appData }
@@ -132,8 +132,24 @@ export async function makeTempDaemon({ defaultRoot = true, clearUi = true, sampl
     const added = await fixturePost(originForDaemon(daemon), '/api/module-roots/add', { path: moduleRoot, confirm: true })
     if (added.status !== 200) throw new Error(`登记临时模块根失败：${added.status} ${JSON.stringify(added.payload)}`)
   }
+  let knowledgeRoots = []
+  if (knowledge) {
+    const { previewKnowledgeLibrary, registerKnowledgeLibrary } = await import('../../src/modules/knowledge-base/knowledgeLibraryStore.mjs')
+    knowledgeRoots = [join(base, 'kb-one'), join(base, 'kb-two')]
+    for (const [index, kbRoot] of knowledgeRoots.entries()) {
+      const id = index === 0 ? 'page-kb-one' : 'page-kb-two'
+      await mkdir(join(kbRoot, 'docs'), { recursive: true })
+      await writeFile(join(kbRoot, 'knowledge.base.json'), JSON.stringify({ schema: 'openstory.knowledge-base@1', schemaVersion: 1, id, name: `页面知识库${index + 1}`, version: '1.0.0', vendor: 'OpenStory', license: 'MIT', documentEntry: 'docs/index.md', formats: ['.md'], exclude: [], retrievalDefaults: { topK: 6, minScore: 0.3, budgetChars: 6000 }, tagMap: {}, nodeMap: {}, edgeMap: {} }))
+      await writeFile(join(kbRoot, 'docs/index.md'), `# 知识库${index + 1}\n\n跨项目示例。`)
+      await writeFile(join(kbRoot, 'docs/技法.md'), `# 三拍法${index + 1}\n\n代价、失效、兑现。 #技法`)
+      const preview = await previewKnowledgeLibrary({ root: kbRoot }, env)
+      if (!preview.ok) throw new Error(`知识库夹具预览失败：${JSON.stringify(preview)}`)
+      const registered = await registerKnowledgeLibrary({ previewId: preview.previewId, confirm: true }, env)
+      if (!registered.ok) throw new Error(`知识库夹具登记失败：${JSON.stringify(registered)}`)
+    }
+  }
   const fixture = {
-    base, appData, root, preferencesPath, env, daemon, moduleRoot,
+    base, appData, root, preferencesPath, env, daemon, moduleRoot, knowledgeRoots,
     origin: `http://127.0.0.1:${daemon.port}`,
     upstreamRequests: () => upstreamRequests,
     json: async (path, options) => {

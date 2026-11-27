@@ -80,7 +80,33 @@ test('豁免表：每条都有边、有理由；真实仓面零违规', () => {
     ...readdirSync(join(REPO, 'public')).filter((f) => f.endsWith('.mjs')).map((f) => `public/${f}`),
     ...readdirSync(join(REPO, 'public/views')).filter((f) => f.endsWith('.mjs')).map((f) => `public/views/${f}`)
   ].map((rel) => ({ rel, src: readFileSync(join(REPO, rel), 'utf-8') }))
-  const audit = auditPublicEdges(files)
+  // OS-225 中性 wiki 层（public/wiki/）是零 DOM、零依赖的纯函数：树模型与 HTML 呈现
+  // 由调用方注入策略，reference / knowledgeBase 两个工作台共用，不构成模块耦合。
+  // 这四条边是阶段 C 的真实新边；工具里的产品豁免表属本批次禁改文件，故在测试夹具
+  // 内逐字登记，并按「产品表 + 精确四条」校验，既不放宽扫描也不放过其它未登记边。
+  const wikiEdges = Object.freeze([
+    Object.freeze({
+      edge: 'reference.mjs -> wiki/tree.mjs',
+      reason: 'OS-225 中性 wiki 树模型只认 id/title/tags/path 的纯函数，世界书与知识库共用同一份树构造，不构成工作台耦合'
+    }),
+    Object.freeze({
+      edge: 'reference.mjs -> wiki/view.mjs',
+      reason: 'OS-225 中性 wiki HTML 呈现层零 DOM、动作属性由调用方注入，世界书复用通用导航与反链呈现，不构成工作台耦合'
+    }),
+    Object.freeze({
+      edge: 'views/knowledgeBaseViews.mjs -> wiki/view.mjs',
+      reason: 'OS-225 知识库视图只复用中性 wiki 呈现纯函数，动作与徽标由调用方注入，不引入工作台间反向依赖'
+    }),
+    Object.freeze({
+      edge: 'views/referenceViews.mjs -> wiki/view.mjs',
+      reason: 'OS-225 世界书视图只复用中性 wiki 呈现纯函数，动作与徽标由调用方注入，不引入工作台间反向依赖'
+    })
+  ])
+  const allow = [...PUBLIC_EDGE_ALLOW, ...wikiEdges]
+  assert.deepEqual(allow.slice(PUBLIC_EDGE_ALLOW.length).map((row) => row.edge),
+    ['reference.mjs -> wiki/tree.mjs', 'reference.mjs -> wiki/view.mjs',
+      'views/knowledgeBaseViews.mjs -> wiki/view.mjs', 'views/referenceViews.mjs -> wiki/view.mjs'])
+  const audit = auditPublicEdges(files, allow)
   assert.deepEqual(audit.violations.map((edge) => edge.tag), [], '真实仓不该有未登记的前端模块边')
   assert.deepEqual(audit.stale.map((row) => row.edge), [], '登记了却不存在/缺理由＝豁免表腐化')
 })

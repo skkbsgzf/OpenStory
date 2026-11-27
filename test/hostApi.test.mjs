@@ -26,6 +26,7 @@ import { textCapability } from '../src/modules/text/index.mjs'
 import { agentRuntimeCapability } from '../src/modules/agent-runtime/index.mjs'
 import { mediaCapability } from '../src/modules/media/index.mjs'
 import { deduceCapabilities } from '../src/modules/deduce/deduceCapability.mjs'
+import { knowledgeRuntimeCapability } from '../src/modules/knowledge-runtime/index.mjs'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 
@@ -36,14 +37,14 @@ test('host-api@2 第二套入口已退役（协议层只留能力面，不再有
 /** 登记表键清单快照（逐字对齐 capabilityImplementations.mjs 的 KERNEL_CAPABILITIES）。 */
 const SNAPSHOT = [
   'agentRuntime', 'deduceEngine', 'factBooks', 'factDomain', 'factEngine', 'factEnrich',
-  'factPack', 'factStore', 'factWrite', 'mediaDescribe', 'mediaGenerate', 'projectMeta',
+  'factPack', 'factStore', 'factWrite', 'knowledgeRetrieval', 'mediaDescribe', 'mediaGenerate', 'projectMeta',
   'proseWrite', 'storageInventory', 'storageRoots', 'storageScaffold', 'textAnalyze'
 ]
 
 test('登记表键清单快照（增删句柄必须改本快照＝显式确认）', () => {
   assert.deepEqual(Object.keys(K).sort(), SNAPSHOT)
   assert.deepEqual(Object.keys(MODULE_IMPLEMENTATIONS).sort(),
-    ['agent-runtime', 'deduce', 'fact', 'media', 'prose', 'storage', 'text'])
+    ['agent-runtime', 'deduce', 'fact', 'knowledge-runtime', 'media', 'prose', 'storage', 'text'])
   assert.equal(Object.isFrozen(K), true)
   assert.equal(Object.isFrozen(MODULE_IMPLEMENTATIONS), true)
 })
@@ -66,7 +67,8 @@ const IMPLEMENTATION_BINDINGS = Object.freeze({
   agentRuntime: agentRuntimeCapability['agent.runtime'],
   mediaGenerate: mediaCapability['media.generate'],
   mediaDescribe: mediaCapability['media.describe'],
-  deduceEngine: deduceCapabilities['deduce.engine']
+  deduceEngine: deduceCapabilities['deduce.engine'],
+  knowledgeRetrieval: knowledgeRuntimeCapability['knowledge.retrieval']
 })
 
 test('转出不换实现：登记表每项指向模块能力面的同一对象', () => {
@@ -77,7 +79,7 @@ test('转出不换实现：登记表每项指向模块能力面的同一对象',
   }
 })
 
-test('模块实现表按 id 指向七个内核能力面（不再另立第二张表）', () => {
+test('模块实现表按 id 指向八个内核能力面（不再另立第二张表）', () => {
   assert.equal(MODULE_IMPLEMENTATIONS.fact, factCapability)
   assert.equal(MODULE_IMPLEMENTATIONS.prose, proseCapability)
   assert.equal(MODULE_IMPLEMENTATIONS.storage, storageCapability)

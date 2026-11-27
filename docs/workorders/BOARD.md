@@ -214,13 +214,13 @@
 | B | OS-222 | 确认执行/MCP 升级工具 | 221 | 已验收 |
 | B | OS-223 | update-project skill | 222 | 已验收 |
 | B | OS-224 | 迁移 E2E/收口 | 223 | 已验收 |
-| C | OS-225 | 中性 wiki 呈现层 | 无 | 待施工 |
-| C | OS-226 | 多知识库/文档/定制模型 | 225 | 待施工 |
-| C | OS-227 | 独立知识库工作台 | 226 | 待施工 |
-| C | OS-228 | HyperGraphRAG kernel/sidecar | 226 | 待施工 |
-| C | OS-229 | API/MCP/Agent 统一检索 | 227、228 | 待施工 |
-| C | OS-230 | 真实 HyperGraphRAG 黄金语料验收 | 229 | 待施工 |
-| C | OS-231 | 知识库 E2E/总收口 | 230 | 待施工 |
+| C | OS-225 | 中性 wiki 呈现层 | 无 | 已验收 |
+| C | OS-226 | 多知识库/文档/定制模型 | 225 | 已验收 |
+| C | OS-227 | 独立知识库工作台 | 226 | 已验收 |
+| C | OS-228 | HyperGraphRAG kernel/sidecar | 226 | 已验收 |
+| C | OS-229 | API/MCP/Agent 统一检索 | 227、228 | 已验收 |
+| C | OS-230 | 真实 HyperGraphRAG 黄金语料验收 | 229 | 部分完成（runtime 真 health 已过；黄金 recall/来源质量未验） |
+| C | OS-231 | 知识库 E2E/总收口 | 230 | 已验收（OS-230 除外） |
 
 **Workflow**：dsv4flash＝`opencode-go-responses/deepseek-v4.1-flash`，hy4flash＝`opencode-go-responses/hy4-flash-free`；模型交替顺序见规划 §3，**实际并发以文件面和依赖为准**：A1/A3/A4、B1/B2、C1/C3 串行，A2/C2 文件面隔离时并行。施工不提交、不 push；监督线逐阶段验收后提交。
 

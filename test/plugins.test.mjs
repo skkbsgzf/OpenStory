@@ -178,7 +178,7 @@ describe('三套聚合', () => {
       assert.equal(analysis.source, 'builtin')
       assert.equal(analysis.sourceDir, 'src/modules/analysis')
       assert.match(analysis.manifestSha256, /^[a-f0-9]{64}$/u)
-      assert.deepEqual(payload.moduleSourceGroups.kernel, ['agent-runtime', 'deduce', 'fact', 'media', 'prose', 'storage', 'text'])
+      assert.deepEqual(payload.moduleSourceGroups.kernel, ['agent-runtime', 'deduce', 'fact', 'knowledge-runtime', 'media', 'prose', 'storage', 'text'])
       assert.deepEqual(payload.moduleSourceGroups['host-composition'], ['agentbar', 'library'])
       assert.deepEqual(payload.moduleManifestWarnings, [])
       assert.equal(payload.capabilityReport.ok, true)

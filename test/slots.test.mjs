@@ -60,9 +60,9 @@ test('manifest 校验：未注册 slot 拒绝，已注册 slot 必须引用本 m
 
 test('slot 编排：装载序优先、同 slot 稳定排序、停用模块不出现', () => {
   const placements = slotPlacements(MODULE_MANIFESTS)
-  // OS-198：八个工作台页签按 manifest 显式 order 排（artifacts 10 … roleplay 80），
+  // OS-198：九个工作台页签按 manifest 显式 order 排（artifacts 10 … roleplay 80），
   // 不退回按 page id 字典序——那是没有 order 时的兜底，不是作者的页签顺序。
-  assert.deepEqual(placements.tab.map((item) => item.page), ['artifacts', 'chapters', 'worldbook', 'script', 'log', 'storysource', 'habits', 'roleplay'])
+  assert.deepEqual(placements.tab.map((item) => item.page), ['artifacts', 'chapters', 'knowledge-base', 'worldbook', 'script', 'log', 'storysource', 'habits', 'roleplay'])
   assert.deepEqual(placements.right.map((item) => item.page), ['analysis'])
   assert.deepEqual(placements['host-actions'].map((item) => item.page), ['exchange'])
   assert.deepEqual(placements.settings.map((item) => item.page).sort(), ['imagegen', 'knowledge'])

@@ -1,5 +1,5 @@
 /**
- * OS-130 契约分域守卫：contracts.mjs 的 ENDPOINTS 必须正好是 contracts/<域>.mjs 八域切片的并集。
+ * OS-130 契约分域守卫：contracts.mjs 的 ENDPOINTS 必须正好是 contracts/<域>.mjs 十分域切片的并集。
  * 防两件事：①往域分片加了端点却忘了聚合（或反之）——daemon 经 contracts.mjs 分派，
  * 分片里的孤儿端点等于不存在；②两个域片重复登记同一段形状（静默互相覆盖）。
  */
@@ -15,6 +15,7 @@ import { pluginsEndpoints } from '../src/api/contracts/plugins.mjs'
 import { systemEndpoints } from '../src/api/contracts/system.mjs'
 import { exchangeEndpoints } from '../src/api/contracts/exchange.mjs'
 import { scriptEndpoints } from '../src/api/contracts/script.mjs'
+import { knowledgeBaseEndpoints } from '../src/api/contracts/knowledgeBase.mjs'
 
 const DOMAINS = [
   ['library', libraryEndpoints],
@@ -25,7 +26,8 @@ const DOMAINS = [
   ['plugins', pluginsEndpoints],
   ['system', systemEndpoints],
   ['exchange', exchangeEndpoints],
-  ['script', scriptEndpoints]
+  ['script', scriptEndpoints],
+  ['knowledgeBase', knowledgeBaseEndpoints]
 ]
 
 test('分域切片：各域并集正好等于聚合 ENDPOINTS（无孤儿、无覆盖）', () => {
