@@ -1,57 +1,55 @@
-# 推演模块（openstory_deduce_* / openstory_enrich_* / openstory_fact_curve）
+# 确定性推演与富化域
 
-推演是「如果世界」引擎：基于库的拆解事实（fact），种子化掷 2d6 推进剧情拍循环——**同样的种子同样的操作，结果完全可复现**。LLM 不在必然环节里，只在「戏剧候选」的可选来源里。
+确定性推演消费故事源 fact，以种子化 2d6 生成局面卡与候选拍包；同一种子、同一操作序列可复现。LLM 不是拍循环的必需环节。富化则从事实链重算旁挂 wiki（实体关系、因果、需求层级等），两者都不替代事实主档写入。
 
 ## 工具
 
-| 工具 | 干什么 | 什么时候用 |
-|---|---|---|
-| `openstory_deduce_present` | 开局/续拍：局面卡＋候选拍包 | 想知道「接下来会发生什么」 |
-| `openstory_deduce_settle` | 结算一拍（选候选/veto） | 导演拍板 |
-| `openstory_enrich_run` | 语义富化全量重算（**长任务**） | 正文/拆解变了之后 |
-| `openstory_enrich_status` | 查富化进度 | 启动富化后轮询 |
-| `openstory_enrich_graph` | 读知识图谱 | 分析人物关系/因果链 |
-| `openstory_fact_curve` | 章级剧情曲线 | 分析全书节奏起伏 |
+| 工具 | 必填参数 | 用途与边界 | 最低确认 |
+|---|---|---|---|
+| `openstory_deduce_present` | `root` | 出局面卡与候选拍包；`bookId/pov/seed` 可选 | create；`reset:true` 时 restore |
+| `openstory_deduce_settle` | `root` | 结算候选或导演动作；传 `action` 与 `candidateId`，`bookId/note` 可选 | create |
+| `openstory_enrich_run` | `root,bookId` | 启动全量语义富化，立即返回 `jobId`；需模型运行时 | create |
+| `openstory_enrich_status` | `jobId` | 轮询富化任务状态 | read |
+| `openstory_enrich_graph` | `root,bookId` | 读富化产出的实体、关系与因果等 wiki 图谱 | read |
+| `openstory_fact_curve` | `root` | 读章级剧情曲线；`bookId` 可选 | read |
 
-## 拍循环（present → settle）
+## 确定性推演拍循环
 
-```
-openstory_deduce_present {root, bookId?}
-  → { round, sceneCard（局面：张力/在场/时刻）, candidates[]（候选拍包） }
+```text
+openstory_deduce_present {root,bookId?,seed?,confirm:"create"}
+  → round / sceneCard / candidates
 
-# 从 candidates 里挑一个（或 veto 否决），结算：
-openstory_deduce_settle {root, candidateId, action: 'choose'}
-  → { action, round }
+openstory_deduce_settle {root,bookId?,candidateId,action:"choose",confirm:"create"}
+  → 结算结果
 
-# 再 present 出下一拍……循环推进
-```
-
-- `seed` 参数可复现：同一 seed 同一操作序列 = 同样的局面。做「如果世界」对比时，固定 seed 换候选即可分岔。
-- `reset: true` 重置推演状态（从第一拍重来），**必须同时传 `confirm: 'restore'`**：正常续拍也会保存会话状态（create 级），`reset:true` 升到 restore 级；不传或级别不足会返回 `isError:true` + `CONFIRM_REQUIRED`（不是 -32602）。其余写工具（如 `openstory_deduce_settle`/`openstory_enrich_run`）可在实参 `confirm` 上传对应级别，一旦传了就须满足门槛（不足返回 `CONFIRM_REQUIRED`）。
-- 结算产出的条目**只交回调用方，不自动写库**——要落库走 enrich 或参考写（对齐「推演不直接动稿」）。
-- `WORLD_EMPTY` 错误＝这个 book 还没有世界书事实，先跑 enrich。
-
-## enrich（语义富化）
-
-`openstory_enrich_run` 做全量重算：六槽位（动机/台账/关系…）＋因果图＋需求层级，写旁挂 wiki。**12–35 次模型调用、2–6 分钟**：
-
-```
-1. openstory_enrich_run {root, bookId}     → { jobId }
-2. openstory_enrich_status {jobId}         → 轮询（每 15–30s 一次）
-3. openstory_enrich_graph {root, bookId}   → 完成后读知识图谱
+再次 openstory_deduce_present → 下一拍
 ```
 
-注意：enrich 的 LLM 走**活动的运行时**——endpoint / CLI / DSH 三种都支持（OS-58 起统一走「单发单收」子 agent 模式，CLI 型会 spawn 一次性子进程）；输出被强制约束为纯 JSON，引擎侧有围栏/前后文容错。
+- `seed` 用于复现或对比同一初态下的不同候选。正常 `present` 与 `settle` 都会保存推演会话状态，都是 create 级写调用，不能省略 `confirm`。
+- `reset:true` 会清掉当前局面、从第一拍重来，必须传 `confirm:'restore'`。级别不足返回 `isError:true` + `CONFIRM_REQUIRED`；这是业务确认失败，不是 `-32602`。
+- `settle` 的产物只交回调用方，不自动写正文、世界书或 fact 主档。要把候选沉淀为合法事实，按 [fact.md](fact.md) 的整份替换协议执行；要写成正文或世界书，走各自写工具。
+- `WORLD_EMPTY` 表示该事实书没有可用世界事实。先用 `openstory_fact_books` / `openstory_fact_entries` 核对并写入合法 fact；enrich 消费事实，不能用它填出一个空主档。
 
-## 什么时候跑 enrich
+## 富化
 
-- `openstory_novel_write_chapter` 响应里 `factStale: true`（正文比事实新）
-- 新写了好几章、拆解没跟上
-- 知识图谱里查不到刚发生的人物关系
+`openstory_enrich_run` 做全量重算：六槽位、因果图、需求层级等，并写旁挂 wiki。它是长任务（约 2–6 分钟），启动后不要同步等待：
 
-## 两个事实源的分工
+```text
+1. openstory_fact_books {root}                         → 确认 bookId
+2. openstory_enrich_run {root,bookId,confirm:"create"}  → jobId
+3. openstory_enrich_status {jobId}                     → 轮询
+4. openstory_enrich_graph {root,bookId}                → 完成后读派生图谱
+```
 
-- **fact（拆解）**：章级语义（每章的事件/情绪/功能），`openstory_fact_curve` 读
-- **wiki（富化）**：跨章实体图谱（人物关系/因果/台账），`openstory_enrich_graph` 读
+`factStale:true`、新写章节后关系未更新，都可以触发富化。但富化不是 fact 编辑接口，也不会替代 `openstory_fact_entries_import`。
 
-分析「第几章发生了什么」用 fact；「谁和谁什么关系、为什么」用 wiki。
+## 与多角色扮演的区别
+
+| 场景 | 使用工具 | 引擎与输入 | 确认 |
+|---|---|---|---|
+| 确定性开局/续拍 | `openstory_deduce_present` / `openstory_deduce_settle` | 种子化 2d6，局面卡与候选拍 | create |
+| 推演会话节点推进 | `openstory_roleplay_turn` | 实际调用 `/api/deduce/turn`；选 `choiceId` 或给 `customText` | create |
+| 多角色扮演开场 | `openstory_roleplay_opening` | 调用 `/api/roleplay/opening`，主持人＋演员，需要模型 | create |
+| 多角色扮演一回合 | `openstory_roleplay_scene_turn` | 调用 `/api/roleplay/turn`，主持人裁决、角色成文与收束 | create |
+
+`openstory_roleplay_turn` 虽然名字带 roleplay，仍是推演 turn；`openstory_roleplay_opening` 与 `openstory_roleplay_scene_turn` 才是独立的多角色扮演引擎。后两者无模型或空回包必须明确失败，不能伪造成功。它们的完整参数和会话写法见 [sessions.md](sessions.md)。

@@ -18,11 +18,18 @@
  *
  * 用法：node tools/acceptance/acceptance.mjs [--json <outPath>]
  * 退出码：0 = 全过；1 = 有 FAIL（新增检查项默认 WARN 不拦截，见 CHECKS 注释）
+ * OS-219 定向施工用 --skip-full-tests 跳过 S2.8 全量复跑并记 WARN；正式验收不传此开关。
  */
 import { readFileSync, readdirSync, statSync, writeFileSync, mkdirSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
 import { join, dirname, relative, resolve as pathResolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { MCP_TOOL_NAMES } from '../../src/host/mcp.mjs'
+import { ENDPOINTS } from '../../src/api/contracts.mjs'
+import { countPhysicalLines } from '../arch-stats.mjs'
+import {
+  APP_JS_MAX_LINES, HOST_DOMAIN_MODULE_IDS, NUMBER_ANCHORS_SCHEMA
+} from '../number-anchors.mjs'
 import {
   NAMING_TABLE, TAB_REGISTRY, BUILTIN_PAGE_IDS, LOG_MODULES,
   projectedTabDefs, viewScope
@@ -39,6 +46,7 @@ import {
 } from './capabilityBoundaries.mjs'
 // OS-165/G5d：模块覆盖面与 test/moduleCoverage.test.mjs 共用一份口径（端点/页签归属与宿主白名单理由）。
 import { coverageReport } from './moduleCoverage.mjs'
+import { auditMcpDocs } from './mcpDocsAudit.mjs'
 import { auditLineageNames, auditNamingConsistency } from '../verify/verify-os172-naming.mjs'
 
 const REPO = pathResolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
@@ -71,6 +79,10 @@ function grepLine(rel, re) {
   const lines = readRepo(rel).split('\n')
   for (let i = 0; i < lines.length; i++) if (re.test(lines[i])) return `${rel}:${i + 1}`
   return null
+}
+function countGateChecks() {
+  const source = readRepo('tools/acceptance/acceptance.mjs')
+  return new Set([...source.matchAll(/check\('(S\d+\.\d+)'/gu)].map((match) => match[1])).size
 }
 
 /* OS-140/C6：src/ 树扫描器（递归收集 .mjs/.js，带内容）＋相对说明符 → 仓内路径解析器 */
@@ -132,9 +144,8 @@ check('S0.2', 'S0', '架构文档数字与实测一致（tools/arch-stats.mjs --
  * ================================================================ */
 console.log('\n── S1 Agentic ──')
 
-// S1.1 MCP 工具清单与模块覆盖（按前缀归类：每个模块 ≥2 个工具＝有读有写）
-const mcpSrc = readRepo('src/host/mcp.mjs')
-const toolNames = [...mcpSrc.matchAll(/name:\s*'([a-z_]+)'/g)].map((m) => m[1])
+// S1.1 MCP 工具清单与模块覆盖（工具名直接取真实导出表；按前缀归类，每组至少 2 个）
+const toolNames = [...MCP_TOOL_NAMES]
 const MODULE_PREFIX = {
   novel: 'openstory_novel',
   worldbook: 'openstory_ref',
@@ -158,21 +169,28 @@ const modCoverage = Object.entries(MODULE_PREFIX)
   .map(([mod, prefix]) => [mod, toolNames.filter((t) => t.startsWith(prefix))])
   .filter(([, ts]) => ts.length > 0)
 const thinModules = modCoverage.filter(([, ts]) => ts.length < 2).map(([m, ts]) => `${m}(${ts.length})`)
-check('S1.1', 'S1', `MCP 工具覆盖模块面（共 ${toolNames.length} 个工具，${modCoverage.length} 模块组）`,
+check('S1.1', 'S1', `MCP 工具覆盖模块面（真实注册表 ${toolNames.length} 个工具，${modCoverage.length} 模块组）`,
   toolNames.length >= 15 && modCoverage.length >= 4 && thinModules.length === 0,
-  toolNames.slice(0, 4).map((t) => lineOf('src/host/mcp.mjs', `name: '${t}'`)).filter((s) => !s.endsWith(':?')),
+  [lineOf('src/host/mcp.mjs', 'export const MCP_TOOL_NAMES'), ...toolNames.slice(0, 3).map((t) => lineOf('src/host/mcp.mjs', `name: '${t}'`))].filter((s) => !s.endsWith(':?')),
   thinModules.length ? `工具不足 2 个的模块组：${thinModules.join(', ')}` : '各模块组均有读+写工具')
 
-// S1.2 docs/mcp/*.md 对外文档与工具同步（OS-159：对外材料从 mcp/skills/ 归入 docs/mcp/）
+// S1.2 docs/mcp/** 对外文档与真实工具表双向同步（OS-219）
 const mcpSkillDir = join(REPO, 'docs', 'mcp')
 let mcpDocs = []
-try { mcpDocs = readdirSync(mcpSkillDir).filter((f) => f.endsWith('.md')) } catch { /* 目录不存在 */ }
-const overview = mcpDocs.includes('OVERVIEW.md') ? readRepo('docs/mcp/OVERVIEW.md') : ''
-const overviewNum = [...overview.matchAll(/(\d+)\s*个工具/g)].map((m) => Number(m[1]))
-const docSync = overviewNum.length === 0 || overviewNum.some((n) => Math.abs(n - toolNames.length) <= 2)
-check('S1.2', 'S1', `docs/mcp 对外文档同步（OVERVIEW 声称 ${overviewNum.join('/') || '—'}，实际 ${toolNames.length}）`,
-  docSync && mcpDocs.length >= 5, mcpDocs.map((f) => `docs/mcp/${f}`),
-  docSync ? '' : 'OVERVIEW 工具数与 mcp.mjs 不符——改 MCP 后必须同步对外文档')
+try {
+  mcpDocs = readdirSync(mcpSkillDir).filter((f) => f.endsWith('.md')).sort()
+    .map((file) => ({ file, text: readRepo(`docs/mcp/${file}`) }))
+} catch { /* 目录不存在：纯函数会把缺文档/OVERVIEW 如实报红 */ }
+const mcpDocsAudit = auditMcpDocs({ toolNames, docs: mcpDocs })
+const overviewDeclared = mcpDocsAudit.overviewCounts.length ? mcpDocsAudit.overviewCounts.join('/') : '未声明'
+check('S1.2', 'S1', `docs/mcp 对外文档同步（真实 ${toolNames.length}；OVERVIEW 声称 ${overviewDeclared}；幽灵 ${mcpDocsAudit.ghostTools.length}／漏文档 ${mcpDocsAudit.missingTools.length}）`,
+  mcpDocsAudit.ok,
+  [
+    lineOf('src/host/mcp.mjs', 'export const MCP_TOOL_NAMES'),
+    lineOf('tools/acceptance/mcpDocsAudit.mjs', 'export function auditMcpDocs'),
+    ...mcpDocsAudit.issues.slice(0, 6)
+  ],
+  mcpDocsAudit.ok ? '完整工具名双向一致；OVERVIEW 数字严格相等' : `${mcpDocsAudit.issues.length} 项文档漂移——docs/mcp 未覆盖全部真实工具或声明了不存在的工具`)
 
 // S1.3 skills/ 创作知识库包完整性
 let skillPacks = 0, skillMissing = []
@@ -337,25 +355,74 @@ check('S2.7', 'S2', `能力归属与边界（${moduleCov.manifestIds.length} 模
   ownershipIssues.length ? `违规：${ownershipIssues.slice(0, 4).map((item) => (typeof item === 'string' ? item : `${item.from}:${item.line} -> ${item.to}`)).join('; ')}` : 'stage C、能力图、动态贡献与 R-a～R-d 静态边界全部通过；端点/页签均有归属')
 
 // S2.8 OS-170：测试数／端点数／宿主域端点数／app.js 物理行与文档、机器锚、实测三方一致。
-// app.js 上限锚只降不升；数字锚工具会真实复跑 node --test，避免拿旧汇总冒充当前值。
+// app.js 上限锚只降不升。正式命令必须真实复跑全量套件；OS-219 定向施工另加
+// --skip-full-tests，明确跳过 S2.8 的全量复跑并如实记 WARN，不能冒充全量验收通过。
 let numberAnchorsOk = false
 let numberAnchorsEvidence = []
+let numberAnchorsNote = ''
+let numberAnchorsMode = 'full'
+const skipFullTests = argv.includes('--skip-full-tests')
 try {
-  const out = execFileSync(process.execPath, ['tools/number-anchors.mjs', '--check'], {
-    cwd: REPO,
-    encoding: 'utf-8',
-    timeout: 300_000,
-    maxBuffer: 32 * 1024 * 1024
-  })
-  numberAnchorsOk = true
-  numberAnchorsEvidence = [lineOf('tools/number-anchors.mjs', 'export function auditAnchors'), out.trim().split('\n')[0]]
+  if (skipFullTests) {
+    const numberAnchorSource = readFileSync(join(REPO, 'tools', 'number-anchors.mjs'), 'utf-8')
+    const collectAnchorsCall = numberAnchorSource.match(/export function collectAnchors\(\{[\s\S]*?^\}/mu)?.[0]
+    const collectStaticAnchorsCall = numberAnchorSource.match(/export function collectStaticAnchors\([\s\S]*?^\}/mu)?.[0]
+    if (!collectAnchorsCall || !collectStaticAnchorsCall) throw new Error('无法读取 number-anchors 的纯静态收集函数')
+    const collectStaticAnchors = Function(
+      'readFileSync', 'readdirSync', 'join', 'coverageReport', 'MODULE_MANIFESTS',
+      'HOST_DOMAIN_MODULE_IDS', 'APP_JS_MAX_LINES', 'countPhysicalLines',
+      'REPO', 'ENDPOINTS', 'NUMBER_ANCHORS_SCHEMA',
+      `${collectStaticAnchorsCall.replace(/^export\s+/u, '')}\nreturn collectStaticAnchors`
+    )(
+      readFileSync, readdirSync, join, coverageReport, MODULE_MANIFESTS,
+      HOST_DOMAIN_MODULE_IDS, APP_JS_MAX_LINES, countPhysicalLines,
+      REPO, ENDPOINTS, NUMBER_ANCHORS_SCHEMA
+    )
+    const collectAnchors = Function(
+      'collectStaticAnchors', 'countGateChecks', 'runTestSummary',
+      `${collectAnchorsCall.replace(/^export\s+/u, '')}\nreturn collectAnchors`
+    )(collectStaticAnchors, countGateChecks, () => { throw new Error('定向施工禁止复跑全量测试') })
+    const persisted = JSON.parse(readRepo('docs/number-anchors.json'))
+    const current = collectAnchors({ repo: REPO, runTests: false })
+    const { tests: _currentTests, ...currentStatic } = current
+    const { tests: _persistedTests, ...persistedStatic } = persisted
+    const staticMatch = JSON.stringify(currentStatic) === JSON.stringify(persistedStatic)
+    numberAnchorsOk = staticMatch && Boolean(persisted.tests?.ok)
+    numberAnchorsEvidence = [
+      lineOf('tools/number-anchors.mjs', 'export function collectAnchors'),
+      `静态锚（端点/app.js/测试文件/门禁数）：${staticMatch ? '一致' : '漂移'}`,
+      `未复跑全量套件；既有汇总 ${persisted.tests?.total ?? 0} 例／${persisted.tests?.fail ?? 0} fail 仅作历史引用`,
+      staticMatch ? '' : `静态锚不一致：${JSON.stringify({ current: currentStatic, persisted: persistedStatic })}`
+    ].filter(Boolean)
+    numberAnchorsNote = '定向模式：跳过全量测试，S2.8 不算全量验收证据'
+    numberAnchorsMode = 'static-only'
+  } else {
+    const out = execFileSync(process.execPath, ['tools/number-anchors.mjs', '--check'], {
+      cwd: REPO,
+      encoding: 'utf-8',
+      timeout: 300_000,
+      maxBuffer: 32 * 1024 * 1024
+    })
+    numberAnchorsOk = true
+    numberAnchorsEvidence = [lineOf('tools/number-anchors.mjs', 'export function auditAnchors'), out.trim().split('\n')[0]]
+  }
 } catch (error) {
   const detail = String(error.stdout || error.stderr || error.message || '').trim().split('\n').slice(0, 8)
-  numberAnchorsEvidence = [`tools/number-anchors.mjs --check 退出码 ${error.status ?? '?'}`, ...detail]
+  numberAnchorsEvidence = [`数字锚核对退出码 ${error.status ?? '?'}`, ...detail]
 }
-check('S2.8', 'S2', '文档数字锚与实测一致（测试／端点／宿主域端点／app.js 行数＋只降不升上限）',
-  numberAnchorsOk, numberAnchorsEvidence,
-  numberAnchorsOk ? '' : '数字漂移或 app.js 超上限——跑 node tools/number-anchors.mjs 回写并修正文档')
+const s28Check = {
+  id: 'S2.8', standard: 'S2', name: '文档数字锚与实测一致', ok: numberAnchorsOk,
+  evidence: numberAnchorsEvidence, note: numberAnchorsNote, mode: numberAnchorsMode
+}
+if (numberAnchorsMode === 'static-only') {
+  warn('S2.8', 'S2', `${s28Check.name}（${s28Check.ok ? '静态锚一致' : '静态锚漂移'}；全量测试未跑）`, numberAnchorsEvidence, numberAnchorsNote)
+  s28Check.verdict = 'WARN'
+} else {
+  check('S2.8', 'S2', s28Check.name, numberAnchorsOk, numberAnchorsEvidence,
+    numberAnchorsOk ? '' : '数字漂移或 app.js 超上限——跑 node tools/number-anchors.mjs --check 回写并修正文档')
+  s28Check.verdict = numberAnchorsOk ? 'PASS' : 'FAIL'
+}
+checks[checks.findIndex((item) => item.id === 'S2.8')] = s28Check
 
 // S2.3 契约驱动架构：daemon 经 endpointFor() 契约分派 + validateResponse() 契约校验
 // OS-130 契约分域后，端点形状按域切片在 contracts/<域>.mjs——计数＝contracts.mjs＋contracts/*.mjs 合计

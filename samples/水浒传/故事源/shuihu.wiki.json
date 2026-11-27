@@ -1,10 +1,5 @@
 {
-  "derivedFrom": {
-    "factRevision": 4,
-    "schema": "openstory-wiki-derived@2"
-  },
   "version": "wiki-enrich@3",
-  "generated_at": "2026-11-18T14:35:38.846Z",
   "protagonist": null,
   "pseudoChapters": true,
   "enums": {
@@ -272,5 +267,9 @@
       "stage": "causalGraph",
       "reason": "dropped-invalid-edges:8"
     }
-  ]
+  ],
+  "derivedFrom": {
+    "factRevision": 1,
+    "schema": "openstory-wiki-derived@2"
+  }
 }

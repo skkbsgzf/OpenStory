@@ -55,6 +55,19 @@ jobs:
           LOG_DIR="${RUNNER_TEMP:-/tmp}/openstory-ci"; mkdir -p "$LOG_DIR"
           node tools/verify/verify-os172-e2e.mjs 2>&1 | tee "$LOG_DIR/e2e.log"
 
+      - name: Check CI workflow structure
+        shell: bash
+        run: |
+          set -o pipefail
+          node tools/verify/verify-ci-workflow.mjs
+
+      - name: Run MCP-only clean-room build
+        shell: bash
+        run: |
+          set -o pipefail
+          LOG_DIR="${RUNNER_TEMP:-/tmp}/openstory-ci"; mkdir -p "$LOG_DIR"
+          node tools/verify/verify-mcp-build-e2e.mjs --out "$LOG_DIR/mcp-build" 2>&1 | tee "$LOG_DIR/mcp-build.log"
+
       # 失败时把失败行当注解发出来（公开仓免登录可查，不必下 artifact）。
       # GitHub 的 bash 默认带 -e -o pipefail：grep 没命中会让步骤自红，故显式 set +e。
       - name: Report failing tests as annotations

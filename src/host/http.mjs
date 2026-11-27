@@ -91,8 +91,8 @@ export function readBody(req, limit = MAX_JSON_BODY) {
   })
 }
 
-export async function readJson(req) {
-  const raw = await readBody(req)
+export async function readJson(req, limit = MAX_JSON_BODY) {
+  const raw = await readBody(req, limit)
   if (!raw.trim()) return {}
   try {
     return JSON.parse(raw)

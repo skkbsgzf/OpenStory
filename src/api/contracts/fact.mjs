@@ -269,6 +269,18 @@ export const factEndpoints = {
     errors: ['NO_LIBRARY', 'PATH_ESCAPE', 'INVALID_ENTRY', 'NOT_FOUND', 'MODULE_DISABLED', 'PLUGIN_DEGRADED']
   },
 
+  deduceAssetPut: {
+    method: 'PUT',
+    path: '/api/deduce/asset',
+    // OS-217：MCP-only 构建素材写原语。path 相对 扮演/<bookId>/素材/，只接受
+    // 角色/*.png、场景/*.png、bgm/*.mp3；≤16MB，严格 base64＋文件签名双校验。
+    // 默认拒覆盖；overwrite:true 先按现有 .history 模式备份，再原子写二进制并留 hash 日志。
+    // 任一校验失败零写入；日志失败不阻断已落盘素材，经 logError 如实回传。
+    request: { body: { root: 'string', bookId: 'string?', path: 'string', dataBase64: 'string', overwrite: 'boolean?' } },
+    response: { ok: 'true', path: 'string', bytes: 'integer', mediaType: 'string', sha256: 'string', backup: 'string?', changeId: 'string?', logError: 'string?' },
+    errors: ['NO_LIBRARY', 'PATH_ESCAPE', 'INVALID_ENTRY', 'NOT_FOUND', 'WRITE_PROTOCOL_IO_FAILED', 'MODULE_DISABLED', 'PLUGIN_DEGRADED']
+  },
+
   enrichRun: {
     method: 'POST',
     path: '/api/enrich/run',

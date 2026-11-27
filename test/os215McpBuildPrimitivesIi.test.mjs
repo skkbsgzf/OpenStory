@@ -102,9 +102,15 @@ test('OS-215 多局会话：new/switch/get/list/delete 与最后一局拒删', a
       // 删除未激活的新局成功（非破坏）
       const removed = await ok(mcp, 'openstory_session_delete', { root: fx.root, bookId: 'shuihu', sessionId: sid, confirm: 'restore' })
       assert.equal(removed.action, 'delete')
-      // 最后一局拒删
+      // 最后一局拒删。新样本自带 main＋MCP 分局，先删到只剩 main，再验证删 main 被拒。
       const after = await ok(mcp, 'openstory_sessions', { root: fx.root, bookId: 'shuihu' })
-      await fails(mcp, 'openstory_session_delete', { root: fx.root, bookId: 'shuihu', sessionId: after.activeId, confirm: 'restore' }, 'INVALID_ENTRY')
+      for (const item of after.sessions.filter((entry) => entry.id !== 'main')) {
+        await ok(mcp, 'openstory_session_delete', { root: fx.root, bookId: 'shuihu', sessionId: item.id, confirm: 'restore' })
+      }
+      const last = await ok(mcp, 'openstory_sessions', { root: fx.root, bookId: 'shuihu' })
+      assert.equal(last.sessions.length, 1)
+      assert.equal(last.activeId, 'main')
+      await fails(mcp, 'openstory_session_delete', { root: fx.root, bookId: 'shuihu', sessionId: last.activeId, confirm: 'restore' }, 'INVALID_ENTRY')
       // 缺确认
       await fails(mcp, 'openstory_session_new', { root: fx.root, bookId: 'shuihu' }, 'CONFIRM_REQUIRED')
       // 既有 HTTP 契约：未知 sessionId 返回 session:null（不是 404）

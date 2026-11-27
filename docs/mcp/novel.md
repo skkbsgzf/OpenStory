@@ -1,57 +1,55 @@
-# 小说模块（openstory_novel_*）
+# 小说与章节域
 
-小说是 OpenStory 最重的模块：章节是 `正文/NNN-标题.md` 文件（NNN 三位编号自动解析），写作纪律、拆解事实、推演都以它为锚。
+小说章节落在 `正文/NNN-标题.md`，剧本载体按库的章节契约使用同类 `NNN-标题.md` 文件；NNN 是三位编号。写作规矩来自习惯表，事实依据来自故事源，候选剧情可来自推演，但章节工具本身只负责载体文件的读取、写入与命名。
 
 ## 工具
 
-| 工具 | 干什么 | 什么时候用 |
-|---|---|---|
-| `openstory_novel_list_chapters` | 章节清单（编号/标题/字数） | 任何任务第一步：定位章号 |
-| `openstory_novel_read_chapter` | 读一章完整 md 源文 | 写前必读；续写前读上一章 |
-| `openstory_novel_write_chapter` | **整章覆盖**写入 | 改写/续写产出落盘 |
-| `openstory_novel_new_chapter` | 自动编号新建空章 | 开新章 |
-| `openstory_novel_delete_chapter` | 删除（进 .history） | 少用 |
+| 工具 | 必填参数 | 用途与边界 | 最低确认 |
+|---|---|---|---|
+| `openstory_novel_list_chapters` | `root` | 列默认正文目录的编号、标题、字数；写前先定位章号 | read |
+| `openstory_novel_read_chapter` | `root,file` | 读完整 md 源文；`file` 是库内相对路径 | read |
+| `openstory_novel_write_chapter` | `root,file,text` | 整章覆盖，不是增量 patch；备份原稿并返回 `factStale` 与习惯命中 | create |
+| `openstory_novel_new_chapter` | `root` | 取最大编号加一、三位补零新建空章；`title` 可省略，缺省标题来自写作套件 | create |
+| `openstory_novel_delete_chapter` | `root,file` | 把原稿挪入 `.history`，不是真删；返回备份路径 | restore |
+| `openstory_chapters_rename` | `root,file,title` | 只换标题段、保留编号；目标冲突拒绝，只允许正文/剧本载体路径 | create |
 
-## 写入语义（最重要的部分）
+## 写入语义
 
-- `openstory_novel_write_chapter` 是**整章覆盖**，不是增量 patch。先 `read`，改完把完整章节丢回来。
-- 写入前 daemon 自动把原稿备份进 `正文/.history/`（响应里 `backup` 字段是备份路径）。写错了可以人工从备份找回。
-- 响应里 `factStale: true` 表示**正文比拆解事实新**——你刚写的章还没有事实条目支撑（剧情曲线、知识图谱都是旧的）。补救：跑 `openstory_enrich_run`（长任务）同步。
-- 文件名格式必须是 `正文/NNN-标题.md`。新章编号用 `openstory_novel_new_chapter` 自动拿，不要自己猜号。
-- **写边界（OS-211）**：章节写工具只落载体目录（正文／剧本）。写 `故事源/` 会被拒
-  （`INVALID_ENTRY`）——那是 fact 写协议的地盘（schema／revision／operationId 三件套），
-  通用文本通道不许整份覆盖；写 `世界书/` 要改用 `openstory_reference_write_note`。
-  MCP 与直接 HTTP 走同一道闸。
-
-## 标题格式（水浒样本库示例）
-
-回目式标题是库的**写作纪律**约束（在参考系统里），不是 MCP 的：`第一回　张天师祈禳瘟疫　洪太尉误走妖魔`。正文首行 H1 就是章名；工具层只管文件名 `NNN-标题.md`，标题内容去参考系统查纪律。
+- `openstory_novel_write_chapter` 接收完整章节 `text`。先 `openstory_novel_read_chapter` 确认目标，再把完整结果传回；它不是补丁接口。
+- 覆盖写会备份原稿，响应中的 `backup` 是人工恢复线索。`openstory_novel_delete_chapter` 同样是备份式删除。
+- 文件名使用 `NNN-标题.md`。新章用 `openstory_novel_new_chapter` 取号，不猜编号；重命名用 `openstory_chapters_rename`，不在写正文时偷偷改文件名。
+- 章节写工具只落正文/剧本载体目录。写 `故事源/` 会被拒；写 `世界书/` 使用 `openstory_reference_write_note`。
+- `factStale: true` 表示正文比故事源事实新。它**不表示 enrich 会自动补 fact 主档**：合法 fact 变更走 `openstory_fact_books` → `openstory_fact_entries` → `openstory_fact_entries_import`；需要重建跨章实体、因果等派生 wiki 时再运行 `openstory_enrich_run`。
 
 ## 典型任务流
 
 **续写下一章**
-```
-1. openstory_novel_list_chapters          → 知道写到第几章
-2. openstory_reference_index              → 看有哪些参考（纪律/人物/大纲）
-3. openstory_novel_read_chapter 上一章     → 接上文
-4. openstory_reference_read_note 相关参考  → 人物设定/伏笔清单
-5. 产出正文
-6. openstory_novel_new_chapter            → 拿新章文件名
-7. openstory_novel_write_chapter          → 落盘
+
+```text
+1. openstory_habits_read {root}                      → 作者写作规矩
+2. openstory_novel_list_chapters {root}               → 当前最后一章
+3. openstory_fact_books {root}                       → 定位事实书
+4. openstory_reference_index {root}                  → 找人物、纪律、伏笔
+5. openstory_novel_read_chapter {root,file}           → 读上一章
+6. openstory_fact_entries {root,bookId}              → 核对事实依据
+7. openstory_novel_new_chapter {root}                → 取新章路径
+8. openstory_novel_write_chapter {root,file,text,confirm:"create"} → 完整落盘
 ```
 
 **改写一章**
-```
-1. openstory_novel_read_chapter           → 原文
-2. （可选）openstory_analysis_chapter     → AI 味/文风基线
-3. 改写
-4. openstory_novel_write_chapter          → 覆盖写（旧稿自动进 .history）
-5. （可选）openstory_analysis_chapter     → 对比改写后的指标
+
+```text
+1. openstory_novel_read_chapter {root,file}
+2. openstory_analysis_chapter {text:"原文"}           → 文风与 AI 味基线
+3. 按习惯表改写
+4. openstory_novel_write_chapter {root,file,text,confirm:"create"}
+5. openstory_analysis_chapter {text:"改写稿"}         → 对照指标
 ```
 
-## 和其它模块的勾连
+**仅调整标题**
 
-- **参考**：写作纪律/人物卡/伏笔都在参考系统里，`openstory_reference_read_note` 取；图谱（`openstory_reference_graph`）告诉你这章和哪些参考有关。
-- **推演**：不知道下一章写什么 → `openstory_deduce_present` 出局面与候选拍。
-- **分析**：写完跑 `openstory_analysis_chapter` 自查 AI 味与节奏。
-- **事实链**：写入后 `factStale=true` 就跑 enrich。
+```text
+openstory_chapters_rename {root,file,title:"新标题",confirm:"create"}
+```
+
+标题不含 `NNN-` 前缀。若库有回目式标题纪律，应先读世界书中的纪律笔记，再决定 `title` 内容。

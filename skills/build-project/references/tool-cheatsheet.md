@@ -1,6 +1,6 @@
 # OpenStory MCP 工具速查表（build-project）
 
-> 真源：`src/host/mcp.mjs` 的 `tools/list`。本表随 OS-216 固定为 **55 个工具**；新增/删除工具必须同步本文与门禁，不允许 ±2 误差。
+> 真源：`src/host/mcp.mjs` 的 `tools/list`。本表随 OS-216 固定为 **60 个工具**；新增/删除工具必须同步本文与门禁，不允许 ±2 误差。
 > 通用：业务错误 `isError:true`＋错误码文本；参数/schema 错误 JSON-RPC `-32602`；未知工具/方法 `-32601`。所有工具都接受 `confirm` 实参，写工具按注册表门槛强制校验；`confirm` 不转发给 daemon。
 
 ## 元信息（2）
@@ -140,7 +140,27 @@
 |---|---|---|---|
 | `openstory_assets` | `root` | 盘点 characters/scenes/bgm；目录不存在是空态 | read |
 | `openstory_asset_read` | `root,path` | 读 `.png/.mp3`（≤16MB）→ mediaType/bytes/dataUrl | read |
+| `openstory_asset_put` | `root,path,dataBase64` | 受限写入 PNG/MP3；验签名、≤16MB；`overwrite` 覆盖前备份 | create |
 | `openstory_deduce_image` | `root,name,prompt` | 推演场景生图（需后端） | create |
+
+## 插件投影（1）
+
+| 工具 | 必填参数 | 用途 | 确认 |
+|---|---|---|---|
+| `openstory_plugins` | — | 读 plugins/modules/moduleGraph/slots/能力报告；`root` 可选 | read |
+
+## 多角色扮演（2）
+
+| 工具 | 必填参数 | 用途 | 确认 |
+|---|---|---|---|
+| `openstory_roleplay_opening` | `root,pov` | 多角色扮演开场（需模型，保存 roleplay 节点） | create |
+| `openstory_roleplay_scene_turn` | `root,pov,playerAction` | 多角色扮演一回合（需模型，区别于推演 turn） | create |
+
+## 界面状态（1）
+
+| 工具 | 必填参数 | 用途 | 确认 |
+|---|---|---|---|
+| `openstory_ui_state` | `root,state` | 合并写库 ui-state；经能力图事务并留备份 | create |
 
 ## 完成检查单
 

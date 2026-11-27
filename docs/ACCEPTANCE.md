@@ -9,7 +9,7 @@
 | 标准 | 检查 | 口径 |
 |---|---|---|
 | S0 布局 | S0.1–S0.2 | 布局宪法（OS-159）：根目录白名单（零散落 `.mjs`），启动入口直跑 `src/host/{daemon,mcp}.mjs`，自持模块全部在 `src/` 六目录（host/api/protocol/kernel/modules/services）· 架构文档数字与实测一致（OS-150：ARCHITECTURE.md 生成段逐字比对 `tools/arch-stats.mjs`，改了文件结构就跑 `npm run arch:stats` 回写，人不再手填） |
-| S1 Agentic | S1.1–S1.6 | MCP 工具覆盖四模块（读+写）· docs/mcp 文档同步 · skills/ 31 包完整 · dsh-cli 运行时 · 多 CLI 派发器 · 测试不依赖本机环境（OS-169：`test/**` 本机绝对路径零容忍，允许清单为空；本机无依赖时显式 skip 并注明守卫理由） |
+| S1 Agentic | S1.1–S1.6 | MCP 工具覆盖四模块（读+写，工具名取真实 `MCP_TOOL_NAMES`）· docs/mcp 完整工具名双向同步（OS-219：幽灵工具/漏文档工具都红；OVERVIEW 若声明工具数必须严格相等，无数字也红）· skills/ 31 包完整 · dsh-cli 运行时 · 多 CLI 派发器 · 测试不依赖本机环境（OS-169：`test/**` 本机绝对路径零容忍，允许清单为空；本机无依赖时显式 skip 并注明守卫理由） |
 | S2 可插拔 | S2.1–S2.10 | 能力路由边界（模块只经协议/能力句柄；显式兼容转供叶不得复制实现）· 前端模块隔离 · 契约驱动（endpointFor + validateResponse）· 底座边界（S2.4'：kernel 不反向依赖、host 不私接模块/前端、无 core/vendor 回潮、base.* 五项句柄齐全）· 来源防护闸常绿 · 命名真源表一致 · 豁免表无腐化 · 能力归属（S2.7：stage C、kernel 零端点/UI、workbench entry/requires/slots、端点唯一归属、能力图与独立进程 activate/贡献校验）· 数字锚一致（S2.8）· 四名一致（S2.9）· 产品谱系名与作者身份（S2.10） |
 | S3 前端一致性 | S3.1–S3.3 | 裸色值零容忍（:root 令牌单一真源）· 浮层宪法（OS-48 不挤压正文）· 组件约定类齐备 |
 | S4 UX 跳转层级 | S4.1–S4.3 | 核心页签顶栏可达（注册表 core:true 条目逐条验 label/render 注册名/scope；渲染块先剥注释，注释不许冒充已注册，OS-150a）· 关闭按钮两级约定（rm-x/page-close）· docs/UX-STRUCTURE.md 清单在 |
@@ -18,7 +18,7 @@
 ## 落地前四步
 
 ```bash
-# ① 单测门禁（964 例，OS-206～209 起含页面矩阵、MCP 隔离链路与本机运行期契约）
+# ① 单测门禁（983 例，OS-206～209 起含页面矩阵、MCP 隔离链路与本机运行期契约）
 node .zcode/run-gate.mjs
 
 # ② 交付标准门禁（S0–S4，Rea 式证据落盘）
@@ -101,6 +101,12 @@ node tools/verify/verify-page-report.mjs /tmp/openstory-page-smoke
 ## 已知边界
 
 - UA 管线首次全量分析花了约 12 个 file-analyzer 批次（150 文件）；此后增量只重析变更文件。
-- S1.2 文档同步检查是启发式（OVERVIEW 无硬编码工具数即过）；工具清单核对以
-  `node -e "…matchAll(/name: '(openstory_[a-z_]+)'/g)"` 实测为准。
+- S1.2 文档同步检查（OS-219）：工具名真源是 `src/host/mcp.mjs` 导出的
+  `MCP_TOOL_NAMES`（与 stdio `tools/list` 同源），不正则数源码；纯函数入口为
+  `tools/acceptance/mcpDocsAudit.mjs:auditMcpDocs`，反例在 `test/mcpDocsAudit.test.mjs`。
+  `docs/mcp/**` 中每个完整 `openstory_*` 名称都必须存在，每个真实工具也必须在任一文档出现；
+  OVERVIEW 的「N 个工具」声明必须严格相等，无数字、±1 或旧 ±2 容差均不放行。
+- 定向施工只跑新增单测与 acceptance 时，可传 `--skip-full-tests`：S2.8 只即时核对静态数字锚，
+  全量测试明确标为未跑并将该项记为 WARN，不能冒充完整验收通过；正式 CI/全量验收不传此开关，
+  仍执行 `node tools/number-anchors.mjs --check` 的真实全量复跑。
 - OpenDesign 是安装版（无源码），对标以设计令牌契约 + 界面模式为准，不做二进制逆向。

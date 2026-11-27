@@ -22,7 +22,8 @@
     "deduceSessionManage",
     "deduceBranch",
     "deduceAssets",
-    "deduceAssetFile"
+    "deduceAssetFile",
+    "deduceAssetPut"
   ],
   "pages": [
     {

@@ -139,7 +139,19 @@ export const MCP_TOOL_SEMANTICS = Object.freeze({
 
   openstory_assets: read,
   openstory_asset_read: read,
-  openstory_deduce_image: write()
+  openstory_asset_put: create(),
+  openstory_deduce_image: write(),
+
+  /* ===== OS-217 clean-room 前置：模块投影与多角色扮演 ===== */
+  openstory_plugins: read,
+  // 这两项调用真实多角色扮演引擎（与 openstory_roleplay_turn 的推演 turn 区分）。
+  // 会生成并保存 roleplay 节点，故按写工具处理；无模型必须明确失败，不伪造正文。
+  openstory_roleplay_opening: write(),
+  openstory_roleplay_scene_turn: write(),
+
+  /* ===== OS-218 样本运行态补齐 ===== */
+  // ui-state 写会改模块/界面状态；走宿主图事务与备份，按写工具处理。
+  openstory_ui_state: write()
 })
 
 /** 取一个工具的语义；未分类/未知一律 null（调用方必须 fail-closed，不许回落成 read）。 */

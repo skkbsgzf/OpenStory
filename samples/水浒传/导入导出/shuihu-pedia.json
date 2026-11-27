@@ -1,0 +1,197 @@
+[
+  {
+    "id": "a5790ad446c3",
+    "layer": "worldview",
+    "name": "一百单八魔君",
+    "domain": "水浒传",
+    "slot": "creatures",
+    "definition": "上清宫后殿镇压的一百单八个魔君，被洪太尉误放，散作百十道金光投四方。全书一百单八将即应此数。",
+    "provenance": {
+      "mode": "author",
+      "book": "水浒传",
+      "book_id": "shuihu",
+      "chapters": [
+        1
+      ],
+      "scenes": [],
+      "extractor": "os217-controlled-recipe"
+    },
+    "fingerprint": {
+      "vec": null,
+      "metrics": {
+        "source": "controlled-recipe"
+      }
+    },
+    "schema": "pedia/v1"
+  },
+  {
+    "id": "a1f724e9e5b6",
+    "layer": "worldview",
+    "name": "天师试探",
+    "domain": "水浒传",
+    "slot": "abilities",
+    "definition": "龙虎山天师以吊睛白额虎与雪花大蛇试探洪太尉心志，非真兽。此设定确立「神异」基调，为后文一百单八星宿转世张本。",
+    "provenance": {
+      "mode": "author",
+      "book": "水浒传",
+      "book_id": "shuihu",
+      "chapters": [
+        1
+      ],
+      "scenes": [],
+      "extractor": "os217-controlled-recipe"
+    },
+    "fingerprint": {
+      "vec": null,
+      "metrics": {
+        "source": "controlled-recipe"
+      }
+    },
+    "schema": "pedia/v1"
+  },
+  {
+    "id": "7afb9c0a0a9a",
+    "layer": "character",
+    "name": "洪信",
+    "domain": "水浒传",
+    "definition": "殿前太尉，奉旨赴龙虎山宣请天师。性刚愎，不听真人劝阻擅开后殿，误放一百单八魔君。",
+    "provenance": {
+      "mode": "author",
+      "book": "水浒传",
+      "book_id": "shuihu",
+      "chapters": [
+        1
+      ],
+      "scenes": [],
+      "extractor": "os217-controlled-recipe"
+    },
+    "fingerprint": {
+      "vec": null,
+      "metrics": {
+        "source": "controlled-recipe"
+      }
+    },
+    "identity": "殿前太尉",
+    "schema": "pedia/v1"
+  },
+  {
+    "id": "4daaf5d61705",
+    "layer": "character",
+    "name": "范仲淹",
+    "domain": "水浒传",
+    "definition": "参知政事，奏请宣嗣汉天师修罗天大醮禳灾。",
+    "provenance": {
+      "mode": "author",
+      "book": "水浒传",
+      "book_id": "shuihu",
+      "chapters": [
+        1
+      ],
+      "scenes": [],
+      "extractor": "os217-controlled-recipe"
+    },
+    "fingerprint": {
+      "vec": null,
+      "metrics": {
+        "source": "controlled-recipe"
+      }
+    },
+    "identity": "参知政事",
+    "schema": "pedia/v1"
+  },
+  {
+    "id": "6a1890707c6e",
+    "layer": "character",
+    "name": "张天师",
+    "domain": "水浒传",
+    "definition": "嗣汉天师，居龙虎山顶茅庵，性好清高。以虎蛇试洪太尉。",
+    "provenance": {
+      "mode": "author",
+      "book": "水浒传",
+      "book_id": "shuihu",
+      "chapters": [
+        1
+      ],
+      "scenes": [],
+      "extractor": "os217-controlled-recipe"
+    },
+    "fingerprint": {
+      "vec": null,
+      "metrics": {
+        "source": "controlled-recipe"
+      }
+    },
+    "identity": "嗣汉天师",
+    "schema": "pedia/v1"
+  },
+  {
+    "id": "f8ded4b3999b",
+    "layer": "plot",
+    "name": "误走妖魔",
+    "domain": "水浒传",
+    "provenance": {
+      "mode": "author",
+      "book": "水浒传",
+      "book_id": "shuihu",
+      "chapters": [
+        1
+      ],
+      "scenes": [],
+      "extractor": "os217-controlled-recipe"
+    },
+    "fingerprint": {
+      "vec": null,
+      "metrics": {
+        "source": "controlled-recipe"
+      }
+    },
+    "fact": "洪太尉不听真人劝阻，强开上清宫后殿，放走一百单八魔君，散作金光投四方。全书由此起。",
+    "events": [
+      {
+        "index": 1,
+        "who": "洪信",
+        "channel": "action",
+        "content": "强开伏魔殿"
+      },
+      {
+        "index": 2,
+        "who": "一百单八魔君",
+        "channel": "action",
+        "content": "散作金光投四方"
+      }
+    ],
+    "schema": "pedia/v1"
+  },
+  {
+    "id": "18f82faa7acc",
+    "layer": "plot",
+    "name": "京师瘟疫",
+    "domain": "水浒传",
+    "provenance": {
+      "mode": "author",
+      "book": "水浒传",
+      "book_id": "shuihu",
+      "chapters": [
+        1
+      ],
+      "scenes": [],
+      "extractor": "os217-controlled-recipe"
+    },
+    "fingerprint": {
+      "vec": null,
+      "metrics": {
+        "source": "controlled-recipe"
+      }
+    },
+    "fact": "嘉祐三年京师瘟疫盛行，仁宗命洪信赴龙虎山宣天师修醮禳灾——这是整个故事的动因。",
+    "events": [
+      {
+        "index": 1,
+        "who": "仁宗",
+        "channel": "action",
+        "content": "命洪信赴龙虎山"
+      }
+    ],
+    "schema": "pedia/v1"
+  }
+]

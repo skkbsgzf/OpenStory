@@ -35,7 +35,7 @@ import { HOST_HANDLERS } from '../api/registry.mjs'
 import { handlerFor } from './handlerTable.mjs'
 // OS-196a：静态契约＋本机模块自带契约同一张合并视图（分派/校验走同一套）。
 import { contractFor, endpointFor, validateRequest } from './runtimeContracts.mjs'
-import { sendError, sendJson, readJson, text, DEFAULT_PORT } from './http.mjs'
+import { sendError, sendJson, readJson, text, DEFAULT_PORT, MAX_JSON_BODY } from './http.mjs'
 import { canonicalRoot, createRootAllowlist, loadLibraries, resolveInsideRoot } from './authorize.mjs'
 // OS-195a：Agent 存储是宿主组合面，宿主可直接 import；宿主钩子由 moduleHooks 统一取。
 import { defaultAgentConfigPath, defaultSessionsDir } from '../modules/agentbar/agentStore.mjs'
@@ -89,6 +89,12 @@ const APP_VERSION = (() => {
 /** C5b：浏览器兼容叶只精确转供这一份 src 纯引擎，不开放整个 src/ 静态树。 */
 const TEXT_ENGINE_URL = '/src/modules/text/analysis.mjs'
 const TEXT_ENGINE_FILE = join(REPO_ROOT, 'src', 'modules', 'text', 'analysis.mjs')
+// OS-214：浏览器与 daemon 共享剧本解析/互转纯函数。只开放这两个精确只读路由，
+// 不把整个 src/ 变成静态资源根；目标文件零 DOM、零服务端运行时依赖。
+const SHARED_PURE_MODULES = Object.freeze({
+  '/src/modules/script/scriptParse.mjs': join(REPO_ROOT, 'src', 'modules', 'script', 'scriptParse.mjs'),
+  '/src/modules/script/scriptFact.mjs': join(REPO_ROOT, 'src', 'modules', 'script', 'scriptFact.mjs')
+})
 /** OS-80：当前监听的真实端口（port=0 时由系统分配）——handler 里要拼回环 URL 用。
  * 由 startDaemon 的 listen 回调写，handler 读。 */
 let __currentPort = DEFAULT_PORT
@@ -374,9 +380,11 @@ async function serveStatic(req, res, url, publicDir) {
     return sendError(res, API_ERROR_CODES.INVALID_ENTRY, '静态路径编码不合法')
   }
   if (pathname === '/' || pathname === '') pathname = '/index.html'
+  const sharedPureModule = Object.hasOwn(SHARED_PURE_MODULES, pathname) ? SHARED_PURE_MODULES[pathname] : ''
   const resolved = pathname === TEXT_ENGINE_URL
     ? { ok: true, path: TEXT_ENGINE_FILE }
-    : resolveInsideRoot(publicDir, pathname.replace(/^\/+/u, ''), { allowMetadata: true })
+    : sharedPureModule ? { ok: true, path: sharedPureModule }
+      : resolveInsideRoot(publicDir, pathname.replace(/^\/+/u, ''), { allowMetadata: true })
   if (!resolved.ok) {
     return sendError(res, API_ERROR_CODES.PATH_ESCAPE, '静态文件路径越界')
   }
@@ -471,8 +479,16 @@ async function handleApi(req, res, url, context) {
     input = Object.fromEntries(url.searchParams.entries())
   } else {
     try {
-      input = await readJson(req)
+      // OS-217：素材写入是受限 base64 JSON。16MB 二进制编码后约 22MB，端点只对这一条
+      // 路由提高 body 上限（其它 API 仍 16MB）；handler 自己再按解码字节拒收 >16MB。
+      const bodyLimit = endpointId === 'deduceAssetPut'
+        ? Math.ceil((16 * 1024 * 1024) / 3) * 4 + 64 * 1024
+        : MAX_JSON_BODY
+      input = await readJson(req, bodyLimit)
     } catch (error) {
+      if (error?.code === 'BODY_TOO_LARGE') {
+        return sendError(res, API_ERROR_CODES.INVALID_ENTRY, '请求体超过上限', { limit: endpointId === 'deduceAssetPut' ? 'asset-base64-json' : 'json' })
+      }
       return sendError(res, API_ERROR_CODES.INVALID_ENTRY, text(error?.message || error))
     }
   }

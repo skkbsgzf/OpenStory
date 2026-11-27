@@ -10,11 +10,13 @@
 > MCP：`npm run mcp`（前置同 daemon）。
 >
 > `samples/水浒传/` 是免登记的体验库：它带 `.openstory/ui-state.json` 与
-> `.openstory/plugins/suite-state.json`（由 `tools/samples/generate-sample-config.mjs`
-> 按真实路径生成），拷贝或导入后打开即复现一份配置好的工作台，不必重设页签与套件。
+> `.openstory/plugins/suite-state.json`（由 MCP-only 构建链生成），拷贝或导入后打开即复现
+> 一份配置好的工作台，不必重设页签与套件。
 >
-> 说明：《水浒传》的故事源数据是手写的（结构与 enrich 产出一致，过内核 schema 校验），
-> 因为 enrich 需要 LLM 端点。配好模型后重跑 enrich 即可得到真实抽取结果。
+> 说明：本样本由 `tools/verify/verify-mcp-build-e2e.mjs` 从空目录经 77 次真实 MCP 调用重建。
+> 业务内容来自 `tools/samples/shuihu-input/` 的受控配方；7 条 fact 全部过 v3，主档与 wiki revision 一致。
+> clean-room 使用假文本上游验证协议与落盘，**不声称真实 enrich/扮演/识图/生图语义通过**。
+> 复现与回滚见 `samples/水浒传/README.md`。
 
 ## 一、正文（纯净写作面）
 顶栏选《水浒传》→ 页签「正文」。
@@ -102,7 +104,7 @@
 CLI 模式的设计意图：跑动记录与 CLI 自己的历史一致，不产生两套账。
 
 ## 十、MCP（对外输出）
-24 个工具覆盖小说、世界书、习惯、故事源、扮演与推演、分析、库管理与技能货架（详见 `docs/mcp/OVERVIEW.md`）。
+60 个工具覆盖小说/剧本、世界书、习惯、故事源、建库与套件、exchange、多局与扮演、素材、分析与技能货架（详见 `docs/mcp/OVERVIEW.md`）。
 读写分级：读自由；写有 .history 备份；absorb 不开；习惯表有 `openstory_habits_read`。
 
 ## 已知边界

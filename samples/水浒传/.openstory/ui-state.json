@@ -1,6 +1,6 @@
 {
-  "hiddenTabs": [],
-  "moduleEnabled": {},
-  "agentCollapsed": false,
-  "selectedTab": "正文"
+  "typography": {
+    "ui": "comfortable",
+    "doc": "m"
+  }
 }

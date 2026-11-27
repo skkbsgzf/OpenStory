@@ -1,0 +1,65 @@
+{
+  "schema": "openstory.deduce-session/v1",
+  "bookId": "shuihu",
+  "sessionId": "s-mwyct40q-4xf8",
+  "title": "MCP 分局",
+  "branchId": "main",
+  "cursor": 1,
+  "nodes": [
+    {
+      "id": "n1-mwyct42c",
+      "round": 1,
+      "branchId": "main",
+      "parentId": "",
+      "choiceId": "custom",
+      "scene": {
+        "who": "",
+        "where": "",
+        "tension": "",
+        "hook": ""
+      },
+      "candidates": [
+        {
+          "id": "custom",
+          "source": "作者",
+          "text": "推开殿门"
+        }
+      ],
+      "prose": "洪信按住殿门，黑烟从门缝里涌出，散作百十道金光。",
+      "events": [],
+      "createdAt": "2026-11-27T02:20:08.532Z"
+    }
+  ],
+  "buffer": {
+    "chapterNo": 1,
+    "nodes": [
+      {
+        "id": "n1-mwyct42c",
+        "round": 1,
+        "branchId": "main",
+        "parentId": "",
+        "choiceId": "custom",
+        "scene": {
+          "who": "",
+          "where": "",
+          "tension": "",
+          "hook": ""
+        },
+        "candidates": [
+          {
+            "id": "custom",
+            "source": "作者",
+            "text": "推开殿门"
+          }
+        ],
+        "prose": "洪信按住殿门，黑烟从门缝里涌出，散作百十道金光。",
+        "events": [],
+        "createdAt": "2026-11-27T02:20:08.532Z"
+      }
+    ],
+    "words": 24
+  },
+  "archived": [],
+  "pending": [],
+  "rollingSummary": null
+}

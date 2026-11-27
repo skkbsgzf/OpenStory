@@ -6,7 +6,7 @@ vendor: skkbsgzf
 category: operate
 genres: ["*"]
 stage: draft
-tools: [openstory_libraries, openstory_files, openstory_novel_list_chapters, openstory_novel_read_chapter, openstory_novel_write_chapter, openstory_novel_new_chapter, openstory_novel_delete_chapter, openstory_chapters_rename, openstory_reference_index, openstory_reference_graph, openstory_reference_read_note, openstory_reference_write_note, openstory_habits_read, openstory_habits_put, openstory_vision_describe, openstory_image_generate, openstory_deduce_present, openstory_deduce_settle, openstory_enrich_run, openstory_enrich_status, openstory_enrich_graph, openstory_fact_curve, openstory_analysis_chapter, openstory_skills_list, openstory_skills_read, openstory_library_create, openstory_library_diagnose, openstory_library_scan, openstory_library_import, openstory_library_primary, openstory_suites, openstory_suite_enable, openstory_suite_settings, openstory_fact_books, openstory_fact_entries, openstory_fact_entries_import, openstory_exchange_export, openstory_exchange_import, openstory_script_to_fact, openstory_script_from_fact, openstory_sessions, openstory_session_get, openstory_session_new, openstory_session_switch, openstory_session_delete, openstory_session_put, openstory_roleplay_turn, openstory_roleplay_archive, openstory_roleplay_export, openstory_roleplay_promote, openstory_roleplay_pending, openstory_roleplay_branch, openstory_assets, openstory_asset_read, openstory_deduce_image]
+tools: [openstory_libraries, openstory_files, openstory_novel_list_chapters, openstory_novel_read_chapter, openstory_novel_write_chapter, openstory_novel_new_chapter, openstory_novel_delete_chapter, openstory_chapters_rename, openstory_reference_index, openstory_reference_graph, openstory_reference_read_note, openstory_reference_write_note, openstory_habits_read, openstory_habits_put, openstory_vision_describe, openstory_image_generate, openstory_deduce_present, openstory_deduce_settle, openstory_enrich_run, openstory_enrich_status, openstory_enrich_graph, openstory_fact_curve, openstory_analysis_chapter, openstory_skills_list, openstory_skills_read, openstory_library_create, openstory_library_diagnose, openstory_library_scan, openstory_library_import, openstory_library_primary, openstory_suites, openstory_suite_enable, openstory_suite_settings, openstory_fact_books, openstory_fact_entries, openstory_fact_entries_import, openstory_exchange_export, openstory_exchange_import, openstory_script_to_fact, openstory_script_from_fact, openstory_sessions, openstory_session_get, openstory_session_new, openstory_session_switch, openstory_session_delete, openstory_session_put, openstory_roleplay_turn, openstory_roleplay_archive, openstory_roleplay_export, openstory_roleplay_promote, openstory_roleplay_pending, openstory_roleplay_branch, openstory_assets, openstory_asset_read, openstory_asset_put, openstory_deduce_image, openstory_plugins, openstory_roleplay_opening, openstory_roleplay_scene_turn, openstory_ui_state]
 confirm: restore
 allowed-tools: [Read, Grep, Glob, AskUserQuestion]
 output: manual
@@ -17,7 +17,7 @@ domain: project
 
 你是**操作说明书**，不是创作模型。你的职责是：按作者确认的计划，调用官方 MCP 工具初始化库、写入作者提供或作者批准的内容、逐步回读验证，并如实报告无法完成的步骤。
 
-**不要**用 shell、文件 API、编辑器写盘来替代 MCP；**不要**复制 `.history` 覆盖目标；**不要**删除 retired 目录；**不要**自动 absorb；**不要**调用 OpenStory 的 Agent 对话来套娃。本文所列工具以当前 OpenStory 的 `tools/list` 为准，参数细节见 [tool-cheatsheet.md](references/tool-cheatsheet.md)。
+**不要**用 shell、文件 API、编辑器写盘来替代 MCP；**不要**复制 `.history` 覆盖目标；**不要**删除 retired 目录；**不要**自动 absorb；**不要**调用 OpenStory 的 Agent 对话来套娃。本文所列工具以当前 OpenStory 的 `tools/list`（60 个）为准，参数细节见 [tool-cheatsheet.md](references/tool-cheatsheet.md)。
 
 ## 1. 开始前：先拿授权与事实
 
@@ -111,12 +111,12 @@ domain: project
 - `openstory_deduce_present` 生成确定性候选；`reset:true` 会清盘，必须 `confirm:'restore'`。
 - `openstory_roleplay_turn` 当前包装 `/api/deduce/turn`：无模型仍可能保存节点并返回 `prose:''` + `proseError`，这不等于成功生成正文。
 - `openstory_roleplay_archive/export` 写扮演目录；`promote` 把节点转正文（空正文会拒）；`pending` 只结算已有卡，重复 id 报 `NOT_FOUND`；`branch` 从节点开分支。
-- 本工具面**没有**多角色扮演 `/api/roleplay/opening` 与 `/api/roleplay/turn` 的 MCP 包装，不要把推演 turn 描述成多角色扮演。
+- 多角色扮演用 `openstory_roleplay_opening` 与 `openstory_roleplay_scene_turn`（对应 `/api/roleplay/opening` 与 `/api/roleplay/turn`，需模型）；`openstory_roleplay_turn` 仍是 `/api/deduce/turn` 的推演回合，两者不要混称。
 
 ### 3.8 素材
 
 - `openstory_assets` 盘点角色/场景/BGM；`openstory_asset_read` 以 base64 dataUrl 读取 `.png/.mp3`（≤16MB）。
-- 当前工具面**没有角色立绘/BGM 上传原语**；不要用文件 API绕过。场景图可在模型可用时用 `openstory_deduce_image` 生成，识图用 `openstory_vision_describe`。
+- `openstory_asset_put` 可把严格 base64 的 PNG/MP3 写进受控素材目录（≤16MB、验签名、默认不覆盖、覆盖前备份）；它不是任意文件写通道。场景图可在模型可用时用 `openstory_deduce_image` 生成，识图用 `openstory_vision_describe`。
 - 素材缺失是合法空态，不伪造图片或声音。
 
 ## 4. exchange 与完成检查
@@ -124,7 +124,7 @@ domain: project
 1. `openstory_exchange_export {root, bookId, format}` 先只读导出；`save:true` 才落盘且需确认。
 2. `openstory_exchange_import {root, bookId, format, text, dryRun:true, confirm:'create'}` 先 dry-run 看 errors/warnings/skipped；零写入。
 3. 真导入前作者确认，再去掉 `dryRun`。写入仍受 fact schema 与备份约束。
-4. 完成前逐项回读：库清单、诊断、套件、习惯、世界书索引、fact books/entries/revision、章节、剧本、会话、素材、exchange 文件。
+4. 用 `openstory_ui_state {root,state,confirm:'create'}` 写必要的库级界面状态（如 typography），用 `openstory_plugins {root?}` 回读 modules/moduleGraph/slots/能力报告；完成前逐项回读：库清单、诊断、套件、习惯、世界书索引、fact books/entries/revision、章节、剧本、会话、素材、exchange 文件。
 5. 汇报必须分三类：**已验证 / 未配置或不可用 / 未覆盖**。没跑的不要写通过。
 
 ## 5. 失败与恢复
@@ -139,11 +139,11 @@ domain: project
 - 写失败先读回当前 revision/内容；需要恢复时用返回的 `.history` 路径走受控界面恢复，不复制文件覆盖。
 - 重复 `operationId` 应幂等；revision 对不上先重读，不盲目重放整份替换。
 
-## 6. 明确边界（当前 55 工具）
+## 6. 明确边界（当前 60 工具）
 
 - absorb 永不开 MCP；Agent 对话与待确认卡创建不开 MCP。
 - 不手改业务盘，不复制 history 覆盖，不删除 retired。
-- 没有模块治理/插件投影回读工具；不要把套件状态当成模块投影。
-- 没有角色/BGM 素材上传工具。
-- 没有多角色扮演 opening/turn 的 MCP 工具。
+- 模块投影可经 `openstory_plugins` 只读回读；工作台启停仍走界面，不要把套件状态当成模块投影。
+- 素材写入只经 `openstory_asset_put` 的受限签名/base64 通道。
+- 多角色扮演 opening/turn 需真实模型；无模型必须如实报错。
 - 版本保持 `0.2.0`；既有工具名与端点不改，只使用真实存在的工具。

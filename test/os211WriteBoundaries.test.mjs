@@ -582,22 +582,24 @@ test('OS-211 ⑤ checkSameSource：revision 不可信时退回时间戳，并把
   assert.equal(unknown.wikiStale, true)
 })
 
-test('OS-211 ⑤ 修复路径：旧 samples 的 7 条 fact 为何不合法，正确形状能过同一校验', async () => {
-  // 工单验收：「新样本构建前，7 条旧 fact 的问题有明确修复路径；本单不手改 samples」。
-  // 这里直接拿 samples/水浒传/故事源/shuihu.json 的现存条目跑校验，逐条列出原因——
-  // 断言的是「当前确实不合法」这一事实（样本由 OS-218 重建，本单只证明路径）。
+test('OS-211 ⑤ 修复路径：旧 7 条非法 fact 的迁移证据与当前新样本合法性', async () => {
+  // OS-218 已重建 samples：当前样本必须全合法；旧非法形态保留为独立内存夹具，
+  // 继续证明同一 validator 会拒收旧数据，而不是把「样本永久非法」钉成期望。
   const samplePath = new URL('../samples/水浒传/故事源/shuihu.json', import.meta.url)
   const sample = JSON.parse(readFileSync(samplePath, 'utf-8'))
-  assert.equal(sample.entries.length, 7, '样本仍是 7 条（本单不手改 samples）')
-  const reasons = sample.entries.map((entry) => ({ id: entry.id, errors: validateFactEntry(entry).errors.map((item) => `${item.code}:${item.field}`) }))
-  for (const item of reasons) {
-    assert.ok(item.errors.length > 0, `旧样本条目 ${item.id} 应当被校验拦下（这正是不合法的证据）`)
+  assert.equal(sample.entries.length, 7)
+  for (const entry of sample.entries) {
+    const checked = validateFactEntry(entry)
+    assert.equal(checked.ok, true, `新样本条目必须合法：${entry.id} ${JSON.stringify(checked.errors)}`)
+    assert.match(entry.id, /^[0-9a-f]{12}$/u, '稳定 id')
   }
-  assert.deepEqual(reasons.map((item) => item.id), ['w1', 'w2', 'c1', 'c2', 'c3', 'p1', 'p2'], '样本条目未变（本单不手改）')
-  const allCodes = new Set(reasons.flatMap((item) => item.errors.map((code) => code.split(':')[0])))
-  for (const code of ['MISSING_REQUIRED', 'ID_FORMAT']) {
-    assert.ok(allCodes.has(code), `修复清单必须覆盖 ${code}：${[...allCodes].join(',')}`)
-  }
+  const oldInvalid = [
+    { schema: 'fact.data/v3', id: 'w1', layer: 'worldview', name: '一百单八魔君', definition: '旧条目缺 domain/slot/provenance', status: 'adopted' },
+    { schema: 'fact.data/v3', id: 'p1', layer: 'plot', name: '误走妖魔', status: 'adopted', provenance: { chapters: [1] } }
+  ]
+  const oldCodes = new Set(oldInvalid.flatMap((entry) => validateFactEntry(entry).errors.map((error) => error.code)))
+  assert.ok(oldCodes.has('MISSING_REQUIRED'))
+  assert.ok(oldCodes.has('ID_FORMAT'))
 
   // 正确形状：按同一层补齐 domain/slot/provenance/fingerprint、id 用 stableEntryId → 过校验。
   const rebuilt = {

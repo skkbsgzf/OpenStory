@@ -559,7 +559,7 @@ const tools = [
   {
     name: 'openstory_skills_list',
     title: '技能清单',
-    description: '列出本机技能货架的全部配方（31 个内置＋2 套件捆绑：技法 craft/审阅 review/改写 transform/抽取 extract/操作说明书 operate 五类，含文风包）。返回 name/description/category/genres/stage/version/vendor。开工前先看清单，再用 openstory_skills_read 读全文——选技能靠 description，别凭名字猜。可按体裁过滤。operate 是只读说明书，不自动注入 prompt，写操作只按其声明的官方 MCP 工具＋确认级别执行。',
+    description: '列出本机技能货架的全部配方（32 个内置＋2 套件捆绑：技法 craft/审阅 review/改写 transform/抽取 extract/操作说明书 operate 五类，含文风包）。返回 name/description/category/genres/stage/version/vendor。开工前先看清单，再用 openstory_skills_read 读全文——选技能靠 description，别凭名字猜。可按体裁过滤。operate 是只读说明书，不自动注入 prompt，写操作只按其声明的官方 MCP 工具＋确认级别执行。',
     inputSchema: {
       type: 'object',
       properties: {
@@ -1283,6 +1283,107 @@ const tools = [
         body: cleanBody({ root, bookId: args.bookId, name: args.name.trim(), prompt: args.prompt.trim(), size: args.size, stylePrompt: args.stylePrompt, negative: args.negative })
       })
     }
+  },
+
+  /* ---------- OS-217 clean-room 前置原语 ---------- */
+  {
+    name: 'openstory_asset_put',
+    title: '写入素材',
+    description: '把一个 base64 编码的 PNG/MP3 素材写进 扮演/<bookId>/素材/{角色,场景,bgm}。只收对应扩展名与真实文件签名，≤16MB；默认不覆盖，overwrite:true 会先把旧档备份进 .history，并记录二进制 hash 日志。**会写文件**，调用需 confirm:create。不是任意文件写通道。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        root: { type: 'string' }, bookId: { type: 'string' },
+        path: { type: 'string', description: '素材库内相对路径，如 角色/沈岚.png' },
+        dataBase64: { type: 'string', description: '素材字节的严格 base64' },
+        overwrite: { type: 'boolean', description: 'true＝覆盖前备份；缺省不覆盖' }
+      },
+      required: ['root', 'path', 'dataBase64'], additionalProperties: false
+    },
+    async run(args) {
+      const root = requireRoot(args)
+      if (typeof args.path !== 'string' || !args.path.trim()) throw invalidArgs('path')
+      if (typeof args.dataBase64 !== 'string' || !args.dataBase64.trim()) throw invalidArgs('dataBase64')
+      return await daemon('/api/deduce/asset', {
+        method: 'PUT',
+        body: cleanBody({ root, bookId: args.bookId, path: args.path.trim(), dataBase64: args.dataBase64.trim(), overwrite: args.overwrite })
+      })
+    }
+  },
+  {
+    name: 'openstory_plugins',
+    title: '读插件与模块投影',
+    description: '读本机/当前库的完整插件投影：plugins、modules、moduleGraph、slots、套件状态与能力报告。只读，不触发模块启停或升级。clean-room 构建后用它在 MCP 内验证模块归属与能力图。',
+    inputSchema: {
+      type: 'object',
+      properties: { root: { type: 'string', description: '可选；带则按该库状态投影' } },
+      additionalProperties: false
+    },
+    async run(args) {
+      return await daemon('/api/plugins', { query: args.root ? { root: String(args.root).trim() } : {} })
+    }
+  },
+  {
+    name: 'openstory_roleplay_opening',
+    title: '多角色扮演开场',
+    description: '调用真实多角色扮演引擎生成开场（主持人＋演员，需可用模型）。会保存 roleplay 会话节点；**不是** openstory_deduce_present 的确定性推演。无模型/空回包明确失败，调用需 confirm:create。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        root: { type: 'string' }, bookId: { type: 'string' }, pov: { type: 'string' },
+        premise: { type: 'string' }, openingDetail: { type: 'string' }, chapterLimit: { type: 'integer' }
+      },
+      required: ['root', 'pov'], additionalProperties: false
+    },
+    async run(args) {
+      const root = requireRoot(args)
+      if (typeof args.pov !== 'string' || !args.pov.trim()) throw invalidArgs('pov')
+      return await daemon('/api/roleplay/opening', {
+        method: 'POST',
+        body: cleanBody({ root, bookId: args.bookId, pov: args.pov.trim(), premise: args.premise, openingDetail: args.openingDetail, chapterLimit: args.chapterLimit })
+      })
+    }
+  },
+  {
+    name: 'openstory_roleplay_scene_turn',
+    title: '多角色扮演一回合',
+    description: '调用真实多角色扮演引擎推进一回合（主持人裁决→各角色成文→收束），需要可用模型。会保存 roleplay 节点；与 openstory_roleplay_turn（/api/deduce/turn 推演）不同。无模型/空回包明确失败，调用需 confirm:create。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        root: { type: 'string' }, bookId: { type: 'string' }, sessionId: { type: 'string' },
+        pov: { type: 'string' }, playerAction: { type: 'string' }, premise: { type: 'string' },
+        chapterLimit: { type: 'integer' }, activation: { type: 'string' }
+      },
+      required: ['root', 'pov', 'playerAction'], additionalProperties: false
+    },
+    async run(args) {
+      const root = requireRoot(args)
+      if (typeof args.pov !== 'string' || !args.pov.trim()) throw invalidArgs('pov')
+      if (typeof args.playerAction !== 'string' || !args.playerAction.trim()) throw invalidArgs('playerAction')
+      return await daemon('/api/roleplay/turn', {
+        method: 'POST',
+        body: cleanBody({ root, bookId: args.bookId, sessionId: args.sessionId, pov: args.pov.trim(), playerAction: args.playerAction.trim(), premise: args.premise, chapterLimit: args.chapterLimit, activation: args.activation })
+      })
+    }
+  },
+  {
+    name: 'openstory_ui_state',
+    title: '写库界面状态',
+    description: '合并写入一个库的 ui-state（模块开关、界面选择、排版等）。经宿主能力图事务校验并留备份；**会写状态文件**，调用需 confirm:create。不是绕过模块治理的任意状态写入口。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        root: { type: 'string' },
+        state: { type: 'object', description: '要合并进 ui-state 的键值（不是整份替换）' }
+      },
+      required: ['root', 'state'], additionalProperties: false
+    },
+    async run(args) {
+      const root = requireRoot(args)
+      if (!args.state || typeof args.state !== 'object' || Array.isArray(args.state)) throw invalidArgs('state')
+      return await daemon('/api/ui-state', { method: 'PUT', body: { root, state: args.state } })
+    }
   }
 ]
 
@@ -1412,7 +1513,7 @@ const INSTRUCTIONS = [
   '先 openstory_libraries 拿 root；空目录用 openstory_library_create；读自由，写有备份，absorb 不开（显式动稿）。',
   '世界书只单向链小说：世界书可 [[正文/...]]，正文不要回挂世界书。',
   '技能货架用 openstory_skills_list/read 按需读取：craft 可注入 prompt；operate 是只读操作说明书，不注入、不执行代码，写操作只准调用其声明的官方 MCP 工具并按 confirm 级别经作者确认。',
-  '从空目录建项目先 openstory_skills_read {name:"build-project"}：它是基于当前 tools/list 的官方构建说明书，含 55 工具速查表、写红线、幂等与失败恢复。',
+  '从空目录建项目先 openstory_skills_read {name:"build-project"}：它是基于当前 tools/list 的官方构建说明书，含 60 工具速查表、写红线、幂等与失败恢复。',
   '模块级使用说明见仓 docs/mcp/*.md；工具参数、确认与错误语义以 tools/list 为准。'
 ].join('\n')
 

@@ -10,8 +10,8 @@ node:http 手写路由，127.0.0.1:8807；
 OS-127 进程治理：单实例锁＋stamp＋generation＋`/api/health`）
 + `public/` 原生 JS 前端。模块：**小说**（纯净写作面）/ **世界书**（世界书笔记＋故事源词条只读层）/
 **习惯**（写作规矩表）/ **故事源**（fact 链可视化）/ **扮演**（主持人＋多角色，默认）/ **确定性推演**（可选）/ **剧本** / **分析**（本地引擎）。
-全部经契约层（`src/api/contracts.mjs` 聚合 `src/api/contracts/` 八域分片，108 端点）分派；
-MCP 对外 24 工具（`src/host/mcp.mjs` 直跑；stdio 独立进程，数据操作走 daemon HTTP 薄适配）。
+全部经契约层（`src/api/contracts.mjs` 聚合 `src/api/contracts/` 分片，112 端点）分派；
+MCP 对外 60 工具（`src/host/mcp.mjs` 直跑；stdio 独立进程，数据操作走 daemon HTTP 薄适配）。
 分层见 [ARCHITECTURE.md](./ARCHITECTURE.md)：OS-173/C6 起不再用 L7–L2 旧层号；按
 前端 `public/` → 契约 `src/api/` → 底座 `src/host/` → 协议 `src/protocol/`＋能力句柄 →
 `src/modules/`（七个内核件＋工作台＋宿主组合面）→ 物理写管道 `src/kernel/` → 磁盘库 描述依赖方向。
@@ -310,7 +310,7 @@ MCP 对外 24 工具（`src/host/mcp.mjs` 直跑；stdio 独立进程，数据�
 ## 改完必跑（验收线，详见 `docs/ACCEPTANCE.md`）
 
 ```bash
-node .zcode/run-gate.mjs                    # ① 全量单测（964 例）
+node .zcode/run-gate.mjs                    # ① 全量单测（983 例）
 node tools/acceptance/acceptance.mjs        # ② 交付标准 S0–S4 门禁（29 检查，Rea 式证据；S0=布局宪法）
 node tools/arch-stats.mjs --check           # ③ 架构统计与生成段一致
 node tools/verify/verify-ci-workflow.mjs    # ④ CI 三层门禁结构

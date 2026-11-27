@@ -5,9 +5,10 @@
  * agent.runtime / media.generate）经 activate(context) 的 context.resolve 注入；
  * 宿主工具经 context.host 注入。本文件只 import node:/protocol/本模块。
  */
+import { createHash } from 'node:crypto'
 import { createReadStream, existsSync, statSync } from 'node:fs'
 import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises'
-import { extname, join } from 'node:path'
+import { basename, dirname, extname, join, relative, sep } from 'node:path'
 import {
   buildRoleplayMemory,
   compressMemory,
@@ -16,6 +17,7 @@ import {
   roleplayTurn as roleplayTurnEngine,
   shouldSummarize
 } from './roleplayEngine.mjs'
+import { API_ERROR_CODES as apiErrors } from '../../protocol/apiErrors.mjs'
 import { loadDeduceRules } from '../../protocol/deduceRules.mjs'
 import { isModuleEnabled } from '../../protocol/modules.mjs'
 import { recordChange } from '../../protocol/changelog.mjs'
@@ -24,16 +26,72 @@ import { atomicWriteFile } from '../../protocol/hostWrite.mjs'
 
 const FACT_DIR = namingEntry('storysource').dir
 const ROLEPLAY_DIR = namingEntry('roleplay').dir
+const text = (value) => String(value ?? '')
 
 /** 素材单文件上限：立绘/BGM 都是本机小文件，16MB 足够且防误挂大档。 */
 const DEDUCE_ASSET_MAX = 16 * 1024 * 1024
 
 /** 素材三类目录 → 响应字段与扩展名。 */
 const DEDUCE_ASSET_KINDS = Object.freeze([
-  { dir: '角色', field: 'characters', ext: '.png' },
-  { dir: '场景', field: 'scenes', ext: '.png' },
-  { dir: 'bgm', field: 'bgm', ext: '.mp3' }
+  { dir: '角色', field: 'characters', ext: '.png', mediaType: 'image/png' },
+  { dir: '场景', field: 'scenes', ext: '.png', mediaType: 'image/png' },
+  { dir: 'bgm', field: 'bgm', ext: '.mp3', mediaType: 'audio/mpeg' }
 ])
+
+/** OS-217：素材写入只收严格标准 base64；空串/空白/URL-safe/缺 padding/非法字符全拒。 */
+const BASE64_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+
+function decodeDeduceAsset(value) {
+  const encoded = text(value)
+  // 先量长度再逐字符校验：重复分组正则在 22MB 输入上会爆 V8 栈。
+  // 16MB+1 字节的 base64 与 16MB 的编码长度相同，必须解码后再按字节数拒收。
+  const maxEncoded = Math.ceil(DEDUCE_ASSET_MAX / 3) * 4
+  if (!encoded || encoded.length > maxEncoded || encoded.length % 4 !== 0) return null
+  let padding = 0
+  if (encoded.endsWith('==')) padding = 2
+  else if (encoded.endsWith('=')) padding = 1
+  const dataLength = encoded.length - padding
+  for (let index = 0; index < dataLength; index += 1) {
+    if (!BASE64_ALPHABET.includes(encoded[index])) return null
+  }
+  const decoded = Buffer.from(encoded, 'base64')
+  return decoded.length > 0 && decoded.length <= DEDUCE_ASSET_MAX && decoded.toString('base64') === encoded ? decoded : null
+}
+
+function deduceAssetKind(relativePath) {
+  const parts = relativePath.replaceAll('\\', '/').split('/')
+  if (parts.length !== 2) return null
+  return DEDUCE_ASSET_KINDS.find((kind) =>
+    parts[0] === kind.dir && extname(parts[1]).toLowerCase() === kind.ext && !parts[1].startsWith('.')) ?? null
+}
+
+function hasDeduceAssetSignature(kind, bytes) {
+  if (kind.ext === '.png') {
+    return bytes.length >= PNG_SIGNATURE.length && bytes.subarray(0, PNG_SIGNATURE.length).equals(PNG_SIGNATURE)
+  }
+  // MP3：完整 ID3v2 标签头，或合法 MPEG audio frame header。
+  // 帧头 11 位同步全 1（FF E0），且 layer/bitrate/sample-rate 不能是保留值；
+  // 仅「FF E0 00 00」这种短伪造帧不放行。
+  if (bytes.length >= 10 && bytes.subarray(0, 3).equals(Buffer.from('ID3', 'ascii'))) return true
+  // 无 ID3 的 MP3 至少要有完整一帧（MPEG1 Layer III 最小 72 字节）；4 字节头不够，
+  // 否则测试/攻击者可用 FF E0 00 00 伪造「有签名」。
+  if (bytes.length < 72 || bytes[0] !== 0xff || (bytes[1] & 0xe0) !== 0xe0) return false
+  const layerBits = (bytes[1] >> 1) & 0x03
+  const bitrateIndex = (bytes[2] >> 4) & 0x0f
+  const sampleRateIndex = (bytes[2] >> 2) & 0x03
+  return layerBits !== 0 && bitrateIndex !== 0 && bitrateIndex !== 0x0f && sampleRateIndex !== 0x03
+}
+
+/** OS-217：沿用正文同目录 .history/<原文件名>.bak-<时间戳> 的现有命名模式。 */
+function deduceAssetHistoryPath(absPath, now = new Date()) {
+  const stamp = now.toISOString().replace(/[:.]/gu, '-')
+  return join(dirname(absPath), '.history', `${basename(absPath)}.bak-${stamp}`)
+}
+
+function relativeAssetPath(root, absPath) {
+  return relative(root, absPath).split(sep).join('/')
+}
 
 /** 盘点 扮演/<bookId>/素材/：目录不存在＝空数组；隐藏文件/子目录/异扩展名跳过。 */
 async function listDeduceAssets(root, bookId, resolveInsideRoot) {
@@ -68,7 +126,7 @@ export function createHandlers({ host, deduce, factStore, factBooks, prose, agen
   const DEDUCE_SESSION_SCHEMA = deduce.deduceSessionSchema()
   // OS-195：text.analyze 经 activate(context) 的 context.resolve 句柄注入（不再顶层取实现）。
   const analyze = textAnalyze?.analyzeChapter ?? null
-  const { apiErrors, sendError, sendJson, text, authorizeRoot, resolveInsideRoot } = host
+  const { sendError, sendJson, authorizeRoot, resolveInsideRoot } = host
   const resolveBookId = (root, requested) => factBooks.resolveFactBookId(root, requested)
 
   async function deduceOpeningGet(ctx) {
@@ -704,6 +762,97 @@ export function createHandlers({ host, deduce, factStore, factBooks, prose, agen
     return
   }
 
+  async function deduceAssetPut(ctx) {
+    const { res, request, allowlist } = ctx
+    const authorized = authorizeRoot(allowlist, request.root)
+    if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
+    const resolvedBookId = await resolveBookId(authorized.root, request.bookId)
+    const bookId = safeDeduceBookId(resolvedBookId)
+    const rawPath = text(request.path)
+    // path 是素材库内相对路径；先单独拦盘符/UNC/根路径，不能依赖拼接后藏在路径中段的盘符。
+    if (rawPath.includes(':') || rawPath.includes('\0') || /^[\\/]/u.test(rawPath)) {
+      return sendError(res, apiErrors.PATH_ESCAPE, `素材路径不合法或越出库根：${rawPath}`)
+    }
+    // 再显式拦住 bookId 的逃逸语义；safeDeduceBookId 不能把 ../ 静默改名成可写目录。
+    if (text(resolvedBookId).includes(':') || /[\\/]/u.test(text(resolvedBookId)) || text(resolvedBookId).includes('\0')) {
+      return sendError(res, apiErrors.PATH_ESCAPE, `素材 bookId 不合法：${text(resolvedBookId)}`)
+    }
+    // 先过库根解析，再用 exactly-two-segments 白名单钉在 素材/{角色,场景,bgm}/<file>。
+    const resolved = resolveInsideRoot(authorized.root, `${ROLEPLAY_DIR}/${bookId}/素材/${rawPath}`)
+    if (!resolved.ok) return sendError(res, resolved.code, resolved.message, resolved.details)
+    const kind = deduceAssetKind(resolved.relative.slice(`${ROLEPLAY_DIR}/${bookId}/素材/`.length))
+    if (!kind) {
+      return sendError(res, apiErrors.INVALID_ENTRY, `素材只收 角色/*.png、场景/*.png、bgm/*.mp3：${rawPath}`)
+    }
+    const bytes = decodeDeduceAsset(request.dataBase64)
+    if (!bytes) return sendError(res, apiErrors.INVALID_ENTRY, 'dataBase64 必须是严格标准 base64，解码后非空且不超过 16MB')
+    if (bytes.length > DEDUCE_ASSET_MAX) return sendError(res, apiErrors.INVALID_ENTRY, '素材超过 16MB 上限')
+    if (!hasDeduceAssetSignature(kind, bytes)) {
+      return sendError(res, apiErrors.INVALID_ENTRY, `素材签名与 ${kind.ext} 扩展名不符`)
+    }
+
+    // 校验全部通过后才允许任何 I/O；已有文件缺省冲突，不读、不备份、不落盘。
+    let before = null
+    if (existsSync(resolved.path)) {
+      if (request.overwrite !== true) {
+        return sendError(res, apiErrors.INVALID_ENTRY, `素材已存在（默认不覆盖）：${rawPath}`)
+      }
+      try {
+        const stats = statSync(resolved.path)
+        if (!stats.isFile()) return sendError(res, apiErrors.INVALID_ENTRY, `素材目标不是文件：${rawPath}`)
+        before = await readFile(resolved.path)
+      } catch (error) {
+        return sendError(res, apiErrors.WRITE_PROTOCOL_IO_FAILED, `读取旧素材失败：${text(error?.message || error)}`)
+      }
+    }
+
+    let backup = ''
+    try {
+      if (before) {
+        const backupPath = deduceAssetHistoryPath(resolved.path)
+        await mkdir(dirname(backupPath), { recursive: true })
+        await writeFile(backupPath, before)
+        backup = relativeAssetPath(authorized.root, backupPath)
+      }
+      await mkdir(dirname(resolved.path), { recursive: true })
+      await atomicWriteFile(resolved.path, bytes)
+    } catch (error) {
+      return sendError(res, apiErrors.WRITE_PROTOCOL_IO_FAILED, `素材写入失败：${text(error?.message || error)}`)
+    }
+
+    let logError = ''
+    let changeId = ''
+    try {
+      // Buffer 原样交给日志通道：只落 hash/字节，不把二进制全文转成 UTF-8 文本。
+      const logged = await recordChange({
+        root: authorized.root,
+        module: LOG_MODULES.roleplay,
+        file: resolved.relative,
+        op: before ? 'update' : 'create',
+        before: before ?? Buffer.alloc(0),
+        after: bytes,
+        actor: 'agent',
+        backup,
+        meta: { bookId, mediaType: kind.mediaType, bytes: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex') }
+      })
+      if (logged.ok === false) logError = logged.message
+      else if (logged.record) changeId = `${logged.path}#${logged.record.afterHash}`
+    } catch (error) {
+      logError = `写素材变更日志失败：${text(error?.message || error)}`
+    }
+    const sha256 = createHash('sha256').update(bytes).digest('hex')
+    return sendJson(res, 200, {
+      ok: true,
+      path: resolved.relative,
+      bytes: bytes.length,
+      mediaType: kind.mediaType,
+      sha256,
+      ...(backup ? { backup } : {}),
+      ...(changeId ? { changeId } : {}),
+      ...(logError ? { logError } : {})
+    })
+  }
+
   return {
     deducePresent,
     deduceOpeningGet,
@@ -721,6 +870,7 @@ export function createHandlers({ host, deduce, factStore, factBooks, prose, agen
     deduceSessionManage,
     deduceBranch,
     deduceAssets,
-    deduceAssetFile
+    deduceAssetFile,
+    deduceAssetPut
   }
 }

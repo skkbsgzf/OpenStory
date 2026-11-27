@@ -149,17 +149,26 @@ export async function recordChange({
   root, module, file, op = 'update', before = '', after = '', actor = 'author', meta = null, backup = '', now = new Date()
 } = {}) {
   if (!root || !file) return { ok: false, code: 'INVALID_ENTRY', message: 'recordChange 需要 root 与 file' }
-  const beforeText = text(before)
-  const afterText = text(after)
-  const beforeHash = contentHash(beforeText)
-  const afterHash = contentHash(afterText)
+  // OS-217：二进制素材直接传 Buffer。hash 与 chars 必须按真实字节算，不能先转 UTF-8
+  // （0x89/0xFF 会变成替换字符，beforeHash/afterHash 与文件 sha1 对不上）。diff 仍只对
+  // 文本生成；二进制留空，把 sha256/bytes 放 meta，由调用方负责。
+  const beforeBinary = Buffer.isBuffer(before) || ArrayBuffer.isView(before) || before instanceof ArrayBuffer
+  const afterBinary = Buffer.isBuffer(after) || ArrayBuffer.isView(after) || after instanceof ArrayBuffer
+  const beforeBytes = beforeBinary ? Buffer.from(before) : Buffer.from(text(before), 'utf-8')
+  const afterBytes = afterBinary ? Buffer.from(after) : Buffer.from(text(after), 'utf-8')
+  const beforeText = beforeBinary ? '' : text(before)
+  const afterText = afterBinary ? '' : text(after)
+  const beforeHash = createHash('sha1').update(beforeBytes).digest('hex').slice(0, 16)
+  const afterHash = createHash('sha1').update(afterBytes).digest('hex').slice(0, 16)
   // 内容没变就不记——避免「打开就保存」刷屏
   if (op === 'update' && beforeHash === afterHash) return { ok: true, record: null, skipped: true }
 
   let diff = ''
-  if (op !== 'delete' && op !== 'create') diff = unifiedDiff(beforeText, afterText, { path: file })
-  else if (op === 'create') diff = unifiedDiff('', afterText, { path: file })
-  else if (op === 'delete') diff = unifiedDiff(beforeText, '', { path: file })
+  if (!beforeBinary && !afterBinary) {
+    if (op !== 'delete' && op !== 'create') diff = unifiedDiff(beforeText, afterText, { path: file })
+    else if (op === 'create') diff = unifiedDiff('', afterText, { path: file })
+    else if (op === 'delete') diff = unifiedDiff(beforeText, '', { path: file })
+  }
   let diffTruncated = false
   if (diff.length > MAX_DIFF_CHARS) {
     diff = `${diff.slice(0, MAX_DIFF_CHARS)}\n…（diff 过长已截断，共 ${diff.length} 字符）`
@@ -174,8 +183,8 @@ export async function recordChange({
     actor,
     beforeHash,
     afterHash,
-    beforeChars: beforeText.length,
-    afterChars: afterText.length,
+    beforeChars: beforeBytes.length,
+    afterChars: afterBytes.length,
     diff,
     // OS-90：把「本次变更前的备份在哪」记进日志——恢复时不用靠时间戳猜
     ...(backup ? { backup } : {}),

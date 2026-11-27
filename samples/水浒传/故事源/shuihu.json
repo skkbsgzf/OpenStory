@@ -3,119 +3,243 @@
     "id": "shuihu",
     "title": "水浒传"
   },
-  "revision": 5,
   "entries": [
     {
       "schema": "fact.data/v3",
-      "id": "w1",
+      "id": "a5790ad446c3",
       "layer": "worldview",
       "name": "一百单八魔君",
-      "definition": "上清宫后殿镇压的一百单八个魔君，被洪太尉误放，散作百十道金光投四方。全书一百单八将即应此数。",
+      "domain": "水浒传",
       "status": "adopted",
-      "sources": [
-        {
-          "sourceId": "正文/001-第一回 张天师祈禳瘟疫.md"
+      "provenance": {
+        "mode": "author",
+        "book": "水浒传",
+        "book_id": "shuihu",
+        "chapters": [
+          1
+        ],
+        "scenes": [],
+        "extractor": "os217-controlled-recipe"
+      },
+      "fingerprint": {
+        "vec": null,
+        "metrics": {
+          "source": "controlled-recipe"
         }
-      ]
+      },
+      "slot": "creatures",
+      "definition": "上清宫后殿镇压的一百单八个魔君，被洪太尉误放，散作百十道金光投四方。全书一百单八将即应此数。"
     },
     {
       "schema": "fact.data/v3",
-      "id": "w2",
+      "id": "a1f724e9e5b6",
       "layer": "worldview",
       "name": "天师试探",
-      "definition": "龙虎山天师以吊睛白额虎与雪花大蛇试探洪太尉心志，非真兽。此设定确立「神异」基调，为后文一百单八星宿转世张本。",
+      "domain": "水浒传",
       "status": "adopted",
-      "sources": [
-        {
-          "sourceId": "正文/001-第一回 张天师祈禳瘟疫.md"
+      "provenance": {
+        "mode": "author",
+        "book": "水浒传",
+        "book_id": "shuihu",
+        "chapters": [
+          1
+        ],
+        "scenes": [],
+        "extractor": "os217-controlled-recipe"
+      },
+      "fingerprint": {
+        "vec": null,
+        "metrics": {
+          "source": "controlled-recipe"
         }
-      ]
+      },
+      "slot": "abilities",
+      "definition": "龙虎山天师以吊睛白额虎与雪花大蛇试探洪太尉心志，非真兽。此设定确立「神异」基调，为后文一百单八星宿转世张本。"
     },
     {
       "schema": "fact.data/v3",
-      "id": "c1",
+      "id": "7afb9c0a0a9a",
       "layer": "character",
       "name": "洪信",
-      "definition": "殿前太尉，奉旨赴龙虎山宣请天师。性刚愎，不听真人劝阻擅开后殿，误放一百单八魔君。",
+      "domain": "水浒传",
       "status": "adopted",
-      "sources": [
-        {
-          "sourceId": "正文/001-第一回 张天师祈禳瘟疫.md"
+      "provenance": {
+        "mode": "author",
+        "book": "水浒传",
+        "book_id": "shuihu",
+        "chapters": [
+          1
+        ],
+        "scenes": [],
+        "extractor": "os217-controlled-recipe"
+      },
+      "fingerprint": {
+        "vec": null,
+        "metrics": {
+          "source": "controlled-recipe"
         }
-      ]
+      },
+      "definition": "殿前太尉，奉旨赴龙虎山宣请天师。性刚愎，不听真人劝阻擅开后殿，误放一百单八魔君。",
+      "identity": "殿前太尉",
+      "castRole": {
+        "tier": "supporting",
+        "goal": "请天师禳疫",
+        "plotFunction": "误放魔君，推动全书引线"
+      }
     },
     {
       "schema": "fact.data/v3",
-      "id": "c2",
+      "id": "4daaf5d61705",
       "layer": "character",
       "name": "范仲淹",
-      "definition": "参知政事，奏请宣嗣汉天师修罗天大醮禳瘟疫。",
+      "domain": "水浒传",
       "status": "adopted",
-      "sources": [
-        {
-          "sourceId": "正文/001-第一回 张天师祈禳瘟疫.md"
+      "provenance": {
+        "mode": "author",
+        "book": "水浒传",
+        "book_id": "shuihu",
+        "chapters": [
+          1
+        ],
+        "scenes": [],
+        "extractor": "os217-controlled-recipe"
+      },
+      "fingerprint": {
+        "vec": null,
+        "metrics": {
+          "source": "controlled-recipe"
         }
-      ]
+      },
+      "definition": "参知政事，奏请宣嗣汉天师修罗天大醮禳灾。",
+      "identity": "参知政事",
+      "castRole": {
+        "tier": "supporting",
+        "goal": "为京师禳灾",
+        "plotFunction": "提出请天师，推动情节"
+      }
     },
     {
       "schema": "fact.data/v3",
-      "id": "c3",
+      "id": "6a1890707c6e",
       "layer": "character",
       "name": "张天师",
-      "definition": "嗣汉天师，居龙虎山顶茅庵，性好清高。以虎蛇试洪太尉。",
+      "domain": "水浒传",
       "status": "adopted",
-      "sources": [
+      "provenance": {
+        "mode": "author",
+        "book": "水浒传",
+        "book_id": "shuihu",
+        "chapters": [
+          1
+        ],
+        "scenes": [],
+        "extractor": "os217-controlled-recipe"
+      },
+      "fingerprint": {
+        "vec": null,
+        "metrics": {
+          "source": "controlled-recipe"
+        }
+      },
+      "definition": "嗣汉天师，居龙虎山顶茅庵，性好清高。以虎蛇试洪太尉。",
+      "identity": "嗣汉天师",
+      "castRole": {
+        "tier": "supporting",
+        "goal": "试探来使心志",
+        "plotFunction": "设下虎蛇试探"
+      }
+    },
+    {
+      "schema": "fact.data/v3",
+      "id": "f8ded4b3999b",
+      "layer": "plot",
+      "name": "误走妖魔",
+      "domain": "水浒传",
+      "status": "adopted",
+      "provenance": {
+        "mode": "author",
+        "book": "水浒传",
+        "book_id": "shuihu",
+        "chapters": [
+          1
+        ],
+        "scenes": [],
+        "extractor": "os217-controlled-recipe"
+      },
+      "fingerprint": {
+        "vec": null,
+        "metrics": {
+          "source": "controlled-recipe"
+        }
+      },
+      "fact": "洪太尉不听真人劝阻，强开上清宫后殿，放走一百单八魔君，散作金光投四方。全书由此起。",
+      "events": [
         {
-          "sourceId": "正文/001-第一回 张天师祈禳瘟疫.md"
+          "index": 1,
+          "who": "洪信",
+          "channel": "action",
+          "content": "强开伏魔殿",
+          "segments": [
+            {
+              "index": 1,
+              "chars": 6
+            }
+          ]
+        },
+        {
+          "index": 2,
+          "who": "一百单八魔君",
+          "channel": "action",
+          "content": "散作金光投四方",
+          "segments": [
+            {
+              "index": 1,
+              "chars": 7
+            }
+          ]
         }
       ]
     },
     {
       "schema": "fact.data/v3",
-      "id": "p1",
-      "layer": "plot",
-      "name": "误走妖魔",
-      "definition": "洪太尉不听真人劝阻，强开上清宫后殿，放走一百单八魔君，散作金光投四方。全书由此起。",
-      "status": "adopted",
-      "sources": [
-        {
-          "sourceId": "正文/001-第一回 张天师祈禳瘟疫.md"
-        }
-      ],
-      "provenance": {
-        "chapters": [
-          1
-        ],
-        "events": [
-          "京师瘟疫，天子降诏祈禳",
-          "范仲淹奏请宣天师",
-          "洪信领旨赴信州"
-        ]
-      }
-    },
-    {
-      "schema": "fact.data/v3",
-      "id": "p2",
+      "id": "18f82faa7acc",
       "layer": "plot",
       "name": "京师瘟疫",
-      "definition": "嘉祐三年京师瘟疫盛行，仁宗命洪信赴龙虎山宣天师修醮禳灾——这是整个故事的动因。",
+      "domain": "水浒传",
       "status": "adopted",
-      "sources": [
-        {
-          "sourceId": "正文/001-第一回 张天师祈禳瘟疫.md"
-        }
-      ],
       "provenance": {
+        "mode": "author",
+        "book": "水浒传",
+        "book_id": "shuihu",
         "chapters": [
           1
         ],
-        "events": [
-          "上清宫遇虎蛇",
-          "强开伏魔殿",
-          "误走一百单八魔君"
-        ]
-      }
+        "scenes": [],
+        "extractor": "os217-controlled-recipe"
+      },
+      "fingerprint": {
+        "vec": null,
+        "metrics": {
+          "source": "controlled-recipe"
+        }
+      },
+      "fact": "嘉祐三年京师瘟疫盛行，仁宗命洪信赴龙虎山宣天师修醮禳灾——这是整个故事的动因。",
+      "events": [
+        {
+          "index": 1,
+          "who": "仁宗",
+          "channel": "action",
+          "content": "命洪信赴龙虎山",
+          "segments": [
+            {
+              "index": 1,
+              "chars": 7
+            }
+          ]
+        }
+      ]
     }
   ],
-  "updatedAt": "2026-11-18T14:35:38.850Z"
+  "revision": 1,
+  "updatedAt": "2026-11-27T02:20:08.398Z"
 }
