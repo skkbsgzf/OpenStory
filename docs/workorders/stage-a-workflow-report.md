@@ -45,3 +45,12 @@
 - enrich、真实扮演正文、vision、生图的真实模型语义未在本批验收。
 - `.jsonl` exchange 文件仍不在 `openstory_files` 文本清单内；clean-room 使用可回读的 `pedia/v1` JSON 格式验收。
 - 未 push、未 tag、未触碰生产 8807 或作者真库。
+
+## 提交谱系（本地，未 push）
+
+- `a40b877` OS-211/212
+- `4a9da93` OS-213
+- `69adfc7` OS-214
+- `26c0e01` OS-215
+- `dc40f9c` OS-216
+- `62f2df8` OS-217～219 收口
