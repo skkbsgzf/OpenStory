@@ -1,0 +1,51 @@
+{
+  "schema": "openstory.knowledge-gold@1",
+  "corpus": "seed-western",
+  "genre": "西幻",
+  "thresholds": {
+    "sourceAccuracy": 1,
+    "negativePrecision": 1,
+    "macroRecallAt5": 0.85,
+    "perGenreRecallAt5": 0.75
+  },
+  "queries": [
+    {
+      "id": "seed-western-1",
+      "query": "冒险队胜利怎样保持资源压力",
+      "expected": [
+        "docs/craft.md"
+      ],
+      "negative": false
+    },
+    {
+      "id": "seed-western-2",
+      "query": "预言反转怎样避免机械应验",
+      "expected": [
+        "docs/tropes.md"
+      ],
+      "negative": false
+    },
+    {
+      "id": "seed-western-3",
+      "query": "退役圣骑士如何保留信念又有变化",
+      "expected": [
+        "docs/character.md"
+      ],
+      "negative": false
+    },
+    {
+      "id": "seed-western-4",
+      "query": "龙语魔法的代价怎样影响知识使用",
+      "expected": [
+        "docs/setting.md"
+      ],
+      "negative": false
+    },
+    {
+      "id": "seed-western-5",
+      "query": "都市写字楼考勤规则",
+      "expected": [],
+      "negative": true
+    }
+  ]
+}

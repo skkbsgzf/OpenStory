@@ -1,0 +1,51 @@
+{
+  "schema": "openstory.knowledge-gold@1",
+  "corpus": "seed-harem",
+  "genre": "宫斗",
+  "thresholds": {
+    "sourceAccuracy": 1,
+    "negativePrecision": 1,
+    "macroRecallAt5": 0.85,
+    "perGenreRecallAt5": 0.75
+  },
+  "queries": [
+    {
+      "id": "seed-harem-1",
+      "query": "宫斗请安场面怎样用站位传递信息",
+      "expected": [
+        "docs/craft.md"
+      ],
+      "negative": false
+    },
+    {
+      "id": "seed-harem-2",
+      "query": "借刀反噬套路怎样留证据链",
+      "expected": [
+        "docs/tropes.md"
+      ],
+      "negative": false
+    },
+    {
+      "id": "seed-harem-3",
+      "query": "笑面掌事如何写出温柔与冷酷",
+      "expected": [
+        "docs/character.md"
+      ],
+      "negative": false
+    },
+    {
+      "id": "seed-harem-4",
+      "query": "内库账册周期怎样变成权谋筹码",
+      "expected": [
+        "docs/setting.md"
+      ],
+      "negative": false
+    },
+    {
+      "id": "seed-harem-5",
+      "query": "西幻龙语禁句列表",
+      "expected": [],
+      "negative": true
+    }
+  ]
+}

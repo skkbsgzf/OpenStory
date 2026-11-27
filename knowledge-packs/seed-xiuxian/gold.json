@@ -1,0 +1,51 @@
+{
+  "schema": "openstory.knowledge-gold@1",
+  "corpus": "seed-xiuxian",
+  "genre": "修仙",
+  "thresholds": {
+    "sourceAccuracy": 1,
+    "negativePrecision": 1,
+    "macroRecallAt5": 0.85,
+    "perGenreRecallAt5": 0.75
+  },
+  "queries": [
+    {
+      "id": "seed-xiuxian-1",
+      "query": "境界突破怎样避免只换一个称号",
+      "expected": [
+        "docs/craft.md"
+      ],
+      "negative": false
+    },
+    {
+      "id": "seed-xiuxian-2",
+      "query": "退婚流如何写成长目标而不是当场打脸",
+      "expected": [
+        "docs/tropes.md"
+      ],
+      "negative": false
+    },
+    {
+      "id": "seed-xiuxian-3",
+      "query": "孤傲剑修怎样展示温柔",
+      "expected": [
+        "docs/character.md"
+      ],
+      "negative": false
+    },
+    {
+      "id": "seed-xiuxian-4",
+      "query": "灵根和灵脉的区别能制造什么冲突",
+      "expected": [
+        "docs/setting.md"
+      ],
+      "negative": false
+    },
+    {
+      "id": "seed-xiuxian-5",
+      "query": "量子计算机散热风扇型号",
+      "expected": [],
+      "negative": true
+    }
+  ]
+}

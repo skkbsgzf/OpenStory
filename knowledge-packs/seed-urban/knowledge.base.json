@@ -1,0 +1,24 @@
+{
+  "schema": "openstory.knowledge-base@1",
+  "schemaVersion": 1,
+  "id": "seed-urban",
+  "name": "都市种子包",
+  "version": "1.0.0",
+  "vendor": "OpenStory",
+  "license": "CC-BY-4.0",
+  "documentEntry": "docs/index.md",
+  "formats": [
+    ".md"
+  ],
+  "exclude": [
+    "gold.json"
+  ],
+  "retrievalDefaults": {
+    "topK": 6,
+    "minScore": 0.3,
+    "budgetChars": 6000
+  },
+  "tagMap": {},
+  "nodeMap": {},
+  "edgeMap": {}
+}

@@ -1,0 +1,31 @@
+{
+  "spec": "openstory-module@2",
+  "id": "knowledge-base",
+  "name": "知识库",
+  "version": "0.1.0",
+  "builtin": true,
+  "description": "跨项目文件知识库的登记、wiki 浏览、定制、搜索与索引状态工作台。源文档只读；凭据仍在知识库连接设置中。",
+  "class": "workbench",
+  "entry": "index.mjs",
+  "requires": [{ "id": "base.write", "min": 1 }],
+  "optionalRequires": [{ "id": "knowledge.retrieval", "min": 1 }],
+  "endpoints": [
+    "knowledgeLibrariesGet",
+    "knowledgeLibraryPreview",
+    "knowledgeLibraryRegister",
+    "knowledgeLibraryStatePut",
+    "knowledgeLibraryCustomizationPut",
+    "knowledgeLibraryCreate",
+    "knowledgeDocumentsGet",
+    "knowledgeDocumentGet",
+    "knowledgeGraphGet",
+    "knowledgeSearch",
+    "knowledgeIndexStatusGet",
+    "knowledgeIndexSync"
+  ],
+  "pages": [{ "id": "knowledge-base", "label": "知识库" }],
+  "slots": [{ "slot": "tab", "page": "knowledge-base", "order": 25 }],
+  "settings": [],
+  "settingsHint": "服务地址与凭据仍在「设置 · 引擎与存储 · 知识库连接」；这里管理跨项目知识库资产。",
+  "settingsJump": "engines"
+}

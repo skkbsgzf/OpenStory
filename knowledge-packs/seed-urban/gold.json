@@ -1,0 +1,51 @@
+{
+  "schema": "openstory.knowledge-gold@1",
+  "corpus": "seed-urban",
+  "genre": "都市",
+  "thresholds": {
+    "sourceAccuracy": 1,
+    "negativePrecision": 1,
+    "macroRecallAt5": 0.85,
+    "perGenreRecallAt5": 0.75
+  },
+  "queries": [
+    {
+      "id": "seed-urban-1",
+      "query": "职场冲突怎样从争吵推进到结果",
+      "expected": [
+        "docs/craft.md"
+      ],
+      "negative": false
+    },
+    {
+      "id": "seed-urban-2",
+      "query": "隐藏身份反转怎样产生关系代价",
+      "expected": [
+        "docs/tropes.md"
+      ],
+      "negative": false
+    },
+    {
+      "id": "seed-urban-3",
+      "query": "毒舌搭档如何不写成人身攻击",
+      "expected": [
+        "docs/character.md"
+      ],
+      "negative": false
+    },
+    {
+      "id": "seed-urban-4",
+      "query": "怎样用城市通勤表现阶层差异",
+      "expected": [
+        "docs/setting.md"
+      ],
+      "negative": false
+    },
+    {
+      "id": "seed-urban-5",
+      "query": "修仙灵根突破概率",
+      "expected": [],
+      "negative": true
+    }
+  ]
+}
