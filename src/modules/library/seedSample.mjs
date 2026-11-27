@@ -70,7 +70,7 @@ export async function seedOfficialSample({ repoRoot, env = process.env, preferen
     return { ok: false, seeded: false, reason: 'capability-missing', message: '库清单能力不可用，跳过 sample 播种' }
   }
   const sourceRoot = join(text(repoRoot), 'samples', SAMPLE_DIR_NAME)
-  if (!isProductSample(sourceRoot)) return { ok: true, seeded: false, reason: 'sample-missing' }
+  const sampleAvailable = isProductSample(sourceRoot)
   // preferencesPath 已在上方排除（显式清单＝不播种），这里只走院子默认路径。
   const explicit = ''
   const read = readLibraryManifest({ preferencesPath: explicit, env })
@@ -81,6 +81,13 @@ export async function seedOfficialSample({ repoRoot, env = process.env, preferen
     ? resolveLibraryManifestPath({ preferencesPath: explicit, env })
     : read.path
   if (!target) return { ok: false, seeded: false, reason: 'no-path', message: '找不到库清单路径，跳过 sample 播种' }
+  // 部署后必须有一份「加载过的项目」清单可看：样例不可用时也要落一份空清单，
+  // 而不是让作者面对「清单不存在」的提示。
+  if (!sampleAvailable) {
+    const created = await writeLibraryManifest(target, [])
+    if (!created.ok) return { ok: false, seeded: false, reason: 'write-failed', message: created.message }
+    return { ok: true, seeded: false, reason: 'sample-missing', libraries: created.libraries, path: created.path, manifestCreated: true }
+  }
   const placed = await materializeSample(repoRoot, env)
   if (!placed.ok) return { ok: false, seeded: false, reason: placed.reason, message: placed.message }
   const written = await writeLibraryManifest(target, [{
@@ -90,5 +97,5 @@ export async function seedOfficialSample({ repoRoot, env = process.env, preferen
     source: 'openstory'
   }])
   if (!written.ok) return { ok: false, seeded: false, reason: 'write-failed', message: written.message }
-  return { ok: true, seeded: true, reason: 'seeded', libraries: written.libraries, path: written.path, samplePath: placed.path }
+  return { ok: true, seeded: true, reason: 'seeded', libraries: written.libraries, path: written.path, samplePath: placed.path, manifestCreated: true }
 }

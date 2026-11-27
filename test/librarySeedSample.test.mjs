@@ -94,7 +94,7 @@ test('已有清单时不再塞回样例（作者删掉是明确意图）', async
   } finally { await rm(fx.base, { recursive: true, force: true }) }
 })
 
-test('样例缺失或不是本产品库时跳过，不写清单', async () => {
+test('样例缺失时仍落一份空清单——部署后必须能看到「加载过的项目」配置', async () => {
   for (const options of [{ withSample: false }, { withSample: true, productMarker: false }]) {
     const fx = await fixture(options)
     try {
@@ -102,10 +102,13 @@ test('样例缺失或不是本产品库时跳过，不写清单', async () => {
       assert.equal(result.ok, true)
       assert.equal(result.seeded, false)
       assert.equal(result.reason, 'sample-missing')
+      // 清单本身必须存在：这是「加载过的项目」的可见配置文件。
       const target = resolveLibraryManifestPath({ preferencesPath: '', env: fx.env })
+      const written = JSON.parse(await readFile(target, 'utf-8'))
+      assert.equal(written.schemaVersion, 1)
+      assert.deepEqual(written.libraries, [])
       const reread = readLibraryManifest({ preferencesPath: '', env: fx.env })
-      assert.equal(reread.libraries.length, 0)
-      assert.ok(reread.warnings.some((item) => item.code === 'PREFERENCES_MISSING'), `不应写清单：${target}`)
+      assert.equal(reread.warnings.length, 0, '清单不该再报缺失')
     } finally { await rm(fx.base, { recursive: true, force: true }) }
   }
 })
