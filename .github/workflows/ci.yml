@@ -121,12 +121,22 @@ jobs:
         with:
           node-version: '24'
 
-      - name: Install Chromium
+      - name: Resolve Chrome binary
+        shell: bash
         run: |
           set -o pipefail
-          sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends chromium
-          chromium --version
+          # GitHub ubuntu runner 预装 google-chrome；apt 的 chromium 在 24.04 是 snap
+          # 过渡包，容器里常静默起不来（表现为 CDP 端口永不监听）。优先用预装 Chrome。
+          for candidate in /usr/bin/google-chrome /usr/bin/google-chrome-stable /opt/google/chrome/chrome /usr/bin/chromium /usr/bin/chromium-browser; do
+            if [ -x "$candidate" ]; then
+              "$candidate" --version || true
+              echo "CHROMIUM_PATH=$candidate" >> "$GITHUB_ENV"
+              echo "using $candidate"
+              exit 0
+            fi
+          done
+          echo "::error title=chrome-missing::没有可用的 Chrome/Chromium"
+          exit 1
 
       - name: Install dependencies
         run: npm install --no-audit --no-fund

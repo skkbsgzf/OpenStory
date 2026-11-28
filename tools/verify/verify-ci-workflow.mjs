@@ -152,9 +152,13 @@ assert.ok(browser, '必须存在独立 browser-smoke job')
 assert.equal(browser['runs-on'], 'ubuntu-latest')
 const browserSteps = browser.steps
 assert.ok(browserSteps.some((step) => step.uses === 'actions/setup-node@v4' && step.with?.['node-version'] === '24'))
-const chromium = browserSteps.find((step) => step.name === 'Install Chromium')
-assert.match(chromium?.run ?? '', /apt-get install[^\n]*chromium/u)
-assert.match(chromium.run, /chromium --version/u)
+// 浏览器来源：不再 apt 装 chromium（24.04 是 snap 过渡包，容器里起不来），
+// 改为解析 runner 预装的 Chrome 并导出 CHROMIUM_PATH。
+const chromium = browserSteps.find((step) => step.name === 'Resolve Chrome binary')
+assert.ok(chromium, '必须有「Resolve Chrome binary」步骤')
+assert.match(chromium.run, /\/usr\/bin\/google-chrome/u)
+assert.match(chromium.run, /CHROMIUM_PATH=/u)
+assert.match(chromium.run, />> "\$GITHUB_ENV"/u)
 const smoke = browserSteps.find((step) => step.name === 'Run page browser smoke')
 assert.match(smoke?.run ?? '', /page-browser-smoke\.mjs --out/u)
 assert.match(smoke.run, /verify-page-report\.mjs/u)

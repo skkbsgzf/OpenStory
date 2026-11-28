@@ -13,12 +13,15 @@ const sleep = (ms) => new Promise((done) => setTimeout(done, ms))
 function findBrowser() {
   const candidates = [
     process.env.CHROMIUM_PATH, process.env.CHROME_PATH, process.env.EDGE_PATH,
+    // Linux CI：GitHub runner 预装 google-chrome，比 apt 的 chromium（snap 过渡包，
+    // 容器里常直接起不来）可靠；/usr/bin/chromium 的 snap shim 排在其后。
+    '/usr/bin/google-chrome', '/usr/bin/google-chrome-stable', '/opt/google/chrome/chrome',
     'C:/Program Files/Google/Chrome/Application/chrome.exe',
     'C:/Program Files (x86)/Google/Chrome/Application/chrome.exe',
     'C:/Users/Administrator/AppData/Local/Google/Chrome/Application/chrome.exe',
     'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',
     'C:/Program Files/Microsoft/Edge/Application/msedge.exe',
-    '/usr/bin/chromium', '/usr/bin/chromium-browser', '/usr/bin/google-chrome'
+    '/usr/bin/chromium', '/usr/bin/chromium-browser'
   ].filter(Boolean)
   return candidates.find((file) => existsSync(file)) ?? ''
 }
@@ -190,15 +193,25 @@ export async function launchCdpBrowser({ executablePath = '', viewport = { width
   if (!browser) throw new Error('未找到 Chromium/Chrome/Edge；请设置 CHROMIUM_PATH')
   const port = await freePort()
   const userDataDir = await mkdtemp(join(tmpdir(), 'openstory-cdp-'))
-  const child = spawn(browser, [
+  // CI（ubuntu-latest 容器）里 Chromium 以 root 跑、/dev/shm 只有 64MB，
+  // 不带 --no-sandbox / --disable-dev-shm-usage 会静默启动失败，表现为 CDP 端口永不监听。
+  const args = [
     '--headless=new', `--remote-debugging-port=${port}`, `--user-data-dir=${userDataDir}`,
     '--no-first-run', '--no-default-browser-check', '--disable-background-networking',
-    '--disable-component-update', '--disable-sync', '--disable-extensions', '--mute-audio', 'about:blank'
-  ], { stdio: 'ignore', windowsHide: true })
+    '--disable-component-update', '--disable-sync', '--disable-extensions', '--mute-audio',
+    '--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu', '--disable-software-rasterizer'
+  ]
+  if (process.env.CDP_EXTRA_ARGS) args.push(...process.env.CDP_EXTRA_ARGS.split(/\s+/).filter(Boolean))
+  args.push('about:blank')
+  // stderr 收进环形缓冲：启动失败时报出浏览器自己说的话，否则只能看到「超时」。
+  const child = spawn(browser, args, { stdio: ['ignore', 'ignore', 'pipe'], windowsHide: true })
+  let stderrTail = ''
+  child.stderr?.setEncoding('utf8')
+  child.stderr?.on('data', (chunk) => { stderrTail = (stderrTail + chunk).slice(-4000) })
   const deadline = Date.now() + 20000
   let version = null
   while (Date.now() < deadline) {
-    if (child.exitCode !== null) throw new Error(`浏览器启动失败：exit=${child.exitCode}`)
+    if (child.exitCode !== null) throw new Error(`浏览器启动失败：exit=${child.exitCode}${stderrTail ? `\n${stderrTail}` : ''}`)
     try { version = await (await fetch(`http://127.0.0.1:${port}/json/version`)).json() } catch { /* 等监听 */ }
     if (version?.webSocketDebuggerUrl) break
     await sleep(100)
@@ -206,7 +219,7 @@ export async function launchCdpBrowser({ executablePath = '', viewport = { width
   if (!version?.webSocketDebuggerUrl) {
     child.kill('SIGKILL')
     await rm(userDataDir, { recursive: true, force: true })
-    throw new Error('Chromium CDP 启动超时')
+    throw new Error(`Chromium CDP 启动超时（20s 内 :${port}/json/version 未监听）${stderrTail ? `\n${stderrTail}` : ''}`)
   }
   const connection = new CdpConnection(version.webSocketDebuggerUrl)
   await connection.open
