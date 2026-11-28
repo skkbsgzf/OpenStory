@@ -55,7 +55,9 @@ export const HOST_OWNED_ENDPOINTS = Object.freeze({
     'moduleRootsGet', 'moduleRootsPreview', 'moduleRootsAdd', 'moduleRootsRemove', 'moduleRootsRefresh'
   ],
   '进程、配置与后台任务（daemon 本机设施，与库/插件无关）': [
-    'healthGet', 'configGet', 'configPut', 'configProbe', 'jobsGet', 'jobCancel', 'jobsClear'
+    'healthGet', 'configGet', 'configPut', 'configProbe', 'jobsGet', 'jobCancel', 'jobsClear',
+    // OS-233：本地 RAG 运行时是机器级设施（装一次所有库共用），不属任何工作面。
+    'knowledgeRuntimeStatusGet', 'knowledgeRuntimeInstallPlanGet', 'knowledgeRuntimeConfigPut'
   ],
   '项目简报与界面状态（跨页签的库内设置，不属于单个模块）': [
     'briefGet', 'briefPut', 'uiStateGet', 'uiStatePut', 'uiPreferencesGet', 'uiPreferencesPut'

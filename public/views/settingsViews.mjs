@@ -553,6 +553,77 @@ function settingsAboutSectionHtml() {
   </div>`
 }
 
+/**
+ * OS-233：本地 RAG 运行时取数（状态 + 安装前置检查）。纯取数、写回传入的 state 对象，
+ * 由壳在进入设置页时调用一次；「重新检测」按钮会再调一次。
+ */
+async function loadKnowledgeRuntime(rt) {
+  if (!rt || rt.loading) return
+  rt.loading = true
+  try {
+    const [status, plan] = await Promise.all([
+      api('/api/knowledge-runtime/status').catch(() => null),
+      api('/api/knowledge-runtime/install-plan').catch(() => null)
+    ])
+    rt.status = status?.ok ? status : null
+    rt.plan = plan?.ok ? plan : null
+    rt.error = status || plan ? '' : '拿不到本地 RAG 运行时状态'
+  } catch (error) {
+    rt.error = text(error?.message || error)
+  } finally { rt.loading = false }
+}
+
+/**
+ * OS-233：本地 RAG 运行时（HyperGraphRAG）——机器级，一处装好所有库共用。
+ * 状态 + 安装前置检查 + embedding 默认本地。安装不代跑（torch 约 2GB），
+ * 给出可复制命令；embedding 用仓内 transformers.js，不另下模型权重。
+ */
+function settingsKnowledgeRuntimeSectionHtml() {
+  const rt = state.knowledgeRuntime || {}
+  // 首次渲染自取一次（懒加载）；「重新检测」按钮清掉 loaded 后同样会再取。
+  if (!rt.loaded && !rt.loading) { rt.loaded = true; loadKnowledgeRuntime(rt).then(() => { if (state.view === 'settings') render() }) }
+
+  const status = rt.status
+  const plan = rt.plan
+  const stateLabel = { ready: '已就绪', partial: '部分安装', missing: '未安装', broken: '状态异常' }[status?.state] || '未知'
+  const bytes = (n) => {
+    const v = Number(n) || 0
+    if (!v) return '0 B'
+    if (v >= 1e9) return `${(v / 1e9).toFixed(1)} GB`
+    if (v >= 1e6) return `${(v / 1e6).toFixed(0)} MB`
+    return `${(v / 1e3).toFixed(0)} KB`
+  }
+  const missing = Array.isArray(status?.missing) ? status.missing : []
+  const blockers = Array.isArray(plan?.blockers) ? plan.blockers : []
+  const embed = status?.config?.embedding || { provider: 'local', model: 'Xenova/bge-small-zh-v1.5', endpoint: 'http://127.0.0.1:8808' }
+  const rows = [
+    `<div class="kv-line"><span class="k">运行状态</span><span class="v">${esc(stateLabel)}${status?.venvBytes ? ` · ${esc(bytes(status.venvBytes))}` : ''}</span></div>`,
+    status?.python ? `<div class="kv-line"><span class="k">venv Python</span><span class="v">${esc(status.python)}</span></div>` : '',
+    status?.venvDir ? `<div class="kv-line"><span class="k">安装位置</span><span class="v">${esc(status.venvDir)}</span></div>` : '',
+    `<div class="kv-line"><span class="k">embedding</span><span class="v">${esc(embed.provider === 'local' ? `本地 ${embed.model}` : embed.provider || '未配')}</span></div>`
+  ].filter(Boolean).join('')
+  const missingHtml = missing.length
+    ? `<div class="warn-box"><b>还缺</b>${missing.map((item) => `<div>${esc(item)}</div>`).join('')}</div>`
+    : ''
+  const planHtml = blockers.length
+    ? `<div class="warn-box"><b>不能安装</b>${blockers.map((item) => `<div>${esc(item)}</div>`).join('')}</div>`
+    : (plan
+      ? `<p class="sub">依赖 ${plan.packageCount} 个包，约 ${bytes(plan.estimatedBytes)}。${esc(plan.note || '')}</p>
+         ${plan.command ? `<div class="kv-line"><span class="k">安装命令</span><span class="v"><code>${esc(plan.command)}</code></span></div>` : ''}`
+      : '')
+  return `<div class="step">
+    <h3>本地 RAG <span class="sub">语义检索运行时（HyperGraphRAG），装一次所有知识库共用；不装则只能用文档浏览</span></h3>
+    ${rt.error ? `<div class="error-box">${esc(rt.error)}</div>` : ''}
+    ${rows}
+    ${missingHtml}
+    ${planHtml}
+    <p class="sub">embedding 默认走本机 transformers.js（bge-small-zh-v1.5 量化版，约 25MB，不联网下载大模型）。装好运行时后，知识库页的「同步索引」才会从灰变可用。</p>
+    <div class="uikit-toolbar"><span class="uikit-toolbar-left"></span><span class="uikit-toolbar-right">
+      <button type="button" class="uikit-btn uikit-btn-ghost" data-action="kb-runtime-refresh">重新检测</button>
+    </span></div>
+  </div>`
+}
+
 function settingsKbSectionHtml() {
   const s = state.kbStatus
   const cfg = state.kbConfig
@@ -660,6 +731,7 @@ function settingsCombinedEnginesHtml() {
   return [
     section('对话模型与运行时', 'Agent 走哪条通道、用哪个模型', strip(settingsModelsSectionHtml())),
     ...(moduleOn('knowledge') ? [section('知识库', 'WeKnora 连接、分库与测试', degradedNoticeHtml('knowledge') || strip(settingsKbSectionHtml()))] : []),
+    section('本地 RAG', '语义检索运行时与本地 embedding；不装则知识库只能浏览', settingsKnowledgeRuntimeSectionHtml()),
     section('本机路径与导入', '货架位置、库清单、导入稿件', strip(settingsCombinedDataSectionHtml()))
   ].join('')
 }
@@ -824,5 +896,5 @@ function settingsHtml() {
     })
   }
 
-  return { settingsModulesSectionHtml, SETTINGS_HELP, navLabel: settingsNavLabel, RUNTIME_STATUS_LABEL, runtimeCard, settingsRuntimeSectionHtml, dshDepthFieldHtml, cfgBadgeHtml, dshModelValue, dshModelOptionsHtml, dshModelFieldHtml, settingsModelsSectionHtml, skinCardsHtml, settingsAppearanceSectionHtml, settingsTypographySectionHtml, settingsWritingSectionHtml, settingsDiscoverSectionHtml, settingsCombinedDataSectionHtml, settingsSyncSectionHtml, settingsDataSectionHtml, settingsAboutSectionHtml, settingsKbSectionHtml, settingsCombinedAppearanceHtml, settingsCombinedEnginesHtml, settingsLocalModulesSectionHtml, settingsHtml }
+  return { loadKnowledgeRuntime, settingsModulesSectionHtml, SETTINGS_HELP, navLabel: settingsNavLabel, RUNTIME_STATUS_LABEL, runtimeCard, settingsRuntimeSectionHtml, dshDepthFieldHtml, cfgBadgeHtml, dshModelValue, dshModelOptionsHtml, dshModelFieldHtml, settingsModelsSectionHtml, skinCardsHtml, settingsAppearanceSectionHtml, settingsTypographySectionHtml, settingsWritingSectionHtml, settingsDiscoverSectionHtml, settingsCombinedDataSectionHtml, settingsSyncSectionHtml, settingsDataSectionHtml, settingsAboutSectionHtml, settingsKbSectionHtml, settingsCombinedAppearanceHtml, settingsCombinedEnginesHtml, settingsLocalModulesSectionHtml, settingsHtml }
 }

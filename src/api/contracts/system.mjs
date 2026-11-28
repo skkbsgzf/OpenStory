@@ -273,5 +273,34 @@ export const systemEndpoints = {
     // OS-204：appVersion 取自 package.json，daemon 启动时读一次；其余进程事实字段不动。
     response: { ok: 'true', pid: 'integer', port: 'integer', generation: 'integer', startedAt: 'string', uptimeMs: 'integer', appVersion: 'string' },
     errors: []
+  },
+
+  /* ---------- OS-233：本地 RAG 运行时（机器级，宿主所有，不属任何库）---------- */
+
+  knowledgeRuntimeStatusGet: {
+    method: 'GET',
+    path: '/api/knowledge-runtime/status',
+    // 检测 venv/worker/源码/配置；missing 逐项点名缺什么。不写盘。
+    request: { query: {} },
+    response: { ok: 'true', state: 'string', python: 'string', worker: 'string', venvDir: 'string', venvBytes: 'integer', config: 'object', configPath: 'string', configError: 'string?', missing: 'array' },
+    errors: []
+  },
+
+  knowledgeRuntimeInstallPlanGet: {
+    method: 'GET',
+    path: '/api/knowledge-runtime/install-plan',
+    // 只读前置检查：能不能装、要多少空间、装哪、缺什么。不下载不写盘。
+    request: { query: {} },
+    response: { ok: 'true', canInstall: 'boolean', blockers: 'array', python: 'string', target: 'string', packageCount: 'integer', estimatedBytes: 'integer', note: 'string' },
+    errors: []
+  },
+
+  knowledgeRuntimeConfigPut: {
+    method: 'PUT',
+    path: '/api/knowledge-runtime/config',
+    // embedding 默认 local（仓内 transformers.js）；llm 可留空表示未配。
+    request: { body: { embedding: 'object?', llm: 'object?' } },
+    response: { ok: 'true', config: 'object', path: 'string' },
+    errors: ['INVALID_ENTRY', 'WRITE_PROTOCOL_IO_FAILED', 'NO_COURTYARD']
   }
 }

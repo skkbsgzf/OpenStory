@@ -36,16 +36,27 @@ const reportPath = arg('report', '')
 function providerStatus() {
   const python = String(process.env.OPENSTORY_HYPERGRAPH_PYTHON || '').trim()
   const worker = String(process.env.OPENSTORY_HYPERGRAPH_WORKER || join(REPO, 'tools', 'knowledge-runtime', 'worker.py')).trim()
-  const factoryModule = String(process.env.OPENSTORY_EMBEDDING_MODULE || '').trim()
+  // OS-233：embedding 默认用仓内本地 provider（transformers.js，不联网、不要 key）；
+  // 只有作者显式给了外部模块才用外部的。
+  const factoryModule = String(process.env.OPENSTORY_EMBEDDING_MODULE || 'openstory_local_embedding').trim()
+  const factoryName = String(process.env.OPENSTORY_EMBEDDING_FACTORY || 'make_embedding').trim()
   const llmModule = String(process.env.OPENSTORY_LLM_MODULE || '').trim()
+  const llmFactory = String(process.env.OPENSTORY_LLM_FACTORY || '').trim()
   const missing = []
   if (!python) missing.push('OPENSTORY_HYPERGRAPH_PYTHON（固定 venv 的 python 绝对路径）')
   else if (!existsSync(python)) missing.push(`OPENSTORY_HYPERGRAPH_PYTHON 指向的文件不存在：${python}`)
   if (!worker) missing.push('OPENSTORY_HYPERGRAPH_WORKER')
   else if (!existsSync(worker)) missing.push(`worker 不存在：${worker}`)
-  if (!factoryModule) missing.push('OPENSTORY_EMBEDDING_MODULE（官方 EmbeddingFunc 工厂模块）')
-  if (!llmModule) missing.push('OPENSTORY_LLM_MODULE（官方 llm_model_func 工厂模块）')
-  return { ok: missing.length === 0, missing, python, worker, factoryModule, llmModule }
+  // 本地 provider 的模块目录必须在 PYTHONPATH 上——由 worker 的 sys.path 带入 tools/knowledge-runtime。
+  if (!llmModule) missing.push('OPENSTORY_LLM_MODULE（HyperGraphRAG 的 llm_model_func 工厂模块；语义查询必经 LLM 精排）')
+  return {
+    ok: missing.length === 0, missing, python, worker,
+    factoryModule, factoryName, llmModule, llmFactory,
+    embeddingConfig: {
+      endpoint: String(process.env.OPENSTORY_EMBEDDING_ENDPOINT || 'http://127.0.0.1:8808'),
+      model: String(process.env.OPENSTORY_EMBEDDING_MODEL || 'Xenova/bge-small-zh-v1.5')
+    }
+  }
 }
 
 function blocked(reason, detail) {
@@ -87,9 +98,10 @@ async function run() {
       contentRevision: scanned.revision,
       outputDir: indexDir,
       embeddingModule: provider.factoryModule,
+      embeddingConfig: provider.embeddingConfig,
       llmModule: provider.llmModule,
-      embeddingFactory: process.env.OPENSTORY_EMBEDDING_FACTORY || 'embedding_func',
-      llmFactory: process.env.OPENSTORY_LLM_FACTORY || 'llm_model_func'
+      embeddingFactory: provider.factoryName,
+      llmFactory: provider.llmFactory
     }, { runtime: { python: provider.python, worker: provider.worker } })
     if (!inserted.ok) return blocked('索引构建失败', inserted.error || inserted)
 
@@ -101,9 +113,11 @@ async function run() {
         query: item.query,
         topK: 5,
         embeddingModule: provider.factoryModule,
+        embeddingConfig: provider.embeddingConfig,
+      embeddingConfig: provider.embeddingConfig,
         llmModule: provider.llmModule,
-        embeddingFactory: process.env.OPENSTORY_EMBEDDING_FACTORY || 'embedding_func',
-        llmFactory: process.env.OPENSTORY_LLM_FACTORY || 'llm_model_func'
+        embeddingFactory: provider.factoryName,
+        llmFactory: provider.llmFactory
       }, { runtime: { python: provider.python, worker: provider.worker } })
       if (!result.ok) return blocked(`query 失败：${item.id}`, result.error || result)
       const hits = Array.isArray(result.hits) ? result.hits : Array.isArray(result.result?.hits) ? result.result.hits : []

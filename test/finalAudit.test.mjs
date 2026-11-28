@@ -102,11 +102,11 @@ test('C6 架构规模：取消 L2，按 manifest class 分组且生成段逐字�
     'library', 'log', 'media', 'prose', 'roleplay', 'script', 'storage', 'storysource',
     'text', 'worldbook'
   ])
-  assert.match(block, /合计 23 份 manifest（8 kernel \+ 13 workbench \+ 2 host-composition）；57 个模块独占端点，72 个宿主自有端点，端点覆盖 129\/129。/u)
+  assert.match(block, /合计 23 份 manifest（8 kernel \+ 13 workbench \+ 2 host-composition）；58 个模块独占端点，75 个宿主自有端点，端点覆盖 133\/133。/u)
   assert.match(block, /knowledge\.retrieval@1/u)
-  assert.match(block, /\| `public\/app\.js` 行数 \| 10,047 \|/u)
-  assert.match(block, /\| 契约端点数（`ENDPOINTS` 键数） \| 129 \|/u)
-  assert.match(block, /\| 测试文件数（`test\/\*\.test\.mjs`） \| 140 \|/u)
+  assert.match(block, /\| `public\/app\.js` 行数 \| 10,051 \|/u)
+  assert.match(block, /\| 契约端点数（`ENDPOINTS` 键数） \| 133 \|/u)
+  assert.match(block, /\| 测试文件数（`test\/\*\.test\.mjs`） \| 141 \|/u)
   assert.match(architecture, /<!-- arch-stats:start -->[\s\S]*?<!-- arch-stats:end -->/u, '文档生成段标记仍在，待 docs 收口批次统一回写')
 })
 

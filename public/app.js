@@ -289,6 +289,7 @@ const state = {
   kbConfig: null,
   kbMsg: '', tabHidden: {},
   knowledgeBase: { loaded: false, loading: false, error: '', libraries: [], activeLibraryId: '', documents: [], tags: [], activeRef: '', activeTag: '', treeQuery: '', document: null, backlinks: { linked: [], unlinked: [] }, documentLoading: false, graph: null, graphLoading: false, graphError: '', view: 'detail', picked: null, query: '', hits: [], searching: false, searchError: '', indexStatus: 'never-indexed', runtimeAvailable: false, form: null },
+  knowledgeRuntime: { loaded: false, loading: false, error: '', status: null, plan: null }, // OS-233 本地 RAG（机器级；读写在 settingsViews）
   ssJump: null,
   // 产物驳回记录（OS-51）：msgHtml index → true。会话级，不落档
   rejectedMsgs: {},
@@ -8781,6 +8782,8 @@ document.addEventListener('click', (event) => {
       <div class="ops"><button class="btn-ghost" data-action="modal-close">知道了</button></div>`)
   } else if (action === 'knowledge-save') {
     saveKbConfig()
+  } else if (action === 'kb-runtime-refresh') {
+    state.knowledgeRuntime.loaded = false; settingsViews?.loadKnowledgeRuntime(state.knowledgeRuntime).then(() => render())
   } else if (action === 'knowledge-test') {
     testKbConnection()
   } else if (action === 'knowledge-collection-add') {
@@ -9492,6 +9495,7 @@ async function loadKbStatus() {
     state.kbConfig = null
   }
 }
+
 
 /** OS-97：读知识库表单当前值（UI → 配置对象）。 */
 function readKbForm() {

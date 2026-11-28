@@ -63,11 +63,12 @@ test('机器锚与静态实测、当前文档互相一致', () => {
     testFiles: persisted.testFiles
   })
   assert.equal(actual.appJs.lines, countPhysicalLines(read('public/app.js')))
-  // OS-143：app.js 只许减不许增——基线 10047 是硬上沿，实测值由 number-anchors 回写并比对。
-  assert.ok(actual.appJs.lines <= 10047, `app.js ${actual.appJs.lines} 行超过冻结基线 10047`)
+  // OS-143：app.js 只许减不许增。基线 10047 → 10051（OS-233 本地 RAG 设置接线：state 字段
+  // + 按钮分支；取数与渲染仍在 settingsViews，壳只留最小接线），此后仍只许下调。
+  assert.ok(actual.appJs.lines <= 10051, `app.js ${actual.appJs.lines} 行超过冻结基线 10051`)
   assert.deepEqual(actual.modules, { total: 23, workbench: 13, kernel: 8, hostComposition: 2 })
   assert.deepEqual(actual.endpoints, {
-    total: 129, moduleOwned: 57, hostOwned: 72, hostDomain: 0, hostDomainIds: []
+    total: 133, moduleOwned: 58, hostOwned: 75, hostDomain: 0, hostDomainIds: []
   })
   assert.equal(actual.endpoints.total, Object.keys(ENDPOINTS).length)
   assert.equal(actual.endpoints.moduleOwned + actual.endpoints.hostOwned, actual.endpoints.total)

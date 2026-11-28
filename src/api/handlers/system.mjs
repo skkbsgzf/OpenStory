@@ -13,9 +13,11 @@
  */
 import { existsSync, statSync } from 'node:fs'
 import { mkdir, readdir } from 'node:fs/promises'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { API_ERROR_CODES, isPlainObject, validateResponse } from '../contracts.mjs'
 import { sendError, sendJson, text } from '../../host/http.mjs'
+import { runtimeStatus, runtimeInstallPlan, readRuntimeConfig, writeRuntimeConfig } from '../../host/knowledgeRuntimeManager.mjs'
 import { authorizeRoot, RESERVED_LIB_DIRS } from '../../host/authorize.mjs'
 import { loadGenres, readBrief, writeBrief } from '../../services/genres.mjs'
 import { listJobs, cancelJob, clearSettled, activeCount } from '../../host/jobCenter.mjs'
@@ -322,10 +324,46 @@ export async function fsBrowse(ctx) {
   })
 }
 
+/* ---------- OS-233：本地 RAG 运行时（机器级，宿主所有）---------- */
+
+/** 运行时状态：装没装、缺什么、配置在哪。只读。 */
+export async function knowledgeRuntimeStatusGet(ctx) {
+  const { res, context } = ctx
+  const status = await runtimeStatus({ repoRoot: runtimeRepoRoot(), env: context?.env ?? process.env })
+  return sendJson(res, 200, status)
+}
+
+/** 安装前置检查：能不能装、要多少空间。只读，不下载。 */
+export async function knowledgeRuntimeInstallPlanGet(ctx) {
+  const { res, context } = ctx
+  const plan = await runtimeInstallPlan({ repoRoot: runtimeRepoRoot(), env: context?.env ?? process.env })
+  return sendJson(res, 200, plan)
+}
+
+/** 配置写：embedding 默认 local；llm 可空。只落机器级院子。 */
+export async function knowledgeRuntimeConfigPut(ctx) {
+  const { res, request, context } = ctx
+  const current = await readRuntimeConfig(context?.env ?? process.env)
+  const next = { ...current.config }
+  if (isPlainObject(request.embedding)) next.embedding = { ...next.embedding, ...request.embedding }
+  if (isPlainObject(request.llm)) next.llm = { ...next.llm, ...request.llm }
+  const written = await writeRuntimeConfig(next, context?.env ?? process.env)
+  if (!written.ok) return sendError(res, written.code ?? API_ERROR_CODES.WRITE_PROTOCOL_IO_FAILED, written.message)
+  return sendJson(res, 200, { ok: true, config: written.config, path: written.path })
+}
+
+/** system handler 里的仓根：本文件在 src/api/handlers/ 下，上溯三层。 */
+function runtimeRepoRoot() {
+  return join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..')
+}
+
 /** system 域端点 → handler 注册表片段（registry.mjs 聚合）。 */
 export const handlers = {
 
   healthGet,
+  knowledgeRuntimeStatusGet,
+  knowledgeRuntimeInstallPlanGet,
+  knowledgeRuntimeConfigPut,
   configGet,
   configPut,
   configProbe,
