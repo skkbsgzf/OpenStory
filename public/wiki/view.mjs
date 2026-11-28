@@ -19,6 +19,7 @@ export function wikiTreeHtml({
   getTags = (item) => item?.tags ?? [], getCount = (item) => item?.chars ?? '',
   include = () => true, renderBadge = () => '', renderItem, renderTag,
   openAction = 'data-wiki-open', tagAction = 'data-wiki-tag', searchAction = 'data-wiki-search',
+  hideEmptyBranches = false,
   emptyHtml = '<p class="nav-empty">这里还没有文档。</p>', untaggedLabel = '未打标签',
   buildTree, filterTree
 }) {
@@ -26,13 +27,21 @@ export function wikiTreeHtml({
     ? filterTree(buildTree(items.filter(include)), query)
     : buildWikiFallbackTree(items.filter(include), query, { getId, getTitle, getPath, getExcerpt, getTags })
   const renderRows = (nodes, depth = 0) => [...(nodes?.values?.() ?? list(nodes))].sort((a, b) => b.count - a.count || String(a.name).localeCompare(String(b.name), 'zh-Hans-CN')).map((node) => {
-    const open = activeTag && (node.full === activeTag || activeTag.startsWith(`${node.full}/`)) || query
+    // 默认展开「只有一个叶子」的分组：否则一级目录全折叠，作者看不到任何文档名，
+    // 只能靠猜哪个标签里有东西。多分支仍保持折叠，避免长目录一次铺开。
+    const single = !node.children?.size && list(node.items).length <= 1
+    const open = (activeTag && (node.full === activeTag || activeTag.startsWith(`${node.full}/`))) || query || (depth === 0 && single)
     const row = renderTag
       ? renderTag(node, { active: activeTag === node.full, open: Boolean(open), depth })
       : `<button class="nav-row tag${activeTag === node.full ? ' on' : ''}" ${tagAction}="${escapeWikiHtml(node.full)}"><span class="tag-name">${escapeWikiHtml(node.name)}</span><span class="nav-count">${node.count}</span></button>`
     const docs = list(node.items).map((item) => renderItem(item, { active: getId(item) === activeId, depth })).join('')
     const kids = renderRows(node.children, depth + 1)
-    return `<details class="tag-branch${open ? ' open' : ''}" style="--depth:${depth}"><summary>${row}<span class="tw-chev" aria-hidden="true"></span></summary>${kids}${docs}</details>`
+    // hideEmptyBranches：一篇文章挂多个标签时，按调用方去重后某些标签组会一篇不剩；
+    // 留着就是一排点不动的空标签（作者实测：目录里一半分组点进去是空的）。
+    if (hideEmptyBranches && !docs && !kids) return ''
+    // open 同时给 class 与原生 open 属性：只写 class 时 <details> 仍然折叠，
+    // 目录看上去「一个文档都点不到」（作者实测）。原生属性才是真正的展开开关。
+    return `<details class="tag-branch${open ? ' open' : ''}"${open ? ' open' : ''} style="--depth:${depth}"><summary>${row}<span class="tw-chev" aria-hidden="true"></span></summary>${kids}${docs}</details>`
   }).join('')
   const roots = renderRows(tree.children)
   const untagged = list(tree.items).length

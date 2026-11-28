@@ -2866,6 +2866,14 @@ border-left: 2px solid var(--accent); padding: var(--ui-gap-xs) var(--ui-gap-md)
 .kb-status.building { background: var(--accent-soft); color: var(--accent); }
 .kb-form, .kb-customization { border: 1px solid var(--hair); border-radius: var(--radius-md); padding: var(--ui-gap-md); display: flex; flex-direction: column; gap: var(--ui-gap-sm); background: var(--surface-card); }
 .kb-form h3, .kb-customization h3 { margin: 0; font-size: var(--ui-fs-md); }
+/* 定制默认收起：summary 一行显示当前参数，点开才编辑。 */
+.kb-customization > summary { cursor: pointer; display: flex; align-items: baseline; gap: var(--ui-gap-sm); flex-wrap: wrap; list-style: none; }
+.kb-customization > summary::-webkit-details-marker { display: none; }
+.kb-customization > summary::after { content: '▸'; color: var(--meta); font-size: var(--ui-fs-xs); }
+.kb-customization[open] > summary::after { content: '▾'; }
+.kb-custom-hint { font-size: var(--ui-fs-xs); color: var(--meta); }
+.kb-custom-body { display: flex; flex-direction: column; gap: var(--ui-gap-sm); }
+.kb-index-why { font-size: var(--ui-fs-xs); color: var(--muted); }
 .kb-form label, .kb-customization label { display: flex; align-items: center; gap: var(--ui-gap-sm); font-size: var(--ui-fs-sm); color: var(--muted); flex-wrap: wrap; }
 .kb-form input, .kb-customization input { flex: 1; min-width: 160px; background: var(--bg); color: var(--ink); border: 1px solid var(--line); border-radius: var(--radius); padding: var(--ui-gap-2xs) var(--ui-gap-sm); font: inherit; }
 .kb-actions { display: flex; gap: var(--ui-gap-xs); flex-wrap: wrap; }
