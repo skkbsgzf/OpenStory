@@ -13,15 +13,19 @@
 > `.openstory/plugins/suite-state.json`（由 MCP-only 构建链生成），拷贝或导入后打开即复现
 > 一份配置好的工作台，不必重设页签与套件。
 >
-> 说明：本样本由 `tools/verify/verify-mcp-build-e2e.mjs` 从空目录经 77 次真实 MCP 调用重建。
-> 业务内容来自 `tools/samples/shuihu-input/` 的受控配方；7 条 fact 全部过 v3，主档与 wiki revision 一致。
-> clean-room 使用假文本上游验证协议与落盘，**不声称真实 enrich/扮演/识图/生图语义通过**。
-> 复现与回滚见 `samples/水浒传/README.md`。
+> 说明：本样本由 `tools/verify/verify-shuihu-10ch.mjs` 从空目录经 113 次真实 MCP 调用重建
+> （`--recipe-10ch`）。业务内容来自 `tools/samples/shuihu-input/`（第 1 回）与
+> `tools/samples/shuihu-input-10ch/`（第 2–10 回）的受控配方；**唯一事实源＝前 10 回的
+> 39 条 `fact.data/v3` 条目＋wiki 派生层**，正文只作逐字出处（FACT-FIRST）。
+> 主档与 wiki revision 一致，gold query 见 `knowledge-packs/shuihu-10ch/gold.json`。
+> clean-room 使用假文本上游验证协议与落盘，**不 BYOK、不声称真实 enrich/扮演/识图/生图或语义检索质量通过**
+> （`semanticModelVerified:false`）。复现与回滚见 `samples/水浒传/README.md`。
 
 ## 一、正文（纯净写作面）
 顶栏选《水浒传》→ 页签「正文」。
-- 第一回完整正文（回目对偶、宋明白话），右侧分析面板：**编辑总评**（人话结论＋好在哪＋
-  问题在哪＋改法＋定位/详情跳转）、情绪曲线、文风变异系数、AI 味、本段批注。
+- **第 1–10 回**完整正文（回目对偶、宋明白话；唯一事实源是事实链，正文只作逐字出处），
+  右侧分析面板：**编辑总评**（人话结论＋好在哪＋问题在哪＋改法＋定位/详情跳转）、
+  情绪曲线、文风变异系数、AI 味、本段批注。
 - 习惯表驱动：禁用词「忽然」会在第 11 段被标出（依据＝本库习惯表）。
 
 ## 二、世界书（创作型条目库）

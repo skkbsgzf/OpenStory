@@ -12,7 +12,7 @@ OS-127 进程治理：单实例锁＋stamp＋generation＋`/api/health`）
 **习惯**（写作规矩表）/ **故事源**（fact 链可视化）/ **扮演**（主持人＋多角色，默认）/ **确定性推演**（可选）/ **剧本** / **分析**（本地引擎）/ **知识库**（跨项目储备知识，独立于作品世界书）。
 全部经契约层（`src/api/contracts.mjs` 聚合 `src/api/contracts/` 分片，129 端点）分派；
 MCP 对外 68 工具（`src/host/mcp.mjs` 直跑；stdio 独立进程，数据操作走 daemon HTTP 薄适配）。
-计数以 `docs/number-anchors.json` 为准（129 端点／23 份 manifest／1067 例单测／29 项门禁）；
+计数以 `docs/number-anchors.json` 为准（129 端点／23 份 manifest／1073 例单测／29 项门禁）；
 `ARCHITECTURE.md` 的分层数字只在生成段里，不手填。
 分层见 [ARCHITECTURE.md](./ARCHITECTURE.md)：OS-173/C6 起不再用 L7–L2 旧层号；按
 前端 `public/` → 契约 `src/api/` → 底座 `src/host/` → 协议 `src/protocol/`＋能力句柄 →
