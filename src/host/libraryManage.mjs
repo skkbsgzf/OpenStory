@@ -161,6 +161,18 @@ export async function createLibrary({ path: targetPath, name, primaryCarrier = '
 /* ---------- 诊断 ---------- */
 
 /**
+ * 库卡上的载体类型：读库内真源 `.openstory/project.json` 的 `kind`（novel/script/…）。
+ * 读不到就回空串，由契约兜底成「未分类」——列表不能因为一个坏库整体失败。
+ */
+export async function libraryKind(root) {
+  const target = resolve(text(root))
+  const storage = await storageCapability(target, 'storage.scaffold').catch(() => null)
+  if (!storage?.ok) return ''
+  const document = await storage.capability.readProjectDocument(target).catch(() => null)
+  return document?.ok ? text(document.value?.kind).trim() : ''
+}
+
+/**
  * 库形态四件套 → A-5 verdict。verdict.ok＝形态健康（有标记且有主模块）；
  * 其余按 wizardKit.describeOpenFailure 给人话与修复动作。
  */

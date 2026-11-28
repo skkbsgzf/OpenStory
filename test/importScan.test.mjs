@@ -100,12 +100,17 @@ test('豁免表：每条都有边、有理由；真实仓面零违规', () => {
     Object.freeze({
       edge: 'views/referenceViews.mjs -> wiki/view.mjs',
       reason: 'OS-225 世界书视图只复用中性 wiki 呈现纯函数，动作与徽标由调用方注入，不引入工作台间反向依赖'
+    }),
+    Object.freeze({
+      edge: 'views/knowledgeBaseViews.mjs -> wiki/markdown.mjs',
+      reason: 'OS-227 知识库详情复用中性 wiki 的 Markdown 阅读渲染器（渲染器与源码由壳注入），不自行实现第二套渲染'
     })
   ])
   const allow = [...PUBLIC_EDGE_ALLOW, ...wikiEdges]
   assert.deepEqual(allow.slice(PUBLIC_EDGE_ALLOW.length).map((row) => row.edge),
     ['reference.mjs -> wiki/tree.mjs', 'reference.mjs -> wiki/view.mjs',
-      'views/knowledgeBaseViews.mjs -> wiki/view.mjs', 'views/referenceViews.mjs -> wiki/view.mjs'])
+      'views/knowledgeBaseViews.mjs -> wiki/view.mjs', 'views/referenceViews.mjs -> wiki/view.mjs',
+      'views/knowledgeBaseViews.mjs -> wiki/markdown.mjs'])
   const audit = auditPublicEdges(files, allow)
   assert.deepEqual(audit.violations.map((edge) => edge.tag), [], '真实仓不该有未登记的前端模块边')
   assert.deepEqual(audit.stale.map((row) => row.edge), [], '登记了却不存在/缺理由＝豁免表腐化')

@@ -163,7 +163,7 @@ const referenceViewsReady = import('./views/referenceViews.mjs').then((mod) => {
   .catch((error) => { console.error('[views] 世界书视图模块加载失败', error); return null })
 let knowledgeBaseViews = null, knowledgeBaseController = null
 const knowledgeBaseViewsReady = import('./views/knowledgeBaseViews.mjs').then((mod) => { knowledgeBaseViews = mod; return mod }).catch(() => null)
-const knowledgeBaseControllerReady = import('./views/knowledgeBaseController.mjs').then((mod) => { knowledgeBaseController = mod.createKnowledgeBaseController({ state, api, render, esc, text, go, knowledgeBaseViews: () => knowledgeBaseViews }); return mod }).catch(() => null)
+const knowledgeBaseControllerReady = import('./views/knowledgeBaseController.mjs').then((mod) => { knowledgeBaseController = mod.createKnowledgeBaseController({ state, api, render, esc, text, go, md: () => mdModule, knowledgeBaseViews: () => knowledgeBaseViews }); return mod }).catch(() => null)
 /* OS-164：扮演纯视图（views/deduceViews.mjs）——扮演/叙事流的纯 HTML 构造住这里；状态机与打字机留本文件 */
 let deduceViews = null
 const deduceViewsReady = import('./views/deduceViews.mjs').then((mod) => { deduceViews = mod; return mod })
@@ -844,11 +844,9 @@ function setDocPref(key, value) {
 function renderDocBody(text) {
   if (!mdReady || !mdModule) return `<div class="doc-paper prose"><p>${esc(text)}</p></div>`
   const blocks = mdModule.splitBlocks(text).filter((block) => !/^\s*#\s+/u.test(block.text))
-  // 每段外面套一层 .doc-line：竖条批注条放在可编辑块之外（contenteditable 里放按钮会被一起编辑）
   const parts = blocks.map((block, index) => {
     const html = mdModule.renderMarkdown(block.text)
     return `<div class="doc-line" data-line="${index}">
-      <button class="doc-gutter" data-action="gutter-jump" data-block-index="${index}" title="第 ${index + 1} 段的批注" aria-label="第 ${index + 1} 段的批注"></button>
       <div class="doc-block" contenteditable="true" spellcheck="false" data-block="${index}" data-start="${block.start}" data-end="${block.end}" data-raw="${esc(block.text)}">${html}</div>
     </div>`
   })
@@ -1148,16 +1146,8 @@ function selectWholeBlock(blockEl) {
   state.sel.blockIndex = index
   state.sel.para = index
   state.sel.rect = { top: rect.top, left: rect.left, width: rect.width, height: rect.height }
-  // 视觉上标出「这一段被选中」
-  document.querySelectorAll('.doc-block.para-on').forEach((el) => el.classList.remove('para-on'))
-  blockEl.classList.add('para-on')
+  syncParaOn(blockEl) // 视觉上标出「这一段被选中」
   return { range, rect, index }
-}
-
-/** 清掉整段选中态。 */
-function clearParaSelection() {
-  document.querySelectorAll('.doc-block.para-on').forEach((el) => el.classList.remove('para-on'))
-  state.sel.para = -1
 }
 
 /**
@@ -1746,13 +1736,13 @@ function syncAnalyzeScroll({ force = false } = {}) {
   })
 }
 
-/** 文档内标注（OS-33）：有问题的段落在左侧长出一根可点竖条——点它＝跳到那段＋右栏对齐。 */
+/** 文档内标注（OS-33）：只给有问题的段落挂可点竖条——点它＝跳到那段＋右栏对齐；空槽位不预渲染。 */
 function paintDocAnnotations() {
   const result = state.analyze.result
-  document.querySelectorAll('.doc-line').forEach((line) => {
+  for (const line of document.querySelectorAll('.doc-line')) {
     line.classList.remove('has-issue', 'sev-high', 'sev-medium', 'sev-low')
-    line.querySelector('.doc-gutter')?.classList.remove('has-issue', 'on', 'sev-high', 'sev-medium', 'sev-low')
-  })
+    line.querySelector('.doc-gutter')?.remove()
+  }
   if (!result) return
   const byParagraph = new Map()
   const rank = { high: 3, medium: 2, low: 1 }
@@ -1765,12 +1755,12 @@ function paintDocAnnotations() {
       if (!prev || (rank[issue.severity] || 0) > (rank[prev] || 0)) byParagraph.set(n, issue.severity)
     }
   }
-  for (const entry of byParagraph) {
-    const line = document.querySelector(`.doc-line[data-line="${entry[0]}"]`)
-    if (!line) continue
-    line.classList.add('has-issue', 'sev-' + entry[1])
-    const bar = line.querySelector('.doc-gutter')
-    if (bar) bar.classList.add('has-issue', 'sev-' + entry[1])
+  for (const [index, severity] of byParagraph) {
+    const line = document.querySelector(`.doc-line[data-line="${index}"]`)
+    // 空块（--- 分隔线等）没有可批注正文，不挂竖条
+    if (!line || !line.querySelector('.doc-block')?.textContent.trim()) continue
+    line.classList.add('has-issue', 'sev-' + severity)
+    line.insertAdjacentHTML('afterbegin', `<button class="doc-gutter has-issue sev-${severity}" data-action="gutter-jump" data-block-index="${index}" title="第 ${index + 1} 段的批注" aria-label="第 ${index + 1} 段的批注"></button>`)
   }
 }
 
@@ -4108,7 +4098,7 @@ async function runSyncRegen({ auto = false } = {}) {
     const payload = await api('/api/enrich/run', { method: 'POST', body: JSON.stringify({ root, bookId }) })
     sync.notice = auto
       ? `已自动提交同步（${text(payload?.jobId) || '任务已入队'}），完成后点「重试」刷新状态`
-      : `已提交 enrich（${text(payload?.jobId) || '任务已入队'}），进度看左下角任务球。`
+      : `已提交 enrich（${text(payload?.jobId) || '任务已入队'}），进度看左下角任务球（语义富化）。`
     sync.prompt = null
   } catch (error) {
     sync.notice = auto
@@ -6479,7 +6469,6 @@ function renderScriptDocBody(source) {
   const blocks = mod.splitScriptBlocks(source)
   if (!blocks.length) return `<div class="doc-paper"><div class="sc-empty">还没有内容——写第一幕吧。</div></div>`
   const parts = blocks.map((block) => `<div class="doc-line" data-line="${block.index}">
-      <button class="doc-gutter" data-action="gutter-jump" data-block-index="${block.index}" title="第 ${block.index + 1} 块" aria-label="第 ${block.index + 1} 块"></button>
       <div class="doc-block sc-block" contenteditable="true" spellcheck="false" data-block="${block.index}" data-start="${block.start}" data-end="${block.end}" data-raw="${esc(block.raw)}"${block.kind === 'line' ? ` style="${castColorStyle(block.who)}"` : ''}>${mod.renderScriptBlock(block)}</div>
     </div>`)
   return `<div class="doc-paper sc-doc" id="doc-reader">${parts.join('')}</div>`
@@ -7883,6 +7872,8 @@ async function loadChapter(file) {
   state.error = ''
   state.chapterNote = ''
   state.savedAt = ''
+  // 换章：旧批注段落索引属于上一章，先清掉，否则会画到新章空块上
+  state.analyze.result = null, state.analyze.activePara = -1
   render()
   try {
     const payload = await api(`/api/chapter?${new URLSearchParams({ root: state.current.path, file: target }).toString()}`)
@@ -8193,7 +8184,8 @@ document.addEventListener('click', (event) => {
   if (!event.target.closest?.('.composer-pop, .c-tool')) closeComposerMenus()
   if (!target || target.getAttribute?.('aria-disabled') === 'true') return
 
-  if (state.view === 'knowledge-base') { knowledgeBaseController?.click(target); return }
+  // 知识库只吃自己的 data-kb-*/data-wiki-*；其余点击继续走全局分发（否则顶栏点击被吞）。
+  if (state.view === 'knowledge-base' && knowledgeBaseController?.owns(target)) { knowledgeBaseController.click(target); return }
   if (target.dataset.createGenre !== undefined) {
     state.create.genre = target.dataset.createGenre
     state.create.length = null
@@ -9405,22 +9397,30 @@ document.addEventListener('contextmenu', (event) => {
   showParaMenu(blockEl, event.clientX, event.clientY)
 })
 
-// 左键点一行：把这一段标成「选中」（视觉高亮），但不动光标——contenteditable 里还要正常打字
-document.addEventListener('click', (event) => {
-  if (state.view !== 'chapters') return
-  if (event.button !== 0) return
-  if (event.target.closest?.('.doc-gutter, [data-paramenu], .para-result, .sel-bar')) return
-  const blockEl = event.target?.closest?.('.doc-block')
-  if (!blockEl) return
-  const selection = window.getSelection?.()
-  if (selection && !selection.isCollapsed) return // 用户在拖选，别抢
-  // 标出选中态：记下这一段作为「当前段」，右键/动作都拿它
+// 光标换段（点击/键盘/Tab/输入法/拖选落点）统一同步「当前段」高亮：只靠 click 会让旧段一直挂 para-on（作者实测：新块灰底、老块还红着）。不动光标——contenteditable 要正常打字。
+function syncParaOn(blockEl) {
   const index = Number(blockEl.dataset.block)
   state.sel.para = index
   state.sel.blockIndex = index
   state.sel.text = (blockEl.textContent || '').trim()
   document.querySelectorAll('.doc-block.para-on').forEach((el) => el.classList.remove('para-on'))
   blockEl.classList.add('para-on')
+}
+
+document.addEventListener('click', (event) => {
+  if (state.view !== 'chapters' || event.button !== 0) return
+  if (event.target.closest?.('.doc-gutter, [data-paramenu], .para-result, .sel-bar')) return
+  const blockEl = event.target?.closest?.('.doc-block')
+  const selection = window.getSelection?.()
+  if (!blockEl || (selection && !selection.isCollapsed)) return // 拖选中，别抢
+  syncParaOn(blockEl)
+})
+
+document.addEventListener('selectionchange', () => {
+  if (state.view !== 'chapters') return
+  const node = window.getSelection?.()?.anchorNode
+  const blockEl = (node?.nodeType === 1 ? node : node?.parentElement)?.closest?.('#doc-reader .doc-block')
+  if (blockEl && !blockEl.classList.contains('para-on')) syncParaOn(blockEl)
 })
 
 /* ---------- 风格包（OS-5：目录加载，真皮在 daemon 侧 styles/ 目录）---------- */

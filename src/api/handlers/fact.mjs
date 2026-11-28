@@ -21,6 +21,7 @@ import {
   resolveFactCapability, resolveAgentRuntimeCapability
 } from '../../host/capabilityBindings.mjs'
 import { pickFile, pickFolder, revealPath, readBrowseMemory, writeBrowseMemory, nativeDialogUnusable, markNativeDialogUnusable, NATIVE_DIALOG_TIMEOUT_MS } from '../../host/nativePicker.mjs'
+import { submitJob } from '../../host/jobCenter.mjs'
 import { namingEntry } from '../../protocol/naming.mjs'
 const FACT_DIR = namingEntry('storysource').dir
 async function factCapabilityOrError(res, root, id = 'fact.store', range) {
@@ -395,24 +396,38 @@ export async function enrichRun(ctx) {
   } catch { /* 元数据缺失就用 bookId 兜底 */ }
   const job = { jobId, bookId, root: authorized.root, state: 'running', progress: [], summary: null, error: null, startedAt: new Date().toISOString() }
   enrichJobs.set(jobId, job)
-  // 异步跑：HTTP 立即回 jobId；进度走 enrichStatus 轮询（6 窗逐窗更新）。
+  // OS-80 一致性：enrich 也进全局任务中心，否则左下角任务球永远「暂无后台任务」，
+  // 而界面提示却说「进度看左下角任务球」——两处对不上。enrichJobs 保留给 enrichStatus 兼容读。
   const factEngine = await factCapabilityOrError(res, root, 'fact.engine')
   if (!factEngine) return null
-  factEngine.enrichBook({
+  const centerJob = submitJob({
+    kind: 'enrich',
+    label: `语义富化：${text(book.title) || bookId}`,
     root: authorized.root,
-    bookId,
-    entries: listed.entries,
-    book,
-    llmPort,
-    onProgress: (note) => job.progress.push(note),
-  }).then((result) => {
-    job.state = result.ok ? 'done' : 'failed'
-    job.summary = result.summary ?? null
-    job.error = result.ok ? null : (result.failures?.map((f) => `${f.stage}:${f.reason}`).join('；') || 'failed')
-  }).catch((error) => {
-    job.state = 'failed'
-    job.error = text(error?.message ?? error)
+    run: async ({ update }) => {
+      update('开始语义富化（6 窗）…')
+      const result = await factEngine.enrichBook({
+        root: authorized.root,
+        bookId,
+        entries: listed.entries,
+        book,
+        llmPort,
+        onProgress: (note) => {
+          job.progress.push(note)
+          // 引擎给的是 {stage, detail}；任务球只吃一行人话，别把对象直接塞进去。
+          const line = [note?.stage, note?.detail].filter(Boolean).join(' · ')
+          if (line) update(line)
+        },
+      })
+      job.state = result.ok ? 'done' : 'failed'
+      job.summary = result.summary ?? null
+      job.error = result.ok ? null : (result.failures?.map((f) => `${f.stage}:${f.reason}`).join('；') || 'failed')
+      if (!result.ok) throw new Error(job.error)
+      return job.summary
+    }
   })
+  // submitJob 同步返回 {id,state}，执行失败写在任务本身；这里只留一个回指便于核对两处状态。
+  if (centerJob?.id) job.centerJobId = centerJob.id
   return sendJson(res, 200, { ok: true, jobId })
 }
 

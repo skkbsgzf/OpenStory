@@ -255,7 +255,8 @@ export function normalizeLibraryRecord(value) {
     name: text(value.name).trim() || fallbackName,
     kind: text(value.kind).trim() || '未分类',
     count: Number.isSafeInteger(Number(value.count)) && Number(value.count) >= 0 ? Number(value.count) : 0,
-    at: text(value.at).trim()
+    // 清单里的时间字段叫 addedAt（见 libraryManifest 的读侧）；契约对外叫 at，这里做唯一一次映射。
+    at: text(value.at).trim() || text(value.addedAt).trim()
   }
 }
 

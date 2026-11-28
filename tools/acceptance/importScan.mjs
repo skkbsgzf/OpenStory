@@ -87,6 +87,10 @@ export const PUBLIC_EDGE_ALLOW = Object.freeze([
   Object.freeze({
     edge: 'views/referenceViews.mjs -> wiki/view.mjs',
     reason: 'OS-225 世界书视图 adapter 转调公共 wiki 详情/反链/图谱/节点卡；公共层不读世界书 state 或策略'
+  }),
+  Object.freeze({
+    edge: 'views/knowledgeBaseViews.mjs -> wiki/markdown.mjs',
+    reason: 'OS-227 知识库详情用 OS-225 公共 Markdown 阅读渲染器出 HTML；渲染函数与源码由壳注入，wiki/markdown.mjs 零 DOM/存储、不读任何工作台 state'
   })
 ])
 

@@ -11,7 +11,7 @@ import { basename } from 'node:path'
 import { API_ERROR_CODES, validateResponse } from '../contracts.mjs'
 import { sendError, sendJson, text } from '../../host/http.mjs'
 import { authorizeRoot, canonicalRoot, rootKey } from '../../host/authorize.mjs'
-import { createLibrary, diagnoseLibrary, importLibrary, scanLibrary, setPrimaryCarrier } from '../../host/libraryManage.mjs'
+import { createLibrary, diagnoseLibrary, importLibrary, libraryKind, scanLibrary, setPrimaryCarrier } from '../../host/libraryManage.mjs'
 import { migrationBackupsFor, upgradePlanFor, migrationStatusFor, manifestsFor, sourcesFor } from '../../host/moduleRuntime.mjs'
 import { applyUpgradePlan, rememberUpgradePlan } from '../../host/libraryMigrations.mjs'
 import { diagnoseLibraryUpgrade } from '../../protocol/libraryUpgrade.mjs'
@@ -31,10 +31,16 @@ function mergeLibraryRoots(libraries, extraRoots) {
   return list
 }
 
+/** 库卡上的载体类型取库内真源 `.openstory/project.json` 的 kind；读不到就留空让契约兜底，不阻塞清单。 */
 /* 库清单上屏：在 daemon 输入解析之前响应（不收请求体），直接用路由层读好的库清单。 */
 export async function libraries(ctx) {
   const { res, context, loaded } = ctx
   const merged = mergeLibraryRoots(loaded.libraries, context.extraRoots)
+  // kind 是库卡分组与标签的真源，此前从未填充（契约兜底成「未分类」）——以库内 project.json 为准覆盖。
+  for (const library of merged) {
+    const real = await libraryKind(library.path)
+    if (real) library.kind = real
+  }
   const defaultRecord = context.defaultRoot
     ? merged.find((library) => rootKey(library.path) === rootKey(context.defaultRoot))
     : null
