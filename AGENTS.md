@@ -10,9 +10,9 @@ node:http 手写路由，127.0.0.1:8807；
 OS-127 进程治理：单实例锁＋stamp＋generation＋`/api/health`）
 + `public/` 原生 JS 前端。模块：**小说**（纯净写作面）/ **世界书**（世界书笔记＋故事源词条只读层）/
 **习惯**（写作规矩表）/ **故事源**（fact 链可视化）/ **扮演**（主持人＋多角色，默认）/ **确定性推演**（可选）/ **剧本** / **分析**（本地引擎）/ **知识库**（跨项目储备知识，独立于作品世界书）。
-全部经契约层（`src/api/contracts.mjs` 聚合 `src/api/contracts/` 分片，129 端点）分派；
+全部经契约层（`src/api/contracts.mjs` 聚合 `src/api/contracts/` 分片，133 端点）分派；
 MCP 对外 68 工具（`src/host/mcp.mjs` 直跑；stdio 独立进程，数据操作走 daemon HTTP 薄适配）。
-计数以 `docs/number-anchors.json` 为准（129 端点／23 份 manifest／1073 例单测／29 项门禁）；
+计数以 `docs/number-anchors.json` 为准（133 端点／23 份 manifest／1079 例单测／29 项门禁）；
 `ARCHITECTURE.md` 的分层数字只在生成段里，不手填。
 分层见 [ARCHITECTURE.md](./ARCHITECTURE.md)：OS-173/C6 起不再用 L7–L2 旧层号；按
 前端 `public/` → 契约 `src/api/` → 底座 `src/host/` → 协议 `src/protocol/`＋能力句柄 →
@@ -343,7 +343,7 @@ MCP 对外 68 工具（`src/host/mcp.mjs` 直跑；stdio 独立进程，数据�
 ## 改完必跑（验收线，详见 `docs/ACCEPTANCE.md`）
 
 ```bash
-node .zcode/run-gate.mjs                    # ① 全量单测（1073 例）
+node .zcode/run-gate.mjs                    # ① 全量单测（1079 例）
 node tools/acceptance/acceptance.mjs        # ② 交付标准 S0–S4 门禁（29 检查，Rea 式证据；S0=布局宪法）
 node tools/arch-stats.mjs --check           # ③ 架构统计与生成段一致
 node tools/number-anchors.mjs --check       # ③' 数字锚（测试数/门单数/端点数/app.js 上限）
@@ -375,7 +375,7 @@ node tools/verify/verify-page-report.mjs /tmp/openstory-page-smoke
 
 - 启动入口：`src/host/daemon.mjs` / `src/host/mcp.mjs`（OS-159 直跑，仓根零垫片）
 - 契约层：`src/api/contracts.mjs` 聚合器 ＋ `src/api/contracts/` 十分片（library/chapters/fact/reference/
-  agent/plugins/system/exchange/script/knowledgeBase，129 端点）→ `src/api/handlers/` 域 handler ＋ `src/api/registry.mjs` 注册表（OS-141，键＝endpointId）
+  agent/plugins/system/exchange/script/knowledgeBase，133 端点）→ `src/api/handlers/` 域 handler ＋ `src/api/registry.mjs` 注册表（OS-141，键＝endpointId）
   → `src/host/daemon.mjs` 路由分派（endpointFor → validateRequest → 取 handler → 调用）＋ 共享管线 `src/host/{http,authorize,sse}.mjs`
 - 自有物理内核：`src/kernel/index.mjs`（身份常量＋ok/fail/writeFileAtomic）＋ `identity.mjs`（`openstory-kernel@1`）；
   业务内核能力由 `src/protocol/capabilityImplementations.mjs` 统一注册（含 `knowledge.retrieval@1`），经 `src/host/capabilityBindings.mjs` 按库快照解析。

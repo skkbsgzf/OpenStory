@@ -12,6 +12,7 @@
     "referenceNotePut",
     "referenceAssetGet",
     "referenceAbsorb",
+    "referenceFromFact",
     "referenceImageGenerate"
   ],
   "pages": [

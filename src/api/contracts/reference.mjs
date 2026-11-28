@@ -92,6 +92,18 @@ export const referenceEndpoints = {
     errors: ['NO_LIBRARY', 'PATH_ESCAPE', 'INVALID_ENTRY', 'WRITE_PROTOCOL_IO_FAILED', 'MODULE_DISABLED', 'PLUGIN_DEGRADED']
   },
 
+  referenceFromFact: {
+    method: 'POST',
+    path: '/api/reference/from-fact',
+    // D6b：把事实链条目投影成 `世界书/<层>/<名字>.md` 笔记（带 frontmatter 与 [[双链]]）。
+    // 这是「一本书 → 世界书」链路的最后一步：fact 是唯一事实源，笔记是它的可读投影。
+    // 默认 dryRun:true 只回计划不写盘；写时逐篇走 prose.writeChapterWithBackup（原子写＋.history 备份）。
+    // 已存在的同名笔记默认 skip 不覆盖，conflict:'overwrite' 才覆盖（仍留备份）。
+    request: { body: { root: 'string', bookId: 'string', dryRun: 'boolean?', conflict: 'string?', layers: 'array?' } },
+    response: { ok: 'true', dryRun: 'boolean', planned: 'array', written: 'array', skipped: 'array' },
+    errors: ['NO_LIBRARY', 'PATH_ESCAPE', 'INVALID_ENTRY', 'WRITE_PROTOCOL_IO_FAILED', 'MODULE_DISABLED', 'PLUGIN_DEGRADED']
+  },
+
   syncCheck: {
     method: 'POST',
     path: '/api/sync/check',

@@ -234,9 +234,9 @@
 | D1 | 合并与推送：把 OS-225～232（7+3 提交）从本地 `main` 推到 `origin/main`，CI 首跑全绿 | 交付 | 无 | `git push origin main` 后 GitHub Actions 两轮测试/验收/arch/隔离 E2E 全绿 | **已验收**（`53bbd4c` 推送；CI run `46094337175` 两 job 全绿：gates ✓ / browser-smoke ✓） |
 | D2 | 台账回写：阶段 A 状态（`417a902`～`d6b8761` 已验收）、OS-232 入档、数字锚 1073/1071/2 | 文档 | D1 | `number-anchors --check` 与 `acceptance` 全绿；看板与真实 git 一致 | **已验收**（`53bbd4c`；锚 1073 例／29 门禁／129 端点／app.js 10047） |
 | D3 | OS-230 事实源与黄金语料：先把《水浒传》补到**前 10 回满配**（唯一事实源），再跑 golden query。**作者裁定（2026-11-27）**：①补第 2–10 回再验收；②内容只经真实 MCP 工具 clean-room 落盘，**不 BYOK**（沿用隔离假上游，不接真 provider 密钥）；③**事实链优先、正文为出处**（FACT-FIRST）；gold query 从这 10 回的事实链出 | 验证 | D1 | ①`samples/水浒传/正文/` 有第 1–10 回；②39 条 fact 过 `fact.data/v3`、`fact/wiki revision` 一致；③`knowledge-packs/shuihu-10ch/gold.json` 由其事实链生成；④MCP clean-room E2E 绿并如实标注 `semanticModelVerified:false` | **事实源已验收**（`d7482f63`：10 回正文＋10 本剧本 21,284 字、39 条 fact、gold 16 query、E2E 17/17）；**语义质量四门槛待 provider**：验收脚本 `tools/verify/verify-semantic-quality.mjs` 已就绪，缺 python/embedding/llm 三项时报 `SEMANTIC_QUALITY_BLOCKED`（exit 2），未验证不得宣称通过 |
-| D4 | 版本 tag `v0.3.0` | 发布 | D1＋D3 结果（可无条件发版则 D3 可并行） | 作者在【作者动作】明示后打 tag | 待办（**需作者一句话**：打 / 不打 / 换个版本号） |
+| D4 | 版本 tag `v0.3.0` | 发布 | D1＋D3 结果（可无条件发版则 D3 可并行） | 作者在【作者动作】明示后打 tag | **已推送**（`v0.3.0`，2026-11-28） |
 | D5 | 作者切换新版：停 8807 旧 daemon → 新版启动 → 五个库重加 → 首次打开升级留档 | 作者动作 | D1 | 作者亲验回报；`templated` 留档目录与 `.history/upgrade-*` 齐 | **已达成（2026-11-28 实测）**：8807 跑新版（generation 9，`appVersion 0.2.0`）；本机清单已登记水浒样本（`source=openstory`）；样例库为前 10 回满配。作者如另有真库需升级，按 `.history/upgrade-*` 流程走 |
-| D6 | NovelPedia 真实数据导出→导入回环复验 | 挂账转排期 | D1 | 真实书库回环一致，差异清单可解释 | 待办（**需作者提供一本真书**；适配器与回环工具已就绪，无真书则无法证明） |
+| D6 | NovelPedia 真实数据导出→导入回环复验 | 挂账转排期 | D1 | 真实书库回环一致，差异清单可解释 | **原表述已推翻**（作者 2026-11-28：NovelPedia 与世界书同源，见 `D6-novelpedia-actual-gap.md`）。真缺口是「fact → 世界书笔记」缺导出端点 → **D6b 已实现**（`POST /api/reference/from-fact`，39 条投影实测、6 例纯函数单测）；剩余「真书跑一遍」降级为可选验证 |
 
 **依赖说明**：D1→D2→D3 已完成或已就绪；D4–D6 三张都停在「需要作者一句话或一份素材」，不是代码没写。
 
@@ -244,9 +244,11 @@
 
 | 卡点 | 需要什么 | 拿到后怎么跑 |
 |---|---|---|
-| D3 语义质量四门槛 | ① 固定 HyperGraphRAG venv 的 python 绝对路径 ② `OPENSTORY_EMBEDDING_MODULE` ③ `OPENSTORY_LLM_MODULE`（含可选 factory 名） | `node tools/verify/verify-semantic-quality.mjs --library knowledge-packs/shuihu-10ch --report <out.json>`；缺项时如实 `SEMANTIC_QUALITY_BLOCKED` |
-| D4 版本 tag | 作者确认打 `v0.3.0` 还是别的号 | `git tag -a v0.3.0 -m "..." && git push origin v0.3.0` |
-| D6 NovelPedia 回环 | 一本真实 NovelPedia 书库 | 按 `docs/adr/0001-fact-schema-unification.md` 附录 A 逐项核对差异清单 |
+| D3 语义质量四门槛 | ① HyperGraphRAG venv 的 python 路径（设置页「本地 RAG」显示状态与安装命令）② `OPENSTORY_LLM_MODULE`（**embedding 已默认本地，不用配**） | `node tools/verify/verify-semantic-quality.mjs --library knowledge-packs/shuihu-10ch --report out.json`；缺项时如实 `SEMANTIC_QUALITY_BLOCKED` |
+| ~~D4 版本 tag~~ | ✅ 已完成 | `v0.3.0` 已推送 |
+| ~~D6 NovelPedia 回环~~ | ✅ 原表述已推翻 + D6b 已实现 | 见 `D6-novelpedia-actual-gap.md`；`POST /api/reference/from-fact` |
+
+**OS-233（本批新增）**：本地 RAG 运行时进设置页——`/api/knowledge-runtime/{status,install-plan,config}` 三端点；「引擎与存储 · 本地 RAG」显示状态/缺项/依赖体积/可复制安装命令；embedding 默认走仓内本地 transformers.js（`tools/knowledge-runtime/openstory_local_embedding.py`），不联网、不需 key。安装不代跑（torch 约 2GB）。
 
 D3 的唯一事实源＝水浒前 10 回满配的**事实链**（fact entries＋wiki 派生层），正文只作逐字出处；补章只允许经 MCP 官方工具 clean-room 落盘（脚本自身只造隔离环境、不直接写业务稿），不 BYOK；语义质量若无真 provider 就如实标 `semanticModelVerified:false`，不得把假上游写成真实验收。若日后仍要用 HyperGraphRAG 跑语义检索，worker 必须从官方内部链路取 `full_doc_id/chunk_order_index`，不得自建词面检索冒充——拿不到可验证映射就如实报阻塞。
 

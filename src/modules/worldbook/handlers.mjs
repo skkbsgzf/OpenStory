@@ -4,10 +4,12 @@
  * syncCheck 是跨故事源/正文/世界书的宿主共享端点，仍留契约壳。
  * fact.store / prose.write / media.generate / agent.runtime 句柄经 activate(context) 注入。
  */
+import { existsSync } from 'node:fs'
 import { mkdir, readFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { atomicWriteFile } from '../../protocol/hostWrite.mjs'
-import { LOG_MODULES } from '../../protocol/naming.mjs'
+import { LOG_MODULES, namingEntry } from '../../protocol/naming.mjs'
+import { planNotesFromFact } from '../../protocol/factNoteProjection.mjs'
 import {
   absorbLegacyDirs,
   backlinksOf,
@@ -271,5 +273,46 @@ export function createHandlers({ host, factStore, prose, mediaGenerate, agentRun
     })
   }
 
-  return { referenceGet, referenceGraphGet, referenceNoteGet, referenceNotePut, referenceAssetGet, referenceAbsorb, referenceImageGenerate }
+  /**
+   * D6b：事实链条目 → 世界书笔记。这是「一本书 → 世界书」的最后一步。
+   * 投影规则是纯函数（protocol/factNoteProjection.mjs）；这里只读 fact、落盘、记账。
+   * 默认 dryRun 只回计划；写时逐篇走 prose.writeChapterWithBackup（原子写＋.history 备份）。
+   */
+  async function referenceFromFact(ctx) {
+    const { res, request, allowlist } = ctx
+    const authorized = authorizeRoot(allowlist, request.root)
+    if (!authorized.ok) return sendError(res, authorized.code, authorized.message, authorized.details)
+    const bookId = text(request.bookId).trim()
+    if (!bookId) return sendError(res, apiErrors.INVALID_ENTRY, 'bookId 必填')
+    const FACT_DIR = namingEntry('storysource').dir
+    let dataset
+    try {
+      const src = resolveInsideRoot(authorized.root, `${FACT_DIR}/${bookId}.json`, { allowMetadata: false })
+      if (!src.ok) return sendError(res, apiErrors.PATH_ESCAPE, src.message)
+      dataset = JSON.parse(await readFile(src.path, 'utf-8'))
+    } catch (error) {
+      return sendError(res, apiErrors.NOT_FOUND, `读不到事实链 ${bookId}：${text(error?.message || error)}`)
+    }
+    const planned = planNotesFromFact(dataset, { layers: request.layers })
+    if (!planned.length) return sendJson(res, 200, { ok: true, dryRun: true, planned: [], written: [], skipped: [] })
+    const summary = planned.map((note) => ({ ref: note.ref, title: note.title, layer: note.layer, chars: note.text.length }))
+    if (request.dryRun !== false) return sendJson(res, 200, { ok: true, dryRun: true, planned: summary, written: [], skipped: [] })
+    const overwrite = text(request.conflict) === 'overwrite'
+    const written = []
+    const skipped = []
+    for (const note of planned) {
+      const target = resolveInsideRoot(authorized.root, note.ref, { allowMetadata: false })
+      if (!target.ok) { skipped.push({ ref: note.ref, reason: target.message }); continue }
+      if (existsSync(target.path) && !overwrite) {
+        skipped.push({ ref: note.ref, reason: '同名笔记已存在（冲突策略：不覆盖）' })
+        continue
+      }
+      const saved = await prose.writeChapterWithBackup(authorized.root, note.ref, note.text)
+      if (!saved.ok) { skipped.push({ ref: note.ref, reason: saved.message }); continue }
+      written.push({ ref: note.ref, title: note.title, layer: note.layer, backup: saved.backup })
+    }
+    return sendJson(res, 200, { ok: true, dryRun: false, planned: summary, written, skipped })
+  }
+
+  return { referenceGet, referenceGraphGet, referenceNoteGet, referenceNotePut, referenceAssetGet, referenceAbsorb, referenceFromFact, referenceImageGenerate }
 }

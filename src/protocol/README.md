@@ -70,6 +70,7 @@
 | `worldbookContract.mjs` | 世界书条目 md 文件格式（worldbook-file@2）的纯解析/序列化，导入与世界书共用同一判定。 |
 | `deduceRules.mjs` | 确定性推演规则包的只读装载与校验（只读读盘），规则是数据而非工作台内部。 |
 | `chapterNumber.mjs` | 章节号解析纯函数（OS-157 从 textUtil 上移），全仓唯一口径。 |
+| `factNoteProjection.mjs` | 事实链条目 → 世界书笔记的投影纯函数（D6b）：层→目录、frontmatter、`[[双链]]`、分节规则；零 I/O。 |
 
 ## 登记在册的 I/O 例外
 
