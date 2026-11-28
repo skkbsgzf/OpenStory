@@ -1,6 +1,6 @@
 # OpenStory 验收线（OS-67 起）
 
-> 每个大修改落地前的四步验收。机械门禁 `tools/acceptance/acceptance.mjs`（29 检查，
+> 每个大修改落地前的四步验收。机械门禁 `tools/acceptance/acceptance.mjs`（33 检查，
 > OS-140 起含 S0 布局宪法，OS-169 起含 S1.6 测试环境健壮性，OS-170 起含 S2.8 数字锚，
 > OS-172 起含 S2.9 四名一致与 S2.10 谱系名/作者身份，退出码 0=全绿），配套 `.ua/` 知识图谱、Rea 证据口径、OpenDesign UX 对标。
 
@@ -18,10 +18,10 @@
 ## 落地前四步
 
 ```bash
-# ① 单测门禁（1079 例，OS-206～209 起含页面矩阵、MCP 隔离链路与本机运行期契约）
+# ① 单测门禁（1082 例，OS-206～209 起含页面矩阵、MCP 隔离链路与本机运行期契约）
 node .zcode/run-gate.mjs
 
-# ② 交付标准门禁（S0–S4，Rea 式证据落盘）
+# ② 交付标准门禁（S0–S5，Rea 式证据落盘）
 node tools/acceptance/acceptance.mjs --json tools/acceptance/out/report-<日期>.json
 
 # ③ 知识图谱增量（Understand-Anything，改了哪些文件就重析哪些）
@@ -63,17 +63,17 @@ node tools/verify/verify-page-report.mjs /tmp/openstory-page-smoke
 ## 三件套是什么、怎么用
 
 ### Understand-Anything（代码知识图谱）
-- 安装：`C:/Users/Administrator/.understand-anything/repo`（MIT，Egonex-AI；pnpm 构建的
+- 安装：由维护文档配置的 Understand-Anything 仓库（MIT，Egonex-AI；pnpm 构建的
   `@understand-anything/core` ＋ web-tree-sitter wasm 解析）。9 个 skill 以 junction 链入
   `~/.zcode/skills/understand*`，Zcode 全会话可用。
-- 产物：`D:/OpenStory/.ua/knowledge-graph.json`（节点=文件/函数/类/文档，边=imports/calls/
+- 产物：工具运行时目录下的 `knowledge-graph.json`（节点=文件/函数/类/文档，边=imports/calls/
   contains/tested_by/documents…，带分层 layers 与导览 tour）。
 - 用法：`/understand`（增量）、`/understand-diff`（改动影响面）、`/understand-explain <file>`、
   `/understand-chat <问题>`、`/understand-onboard`（新人导览）、`/understand-dashboard`（可视化）。
 - 注意：`core/`、`vendor/` 已于 OS-157 整体退役，不再需要 `.ua/.understandignore` 排除；内核实现在 `src/kernel/`。
 
 ### Rea 证据口径
-- 样例：`D:/refs/rea-out/`（pinax/siyuan 的 records/evidence 结构化分析）。
+- 样例：`D:/refs/rea-out/`（旧版库/siyuan 的 records/evidence 结构化分析）。
 - 本仓落法：acceptance.mjs 每条检查带 `file:line` 证据；报告 JSON
   （schema `openstory.acceptance/v1`）即 Rea 式 records——结论必须可回溯到源码位置。
 

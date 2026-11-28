@@ -3,7 +3,7 @@
  *
  * 跑法：
  *   node --test openstory/test/contracts.test.mjs
- *   OPENSTORY_FIXTURE=D:/Pinax-e2e/s4-shots/夹具库 node --test openstory/test/contracts.test.mjs
+ *   OPENSTORY_FIXTURE=<夹具库绝对路径> node --test openstory/test/contracts.test.mjs
  *   （设置 OPENSTORY_FIXTURE 时额外验真实夹具库 291 条；旧环境变量名仍兼容一个大版本，
  *     不设就跳过，不写死绝对路径）
  */
@@ -397,7 +397,7 @@ test('daemon 端点：迁入旧目录——搬进世界书、源进 .history、�
     const bad = await post({ root, dirs: ['正文'] })
     assert.equal(bad.status, 400)
     assert.equal((await bad.json()).error.code, 'INVALID_ENTRY')
-    // 世界书已是正式载体目录，不能再当旧 Pinax 输入二次吸收。
+    // 世界书已是正式载体目录，不能再当旧版库输入二次吸收。
     await mkdir(join(root, '世界书'), { recursive: true })
     await writeFile(join(root, '世界书', '林冲.md'), '正式世界书条目。', 'utf-8')
     const carrier = await post({ root, dirs: ['世界书'] })

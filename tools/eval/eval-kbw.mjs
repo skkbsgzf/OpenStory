@@ -96,7 +96,7 @@ function readSignalBody() {
 }
 /** 真检索：kbAdapter 直连 WeKnora knowledge-search（precedent 意图，弱命中丢弃）。 */
 async function retrievePrecedent(task) {
-  const cfg = resolveCollections('C:/Users/Administrator/AppData/Local/OpenStory/openstory/kb-config.json')
+  const cfg = resolveCollections(process.env.OPENSTORY_KB_CONFIG || '')
   if (!cfg.ok) return { hits: [], note: 'kb-config 不可用：' + cfg.error }
   const route = routeQuery({ genre: task.genre, intent: 'precedent' })
   const ids = route.collectionIds.map((alias) => cfg.map[alias]).filter(Boolean)
@@ -121,16 +121,16 @@ async function retrievePrecedent(task) {
 /* ---------- 守卫：语料逐字 shingle 查重 ---------- */
 function loadCorpus() {
   const parts = []
-  const dl = 'C:/Users/Administrator/D盘归档/写作/写作/02_工具/番茄小说下载器/'
-  for (const f of readdirSync(dl)) {
+  const dl = process.env.OPENSTORY_DOWNLOADER_DIR || ''
+  for (const f of dl ? readdirSync(dl) : []) {
     if (f.endsWith('.txt')) {
       try { parts.push(readFileSync(join(dl, f), 'utf-8')) } catch { /* 跳过大文件失败 */ }
     }
   }
-  const qbook = 'D:/Qbook/短篇选题库/正文/'
+  const 私人语料库 = process.env.OPENSTORY_CORPUS_TEXT_DIR || ''
   try {
-    for (const f of readdirSync(qbook)) {
-      if (f.endsWith('.txt')) parts.push(readFileSync(join(qbook, f), 'utf-8'))
+    for (const f of readdirSync(私人语料库)) {
+      if (f.endsWith('.txt')) parts.push(readFileSync(join(私人语料库, f), 'utf-8'))
     }
   } catch { /* 目录不可用就只用下载器语料 */ }
   return parts.join('\n').replace(/\s+/g, '')

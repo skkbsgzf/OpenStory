@@ -102,7 +102,7 @@
 | 运行时 | 模型来源 | 凭据 |
 |---|---|---|
 | **DSH** | `/api/agent/dsh/models` 实时枚举（带推理深度选项） | DSH 自己的 profile |
-| **CLI**（Claude / CodeBuddy / Qoder） | kit manifest 的 `models` 清单 | **CLI 自己登录的凭据——本仓不存 key、不直连 LLM API** |
+| **CLI**（Claude / 编码代理 / 编码代理） | kit manifest 的 `models` 清单 | **CLI 自己登录的凭据——本仓不存 key、不直连 LLM API** |
 | **Pi**（兜底） | 手填 endpoint + model | 本仓存 key（脱敏回显） |
 
 CLI 模式的设计意图：跑动记录与 CLI 自己的历史一致，不产生两套账。

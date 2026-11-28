@@ -555,7 +555,7 @@ const tools = [
 
   /* ---------- 技能货架（OS-91）：让外部 Agent 也能发现并读取 31 个手艺配方 ----------
    * 之前 skills 只经 /api/skills 暴露给左侧 Agent 的选择器，MCP 侧零暴露——
-   * 外部 Agent（Claude/Qoder/CodeBuddy…）完全看不到这套技能库。这里补两个工具。 */
+   * 外部 Agent（Claude/编码代理/编码代理…）完全看不到这套技能库。这里补两个工具。 */
   {
     name: 'openstory_skills_list',
     title: '技能清单',

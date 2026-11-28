@@ -1,6 +1,6 @@
 # AGENTS.md — OpenStory
 
-> 给所有在本仓干活的 agent（Zcode / Qoder / Codex / Claude / CodeBuddy…）的入仓须知。
+> 给所有在本仓干活的 agent（Zcode / 编码代理 / Codex / Claude / 编码代理…）的入仓须知。
 > 人在环：作者本人裁定一切；拿不准就问，别自作主张动稿。
 
 ## 这里是什么
@@ -12,7 +12,7 @@ OS-127 进程治理：单实例锁＋stamp＋generation＋`/api/health`）
 **习惯**（写作规矩表）/ **故事源**（fact 链可视化）/ **扮演**（主持人＋多角色，默认）/ **确定性推演**（可选）/ **剧本** / **分析**（本地引擎）/ **知识库**（跨项目储备知识，独立于作品世界书）。
 全部经契约层（`src/api/contracts.mjs` 聚合 `src/api/contracts/` 分片，133 端点）分派；
 MCP 对外 68 工具（`src/host/mcp.mjs` 直跑；stdio 独立进程，数据操作走 daemon HTTP 薄适配）。
-计数以 `docs/number-anchors.json` 为准（133 端点／23 份 manifest／1079 例单测／29 项门禁）；
+计数以 `docs/number-anchors.json` 为准（133 端点／23 份 manifest／1079 例单测／33 项门禁）；
 `ARCHITECTURE.md` 的分层数字只在生成段里，不手填。
 分层见 [ARCHITECTURE.md](./ARCHITECTURE.md)：OS-173/C6 起不再用 L7–L2 旧层号；按
 前端 `public/` → 契约 `src/api/` → 底座 `src/host/` → 协议 `src/protocol/`＋能力句柄 →
@@ -24,7 +24,7 @@ MCP 对外 68 工具（`src/host/mcp.mjs` 直跑；stdio 独立进程，数据�
 1. **内核自有、磁盘格式名冻结**：内核身份 `openstory-kernel@1`，实现只在 `src/kernel/**`
    （物理公开面 `index.mjs` 为 `KERNEL_ID/KERNEL_NAME/KERNEL_VERSION/ok/fail/writeFileAtomic`；身份 `identity.mjs`）；
   业务能力已降为 `src/modules/` 下八个 manifest@2 kernel：storage/fact/prose/text/deduce/agent-runtime/media/knowledge-runtime。
-   由 Pinax-next `feat/pinax-electron-next`@`70a4f44` 于 OS-152→157 逐步转自有，@pinax/core
+   由 旧版库谱系 `feat/legacy-library`@`70a4f44` 于 OS-152→157 逐步转自有，旧版内核包
    0.16.0 的世界书契约转为 `src/modules/worldbook/worldbookFileContract.mjs`，
    逐文件「来源 → 现位置」见 `docs/kernel-provenance.md`。`core/`、`vendor/` 与
    `npm run vendor:check` 已整体退役（OS-157）；门禁 S2.4' 钉死 `src/**` 与仓根
@@ -32,7 +32,7 @@ MCP 对外 68 工具（`src/host/mcp.mjs` 直跑；stdio 独立进程，数据�
    （`schemaVersion: 4`，carrier＝`openstory.carrier.*`）、`故事源/*.json`＝`fact.data/v3`、
    `*.wiki.json`＝`openstory-wiki-derived@2`、`.openstory-tmp-*` 临时前缀——变更须连
    金样与迁移夹具一起评估。旧名只作一次性迁移输入：旧库先备份，再迁到新运行态与目录，
-   成功后旧目录改名留档；读侧只认新布局，不维护 `.pinax/` 与 `.openstory/` 长期双读。
+   成功后旧目录改名留档；读侧只认新布局，不维护 `.旧版库/` 与 `.openstory/` 长期双读。
    写协议只经 `factFileStore.writeFactFile`，宿主写通道只经 `src/protocol/hostWrite.mjs`；模块不直引
    内核，只经能力句柄（`activate(context)` 的 `context.resolve`）或底座契约（OS-195 转供叶已清零）。
    推演 8 件（opening/turn/settle/candidates/fronts/patchChannel/sceneContext/sessionState）
@@ -209,7 +209,7 @@ MCP 对外 68 工具（`src/host/mcp.mjs` 直跑；stdio 独立进程，数据�
    | 本机知识库连接凭据 | `%LOCALAPPDATA%/OpenStory/openstory/kb-config.json`（短密钥全掩码，坏配置拒覆盖；不进清单/manifest/定制/日志/响应/种子包） |
 
    旧库升级只针对请求中显式指定且已授权的 root，由 daemon 在模块闸与业务 handler 前调用
-   `ensureLibraryUpgraded()`：先备份到 `.history/upgrade-<时间戳>/`，再迁移 `.pinax/` 运行态、
+   `ensureLibraryUpgraded()`：先备份到 `.history/upgrade-<时间戳>/`，再迁移 `.旧版库/` 运行态、
    `参考/→世界书/`、`拆解/→故事源/`、`推演/→扮演/`、`导出/→导入导出/`、项目与 wiki 谱系名、
    存量路径和日志模块名；同名冲突加 `.upgrade-<时间戳>` 后缀。成功后旧目录改名 `.retired-<时间戳>`
    留档并写 `.openstory/upgrade.json`，失败按 journal 回滚。标记保证幂等，运行态不保留长期双读。
@@ -343,8 +343,8 @@ MCP 对外 68 工具（`src/host/mcp.mjs` 直跑；stdio 独立进程，数据�
 ## 改完必跑（验收线，详见 `docs/ACCEPTANCE.md`）
 
 ```bash
-node .zcode/run-gate.mjs                    # ① 全量单测（1079 例）
-node tools/acceptance/acceptance.mjs        # ② 交付标准 S0–S4 门禁（29 检查，Rea 式证据；S0=布局宪法）
+npm test                                    # ① 全量单测（1082 例）
+node tools/acceptance/acceptance.mjs        # ② 交付标准 S0–S5 门禁（33 检查，Rea 式证据；S0=布局宪法）
 node tools/arch-stats.mjs --check           # ③ 架构统计与生成段一致
 node tools/number-anchors.mjs --check       # ③' 数字锚（测试数/门单数/端点数/app.js 上限）
 node tools/verify/verify-ci-workflow.mjs    # ④ CI 三层门禁结构
@@ -387,7 +387,7 @@ node tools/verify/verify-page-report.mjs /tmp/openstory-page-smoke
 - 建库/导入自持（OS-123/124 fork 点）：`src/modules/storage/projectDoc.mjs`（`.openstory/project.json` 的
   `openstory-project@4` 合同＋建库骨架）／`src/protocol/{importAdapter,libraryTextUtil,worldbookContract}.mjs`
   （整目录导入＋章节号与世界书契约判定，OS-195 由 library/workbook 模块下沉）；
-  `src/protocol/libraryUpgrade.mjs` 负责旧库一次性升级，不提供 Pinax 互认或清单导入
+  `src/protocol/libraryUpgrade.mjs` 负责旧库一次性升级，不提供 旧版库 互认或清单导入
 - `src/modules/deduce/`：`deduceEngine.mjs`（推演核封装，端子走模块内 `engine/index.mjs`）/
   `engine/`（OS-155 自上游平移到本模块的确定性推演链 8 件＋出口 index.mjs）；
   会话容器自 OS-195a 起归 `src/modules/deduce/deduceSession.mjs`（扮演/<bookId>/session.json），经 deduce 能力句柄取用

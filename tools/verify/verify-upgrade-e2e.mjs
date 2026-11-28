@@ -36,23 +36,23 @@ async function put(root, rel, body) {
 }
 
 async function legacyLibrary(root) {
-  await put(root, '.pinax/project.json', JSON.stringify({
-    spec: 'pinax-project@3', schemaVersion: 3, projectId: 'proj_old', name: '旧库', kind: 'novel',
+  await put(root, '.旧版库/project.json', JSON.stringify({
+    spec: '旧版库-project@3', schemaVersion: 3, projectId: 'proj_old', name: '旧库', kind: 'novel',
     createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
-    carriers: { primary: 'pinax.carrier.novel', enabled: ['pinax.carrier.novel'], revision: 1 }
+    carriers: { primary: '旧版库.carrier.novel', enabled: ['旧版库.carrier.novel'], revision: 1 }
   }, null, 2))
-  await put(root, '.pinax/ui-state.json', JSON.stringify({ view: 'dir:拆解', tabHidden: ['dir:拆解'] }))
-  await put(root, '.pinax/log/参考/2026-01.jsonl', '{"module":"参考"}\n坏行保留\n')
+  await put(root, '.旧版库/ui-state.json', JSON.stringify({ view: 'dir:拆解', tabHidden: ['dir:拆解'] }))
+  await put(root, '.旧版库/log/参考/2026-01.jsonl', '{"module":"参考"}\n坏行保留\n')
   await put(root, '参考/same.md', '旧参考\n')
   await put(root, '参考/sub/same.md', '旧子目录\n')
   await put(root, '世界书/same.md', '新世界书\n')
   await put(root, '世界书/sub/same.md', '新世界书子目录\n')
-  await put(root, '.pinax/drafts/推演/r1.json', '{"module":"推演","text":"old"}')
+  await put(root, '.旧版库/drafts/推演/r1.json', '{"module":"推演","text":"old"}')
   await put(root, '.openstory/existing.json', '{"path":"拆解/a.json"}')
   await put(root, '推演/book/session.json', JSON.stringify({ path: '推演/book/归档/第1章.md', archives: [{ path: '推演/book/归档/第1章.md' }] }))
   await put(root, '导出/shuihu.jsonl', '{"schema":"pedia/v1"}\n')
   await put(root, '拆解/book.json', JSON.stringify({ book: { id: 'book' }, entries: [] }))
-  await put(root, '拆解/book.wiki.json', JSON.stringify({ derivedFrom: { schema: 'pinax-wiki-derived@1', factRevision: 1 } }))
+  await put(root, '拆解/book.wiki.json', JSON.stringify({ derivedFrom: { schema: '旧版库-wiki-derived@1', factRevision: 1 } }))
   await put(root, '正文/001.md', '旧正文\n')
 }
 
@@ -191,18 +191,18 @@ try {
   check('OS-224 ② 拒绝路径零写入', JSON.stringify(await snapshot(root)) === JSON.stringify(before))
 
   // ③ 文件漂移：仅改被绑定数据，planId 必须失效。
-  const changedFile = plan.plan.bindings.find((item) => item.path === '.pinax/project.json')
+  const changedFile = plan.plan.bindings.find((item) => item.path === '.旧版库/project.json')
   assert.ok(changedFile, '计划必须绑定旧 project.json')
-  await put(root, '.pinax/project.json', JSON.stringify({ spec: 'pinax-project@3', schemaVersion: 3, name: '作者改稿', carriers: { primary: 'pinax.carrier.novel' } }))
+  await put(root, '.旧版库/project.json', JSON.stringify({ spec: '旧版库-project@3', schemaVersion: 3, name: '作者改稿', carriers: { primary: '旧版库.carrier.novel' } }))
   const drifted = await call(mcp, 'openstory_upgrade_apply', { root, planId: plan.planId, confirm: 'migrate' })
   check('OS-224 ③ plan 文件漂移拒绝', drifted.isError === true && /PLAN_STALE/u.test(drifted.content[0].text))
-  await put(root, '.pinax/project.json', JSON.stringify({ spec: 'pinax-project@3', schemaVersion: 3, name: '旧库', carriers: { primary: 'pinax.carrier.novel' } }))
+  await put(root, '.旧版库/project.json', JSON.stringify({ spec: '旧版库-project@3', schemaVersion: 3, name: '旧库', carriers: { primary: '旧版库.carrier.novel' } }))
   const replanned = payload(await call(mcp, 'openstory_upgrade_plan', { root }))
 
   // ④ MCP 成功 apply → status → backup verify。
   const applied = payload(await call(mcp, 'openstory_upgrade_apply', { root, planId: replanned.planId, confirm: 'migrate' }))
   check('OS-224 ④ MCP 升级成功', applied.outcome === 'success' && applied.rolledBack === true, applied.message)
-  check('OS-224 ④ 目录/schema 升级且退役保留', existsSync(join(root, '.openstory', 'project.json')) && (await readdir(root)).some((name) => name.startsWith('.pinax.retired-')))
+  check('OS-224 ④ 目录/schema 升级且退役保留', existsSync(join(root, '.openstory', 'project.json')) && (await readdir(root)).some((name) => name.startsWith('.旧版库.retired-')))
   const status = payload(await call(mcp, 'openstory_upgrade_status', { root }))
   check('OS-224 ④ status 读到升级标记', status.status?.upgrade?.markerState === 'ok' && status.status?.writes === false, JSON.stringify(status.status?.upgrade))
   const backups = payload(await call(mcp, 'openstory_upgrade_backup_verify', { root }))
@@ -265,8 +265,8 @@ try {
   // ⑦ 22+ 既有失败注入汇总：从测试 fixture 复用同一 upgradeLibrary 生产入口。
   const { upgradeLibrary } = await import('../../src/protocol/libraryUpgrade.mjs')
   const injectionPoints = [
-    'backup:mkdir', 'backup:.pinax', 'backup:manifest',
-    'move:.pinax/project.json', 'retire:.pinax',
+    'backup:mkdir', 'backup:.旧版库', 'backup:manifest',
+    'move:.旧版库/project.json', 'retire:.旧版库',
     'move:参考/same.md', 'move:参考/sub/same.md', 'retire:参考', 'copy:拆解', 'retire:拆解', 'copy:推演', 'retire:推演', 'copy:导出', 'retire:导出',
     'copy:.openstory/log/参考', 'retire:.openstory/log/参考',
     'copy:.openstory/drafts/推演', 'retire:.openstory/drafts/推演',

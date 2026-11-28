@@ -1,10 +1,10 @@
 {
   "schemaVersion": "openstory-runtime-kit@1",
   "id": "cli-codebuddy",
-  "name": "CodeBuddy CLI",
+  "name": "编码代理 CLI",
   "kind": "cli",
   "category": "cli",
-  "description": "把 CodeBuddy CLI 当一次性模型用（嫁接：每次对话跑一次子进程）。凭据走 CLI 自身配置，本仓不存、不直连 LLM API。",
+  "description": "把 编码代理 CLI 当一次性模型用（嫁接：每次对话跑一次子进程）。凭据走 CLI 自身配置，本仓不存、不直连 LLM API。",
   "probe": { "cmd": "codebuddy", "args": ["--version"] },
   "cliArgs": ["-p", "{prompt}", "--model", "{model}", "--output-format", "text"],
   "models": ["hy4-preview", "deepseek-v4.1-flash", "deepseek-v4-flash", "glm-5.3", "glm-5.3-flash"],

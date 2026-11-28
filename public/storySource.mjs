@@ -7,7 +7,7 @@
  * 双层对齐（作者裁定的硬前置）：
  *   · fact 条目带 provenance.chapters[]（叙事章）与 provenance.segmentIndex（正文段号）
  *   · wiki chapterSummaries[] 是叙事章；两套编号**不总是一致**
- *     （实测 Qbook 短篇：291 条全标 chapter=1，wiki 却有 38 章）
+ *     （实测 私人语料库 短篇：291 条全标 chapter=1，wiki 却有 38 章）
  *   · 优先用 chapters[0]；缺失时按 segmentIndex 均分兜底，并标 alignment: exact|approximate
  *   · 退化保护：整本条目都标同一章、而 wiki 是多章时，chapters[] 不可信——
  *     同样落到段号均分，标 approximate（页头会如实显示「近似」）。

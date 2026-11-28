@@ -14,7 +14,7 @@
         command: !!js process.env.OPENSTORY_NODE || 'node'
         args:
           - 'src/host/mcp.mjs'
-        cwd: !!js process.env.OPENSTORY_PROJECT_DIR || 'D:/OpenStory'
+        cwd: !!js process.env.OPENSTORY_PROJECT_DIR || process.cwd()
         env:
           OPENSTORY_PORT: '8807'
         failOnStartupError: false

@@ -1,5 +1,5 @@
 /**
- * vendor 自 Pinax-next@devtools/lib/pseudoChapters.mjs（2026-11-16 逐字拷贝）。
+ * 自旧版库工具链逐字拷贝（2026-11-16）；出处见 docs/kernel-provenance.md。
  * fact 域逻辑：伪章切分，enrich 与 build-wiki 共用同一公式。
  */
 /**

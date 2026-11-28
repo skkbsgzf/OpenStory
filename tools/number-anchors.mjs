@@ -6,6 +6,7 @@ import { ENDPOINTS } from '../src/api/contracts.mjs'
 import { MODULE_MANIFESTS } from '../src/protocol/modules.mjs'
 import { countPhysicalLines } from './arch-stats.mjs'
 import { coverageReport } from './acceptance/moduleCoverage.mjs'
+import { CLEAN_RULES } from './acceptance/cleanGates.mjs'
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const ANCHORS_FILE = 'docs/number-anchors.json'
@@ -109,7 +110,9 @@ export function runTestSummary(repo = REPO) {
 
 function countGateChecks(repo = REPO) {
   const source = readFileSync(join(repo, 'tools/acceptance/acceptance.mjs'), 'utf-8')
-  return new Set([...source.matchAll(/check\('(S\d+\.\d+)'/gu)].map((match) => match[1])).size
+  const ids = new Set([...source.matchAll(/check\('(S\d+\.\d+)'/gu)].map((match) => match[1]))
+  for (const rule of CLEAN_RULES) ids.add(rule.id)
+  return ids.size
 }
 
 export function collectAnchors({ repo = REPO, runTests = true } = {}) {
@@ -155,7 +158,7 @@ function buildDocChecks(a) {
     { file: 'docs/workorders/HANDOFF.md', label: '当前门禁结果', expected: `门禁 ${a.gateCount} 过 / 0 挂 / 0 警` },
     { file: 'docs/workorders/HANDOFF.md', label: '模块端点数', expected: `${a.endpoints.moduleOwned} 个独占端点` },
     { file: 'AGENTS.md', label: '测试数', expected: `全量单测（${tests.total} 例）` },
-    { file: 'AGENTS.md', label: '门禁数', expected: `交付标准 S0–S4 门禁（${a.gateCount} 检查` }
+    { file: 'AGENTS.md', label: '门禁数', expected: `交付标准 S0–S5 门禁（${a.gateCount} 检查` }
   ]
 }
 

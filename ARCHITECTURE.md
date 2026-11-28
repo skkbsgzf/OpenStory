@@ -71,7 +71,7 @@
 | `public/app.js` 行数 | 10,051 |
 | `public/views/*.mjs` 文件数 | 19 |
 | 契约端点数（`ENDPOINTS` 键数） | 133 |
-| 测试文件数（`test/*.test.mjs`） | 141 |
+| 测试文件数（`test/*.test.mjs`） | 142 |
 
 **模块清单（由 `src/modules/*/module.manifest.json` 自动生成）**
 
@@ -116,7 +116,7 @@ kernel 能力声明：agent.runtime@1 / deduce.engine@1 / fact.store@3 / fact.pa
   错误码 `FORBIDDEN_ORIGIN`（403）与 `UNSUPPORTED_MEDIA_TYPE`（400）不随模块改动。
 - `mcp.mjs` 是 stdio JSON-RPC 到 daemon HTTP 的薄适配层；数据操作仍走 daemon，不套 agent 对话。
 - 旧库一次性升级只对请求中显式指定且已授权的 root 执行：先备份，再迁移，失败按 journal
-  回滚，成功后旧目录改名留档；运行态不维护 `.pinax/` 与 `.openstory/` 长期双读。
+  回滚，成功后旧目录改名留档；运行态不维护 `.旧版库/` 与 `.openstory/` 长期双读。
 
 ### 装载与动态激活
 
@@ -133,7 +133,7 @@ kernel 能力声明：agent.runtime@1 / deduce.engine@1 / fact.store@3 / fact.pa
 ### 物理写管道 `src/kernel/`
 
 `src/kernel/` 是 OpenStory 自持的物理内核，身份 `openstory-kernel@1`。它于 OS-152→157
-由 Pinax-next `feat/pinax-electron-next@70a4f44` 分批转为自有；`core/`、`vendor/` 与旧同步流程已退役。
+由 旧版库谱系 `feat/legacy-library@70a4f44` 分批转为自有；`core/`、`vendor/` 与旧同步流程已退役。
 保留真实出处，不再宣称桌面端互认或上游同步。
 
 | 组 | 职责 |
@@ -285,9 +285,9 @@ OS-146 铁律继续有效：界面设置项必须有真实消费者。生图/识
 | Agent runtime kit | `openstory-runtime-kit@1` | sidecar/endpoint 命令描述；执行适配归 agent-runtime |
 | 风格包 | tokens JSON | 整窗换肤与栅格密度 |
 
-逐文件“来源 → 现位置”见 `docs/kernel-provenance.md`。内核最初出自 Pinax-next
-`feat/pinax-electron-next@70a4f44`，世界书文件契约出自 `@pinax/core` 0.16.0；这些只作真实出处。
-OS-172 后 OpenStory 与 Pinax 桌面端没有互认协议、共享运行态或清单导入通道。旧库与旧格式
+逐文件“来源 → 现位置”见 `docs/kernel-provenance.md`。内核最初出自 旧版库谱系
+`feat/legacy-library@70a4f44`，世界书文件契约出自 `旧版内核包` 0.16.0；这些只作真实出处。
+OS-172 后 OpenStory 与 旧版库 桌面端没有互认协议、共享运行态或清单导入通道。旧库与旧格式
 只作一次性迁移源；旧院已完全不参与运行（OS-189）。历史决策文档保留裁定过程，不把其中的
 旧数字重新解释为当前事实。
 

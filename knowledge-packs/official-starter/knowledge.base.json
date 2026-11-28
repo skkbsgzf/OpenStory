@@ -1,0 +1,22 @@
+{
+  "schema": "openstory.knowledge-base@1",
+  "schemaVersion": 1,
+  "id": "official-starter",
+  "name": "OpenStory 官方样板知识库",
+  "version": "1.0.0",
+  "vendor": "OpenStory",
+  "license": "CC-BY-4.0",
+  "documentEntry": "guanjue-zhidu-sucha.md",
+  "formats": [
+    ".md"
+  ],
+  "exclude": [],
+  "retrievalDefaults": {
+    "topK": 6,
+    "minScore": 0.3,
+    "budgetChars": 6000
+  },
+  "tagMap": {},
+  "nodeMap": {},
+  "edgeMap": {}
+}

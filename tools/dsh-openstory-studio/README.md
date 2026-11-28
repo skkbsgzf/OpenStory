@@ -62,7 +62,7 @@ OpenStory 按钮即成功。
 环境变量覆盖：`OPENSTORY_PROJECT_DIR` / `OPENSTORY_PORT` / `OPENSTORY_ROOT` / `OPENSTORY_NODE`。
 
 > MCP 行（`cordis.patch.yml` 的 `mcp-openstory`）用 `!!js` 取 `OPENSTORY_NODE` /
-> `OPENSTORY_PROJECT_DIR`，缺省 `node` + `D:/OpenStory`；仓库或 Node 搬家时改这两行即可。
+> `OPENSTORY_PROJECT_DIR`，缺省 `node` + 当前工作目录；仓库或 Node 搬家时改这两行即可。
 
 ## 排障
 

@@ -2,8 +2,8 @@
  * OS-124 解耦②：建库自持（fork 点，不再与上游同步）。
  * `.openstory/project.json` 使用 OpenStory 自有合同；旧库由 libraryUpgrade 一次性迁移。
  *
- * 逐字拷贝归并自 Pinax-next@70a4f44（分支 feat/pinax-electron-next，拷贝方式＝
- * 脚本按行切片原文件拼接，非手抄；上游路径见 docs/kernel-provenance.md）：
+ * 逐字拷贝归并自旧版库谱系（脚本按行切片原文件拼接，非手抄；具名出处与
+ * 上游路径见 docs/kernel-provenance.md）：
  *   · next/kernel/projectSkeleton.mjs → PROJECT_KINDS / isKnownKind / skeletonDirs /
  *     allSkeletonDirs / ensureSkeleton；
  *   · next/project/projectManifest.mjs → validateProjectDocument / buildProjectDocument /

@@ -11,11 +11,15 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { architectureStats, buildArchitectureBlock } from '../tools/arch-stats.mjs'
 import { FROZEN_DOC_ANCHORS } from '../tools/number-anchors.mjs'
+import { CLEAN_RULES } from '../tools/acceptance/cleanGates.mjs'
 
 const read = (rel) => readFileSync(new URL(`../${rel}`, import.meta.url), 'utf-8')
 
 const gateSource = read('tools/acceptance/acceptance.mjs')
-const gateIds = [...new Set([...gateSource.matchAll(/check\('(S\d+\.\d+)'/gu)].map((m) => m[1]))].sort()
+const gateIds = [...new Set([
+  ...[...gateSource.matchAll(/check\('(S\d+\.\d+)'/gu)].map((m) => m[1]),
+  ...CLEAN_RULES.map((rule) => rule.id)
+])].sort()
 const auditDoc = read('docs/plan/final-audit.md')
 const routeDoc = read('docs/plan/route-batch2-20261123.md')
 const publishingDoc = read('docs/PUBLISHING.md')
@@ -29,7 +33,7 @@ const fmt = (value) => String(value).replace(/\B(?=(\d{3})+(?!\d))/gu, ',')
 // OS-193 新增 S2.11；docs/plan/final-audit.md 与 docs/PUBLISHING.md 不在该单允许改动范围
 // （与 tools/number-anchors.mjs 的 FROZEN_DOCS 同一口径，文档收口归 OS-199）。
 // 这里只对本单新增的门禁编号放行，其余编号仍逐条钉死——不是放宽既有覆盖断言。
-const DEFERRED_DOC_GATE_IDS = Object.freeze(['S2.11'])
+const DEFERRED_DOC_GATE_IDS = Object.freeze(['S2.11', 'S5.1', 'S5.2', 'S5.3', 'S5.4'])
 
 test('门禁表覆盖：final-audit.md 列出 acceptance 的全部 check 编号', () => {
   assert.equal(gateIds.length, numberAnchors.gateCount, `门禁项数漂移：${gateIds.join('/')}`)
@@ -74,8 +78,8 @@ test('数值锚点：PUBLISHING／工单体系与 ARCHITECTURE 生成段同源',
     assert.match(text, new RegExp(String(frozen.endpoints.total), 'u'), '历史端点数锚点缺失')
     assert.match(text, new RegExp(fmt(frozen.appJs.lines), 'u'), '历史 app.js 行数锚点缺失')
   }
-  // PUBLISHING 是范围外冻结文档，用冻结门禁数校验（与 FROZEN_DOCS 口径一致）。
-  assert.match(publishingDoc, new RegExp(`${FROZEN_DOC_ANCHORS.gateCount} 过 / 0 挂 / 0 警`, 'u'))
+  // PUBLISHING 是发布规范（number-anchors 的 live 文档），门禁数取当前机器锚。
+  assert.match(publishingDoc, new RegExp(`${numberAnchors.gateCount} 过 / 0 挂 / 0 警`, 'u'))
   assert.match(systemDoc, /模块 \*\*21\*\*/u)
 })
 
@@ -106,7 +110,7 @@ test('C6 架构规模：取消 L2，按 manifest class 分组且生成段逐字�
   assert.match(block, /knowledge\.retrieval@1/u)
   assert.match(block, /\| `public\/app\.js` 行数 \| 10,051 \|/u)
   assert.match(block, /\| 契约端点数（`ENDPOINTS` 键数） \| 133 \|/u)
-  assert.match(block, /\| 测试文件数（`test\/\*\.test\.mjs`） \| 141 \|/u)
+  assert.match(block, /\| 测试文件数（`test\/\*\.test\.mjs`） \| 142 \|/u)
   assert.match(architecture, /<!-- arch-stats:start -->[\s\S]*?<!-- arch-stats:end -->/u, '文档生成段标记仍在，待 docs 收口批次统一回写')
 })
 

@@ -1,5 +1,5 @@
 /**
- * MCP stdio 协议合规（OS-55）。口径对齐 Pinax 本地 MCP：
+ * MCP stdio 协议合规（OS-55）。口径对齐旧版库时代形成的本地 MCP 协议：
  *   · initialize 握手（protocolVersion/serverInfo/instructions）
  *   · tools/list：工具形状（name/title/description/inputSchema）
  *   · tools/call：业务错误＝isError:true 文本；参数缺失＝-32602；未知工具＝-32601

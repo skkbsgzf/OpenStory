@@ -48,6 +48,7 @@ import {
 import { coverageReport } from './moduleCoverage.mjs'
 import { auditMcpDocs } from './mcpDocsAudit.mjs'
 import { auditLineageNames, auditNamingConsistency } from '../verify/verify-os172-naming.mjs'
+import { auditCleanGates, CLEAN_RULES } from './cleanGates.mjs'
 
 const REPO = pathResolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
 
@@ -82,7 +83,9 @@ function grepLine(rel, re) {
 }
 function countGateChecks() {
   const source = readRepo('tools/acceptance/acceptance.mjs')
-  return new Set([...source.matchAll(/check\('(S\d+\.\d+)'/gu)].map((match) => match[1])).size
+  const ids = new Set([...source.matchAll(/check\('(S\d+\.\d+)'/gu)].map((match) => match[1]))
+  for (const rule of CLEAN_RULES) ids.add(rule.id)
+  return ids.size
 }
 
 /* OS-140/C6：src/ 树扫描器（递归收集 .mjs/.js，带内容）＋相对说明符 → 仓内路径解析器 */
@@ -215,11 +218,14 @@ check('S1.4', 'S1', 'dsh native runtime 适配件齐全（dsh-cli 一次一进�
   [...dshPieces.filter((f) => exists(f)).map((f) => lineOf(f, 'export')), dshKindReg].filter(Boolean),
   dshMissing.length ? `缺 ${dshMissing.join(', ')}` : 'dsh-cli 型（一次一进程）就位')
 
-// S1.5 多 CLI 派发器（Qoder/Zcode 等）
-const cliDispatch = ['.zcode/qoder-agent.mjs', '.zcode/run-gate.mjs']
-const cliMissing = cliDispatch.filter((f) => !exists(f))
-check('S1.5', 'S1', '外部 CLI 派发器就位（Qoder 子 agent 模式）',
-  cliMissing.length === 0, cliDispatch.filter((f) => exists(f)).map((f) => lineOf(f, 'spawn')), cliMissing.length ? `缺 ${cliMissing.join(', ')}` : '')
+// S1.5 工具运行时数据出仓：.zcode/.ua 是本机派发器与知识图谱的运行时目录，
+// 私人副本留在仓外；发布仓里不得残留，避免把本机工具链当成产品资产。
+const toolRuntimeDirs = ['.zcode', '.ua']
+const toolRuntimeLeft = toolRuntimeDirs.filter((name) => exists(name))
+check('S1.5', 'S1', '工具运行时数据出仓（.zcode/.ua 不属仓资产）',
+  toolRuntimeLeft.length === 0,
+  toolRuntimeLeft.map((name) => `${name}/ 仍在仓内`),
+  toolRuntimeLeft.length ? `残留：${toolRuntimeLeft.join(', ')}` : '外部 CLI 派发器由仓外工具链提供，发布仓不携带')
 
 // S1.6 OS-169：测试不许依赖本机环境——扫 test/** 的本机绝对路径，允许清单为空。
 // 正向/反斜杠两种写法都算（源码里 `C:\\Users\\` 是两个反斜杠字面，正则用 `\\+` 一并覆盖）；
@@ -731,18 +737,30 @@ check('S4.3', 'S4', 'UX 结构清单文档存在（docs/UX-STRUCTURE.md：页签
   docExp, docExp ? ['docs/UX-STRUCTURE.md'] : [],
   docExp ? '' : '新功能跳转层级遵循度差的根因是没有全局清单——已随本批补齐' )
 
+/* ================================================================
+ * S5 分发清洁（开源清障批）——四条 grep 规则只扫开源白名单
+ * ================================================================ */
+console.log('\n── S5 分发清洁 ──')
+const cleanAudit = auditCleanGates()
+for (const rule of cleanAudit.rules) {
+  check(rule.id, 'S5', `清洁门禁·${rule.label}（开源白名单 ${cleanAudit.files.length} 文件；命中 ${rule.hits.length}）`,
+    rule.hits.length === 0,
+    rule.hits.slice(0, 6).map((hit) => `${hit.file}:${hit.line} '${hit.match}'`),
+    rule.hits.length ? `违规：${rule.hits[0].file}:${rule.hits[0].line} '${rule.hits[0].match}'` : `规则 ${rule.description} 零命中`)
+}
+
 /* ---------- 汇总 ---------- */
 const pass = checks.filter((c) => c.verdict === 'PASS').length
 const fail = checks.filter((c) => c.verdict === 'FAIL').length
 const warns = checks.filter((c) => c.verdict === 'WARN').length
-console.log(`\n验收门禁：${pass} 过 / ${fail} 挂 / ${warns} 警（S0 布局 · S1 Agentic · S2 可插拔 · S3 前端一致性 · S4 UX 层级）`)
+console.log(`\n验收门禁：${pass} 过 / ${fail} 挂 / ${warns} 警（S0 布局 · S1 Agentic · S2 可插拔 · S3 前端一致性 · S4 UX 层级 · S5 分发清洁）`)
 
 if (jsonOut) {
   mkdirSync(dirname(jsonOut), { recursive: true })
   writeFileSync(jsonOut, JSON.stringify({
     schema: 'openstory.acceptance/v1',
     generatedAt: new Date().toISOString(),
-    standards: ['S0 布局', 'S1 Agentic', 'S2 可插拔', 'S3 前端一致性', 'S4 UX 跳转层级'],
+    standards: ['S0 布局', 'S1 Agentic', 'S2 可插拔', 'S3 前端一致性', 'S4 UX 跳转层级', 'S5 分发清洁'],
     summary: { pass, fail, warn: warns },
     checks
   }, null, 2))

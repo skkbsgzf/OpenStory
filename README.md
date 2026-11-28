@@ -17,9 +17,11 @@
 - **生图与识图**：ComfyUI 双后端生图（世界书条目配图）＋vision 文学化白描（读库内图片）
 - **全局设施**：任务中心（悬浮球轮询）、修改日志（模块自检索 diff＋单条恢复）、界面状态/草稿落 `.openstory/`、设置页本体/插件中心两组、MCP server（68 工具，零依赖 stdio；含建库、套件、fact/exchange、剧本、多局、素材、ui-state、项目升级与独立知识库）、Windows 原生文件夹选择器/资源管理器唤起（新建库与本地路径位）
 
+更多的创作知识与参考材料以知识库（参考资料文档库）形态提供，官方样板知识库见后续发布。
+
 ## 三条边界
 
-1. **数据真源在磁盘**：库＝文件夹，运行态唯一为 `<库>/.openstory/`；OpenStory 不自建数据库，也不与 Pinax 桌面端互认或双读。库身份靠 `.openstory/project.json`（`openstory-project@4`），**不靠本机清单**；本机清单只决定 daemon 敢碰哪些 root。
+1. **数据真源在磁盘**：库＝文件夹，运行态唯一为 `<库>/.openstory/`；OpenStory 不自建数据库，也不与 旧版库 桌面端互认或双读。库身份靠 `.openstory/project.json`（`openstory-project@4`），**不靠本机清单**；本机清单只决定 daemon 敢碰哪些 root。
 2. **daemon 只监听 127.0.0.1**：不做 HTTPS/隧道/多用户；凭据只存本机（配置读写走掩码＋`__KEEP__`），响应只回掩码。
 3. **插件不常驻**：套件/运行时按声明加载，停用＝规则退回内置默认（值保留）。
 
@@ -31,7 +33,7 @@
 可能存在的标记文件）。所有路径只从 `src/protocol/courtyard.mjs` 解析，
 `src/host/courtyard.mjs` 是宿主层唯一门面。
 
-**库清单在哪（OS-167；OS-172 退役 Pinax 导入）**：`%LOCALAPPDATA%/OpenStory/libraries.json`，
+**库清单在哪（OS-167；OS-172 退役 旧版库 导入）**：`%LOCALAPPDATA%/OpenStory/libraries.json`，
 形状 `{ schemaVersion, libraries: [{ path, name, addedAt, source }] }`，`source` 只取 `openstory`／
 `imported`。daemon 的 root 白名单只认这份清单（或启动时的 `--root=` 显式授权）；非本产品形状
 只读告警、不写回（写保护按内容形状判定，不按文件名）。
@@ -70,7 +72,7 @@ L1  磁盘库                     文件即真相（.openstory 运行态；旧�
 
 仓根零 `.mjs`（OS-159 布局宪法）：入口直跑 `src/host/daemon.mjs` / `src/host/mcp.mjs`，实现都在 `src/` 六目录。
 
-当前实测：23 份内置 manifest（13 workbench＋8 kernel＋2 宿主组合面）、133 个契约端点、1079 例单测（1077 过／2 跳过）、29 项验收检查、`app.js` 10,051 行；MCP 68 工具、内置技能 32＋套件捆绑 2。数字由 `ARCHITECTURE.md` 生成段与 `docs/number-anchors.json` 校验，不手写承诺。
+当前实测：23 份内置 manifest（13 workbench＋8 kernel＋2 宿主组合面）、133 个契约端点、1082 例单测（1080 过／2 跳过）、33 项验收检查、`app.js` 10,051 行；MCP 68 工具、内置技能 32＋套件捆绑 2。数字由 `ARCHITECTURE.md` 生成段与 `docs/number-anchors.json` 校验，不手写承诺。
 
 CI 是合入门禁：推送与合并请求在 Node 24 上跑两轮 `npm test`、验收与架构核对，再用临时 daemon/库/院子跑隔离全栈 E2E；独立 `browser-smoke` job 用 Chromium 跑完整页面矩阵并上传 manifest 与截图。本地等价命令见 [ACCEPTANCE.md](docs/ACCEPTANCE.md)，不连接 8807 或作者真库。
 
@@ -85,7 +87,7 @@ CI 是合入门禁：推送与合并请求在 Node 24 上跑两轮 `npm test`、
 | `src/api/` | 契约层 `contracts.mjs` ＋ `contracts/` 九域分片（OS-130 起分域，OS-162 加 exchange，OS-214 加 script；纯数据，两端共享） |
 | `src/protocol/` | 底座契约层（逐文件理由见 `src/protocol/README.md`）：形状/错误信封、路径安全与授权、写管道、装载协议与能力图/迁移、slots、命名取表口、旧库一次性升级、进程内事件词表，以及与工作台无关的格式/路径纯函数；零转供叶。`chapters`／`factGuard` 在 `src/modules/prose/`，`libraryManifest` 在 `src/modules/storage/` |
 | `src/kernel/` | 自有物理内核（`openstory-kernel@1`：写管道、错误词表与身份，五个文件 `index/atomicWrite/fsDurability/errors/identity.mjs`，公开面 `index.mjs`；fact 链与 enrich 已归 `src/modules/fact/`；出处与文件对应见 [docs/kernel-provenance.md](./docs/kernel-provenance.md)） |
-| `src/modules/` | 域模块与工作面插件：23 份 `module.manifest.json`（`openstory-module@2`）——13 个 workbench（chapters / worldbook / script / storysource / roleplay / analysis / imagegen / knowledge / knowledge-base / habits / artifacts / log / exchange）、8 个 kernel（storage / fact / prose / text / deduce / agent-runtime / media / knowledge-runtime）、2 个恒启用宿主组合面（agentbar / library）；模块级 `core` 与 `MODULE_CORE` 已退役，工作台停用回 `MODULE_DISABLED`，能力缺失回 `PLUGIN_DEGRADED`。library/ 建库导入自持（library 声明 0 个宿主域端点，Pinax 清单导入端点已退役；`.openstory/project.json` 使用 `openstory-project@4`）、deduce/ 推演、roleplay/ 扮演调度＋四层提示词、worldbook/ 世界书索引、knowledge-base/ 独立知识库、knowledge-runtime/ HyperGraphRAG sidecar、agentbar/ Agent 存储。端点归属 133/133 有主，见 `ARCHITECTURE.md`「模块插件清单」 |
+| `src/modules/` | 域模块与工作面插件：23 份 `module.manifest.json`（`openstory-module@2`）——13 个 workbench（chapters / worldbook / script / storysource / roleplay / analysis / imagegen / knowledge / knowledge-base / habits / artifacts / log / exchange）、8 个 kernel（storage / fact / prose / text / deduce / agent-runtime / media / knowledge-runtime）、2 个恒启用宿主组合面（agentbar / library）；模块级 `core` 与 `MODULE_CORE` 已退役，工作台停用回 `MODULE_DISABLED`，能力缺失回 `PLUGIN_DEGRADED`。library/ 建库导入自持（library 声明 0 个宿主域端点，旧版库 清单导入端点已退役；`.openstory/project.json` 使用 `openstory-project@4`）、deduce/ 推演、roleplay/ 扮演调度＋四层提示词、worldbook/ 世界书索引、knowledge-base/ 独立知识库、knowledge-runtime/ HyperGraphRAG sidecar、agentbar/ Agent 存储。端点归属 133/133 有主，见 `ARCHITECTURE.md`「模块插件清单」 |
 | `src/services/` | 底座服务与货架装载（共七个文件）：五个货架装载 `genres` / `runtimes` / `skills` / `stylePacks` / `suites` ＋ `systemPrompt` / `syncCheck`；`jobCenter` / `nativePicker` / `uiPreferences` 已归 `src/host/`，十个内核兼容叶已删（一律经能力句柄） |
 | `public/` | 工作台单页（app.js＋reference/graph/md/analysis/charts/ui-kit/storySource 等零依赖模块；echarts 本地 vendor） |
 | `suites/` `styles/` `runtimes/` `genres/` `skills/`（31＋套件捆绑 2） | 五类货架数据目录（内置样例）：经 `loadShelfCapabilityManifests()` 投影成 module@2 一等套件，一个装载入口、一套启停与状态（`.openstory/plugins/suite-state.json`）、依赖闭包；设置页按六组供给类型管理。协议见 [suites/PROTOCOL.md](suites/PROTOCOL.md) 与 [docs/protocol/module-manifest-2.md](docs/protocol/module-manifest-2.md)。legacy `openstory-suite@1/@2` 页面模式与漫剧占位套件已退役 |
@@ -106,15 +108,15 @@ CI 是合入门禁：推送与合并请求在 Node 24 上跑两轮 `npm test`、
 
 ## 出处与致谢
 
-OpenStory 自 [Pinax-next](https://github.com/skkbsgzf/Pinax-StoryHarness) 的 openstory/ 线独立而来（2026-11-14 起，OS-1→OS-133 批次逐批交付）。
+OpenStory 自原上游项目的 openstory/ 线独立而来（2026-11-14 起，OS-1→OS-133 批次逐批交付）；维护者谱系底稿见仓内 `docs/kernel-provenance.md`。
 
-**内核**（`src/kernel/`，身份 `openstory-kernel@1`）自 2026-11-24 起为 OpenStory 自持实现：其管道件、fact 词表与校验、写协议、派生层最初逐字取自 Pinax-next 分支 `feat/pinax-electron-next` 提交 `70a4f44`（2026-11-15），世界书文件格式契约取自 `@pinax/core` 0.16.0（pinax-core 仓 `e56a0bc`）。OS-152→157 分批转自有后，代码在本仓自由演进，**不再与上游同步**；逐文件「来源 → 现位置」对照见 [docs/kernel-provenance.md](./docs/kernel-provenance.md)，对外错误码改名对照见 [docs/error-code-rename.md](./docs/error-code-rename.md)。
+**内核**（`src/kernel/`，身份 `openstory-kernel@1`）自 2026-11-24 起为 OpenStory 自持实现：其管道件、fact 词表与校验、写协议、派生层最初逐字取自 旧版库谱系 分支 `feat/legacy-library` 提交 `70a4f44`（2026-11-15），世界书文件格式契约取自 `旧版内核包` 0.16.0（旧版库-core 仓 `e56a0bc`）。OS-152→157 分批转自有后，代码在本仓自由演进，**不再与上游同步**；逐文件「来源 → 现位置」对照见 [docs/kernel-provenance.md](./docs/kernel-provenance.md)，对外错误码改名对照见 [docs/error-code-rename.md](./docs/error-code-rename.md)。
 
 当前的锚不是跨仓互认，而是 OpenStory 自己的**落盘格式**：`.openstory/project.json`＝
 `openstory-project@4`、carrier＝`openstory.carrier.*`、`故事源/*.json`＝`fact.data/v3`、
 `*.wiki.json`＝`openstory-wiki-derived@2`、临时前缀＝`.openstory-tmp-`。目录正名为
 `世界书/`、`故事源/`、`扮演/`、`导入导出/`，页面名为 `产物`。旧库先整库备份，再由
-`src/protocol/libraryUpgrade.mjs` 一次性迁移并退役留档；不保留 `.pinax/` 与 `.openstory/`
+`src/protocol/libraryUpgrade.mjs` 一次性迁移并退役留档；不保留 `.旧版库/` 与 `.openstory/`
 长期双读。模块能力的数据版本另记在 `<库>/.openstory/migrations/`：迁移 `from→to` 成功即写
 `done` 日志；此后数据已是新格式，旧供给者再接到请求会得到 `DATA_VERSION_AHEAD`（409），
 只能重新启用新供给者或手工回迁，不会自动降级误读。建库/导入/章节号解析自 OS-123/124 起即为本仓自持。设计对标 OpenDesign
@@ -129,9 +131,9 @@ OpenStory 自 [Pinax-next](https://github.com/skkbsgzf/Pinax-StoryHarness) 的 o
 - **运行态与目录收口**（2026-11-24 作者确认，2026-11-25 文档落定，OS-172）：运行态唯一为
   `.openstory/`，目录正名为 `世界书/`、`故事源/`、`扮演/`、`导入导出/`，页面名为 `产物`；
   项目、carrier、wiki schema 与临时前缀改为 OpenStory 自有谱系名。旧库一次性备份、迁移、
-  退役留档，不双读；Pinax 清单导入端点退役，互认拆除。作者署名统一为 `skkbsgzf`。
-- **内核转自有收官**（2026-11-24，OS-157）：`core/`、`vendor/` 与 vendor 漂移检测整体退役，`pinaxAdapter` 解散，Host API `@2` 五键定稿，错误码去旧前缀；出处见 [docs/kernel-provenance.md](./docs/kernel-provenance.md)，改名对照见 [docs/error-code-rename.md](./docs/error-code-rename.md)。
-- **解耦收官**（2026-11-23，OS-120→133）：插件治理三件套＋能力白名单；内核解耦四步（server 层/载体注册体系移除→建库导入自持→pinaxAdapter 唯一进口→vendor 漂移检测）；进程治理（单实例锁/stamp/generation/health）；AG-UI 协议出口；契约分域（contracts/ 七域）；@pinax/core tgz 依赖收编移除。架构归档为[七层实测分层](./ARCHITECTURE.md)，遗留与「明确不做」见[遗留台账](./docs/LEGACY-ITEMS.md)。
+  退役留档，不双读；旧版库 清单导入端点退役，互认拆除。作者署名统一为 `skkbsgzf`。
+- **内核转自有收官**（2026-11-24，OS-157）：`core/`、`vendor/` 与 vendor 漂移检测整体退役，`旧版库Adapter` 解散，Host API `@2` 五键定稿，错误码去旧前缀；出处见 [docs/kernel-provenance.md](./docs/kernel-provenance.md)，改名对照见 [docs/error-code-rename.md](./docs/error-code-rename.md)。
+- **解耦收官**（2026-11-23，OS-120→133）：插件治理三件套＋能力白名单；内核解耦四步（server 层/载体注册体系移除→建库导入自持→旧版适配层唯一进口→vendor 漂移检测）；进程治理（单实例锁/stamp/generation/health）；AG-UI 协议出口；契约分域（contracts/ 七域）；旧版内核包 tgz 依赖收编移除。架构归档为[七层实测分层](./ARCHITECTURE.md)，遗留与「明确不做」见[遗留台账](./docs/LEGACY-ITEMS.md)。
 - **v0.2.x**（2026-11-21）：角色时间线泳道图、Windows 原生文件夹选择器/资源管理器唤起、Agent 栏可折叠、剧情密度热力图修复；DSH 插件内嵌模式（OS-113：右侧栏打开工作台，内嵌时收起自带的 Agent 栏左列，左侧交给 DSH 会话）＋窄面板适配约束（OS-114：纸面可读下限 320px、≤1000px 浮层不再让位、内边距/页签按断点降档）＋内嵌 Agent 桥（OS-115：「添加到 Agent / 润笔 / 发给 Agent」以引用块写进 DSH 当前会话输入框）＋MCP 工具面（OS-116：OpenStory 24 个 MCP 工具挂进 DSH，引用附库/章/段/root 来源，DSH Agent 可读章节、按备份语义写回）。
 - **v0.2.0**（2026-11-21）：扮演与文游舞台全面成型（多子 agent 同幕/长期记忆/拍转正/多局管理）、世界书纳入拆解词条（当时命名，现为故事源词条；词条图谱槽）、剧本线（原生工作面＋外部导入）、生图识图、任务中心/修改日志/ui-state、设置重构（本体＋插件中心）、MCP 24 工具、95→99 端点契约、299 例测试。
 - **v0.1.0**（2026-11-19）：首个对外版本。路线图见 [docs/plan/](./docs/plan/)。

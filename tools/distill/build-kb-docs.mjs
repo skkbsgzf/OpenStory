@@ -1,23 +1,29 @@
 /**
  * KB 文档生成器（M3/M4/M5）——从既有调研数据生成 WeKnora 入库文档。
  *
- * 输入：
- *   D:/Qbook/短篇选题库/选题库.json        （100 本：效率/受众/题材/字数）
- *   D:/Qbook/短篇选题库/拆解/{id}.json     （22 本 fact＋wiki 槽位）
- *   D:/Pinax-e2e/research/reader-signal.json（100 本行为信号聚合）
- * 输出（D:/OpenStory/.cache/gen/）：
+ * 输入根目录由 argv[2] 或 OPENSTORY_CORPUS_ROOT 指定，目录结构：
+ *   <corpus>/选题库.json              （书目：效率/受众/题材/字数）
+ *   <corpus>/拆解/{id}.json           （fact＋wiki 槽位）
+ *   <corpus>/research/reader-signal.json（行为信号聚合）
+ * 输出（仓内 .cache/gen/，不入版本控制）：
  *   信号全表.md
- *   案例卡/案例卡-{书名}.md × 22
- *   套路分册/{题材组}.md × 5
+ *   案例卡/案例卡-{书名}.md
+ *   套路分册/{题材组}.md
  *
- * 用法：node tools/distill/build-kb-docs.mjs
+ * 用法：node tools/distill/build-kb-docs.mjs <corpus-root>
  */
 import { readFileSync, mkdirSync, writeFileSync, readdirSync } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
-const QBOOK = 'D:/Qbook/短篇选题库'
-const RESEARCH = 'D:/Pinax-e2e/research'
-const OUT = 'D:/OpenStory/.cache/gen'
+const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
+const CORPUS = resolve(process.argv[2] || process.env.OPENSTORY_CORPUS_ROOT || '')
+const CORPUS_ROOT = CORPUS
+const RESEARCH = join(CORPUS, 'research')
+const OUT = join(REPO, '.cache', 'gen')
+if (!CORPUS || CORPUS === REPO) {
+  throw new Error('请指定语料根目录：argv[2] 或 OPENSTORY_CORPUS_ROOT')
+}
 mkdirSync(join(OUT, '案例卡'), { recursive: true })
 mkdirSync(join(OUT, '套路分册'), { recursive: true })
 
@@ -28,11 +34,11 @@ const clip = (s, n) => {
 const clean = (s) => String(s ?? '').replace(/[\\/:*?"<>|]/g, '').trim().slice(0, 50)
 
 /* ---------- 装载数据 ---------- */
-const lib = JSON.parse(readFileSync(join(QBOOK, '选题库.json'), 'utf-8'))
+const lib = JSON.parse(readFileSync(join(CORPUS_ROOT, '选题库.json'), 'utf-8'))
 const libById = new Map(lib.books.map((b) => [b.id, b]))
 const signal = JSON.parse(readFileSync(join(RESEARCH, 'reader-signal.json'), 'utf-8'))
 
-const dir = join(QBOOK, '拆解')
+const dir = join(CORPUS_ROOT, '拆解')
 const books = []
 for (const f of readdirSync(dir)) {
   if (!f.endsWith('.json')) continue

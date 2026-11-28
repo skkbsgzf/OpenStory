@@ -1,5 +1,5 @@
 /**
- * vendor 自 Pinax-next@devtools/lib/causalMetrics.mjs（2026-11-16 逐字拷贝）。
+ * 自旧版库工具链逐字拷贝（2026-11-16）；出处见 docs/kernel-provenance.md。
  * 因果图三指标：闭环率 / 耦合度 / 断点敏感度。
  */
 /**

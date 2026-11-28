@@ -8,8 +8,8 @@
  *   KERNEL_ID / KERNEL_NAME / KERNEL_VERSION —— 身份常量（identity.mjs）
  *   ok / fail / writeFileAtomic             —— 最小 plumber（fork 点与写通道用）
  *
- * 谱系：2026-11-24 由 Pinax-next `feat/pinax-electron-next`@`70a4f44` 逐步转自有
- * （OS-152→157）；此后在本仓演进，上游不再同步。详见 docs/kernel-provenance.md。
+ * 谱系：2026-11-24 由旧版库谱系逐步转自有（OS-152→157）；此后在本仓演进，
+ * 上游不再同步。逐文件出处见 docs/kernel-provenance.md。
  */
 import { ok, fail } from './errors.mjs'
 import { writeFileAtomic } from './atomicWrite.mjs'

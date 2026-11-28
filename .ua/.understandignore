@@ -1,6 +1,0 @@
-# OpenStory 知识图谱排除规则（gitignore 语法）
-# core/ 是逐字 vendor 的 Pinax 内核（见 core/VENDORED.md），不属于 OpenStory 自身架构
-core/
-node_modules/
-.history/
-dist/

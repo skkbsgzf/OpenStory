@@ -1,5 +1,5 @@
 /**
- * CLI 嫁接桥（OS-18）——把本地 CLI（CodeBuddy/Qoder/Claude…）当一次性「模型」用。
+ * CLI 嫁接桥（OS-18）——把本地 CLI（编码代理/编码代理/Claude…）当一次性「模型」用。
  *
  * 口径：daemon 每次对话 spawn 一次 CLI（batch 式，CLI 本身多为此形态），把
  * system 守则＋最近会话历史拼成单条 prompt 传进去（cliArgs 模板 {prompt} 占位），

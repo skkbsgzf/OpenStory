@@ -7,10 +7,9 @@ node_modules/
 tmp/
 *.tmp
 
-# ── zcode 管线工具的临时产物（工具本体在 .zcode/ 里被跟踪，只忽略 tmp/）──
-.zcode/tmp/
-# 工作流草稿是并行施工会话的中间产物，不入库（成果已落成提交）
-.zcode/workflow-drafts/
+# ── 工具运行时数据（不属仓资产；私人副本已归档到仓外）──
+.ua/
+.zcode/
 
 # 库内运行数据（本仓不含任何库；以下防误放）
 .openstory/

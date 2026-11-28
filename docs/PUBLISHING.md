@@ -2,14 +2,14 @@
 
 > **本文件是本仓发布的规范与检查单，优先级仅次于 AGENTS.md 的硬规则。**
 > 标准：**协议干净、demo 干净、人机双读**——三项全绿才允许 push。
-> 自动检查器：`node ~/.zcode/skills/repo-publish/scripts/publish-scan.mjs .`（对任意仓可跑，全绿退出码 0）。
+> 自动检查器：`node tools/acceptance/acceptance.mjs`（S0–S5 全绿退出码 0）；分发白名单与清洁门禁见 [`DISTRIBUTION.md`](DISTRIBUTION.md)。
 
 **OS-170 历史数字锚**（仅保留当时发布复核结果，不代表 C6 当前状态；机器可读真源是 `docs/number-anchors.json`）：
 
 | 命令 | OS-170 当时结果 |
 |---|---|
 | `node --test test/*.test.mjs` | 836 tests / 834 pass / 2 skip / 0 fail |
-| `node tools/acceptance/acceptance.mjs` | 29 过 / 0 挂 / 0 警 |
+| `node tools/acceptance/acceptance.mjs` | 33 过 / 0 挂 / 0 警 |
 | `npm run arch:check` | 通过；生成段：底座 28 文件 4,308 行、契约 17 文件 3,887 行、协议 34 文件 5,852 行、内核件 59 文件 11,205 行、工作台 30 文件 3,556 行、前端 31 文件 20,981 行、`app.js` 10,110 行、端点 108、测试 109 文件 |
 | `node tools/verify/verify-os172-naming.mjs` | 四名一致 21 概念通过；产品目录扫描 205 文件，仅保留真实出处与迁移兼容 |
 | `node tools/verify/verify-os172-e2e.mjs` | 《水浒传》临时库 10/10＋新建/半成品库 13/13；不碰真库与真实院子 |
@@ -23,8 +23,8 @@
 失败日志、页面 manifest、console/pageerror 记录与截图上传为 artifact，保留 7 天。
 
 **C6／D 批当前审计快照（与 `docs/number-anchors.json` 同源）**：全量单测
-`1079 tests / 1077 pass / 2 skip / 0 fail`）；验收门禁 29 项；
-契约端点 133；`app.js` 10,051 行（上限 10,500）；测试 141 文件。最终结果以本次任务回报与
+`1082 tests / 1080 pass / 2 skip / 0 fail`）；验收门禁 33 项；
+契约端点 133；`app.js` 10,051 行（上限 10,500）；测试 142 文件。最终结果以本次任务回报与
 `docs/number-anchors.json` 为准，上面 OS-170 历史记录不得冒充当前通过。
 
 ## 一、推送前必过检查单
@@ -33,11 +33,11 @@
 
 - 全历史凭据扫描（`git log --all -p -G "(api[_-]?key|token|secret|password)\s*[:=]\s*['\"][A-Za-z0-9]{16,}"`）——命中需逐条甄别：**测试 mock 假值可豁免，真实形态一律阻断**
 - `git ls-files` 确认无 `.env`、agent-config、session、密钥文件被跟踪
-- 运行残留不得被跟踪：`.history/`、`.openstory/`、`.pinax/`（project.json 除外）、`*.log`、`tmp/`、测试自产夹具目录——`git rm -r --cached` 清退＋进 .gitignore
+- 运行残留不得被跟踪：`.history/`、`.openstory/`、`.旧版库/`（project.json 除外）、`*.log`、`tmp/`、测试自产夹具目录——`git rm -r --cached` 清退＋进 .gitignore
 
 ### ② .gitignore 五分区
 
-依赖（node_modules）｜运行产物（*.log/.cache/tmp/测试自产）｜库内数据（.openstory/.history/.pinax）｜本机环境（.env*，豁免 .env.example）｜系统杂项。分区带注释头，声明意图。
+依赖（node_modules）｜运行产物（*.log/.cache/tmp/测试自产）｜库内数据（.openstory/.history/.旧版库）｜本机环境（.env*，豁免 .env.example）｜系统杂项。分区带注释头，声明意图。
 
 ### ③ README 七要件（缺一即红）
 
@@ -45,7 +45,7 @@
 
 ### ④ 协议干净
 
-LICENSE 与出处自洽：`README.md` 致谢段记内核谱系（Pinax-next `feat/pinax-electron-next`@`70a4f44`／@pinax/core 0.16.0 `e56a0bc`），逐文件「来源 → 现位置」对照见 `docs/kernel-provenance.md`，对外错误码改名见 `docs/error-code-rename.md`；package.json 带 repository/license/engines；**不写真实私人邮箱**。不再有 `core/VENDORED.md` 与 `npm run vendor:check`。OS-172 起互认已拆除，新库契约为 `openstory-project@4`；旧库首次打开时一次性升级并保留备份与留档。
+LICENSE 与出处自洽：`README.md` 致谢段记内核谱系（旧版库谱系 `feat/legacy-library`@`70a4f44`／旧版内核包 0.16.0 `e56a0bc`），逐文件「来源 → 现位置」对照见 `docs/kernel-provenance.md`，对外错误码改名见 `docs/error-code-rename.md`；package.json 带 repository/license/engines；**不写真实私人邮箱**。不再有 `core/VENDORED.md` 与 `npm run vendor:check`。OS-172 起互认已拆除，新库契约为 `openstory-project@4`；旧库首次打开时一次性升级并保留备份与留档。
 
 ### ⑤ demo 干净
 

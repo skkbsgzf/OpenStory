@@ -1,5 +1,5 @@
 /**
- * 剧情曲线图表库（OS-41·分析对齐故事源曲线）——从 Qbook wiki 面板移植的三套纯 SVG 算法，零依赖。
+ * 剧情曲线图表库（OS-41·分析对齐故事源曲线）——从 私人语料库 wiki 面板移植的三套纯 SVG 算法，零依赖。
  *
  * 与故事源曲线（wiki/{id}/index.html · devtools/build-wiki.mjs）同源同口径：
  *   renderEmotionCurve   情绪曲线 B1：横轴章进度、纵轴剧情强度（beats）、颜色=情绪类型、只标峰值（±2 邻域极大）带标签

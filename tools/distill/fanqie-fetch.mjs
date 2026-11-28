@@ -6,7 +6,7 @@
  *
  * 用法：
  *   node tools/distill/fanqie-fetch.mjs --ids 7231424472606051384,7616151491132279832 [--range-end 300] [--server http://127.0.0.1:18423]
- *   书单 id 从榜单缓存圈（D:\\Qbook\\cache\\fanqie_read_*_.json——标题有字体混淆不可信，id 可靠）。
+ *   书单 id 从榜单缓存圈（D:\\私人语料库\\cache\\fanqie_read_*_.json——标题有字体混淆不可信，id 可靠）。
  *   产物落在下载器 save_dir（novel_format: txt）。
  */
 import { appendFileSync } from 'node:fs'

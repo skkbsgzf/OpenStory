@@ -47,7 +47,7 @@ function readPackBody(pack) {
   return raw.split(/^---$/m).slice(2).join('---').trim()
 }
 async function retrievePrecedent(query) {
-  const cfg = resolveCollections('C:/Users/Administrator/AppData/Local/OpenStory/openstory/kb-config.json')
+  const cfg = resolveCollections(process.env.OPENSTORY_KB_CONFIG || '')
   if (!cfg.ok) return { hits: [], note: 'kb-config 不可用' }
   const route = routeQuery({ intent: 'precedent' })
   const ids = route.collectionIds.map((a) => cfg.map[a]).filter(Boolean)
@@ -63,10 +63,10 @@ async function retrievePrecedent(query) {
 }
 function loadCorpus() {
   const parts = []
-  const dl = 'C:/Users/Administrator/D盘归档/写作/写作/02_工具/番茄小说下载器/'
-  for (const f of readdirSync(dl)) if (f.endsWith('.txt')) { try { parts.push(readFileSync(join(dl, f), 'utf-8')) } catch { } }
-  const qbook = 'D:/Qbook/短篇选题库/正文/'
-  try { for (const f of readdirSync(qbook)) if (f.endsWith('.txt')) parts.push(readFileSync(join(qbook, f), 'utf-8')) } catch { }
+  const dl = process.env.OPENSTORY_DOWNLOADER_DIR || ''
+  for (const f of dl ? readdirSync(dl) : []) if (f.endsWith('.txt')) { try { parts.push(readFileSync(join(dl, f), 'utf-8')) } catch { } }
+  const 私人语料库 = process.env.OPENSTORY_CORPUS_TEXT_DIR || ''
+  try { for (const f of readdirSync(私人语料库)) if (f.endsWith('.txt')) parts.push(readFileSync(join(私人语料库, f), 'utf-8')) } catch { }
   return parts.join('\n').replace(/\s+/g, '')
 }
 function guardCheck(text, corpus) {
