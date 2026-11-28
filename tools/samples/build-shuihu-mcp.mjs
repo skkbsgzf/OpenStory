@@ -289,14 +289,24 @@ export async function buildShuihuWithMcp(options = {}) {
     if (factEntries.entries.length !== recipe.facts.length) throw new Error('fact 条目回读数量不一致')
     snapshot.fact = { revision: factEntries.revision, digest: semanticDigest(stableValue(factEntries.entries)) }
 
-    await mcp.call('openstory_novel_write_chapter', { root, file: recipe.chapter.path, text: recipe.chapter.text }, { confirm: 'create' })
-    const chapter = await mcp.call('openstory_novel_read_chapter', { root, file: recipe.chapter.path })
-    if (chapter.text !== recipe.chapter.text) throw new Error('正文回读不一致')
-    await mcp.call('openstory_novel_write_chapter', { root, file: recipe.script.path, text: recipe.script.text }, { confirm: 'create' })
-    const script = await mcp.call('openstory_novel_read_chapter', { root, file: recipe.script.path })
-    if (script.text !== recipe.script.text) throw new Error('剧本回读不一致')
-    snapshot.chapter = { path: recipe.chapter.path, sha256: hashText(chapter.text) }
-    snapshot.script = { path: recipe.script.path, sha256: hashText(script.text) }
+    // 多章配方（OS-230 前 10 回）走 chapters[]；旧单章配方仍用 chapter，回归 digest 不变。
+    const chapterInputs = recipe.chapters ?? [recipe.chapter]
+    for (const item of chapterInputs) {
+      await mcp.call('openstory_novel_write_chapter', { root, file: item.path, text: item.text }, { confirm: 'create' })
+      const written = await mcp.call('openstory_novel_read_chapter', { root, file: item.path })
+      if (written.text !== item.text) throw new Error(`正文回读不一致：${item.path}`)
+    }
+    // 剧本同理：多回配方走 scripts[]；旧单本配方仍用 script，回归 digest 不变。
+    const scriptInputs = recipe.scripts ?? [recipe.script]
+    for (const item of scriptInputs) {
+      await mcp.call('openstory_novel_write_chapter', { root, file: item.path, text: item.text }, { confirm: 'create' })
+      const written = await mcp.call('openstory_novel_read_chapter', { root, file: item.path })
+      if (written.text !== item.text) throw new Error(`剧本回读不一致：${item.path}`)
+    }
+    snapshot.chapter = { path: recipe.chapter?.path ?? chapterInputs[0].path, sha256: hashText(chapterInputs[0].text) }
+    snapshot.chapters = chapterInputs.map((item) => ({ path: item.path, sha256: hashText(item.text) }))
+    snapshot.script = { path: (recipe.script ?? scriptInputs[0]).path, sha256: hashText(scriptInputs[0].text) }
+    snapshot.scripts = scriptInputs.map((item) => ({ path: item.path, sha256: hashText(item.text) }))
 
     await mcp.call('openstory_session_put', { root, bookId: recipe.bookId, session: recipe.session }, { confirm: 'create' })
     const mainSession = await mcp.call('openstory_session_get', { root, bookId: recipe.bookId, sessionId: 'main' })
@@ -358,9 +368,11 @@ export async function buildShuihuWithMcp(options = {}) {
     const digest = semanticDigest(stableValue(snapshot))
     const semanticSummary = {
       facts: snapshot.fact,
+      ...(recipe.chapters ? { chapters: snapshot.chapters } : {}),
       reference: snapshot.reference,
       chapter: snapshot.chapter,
       script: snapshot.script,
+      ...(recipe.scripts ? { scripts: snapshot.scripts } : {}),
       session: snapshot.session,
       archive: snapshot.archive,
       assets: snapshot.assets,

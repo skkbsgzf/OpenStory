@@ -583,11 +583,12 @@ test('OS-211 ⑤ checkSameSource：revision 不可信时退回时间戳，并把
 })
 
 test('OS-211 ⑤ 修复路径：旧 7 条非法 fact 的迁移证据与当前新样本合法性', async () => {
-  // OS-218 已重建 samples：当前样本必须全合法；旧非法形态保留为独立内存夹具，
-  // 继续证明同一 validator 会拒收旧数据，而不是把「样本永久非法」钉成期望。
+  // OS-218 已重建 samples，OS-230 起唯一事实源＝前 10 回事实链：当前样本必须全合法；
+  // 旧非法形态保留为独立内存夹具，继续证明同一 validator 会拒收旧数据。
   const samplePath = new URL('../samples/水浒传/故事源/shuihu.json', import.meta.url)
   const sample = JSON.parse(readFileSync(samplePath, 'utf-8'))
-  assert.equal(sample.entries.length, 7)
+  const { SHUIHU_10CH_FACTS } = await import('../tools/samples/shuihu-10ch-facts.mjs')
+  assert.equal(sample.entries.length, SHUIHU_10CH_FACTS.length, '样本事实链条数应与 10 回受控配方一致')
   for (const entry of sample.entries) {
     const checked = validateFactEntry(entry)
     assert.equal(checked.ok, true, `新样本条目必须合法：${entry.id} ${JSON.stringify(checked.errors)}`)

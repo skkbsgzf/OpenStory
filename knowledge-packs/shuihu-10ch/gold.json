@@ -1,0 +1,160 @@
+{
+  "schema": "openstory.knowledge-gold@1",
+  "corpus": "shuihu-10ch",
+  "genre": "古典白话",
+  "factSource": {
+    "scope": "水浒传前10回",
+    "policy": "FACT-FIRST：事实链优先、正文为出处",
+    "sourceHash": "02089ebd34319b4b2a34948774760dd01d8fd348aa779e0f96de8f88dd4c9725",
+    "factEntryCount": 39
+  },
+  "thresholds": {
+    "sourceAccuracy": 1,
+    "negativePrecision": 1,
+    "macroRecallAt5": 0.85,
+    "perGenreRecallAt5": 0.75
+  },
+  "queries": [
+    {
+      "id": "shuihu-01",
+      "query": "洪太尉为什么误放了一百单八魔君？",
+      "expected": [
+        "f8ded4b3999b",
+        "a5790ad446c3"
+      ],
+      "negative": false
+    },
+    {
+      "id": "shuihu-02",
+      "query": "王进为什么连夜离开东京？",
+      "expected": [
+        "3a5533d2ee39",
+        "30897262dec7"
+      ],
+      "negative": false
+    },
+    {
+      "id": "shuihu-03",
+      "query": "史进为什么烧了庄院上少华山？",
+      "expected": [
+        "e9337e952e49",
+        "3a669327d8e8"
+      ],
+      "negative": false
+    },
+    {
+      "id": "shuihu-04",
+      "query": "鲁达为什么拳打镇关西？",
+      "expected": [
+        "b04d92934d6b",
+        "5a5ae7f43b7a"
+      ],
+      "negative": false
+    },
+    {
+      "id": "shuihu-05",
+      "query": "鲁智深为什么被荐往东京大相国寺？",
+      "expected": [
+        "1892166eb262",
+        "9343231699c7"
+      ],
+      "negative": false
+    },
+    {
+      "id": "shuihu-06",
+      "query": "鲁智深在菜园怎样收服泼皮并结识林冲？",
+      "expected": [
+        "185fa7bd9746",
+        "2a568e680706"
+      ],
+      "negative": false
+    },
+    {
+      "id": "shuihu-07",
+      "query": "高俅怎样设计陷害林冲？",
+      "expected": [
+        "8c017e81e8f7",
+        "6561ac2a5963",
+        "41a32609b91e"
+      ],
+      "negative": false
+    },
+    {
+      "id": "shuihu-08",
+      "query": "林冲在山神庙为什么杀了陆谦？",
+      "expected": [
+        "5c878e34c924",
+        "7f835073ca79"
+      ],
+      "negative": false
+    },
+    {
+      "id": "shuihu-09",
+      "query": "晁盖吴用怎样取生辰纲？",
+      "expected": [
+        "939e76009440",
+        "2ed648e1cf11",
+        "c52003564269"
+      ],
+      "negative": false
+    },
+    {
+      "id": "shuihu-10",
+      "query": "林冲为什么火并王伦、谁做了梁山寨主？",
+      "expected": [
+        "f0fbdb9af36f",
+        "1754fa3ab0fc"
+      ],
+      "negative": false
+    },
+    {
+      "id": "shuihu-11",
+      "query": "宋江为什么私放晁盖？",
+      "expected": [
+        "6784034b69b5",
+        "f3fe23c499c1"
+      ],
+      "negative": false
+    },
+    {
+      "id": "shuihu-12",
+      "query": "宋江为什么杀了阎婆惜？",
+      "expected": [
+        "e1c2edae37ec",
+        "52e7ca178acc"
+      ],
+      "negative": false
+    },
+    {
+      "id": "shuihu-13",
+      "query": "野猪林里是谁救了林冲？",
+      "expected": [
+        "8c017e81e8f7",
+        "6e221020495a"
+      ],
+      "negative": false
+    },
+    {
+      "id": "shuihu-14",
+      "query": "林冲被逼上梁山的因果链是什么？",
+      "expected": [
+        "369c942a2fd7",
+        "6561ac2a5963",
+        "5c878e34c924"
+      ],
+      "negative": false
+    },
+    {
+      "id": "shuihu-neg-1",
+      "query": "量子计算机散热风扇型号",
+      "expected": [],
+      "negative": true
+    },
+    {
+      "id": "shuihu-neg-2",
+      "query": "修仙境界突破怎样避免只换称号",
+      "expected": [],
+      "negative": true
+    }
+  ]
+}

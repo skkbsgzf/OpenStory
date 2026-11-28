@@ -15,6 +15,7 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { buildShuihuWithMcp } from './build-shuihu-mcp.mjs'
 import { SHUIHU_FULL_RECIPE } from './shuihu-full-recipe.mjs'
+import { SHUIHU_10CH_RECIPE } from './shuihu-10ch-recipe.mjs'
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
 const SAMPLE = join(REPO, 'samples', '水浒传')
@@ -56,8 +57,11 @@ function treeDigest(root) {
   return createHash('sha256').update(JSON.stringify(files)).digest('hex')
 }
 
-const arg = process.argv[2] === '--candidate' ? resolve(process.argv[3] ?? '') : ''
-if (!arg) fail('用法：node tools/samples/install-shuihu-sample.mjs --candidate <目录>')
+const argv = process.argv.slice(2)
+const argIndex = argv.indexOf('--candidate')
+const arg = argIndex >= 0 ? resolve(argv[argIndex + 1] ?? '') : ''
+const recipe = argv.includes('--recipe-10ch') ? SHUIHU_10CH_RECIPE : SHUIHU_FULL_RECIPE
+if (!arg) fail('用法：node tools/samples/install-shuihu-sample.mjs --candidate <目录> [--recipe-10ch]')
 const candidate = existsSync(join(arg, 'report.json')) ? join(arg, '水浒传') : arg
 if (!existsSync(candidate)) fail(`候选不存在：${candidate}`)
 const report = JSON.parse(readFileSync(join(arg, 'report.json'), 'utf8'))
@@ -68,7 +72,7 @@ const verifyBase = join(REPO, '.zcode', 'tmp', 'os218-recheck-base')
 const verificationRoot = join(REPO, '.zcode', 'tmp', 'os218-recheck')
 rmSync(verifyBase, { recursive: true, force: true })
 rmSync(verificationRoot, { recursive: true, force: true })
-const rebuilt = await buildShuihuWithMcp({ baseDir: verifyBase, root: verificationRoot, recipe: SHUIHU_FULL_RECIPE, keep: true, cleanup: false })
+const rebuilt = await buildShuihuWithMcp({ baseDir: verifyBase, root: verificationRoot, recipe, keep: true, cleanup: false })
 if (!rebuilt.ok) fail(`重跑失败：${rebuilt.error.code} · ${rebuilt.error.message}`)
 if (rebuilt.digest !== report.digest) fail(`候选 digest 与当前构建器不一致：${report.digest} != ${rebuilt.digest}`)
 rmSync(verificationRoot, { recursive: true, force: true })

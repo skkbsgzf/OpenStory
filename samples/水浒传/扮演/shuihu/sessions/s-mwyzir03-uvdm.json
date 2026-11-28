@@ -1,13 +1,13 @@
 {
   "schema": "openstory.deduce-session/v1",
   "bookId": "shuihu",
-  "sessionId": "s-mwyzir03-uvdm",
+  "sessionId": "s-mwzc9k0z-xx8w",
   "title": "MCP 分局",
   "branchId": "main",
   "cursor": 1,
   "nodes": [
     {
-      "id": "n1-mwyzir28",
+      "id": "n1-mwzc9k3b",
       "round": 1,
       "branchId": "main",
       "parentId": "",
@@ -27,14 +27,14 @@
       ],
       "prose": "洪信按住殿门，黑烟从门缝里涌出，散作百十道金光。",
       "events": [],
-      "createdAt": "2026-11-27T12:55:56.289Z"
+      "createdAt": "2026-11-27T18:52:42.359Z"
     }
   ],
   "buffer": {
     "chapterNo": 1,
     "nodes": [
       {
-        "id": "n1-mwyzir28",
+        "id": "n1-mwzc9k3b",
         "round": 1,
         "branchId": "main",
         "parentId": "",
@@ -54,7 +54,7 @@
         ],
         "prose": "洪信按住殿门，黑烟从门缝里涌出，散作百十道金光。",
         "events": [],
-        "createdAt": "2026-11-27T12:55:56.289Z"
+        "createdAt": "2026-11-27T18:52:42.359Z"
       }
     ],
     "words": 24

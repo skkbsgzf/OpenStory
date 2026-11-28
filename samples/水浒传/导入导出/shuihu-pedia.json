@@ -14,7 +14,7 @@
         1
       ],
       "scenes": [],
-      "extractor": "os217-controlled-recipe"
+      "extractor": "os230-10ch-controlled-recipe"
     },
     "fingerprint": {
       "vec": null,
@@ -30,7 +30,7 @@
     "name": "天师试探",
     "domain": "水浒传",
     "slot": "abilities",
-    "definition": "龙虎山天师以吊睛白额虎与雪花大蛇试探洪太尉心志，非真兽。此设定确立「神异」基调，为后文一百单八星宿转世张本。",
+    "definition": "龙虎山天师以吊睛白额虎与雪花大蛇试探洪太尉心志，非真兽。此设定确立「神异」基调。",
     "provenance": {
       "mode": "author",
       "book": "水浒传",
@@ -39,7 +39,7 @@
         1
       ],
       "scenes": [],
-      "extractor": "os217-controlled-recipe"
+      "extractor": "os230-10ch-controlled-recipe"
     },
     "fingerprint": {
       "vec": null,
@@ -54,7 +54,7 @@
     "layer": "character",
     "name": "洪信",
     "domain": "水浒传",
-    "definition": "殿前太尉，奉旨赴龙虎山宣请天师。性刚愎，不听真人劝阻擅开后殿，误放一百单八魔君。",
+    "definition": "殿前太尉，奉旨赴龙虎山宣请天师，性刚愎，误放一百单八魔君。",
     "provenance": {
       "mode": "author",
       "book": "水浒传",
@@ -63,7 +63,7 @@
         1
       ],
       "scenes": [],
-      "extractor": "os217-controlled-recipe"
+      "extractor": "os230-10ch-controlled-recipe"
     },
     "fingerprint": {
       "vec": null,
@@ -88,7 +88,7 @@
         1
       ],
       "scenes": [],
-      "extractor": "os217-controlled-recipe"
+      "extractor": "os230-10ch-controlled-recipe"
     },
     "fingerprint": {
       "vec": null,
@@ -104,7 +104,7 @@
     "layer": "character",
     "name": "张天师",
     "domain": "水浒传",
-    "definition": "嗣汉天师，居龙虎山顶茅庵，性好清高。以虎蛇试洪太尉。",
+    "definition": "嗣汉天师，居龙虎山顶茅庵，性好清高，以虎蛇试洪太尉。",
     "provenance": {
       "mode": "author",
       "book": "水浒传",
@@ -113,7 +113,7 @@
         1
       ],
       "scenes": [],
-      "extractor": "os217-controlled-recipe"
+      "extractor": "os230-10ch-controlled-recipe"
     },
     "fingerprint": {
       "vec": null,
@@ -137,7 +137,7 @@
         1
       ],
       "scenes": [],
-      "extractor": "os217-controlled-recipe"
+      "extractor": "os230-10ch-controlled-recipe"
     },
     "fingerprint": {
       "vec": null,
@@ -145,7 +145,7 @@
         "source": "controlled-recipe"
       }
     },
-    "fact": "洪太尉不听真人劝阻，强开上清宫后殿，放走一百单八魔君，散作金光投四方。全书由此起。",
+    "fact": "洪太尉不听劝阻，强开上清宫后殿，放走一百单八魔君，散作金光投四方。全书由此起。",
     "events": [
       {
         "index": 1,
@@ -175,7 +175,7 @@
         1
       ],
       "scenes": [],
-      "extractor": "os217-controlled-recipe"
+      "extractor": "os230-10ch-controlled-recipe"
     },
     "fingerprint": {
       "vec": null,
@@ -183,13 +183,918 @@
         "source": "controlled-recipe"
       }
     },
-    "fact": "嘉祐三年京师瘟疫盛行，仁宗命洪信赴龙虎山宣天师修醮禳灾——这是整个故事的动因。",
+    "fact": "嘉祐三年京师瘟疫盛行，仁宗命洪信赴龙虎山宣天师修醮禳灾——整个故事的动因。",
     "events": [
       {
         "index": 1,
         "who": "仁宗",
         "channel": "action",
         "content": "命洪信赴龙虎山"
+      }
+    ],
+    "schema": "pedia/v1"
+  },
+  {
+    "id": "dc83c4b21753",
+    "layer": "character",
+    "name": "王进",
+    "domain": "水浒传",
+    "definition": "八十万禁军教头，因高俅旧怨携母私走延安府，途经史家村收史进为徒。",
+    "provenance": {
+      "mode": "author",
+      "book": "水浒传",
+      "book_id": "shuihu",
+      "chapters": [
+        2
+      ],
+      "scenes": [],
+      "extractor": "os230-10ch-controlled-recipe"
+    },
+    "fingerprint": {
+      "vec": null,
+      "metrics": {
+        "source": "controlled-recipe"
+      }
+    },
+    "identity": "八十万禁军教头",
+    "schema": "pedia/v1"
+  },
+  {
+    "id": "30897262dec7",
+    "layer": "character",
+    "name": "高俅",
+    "domain": "水浒传",
+    "definition": "殿帅府太尉，原为泼皮高二，记旧恨追拿王进。",
+    "provenance": {
+      "mode": "author",
+      "book": "水浒传",
+      "book_id": "shuihu",
+      "chapters": [
+        2
+      ],
+      "scenes": [],
+      "extractor": "os230-10ch-controlled-recipe"
+    },
+    "fingerprint": {
+      "vec": null,
+      "metrics": {
+        "source": "controlled-recipe"
+      }
+    },
+    "identity": "殿帅府太尉",
+    "schema": "pedia/v1"
+  },
+  {
+    "id": "3a669327d8e8",
+    "layer": "character",
+    "name": "史进",
+    "domain": "水浒传",
+    "definition": "史家村少年，身刺九纹龙，拜王进为师，后烧庄投少华山。",
+    "provenance": {
+      "mode": "author",
+      "book": "水浒传",
+      "book_id": "shuihu",
+      "chapters": [
+        2,
+        3
+      ],
+      "scenes": [],
+      "extractor": "os230-10ch-controlled-recipe"
+    },
+    "fingerprint": {
+      "vec": null,
+      "metrics": {
+        "source": "controlled-recipe"
+      }
+    },
+    "identity": "九纹龙",
+    "schema": "pedia/v1"
+  },
+  {
+    "id": "3a5533d2ee39",
+    "layer": "plot",
+    "name": "王进私走延安府",
+    "domain": "水浒传",
+    "provenance": {
+      "mode": "author",
+      "book": "水浒传",
+      "book_id": "shuihu",
+      "chapters": [
+        2
+      ],
+      "scenes": [],
+      "extractor": "os230-10ch-controlled-recipe"
+    },
+    "fingerprint": {
+      "vec": null,
+      "metrics": {
+        "source": "controlled-recipe"
+      }
+    },
+    "fact": "高俅追拿旧怨，王进连夜撇下老母投延安，途中在史家村指点史进棒法。",
+    "events": [
+      {
+        "index": 1,
+        "who": "王进",
+        "channel": "action",
+        "content": "私走延安府"
+      }
+    ],
+    "schema": "pedia/v1"
+  },
+  {
+    "id": "e9337e952e49",
+    "layer": "plot",
+    "name": "史进烧庄上华山",
+    "domain": "水浒传",
+    "provenance": {
+      "mode": "author",
+      "book": "水浒传",
+      "book_id": "shuihu",
+      "chapters": [
+        2
+      ],
+      "scenes": [],
+      "extractor": "os230-10ch-controlled-recipe"
+    },
+    "fingerprint": {
+      "vec": null,
+      "metrics": {
+        "source": "controlled-recipe"
+      }
+    },
+    "fact": "史进与少华山朱武等结义，猎户告密，官府围庄，史进烧庄夜走华阴县。",
+    "events": [
+      {
+        "index": 1,
+        "who": "史进",
+        "channel": "action",
+        "content": "烧庄投少华山"
+      }
+    ],
+    "schema": "pedia/v1"
+  },
+  {
+    "id": "6e221020495a",
+    "layer": "character",
+    "name": "鲁达",
+    "domain": "水浒传",
+    "definition": "经略府提辖，拳打镇关西后逃亡，五台山出家法名智深。",
+    "provenance": {
+      "mode": "author",
+      "book": "水浒传",
+      "book_id": "shuihu",
+      "chapters": [
+        3,
+        4
+      ],
+      "scenes": [],
+      "extractor": "os230-10ch-controlled-recipe"
+    },
+    "fingerprint": {
+      "vec": null,
+      "metrics": {
+        "source": "controlled-recipe"
+      }
+    },
+    "identity": "鲁提辖／花和尚",
+    "schema": "pedia/v1"
+  },
+  {
+    "id": "5a5ae7f43b7a",
+    "layer": "character",
+    "name": "郑屠",
+    "domain": "水浒传",
+    "definition": "绰号镇关西，强占金翠莲，被鲁达三拳打死。",
+    "provenance": {
+      "mode": "author",
+      "book": "水浒传",
+      "book_id": "shuihu",
+      "chapters": [
+        3
+      ],
+      "scenes": [],
+      "extractor": "os230-10ch-controlled-recipe"
+    },
+    "fingerprint": {
+      "vec": null,
+      "metrics": {
+        "source": "controlled-recipe"
+      }
+    },
+    "identity": "镇关西",
+    "schema": "pedia/v1"
+  },
+  {
+    "id": "b04d92934d6b",
+    "layer": "plot",
+    "name": "拳打镇关西",
+    "domain": "水浒传",
+    "provenance": {
+      "mode": "author",
+      "book": "水浒传",
+      "book_id": "shuihu",
+      "chapters": [
+        3
+      ],
+      "scenes": [],
+      "extractor": "os230-10ch-controlled-recipe"
+    },
+    "fingerprint": {
+      "vec": null,
+      "metrics": {
+        "source": "controlled-recipe"
+      }
+    },
+    "fact": "鲁达为金翠莲父女出头，到郑屠肉案前消遣，三拳打死镇关西，逃出渭州。",
+    "events": [
+      {
+        "index": 1,
+        "who": "鲁达",
+        "channel": "action",
+        "content": "三拳打死郑屠"
+      }
+    ],
+    "schema": "pedia/v1"
+  },
+  {
+    "id": "9343231699c7",
+    "layer": "character",
+    "name": "智真长老",
+    "domain": "水浒传",
+    "definition": "五台山文殊院长老，为鲁达剃度，赐法名智深，说他心直口快有佛性。",
+    "provenance": {
+      "mode": "author",
+      "book": "水浒传",
+      "book_id": "shuihu",
+      "chapters": [
+        4
+      ],
+      "scenes": [],
+      "extractor": "os230-10ch-controlled-recipe"
+    },
+    "fingerprint": {
+      "vec": null,
+      "metrics": {
+        "source": "controlled-recipe"
+      }
+    },
+    "identity": "文殊院长老",
+    "schema": "pedia/v1"
+  },
+  {
+    "id": "10938de26929",
+    "layer": "worldview",
+    "name": "五台山文殊院",
+    "domain": "水浒传",
+    "slot": "locations",
+    "definition": "鲁达避难出家之所，智真长老住持，后因智深醉闹山门荐往东京大相国寺。",
+    "provenance": {
+      "mode": "author",
+      "book": "水浒传",
+      "book_id": "shuihu",
+      "chapters": [
+        4
+      ],
+      "scenes": [],
+      "extractor": "os230-10ch-controlled-recipe"
+    },
+    "fingerprint": {
+      "vec": null,
+      "metrics": {
+        "source": "controlled-recipe"
+      }
+    },
+    "schema": "pedia/v1"
+  },
+  {
+    "id": "1892166eb262",
+    "layer": "plot",
+    "name": "鲁智深大闹五台山",
+    "domain": "水浒传",
+    "provenance": {
+      "mode": "author",
+      "book": "水浒传",
+      "book_id": "shuihu",
+      "chapters": [
+        4
+      ],
+      "scenes": [],
+      "extractor": "os230-10ch-controlled-recipe"
+    },
+    "fingerprint": {
+      "vec": null,
+      "metrics": {
+        "source": "controlled-recipe"
+      }
+    },
+    "fact": "智深在寺中饮酒，醉后打坏金刚、拆亭，长老修书荐他往东京。",
+    "events": [
+      {
+        "index": 1,
+        "who": "鲁智深",
+        "channel": "action",
+        "content": "醉打山门"
+      }
+    ],
+    "schema": "pedia/v1"
+  },
+  {
+    "id": "4d50073293c8",
+    "layer": "character",
+    "name": "林冲",
+    "domain": "水浒传",
+    "definition": "八十万禁军教头，豹子头，因高衙内调戏妻子一再忍让，终被逼上梁山。",
+    "provenance": {
+      "mode": "author",
+      "book": "水浒传",
+      "book_id": "shuihu",
+      "chapters": [
+        5,
+        6,
+        7,
+        8,
+        9
+      ],
+      "scenes": [],
+      "extractor": "os230-10ch-controlled-recipe"
+    },
+    "fingerprint": {
+      "vec": null,
+      "metrics": {
+        "source": "controlled-recipe"
+      }
+    },
+    "identity": "豹子头",
+    "schema": "pedia/v1"
+  },
+  {
+    "id": "369c942a2fd7",
+    "layer": "character",
+    "name": "高衙内",
+    "domain": "水浒传",
+    "definition": "高俅义子，调戏林冲娘子，又称病设谋害林冲。",
+    "provenance": {
+      "mode": "author",
+      "book": "水浒传",
+      "book_id": "shuihu",
+      "chapters": [
+        5,
+        6
+      ],
+      "scenes": [],
+      "extractor": "os230-10ch-controlled-recipe"
+    },
+    "fingerprint": {
+      "vec": null,
+      "metrics": {
+        "source": "controlled-recipe"
+      }
+    },
+    "identity": "高俅义子",
+    "schema": "pedia/v1"
+  },
+  {
+    "id": "2a568e680706",
+    "layer": "worldview",
+    "name": "菜园泼皮",
+    "domain": "水浒传",
+    "slot": "orgs",
+    "definition": "大相国寺菜园附近二三十个泼皮，被鲁智深降服后每日送酒肉。",
+    "provenance": {
+      "mode": "author",
+      "book": "水浒传",
+      "book_id": "shuihu",
+      "chapters": [
+        5
+      ],
+      "scenes": [],
+      "extractor": "os230-10ch-controlled-recipe"
+    },
+    "fingerprint": {
+      "vec": null,
+      "metrics": {
+        "source": "controlled-recipe"
+      }
+    },
+    "schema": "pedia/v1"
+  },
+  {
+    "id": "185fa7bd9746",
+    "layer": "plot",
+    "name": "倒拔垂杨柳",
+    "domain": "水浒传",
+    "provenance": {
+      "mode": "author",
+      "book": "水浒传",
+      "book_id": "shuihu",
+      "chapters": [
+        5
+      ],
+      "scenes": [],
+      "extractor": "os230-10ch-controlled-recipe"
+    },
+    "fingerprint": {
+      "vec": null,
+      "metrics": {
+        "source": "controlled-recipe"
+      }
+    },
+    "fact": "鲁智深在菜园徒手拔起绿杨树，偶遇林冲，两人结为兄弟。",
+    "events": [
+      {
+        "index": 1,
+        "who": "鲁智深",
+        "channel": "action",
+        "content": "倒拔垂杨柳"
+      }
+    ],
+    "schema": "pedia/v1"
+  },
+  {
+    "id": "6561ac2a5963",
+    "layer": "character",
+    "name": "陆谦",
+    "domain": "水浒传",
+    "definition": "高俅心腹，献计骗林冲入白虎堂，又到沧州火烧草料场。",
+    "provenance": {
+      "mode": "author",
+      "book": "水浒传",
+      "book_id": "shuihu",
+      "chapters": [
+        6,
+        7
+      ],
+      "scenes": [],
+      "extractor": "os230-10ch-controlled-recipe"
+    },
+    "fingerprint": {
+      "vec": null,
+      "metrics": {
+        "source": "controlled-recipe"
+      }
+    },
+    "identity": "陆虞候",
+    "schema": "pedia/v1"
+  },
+  {
+    "id": "41a32609b91e",
+    "layer": "worldview",
+    "name": "白虎节堂",
+    "domain": "水浒传",
+    "slot": "locations",
+    "definition": "太尉府军机重地，林冲被诱带刀擅入，成为高俅构陷的罪名。",
+    "provenance": {
+      "mode": "author",
+      "book": "水浒传",
+      "book_id": "shuihu",
+      "chapters": [
+        6
+      ],
+      "scenes": [],
+      "extractor": "os230-10ch-controlled-recipe"
+    },
+    "fingerprint": {
+      "vec": null,
+      "metrics": {
+        "source": "controlled-recipe"
+      }
+    },
+    "schema": "pedia/v1"
+  },
+  {
+    "id": "665a979756c0",
+    "layer": "worldview",
+    "name": "野猪林",
+    "domain": "水浒传",
+    "slot": "locations",
+    "definition": "沧州路上险地，董超薛霸欲在此结果林冲，被鲁智深救下。",
+    "provenance": {
+      "mode": "author",
+      "book": "水浒传",
+      "book_id": "shuihu",
+      "chapters": [
+        6
+      ],
+      "scenes": [],
+      "extractor": "os230-10ch-controlled-recipe"
+    },
+    "fingerprint": {
+      "vec": null,
+      "metrics": {
+        "source": "controlled-recipe"
+      }
+    },
+    "schema": "pedia/v1"
+  },
+  {
+    "id": "8c017e81e8f7",
+    "layer": "plot",
+    "name": "误入白虎堂",
+    "domain": "水浒传",
+    "provenance": {
+      "mode": "author",
+      "book": "水浒传",
+      "book_id": "shuihu",
+      "chapters": [
+        6
+      ],
+      "scenes": [],
+      "extractor": "os230-10ch-controlled-recipe"
+    },
+    "fingerprint": {
+      "vec": null,
+      "metrics": {
+        "source": "controlled-recipe"
+      }
+    },
+    "fact": "高俅使陆谦诱林冲带刀入白虎节堂，指为行刺，发配沧州；鲁智深野猪林相救。",
+    "events": [
+      {
+        "index": 1,
+        "who": "林冲",
+        "channel": "action",
+        "content": "带刀误入白虎堂"
+      },
+      {
+        "index": 2,
+        "who": "鲁智深",
+        "channel": "action",
+        "content": "野猪林救林冲"
+      }
+    ],
+    "schema": "pedia/v1"
+  },
+  {
+    "id": "7f835073ca79",
+    "layer": "worldview",
+    "name": "山神庙",
+    "domain": "水浒传",
+    "slot": "locations",
+    "definition": "沧州草料场附近，林冲因草屋被雪压塌在此栖身，听得陆谦阴谋。",
+    "provenance": {
+      "mode": "author",
+      "book": "水浒传",
+      "book_id": "shuihu",
+      "chapters": [
+        7
+      ],
+      "scenes": [],
+      "extractor": "os230-10ch-controlled-recipe"
+    },
+    "fingerprint": {
+      "vec": null,
+      "metrics": {
+        "source": "controlled-recipe"
+      }
+    },
+    "schema": "pedia/v1"
+  },
+  {
+    "id": "5c878e34c924",
+    "layer": "plot",
+    "name": "风雪山神庙",
+    "domain": "水浒传",
+    "provenance": {
+      "mode": "author",
+      "book": "水浒传",
+      "book_id": "shuihu",
+      "chapters": [
+        7
+      ],
+      "scenes": [],
+      "extractor": "os230-10ch-controlled-recipe"
+    },
+    "fingerprint": {
+      "vec": null,
+      "metrics": {
+        "source": "controlled-recipe"
+      }
+    },
+    "fact": "陆谦火烧草料场，林冲在山神庙听得阴谋，一枪搠倒三人，冒雪投梁山。",
+    "events": [
+      {
+        "index": 1,
+        "who": "林冲",
+        "channel": "action",
+        "content": "山神庙杀陆谦"
+      },
+      {
+        "index": 2,
+        "who": "陆谦",
+        "channel": "action",
+        "content": "火烧草料场"
+      }
+    ],
+    "schema": "pedia/v1"
+  },
+  {
+    "id": "a9e411a50eed",
+    "layer": "character",
+    "name": "杨志",
+    "domain": "水浒传",
+    "definition": "殿司制使，押送生辰纲被劫，后投二龙山。",
+    "provenance": {
+      "mode": "author",
+      "book": "水浒传",
+      "book_id": "shuihu",
+      "chapters": [
+        8
+      ],
+      "scenes": [],
+      "extractor": "os230-10ch-controlled-recipe"
+    },
+    "fingerprint": {
+      "vec": null,
+      "metrics": {
+        "source": "controlled-recipe"
+      }
+    },
+    "identity": "青面兽",
+    "schema": "pedia/v1"
+  },
+  {
+    "id": "c52003564269",
+    "layer": "character",
+    "name": "吴用",
+    "domain": "水浒传",
+    "definition": "秀才，号智多星，与晁盖等七星聚义，设计用蒙汗药取生辰纲。",
+    "provenance": {
+      "mode": "author",
+      "book": "水浒传",
+      "book_id": "shuihu",
+      "chapters": [
+        8,
+        9
+      ],
+      "scenes": [],
+      "extractor": "os230-10ch-controlled-recipe"
+    },
+    "fingerprint": {
+      "vec": null,
+      "metrics": {
+        "source": "controlled-recipe"
+      }
+    },
+    "identity": "智多星",
+    "schema": "pedia/v1"
+  },
+  {
+    "id": "2ed648e1cf11",
+    "layer": "worldview",
+    "name": "生辰纲",
+    "domain": "水浒传",
+    "slot": "items",
+    "definition": "梁中书送给蔡京的十万贯金银担，杨志押送，在黄泥冈被晁盖等劫走。",
+    "provenance": {
+      "mode": "author",
+      "book": "水浒传",
+      "book_id": "shuihu",
+      "chapters": [
+        8
+      ],
+      "scenes": [],
+      "extractor": "os230-10ch-controlled-recipe"
+    },
+    "fingerprint": {
+      "vec": null,
+      "metrics": {
+        "source": "controlled-recipe"
+      }
+    },
+    "schema": "pedia/v1"
+  },
+  {
+    "id": "939e76009440",
+    "layer": "plot",
+    "name": "智取生辰纲",
+    "domain": "水浒传",
+    "provenance": {
+      "mode": "author",
+      "book": "水浒传",
+      "book_id": "shuihu",
+      "chapters": [
+        8
+      ],
+      "scenes": [],
+      "extractor": "os230-10ch-controlled-recipe"
+    },
+    "fingerprint": {
+      "vec": null,
+      "metrics": {
+        "source": "controlled-recipe"
+      }
+    },
+    "fact": "吴用设计，晁盖等扮贩枣客人在黄泥冈以蒙汗药酒麻倒押送军汉，劫走生辰纲。",
+    "events": [
+      {
+        "index": 1,
+        "who": "吴用",
+        "channel": "action",
+        "content": "黄泥冈下蒙汗药"
+      },
+      {
+        "index": 2,
+        "who": "晁盖",
+        "channel": "action",
+        "content": "劫走生辰纲"
+      }
+    ],
+    "schema": "pedia/v1"
+  },
+  {
+    "id": "f3fe23c499c1",
+    "layer": "character",
+    "name": "晁盖",
+    "domain": "水浒传",
+    "definition": "郓城东溪村保正，七星聚义取生辰纲，上梁山后被推为寨主。",
+    "provenance": {
+      "mode": "author",
+      "book": "水浒传",
+      "book_id": "shuihu",
+      "chapters": [
+        9
+      ],
+      "scenes": [],
+      "extractor": "os230-10ch-controlled-recipe"
+    },
+    "fingerprint": {
+      "vec": null,
+      "metrics": {
+        "source": "controlled-recipe"
+      }
+    },
+    "identity": "托塔天王",
+    "schema": "pedia/v1"
+  },
+  {
+    "id": "1754fa3ab0fc",
+    "layer": "worldview",
+    "name": "梁山泊",
+    "domain": "水浒传",
+    "slot": "locations",
+    "definition": "水泊梁山，林冲雪夜投奔，晁盖等劫纲后上山，王伦嫉贤被林冲火并。",
+    "provenance": {
+      "mode": "author",
+      "book": "水浒传",
+      "book_id": "shuihu",
+      "chapters": [
+        7,
+        9
+      ],
+      "scenes": [],
+      "extractor": "os230-10ch-controlled-recipe"
+    },
+    "fingerprint": {
+      "vec": null,
+      "metrics": {
+        "source": "controlled-recipe"
+      }
+    },
+    "schema": "pedia/v1"
+  },
+  {
+    "id": "f0fbdb9af36f",
+    "layer": "plot",
+    "name": "火并王伦",
+    "domain": "水浒传",
+    "provenance": {
+      "mode": "author",
+      "book": "水浒传",
+      "book_id": "shuihu",
+      "chapters": [
+        9
+      ],
+      "scenes": [],
+      "extractor": "os230-10ch-controlled-recipe"
+    },
+    "fingerprint": {
+      "vec": null,
+      "metrics": {
+        "source": "controlled-recipe"
+      }
+    },
+    "fact": "王伦不肯接纳晁盖等，林冲怒杀王伦，众推晁盖为寨主，林冲坐第二把交椅。",
+    "events": [
+      {
+        "index": 1,
+        "who": "林冲",
+        "channel": "action",
+        "content": "火并白衣秀士王伦"
+      }
+    ],
+    "schema": "pedia/v1"
+  },
+  {
+    "id": "0e29ae895ae0",
+    "layer": "character",
+    "name": "宋江",
+    "domain": "水浒传",
+    "definition": "郓城押司，人称及时雨，私放晁盖，后怒杀阎婆惜逃亡。",
+    "provenance": {
+      "mode": "author",
+      "book": "水浒传",
+      "book_id": "shuihu",
+      "chapters": [
+        10
+      ],
+      "scenes": [],
+      "extractor": "os230-10ch-controlled-recipe"
+    },
+    "fingerprint": {
+      "vec": null,
+      "metrics": {
+        "source": "controlled-recipe"
+      }
+    },
+    "identity": "及时雨",
+    "schema": "pedia/v1"
+  },
+  {
+    "id": "52e7ca178acc",
+    "layer": "character",
+    "name": "阎婆惜",
+    "domain": "水浒传",
+    "definition": "宋江外室，与张文远有染，拾得梁山书信要挟宋江，被杀。",
+    "provenance": {
+      "mode": "author",
+      "book": "水浒传",
+      "book_id": "shuihu",
+      "chapters": [
+        10
+      ],
+      "scenes": [],
+      "extractor": "os230-10ch-controlled-recipe"
+    },
+    "fingerprint": {
+      "vec": null,
+      "metrics": {
+        "source": "controlled-recipe"
+      }
+    },
+    "identity": "阎婆惜",
+    "schema": "pedia/v1"
+  },
+  {
+    "id": "6784034b69b5",
+    "layer": "plot",
+    "name": "私放晁天王",
+    "domain": "水浒传",
+    "provenance": {
+      "mode": "author",
+      "book": "水浒传",
+      "book_id": "shuihu",
+      "chapters": [
+        10
+      ],
+      "scenes": [],
+      "extractor": "os230-10ch-controlled-recipe"
+    },
+    "fingerprint": {
+      "vec": null,
+      "metrics": {
+        "source": "controlled-recipe"
+      }
+    },
+    "fact": "宋江得晁盖书信，得知官府捉拿，私放晁盖，后收信被阎婆惜拾得。",
+    "events": [
+      {
+        "index": 1,
+        "who": "宋江",
+        "channel": "action",
+        "content": "私放晁盖"
+      }
+    ],
+    "schema": "pedia/v1"
+  },
+  {
+    "id": "e1c2edae37ec",
+    "layer": "plot",
+    "name": "怒杀阎婆惜",
+    "domain": "水浒传",
+    "provenance": {
+      "mode": "author",
+      "book": "水浒传",
+      "book_id": "shuihu",
+      "chapters": [
+        10
+      ],
+      "scenes": [],
+      "extractor": "os230-10ch-controlled-recipe"
+    },
+    "fingerprint": {
+      "vec": null,
+      "metrics": {
+        "source": "controlled-recipe"
+      }
+    },
+    "fact": "阎婆惜以梁山书信要挟，宋江被逼无奈拔刀杀之，连夜投柴进庄避难。",
+    "events": [
+      {
+        "index": 1,
+        "who": "宋江",
+        "channel": "action",
+        "content": "怒杀阎婆惜"
       }
     ],
     "schema": "pedia/v1"
